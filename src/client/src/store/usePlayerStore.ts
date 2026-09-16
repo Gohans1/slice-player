@@ -66,7 +66,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         // Purge queue items whose parent track no longer exists in DB
         const validQueue = queue.filter((item) => trackMap.has(item.track.id));
         if (validQueue.length !== queue.length) {
-          set({ queue: validQueue });
+          const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+          set({ queue: validQueue, queueIndex: newIdx });
         }
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
@@ -160,15 +161,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   nextSegment: () => {
-    const { queue, queueIndex } = get();
+    const { queue, queueIndex, isShuffle } = get();
     if (queue.length === 0) return;
 
     let nextIdx = queueIndex + 1;
-    if (nextIdx >= queue.length) {
+    if (isShuffle && queue.length > 1) {
+      let randIdx = Math.floor(Math.random() * queue.length);
+      if (randIdx === queueIndex) {
+        randIdx = (queueIndex + 1) % queue.length;
+      }
+      nextIdx = randIdx;
+    } else if (nextIdx >= queue.length) {
       nextIdx = 0; // loop queue
     }
 
     const nextItem = queue[nextIdx];
+    if (!nextItem) return;
     set({ queueIndex: nextIdx });
     get().playSegment(nextItem.segment, nextItem.track);
   },
@@ -308,6 +316,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const trk = trackMap.get(seg.track_id);
       if (trk && trk.status === "ready") {
         items.push({ segment: seg, track: trk });
+      }
+    }
+
+    // Fallback: If no segments exist yet, create virtual full-track segments
+    if (items.length === 0) {
+      for (const t of allTracks) {
+        if (t.status === "ready") {
+          items.push({
+            segment: {
+              id: `fallback_${t.id}`,
+              track_id: t.id,
+              name: "Toàn bài",
+              start_time: 0,
+              end_time: t.duration,
+            },
+            track: t,
+          });
+        }
       }
     }
 

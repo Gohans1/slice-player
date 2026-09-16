@@ -433,8 +433,19 @@ export function broadcastWs(msg: object) {
   const payload = JSON.stringify(msg);
   for (const ws of activeSockets) {
     try {
-      ws.send(payload);
-    } catch {}
+      if (ws.readyState === 1) {
+        ws.send(payload);
+      } else {
+        activeSockets.delete(ws);
+      }
+    } catch {
+      activeSockets.delete(ws);
+    }
+  }
+  if (activeSockets.size === 0 && !shutdownTimer) {
+    shutdownTimer = setTimeout(() => {
+      gracefulShutdown();
+    }, 60000);
   }
 }
 

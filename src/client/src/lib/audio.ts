@@ -9,6 +9,7 @@ class AudioEngine {
   private gainNode: GainNode | null = null;
   private isInitialized = false;
 
+  private currentSegmentStart: number | null = null;
   private currentSegmentEnd: number | null = null;
   private onSegmentEndCallback: (() => void) | null = null;
   private onTimeUpdateCallback: ((currentTime: number) => void) | null = null;
@@ -84,6 +85,7 @@ class AudioEngine {
     const requestId = ++this.currentPlayRequestId;
 
     // Disarm boundary checks during load and seek transition
+    this.currentSegmentStart = null;
     this.currentSegmentEnd = null;
     this.onSegmentEndCallback = null;
     this.onTimeUpdateCallback = onTimeUpdate || null;
@@ -164,6 +166,7 @@ class AudioEngine {
       if (this.currentPlayRequestId !== requestId) return;
 
       // Arm boundary monitor ONLY AFTER playback successfully starts at the target seek point
+      this.currentSegmentStart = startTime;
       this.currentSegmentEnd = endTime;
       this.onSegmentEndCallback = onEnd;
 
@@ -193,10 +196,16 @@ class AudioEngine {
       this.gainNode.gain.cancelScheduledValues(now);
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
-      this.pauseTimer = setTimeout(() => {
+
+      if (document.hidden) {
+        // Bypass 1000ms timer throttling in background/minimized mode
         this.audioEl.pause();
-        this.pauseTimer = null;
-      }, 14);
+      } else {
+        this.pauseTimer = setTimeout(() => {
+          this.audioEl.pause();
+          this.pauseTimer = null;
+        }, 14);
+      }
     } else {
       this.audioEl.pause();
     }
@@ -233,20 +242,31 @@ class AudioEngine {
   }
 
   public seek(seconds: number) {
+    if (this.audioEl.paused) {
+      this.audioEl.currentTime = seconds;
+      if (this.gainNode) this.gainNode.gain.value = 1.0;
+      return;
+    }
+
     if (this.gainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
       this.gainNode.gain.cancelScheduledValues(now);
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
-      setTimeout(() => {
-        this.audioEl.currentTime = seconds;
+
+      const onSeeked = () => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        clearTimeout(fallback);
         if (this.gainNode && this.audioCtx && !this.audioEl.paused) {
           const unpauseNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(unpauseNow);
           this.gainNode.gain.setValueAtTime(0.0001, unpauseNow);
           this.gainNode.gain.linearRampToValueAtTime(1.0, unpauseNow + 0.015);
         }
-      }, 10);
+      };
+      const fallback = setTimeout(onSeeked, 500);
+      this.audioEl.addEventListener("seeked", onSeeked);
+      this.audioEl.currentTime = seconds;
     } else {
       this.audioEl.currentTime = seconds;
     }
@@ -275,6 +295,11 @@ class AudioEngine {
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
 
+    // Guard against seeking settlement lag during same-track segment transitions
+    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
+      return;
+    }
+
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
     if (this.onTimeUpdateCallback && now - this.lastTimeUpdate >= 100) {
       this.lastTimeUpdate = now;
@@ -282,14 +307,17 @@ class AudioEngine {
     }
 
     if (this.currentSegmentEnd !== null) {
-      // Step 1: Pre-fade 20ms before boundary to eliminate DC-offset clicks without bleeding
-      if (curTime >= this.currentSegmentEnd - 0.020 && !this.isFadingOut) {
+      // Step 1: Pre-fade 60ms before boundary to eliminate DC-offset clicks without bleeding
+      // (60ms window ensures a 30ms Web Worker tick NEVER skips the fade)
+      const leadTime = 0.060;
+      if (curTime >= this.currentSegmentEnd - leadTime && !this.isFadingOut) {
         this.isFadingOut = true;
         if (this.gainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
+          const remaining = Math.max(0.012, this.currentSegmentEnd - curTime);
           this.gainNode.gain.cancelScheduledValues(fadeNow);
           this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.018);
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + remaining);
         }
       }
 
@@ -298,6 +326,7 @@ class AudioEngine {
       if (curTime >= this.currentSegmentEnd) {
         this.isFadingOut = false;
         const cb = this.onSegmentEndCallback;
+        this.currentSegmentStart = null;
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 

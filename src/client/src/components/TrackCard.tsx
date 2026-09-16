@@ -22,8 +22,6 @@ interface TrackCardProps {
 export function TrackCard({ track, onDelete }: TrackCardProps) {
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const playSegment = usePlayerStore((s) => s.playSegment);
-  const isCurrentActive = usePlayerStore((s) => s.activeTrack?.id === track.id);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
 
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
 

@@ -302,6 +302,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Delete segment
   const handleDeleteSegment = async (id: string) => {
+    if (saveDebounceTimersRef.current[id]) {
+      clearTimeout(saveDebounceTimersRef.current[id]);
+      delete saveDebounceTimersRef.current[id];
+    }
+    delete pendingUpdatesRef.current[id];
+
     try {
       const res = await fetch(`/api/segments/${id}`, { method: "DELETE" });
       if (res.ok) {

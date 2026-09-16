@@ -49,14 +49,20 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       try { proc.kill(); } catch {}
     }, 45000);
 
-    const [outputText, errText] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-
-    clearTimeout(killTimer);
-    await proc.exited;
-    activeMetadataProcs.delete(proc);
+    let outputText = "";
+    let errText = "";
+    try {
+      const res = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      outputText = res[0];
+      errText = res[1];
+      await proc.exited;
+    } finally {
+      clearTimeout(killTimer);
+      activeMetadataProcs.delete(proc);
+    }
 
     if (!outputText || outputText.trim() === "") {
       return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };

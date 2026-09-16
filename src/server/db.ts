@@ -143,7 +143,11 @@ export function createTrack(track: Omit<Track, 'created_at'>): Track {
     ) VALUES (
       $id, $source_type, $source_uri, $title, $artist, $duration,
       $thumbnail_url, $file_path, $peaks_json, $status, $error_message
-    ) RETURNING *;
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      artist = excluded.artist
+    RETURNING *;
   `);
 
   return query.get({
