@@ -103,13 +103,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             ...item,
             track: trackMap.get(item.track.id) || item.track,
           }));
-          const updates: Partial<PlayerState> = { tracks: stabilizedTracks, queue: validQueue };
+          const isQueueIdentical =
+            validQueue.length === queue.length &&
+            validQueue.every((it, idx) => it.track === queue[idx].track && it.segment === queue[idx].segment);
+          const finalQueue = isQueueIdentical ? queue : validQueue;
+
+          const updates: Partial<PlayerState> = { tracks: stabilizedTracks, queue: finalQueue };
           if (validQueue.length !== queue.length) {
             const newIdx = validQueue.length === 0
               ? -1
               : currentItem
                 ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
-                : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+                : (queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1)));
             updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
           }
           set(updates);
@@ -222,6 +227,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
 
+        // Fallback: If slices_only mode has no custom slices left, populate full tracks
+        if (validQueue.length === 0 && currentMode === "slices_only") {
+          for (const trk of stabilizedTracks) {
+            if (trk.status === "ready" && trk.duration > 0) {
+              validQueue.push({ segment: createDefaultFullSegment(trk), track: trk });
+            }
+          }
+        }
+
         // Initial queue shuffle / sort if app launched with empty queue
         if (wasQueueEmpty && validQueue.length > 0) {
           if (get().isShuffle) {
@@ -250,9 +264,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             }
           }
         }
-        const fallbackIdx = Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+        const fallbackIdx = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
         const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
-        set({ tracks: stabilizedTracks, queue: validQueue, queueIndex: settledIdx });
+
+        // Stabilize queue array reference if items have not changed
+        const isQueueIdentical =
+          validQueue.length === queue.length &&
+          validQueue.every((it, idx) => it.track === queue[idx].track && it.segment === queue[idx].segment);
+        const finalQueue = isQueueIdentical ? queue : validQueue;
+
+        set({ tracks: stabilizedTracks, queue: finalQueue, queueIndex: settledIdx });
 
         // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server
         if (activeSegment && segmentObjMap.has(activeSegment.id)) {

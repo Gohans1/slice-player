@@ -35,6 +35,16 @@ class AudioEngine {
     this.audioEl = new Audio();
     this.audioEl.crossOrigin = "anonymous";
     this.audioEl.preload = "auto";
+
+    if (typeof window !== "undefined") {
+      const resumeOnGesture = () => {
+        this.resumeContext();
+        window.removeEventListener("pointerdown", resumeOnGesture);
+        window.removeEventListener("keydown", resumeOnGesture);
+      };
+      window.addEventListener("pointerdown", resumeOnGesture, { once: true });
+      window.addEventListener("keydown", resumeOnGesture, { once: true });
+    }
   }
 
   public init() {
@@ -327,11 +337,13 @@ class AudioEngine {
     // volume between 0 and 1
     const vol = Math.max(0, Math.min(1, volume));
     this.currentVolume = vol;
-    this.audioEl.volume = vol;
     if (this.volumeGainNode && this.audioCtx) {
+      this.audioEl.volume = 1.0;
       const now = this.audioCtx.currentTime;
       this.volumeGainNode.gain.cancelScheduledValues(now);
       this.volumeGainNode.gain.setValueAtTime(vol, now);
+    } else {
+      this.audioEl.volume = vol;
     }
   }
 
@@ -438,6 +450,10 @@ class AudioEngine {
     }
     this.audioEl.pause();
     this.stopTicker();
+    if (this.tickerWorker) {
+      try { this.tickerWorker.terminate(); } catch {}
+      this.tickerWorker = null;
+    }
     this.stopRafLoop();
     this.currentSegmentStart = null;
     this.currentSegmentEnd = null;
@@ -484,11 +500,6 @@ class AudioEngine {
     }
     if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
       return;
-    }
-    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
-      if (curTime > this.currentSegmentEnd + 1.0 && Math.abs(curTime - this.currentSegmentStart) > 1.0) {
-        return;
-      }
     }
 
     if (this.currentSegmentEnd !== null) {
@@ -606,6 +617,7 @@ class AudioEngine {
 
       this.tickerWorker.onerror = (e) => {
         console.warn("[AudioEngine] Ticker worker error, falling back to interval:", e);
+        try { this.tickerWorker?.terminate(); } catch {}
         this.tickerWorker = null;
         if (!this.fallbackTickerInterval && !this.audioEl.paused) {
           this.fallbackTickerInterval = setInterval(this.checkBoundary, 30);

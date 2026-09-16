@@ -442,8 +442,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       if (res.ok) {
         const created: Segment = await res.json();
         setSegments((prev) => [...prev, created]);
-        setSaveStatus("Đã tạo đoạn mới");
-        setTimeout(() => setSaveStatus(null), 1500);
+        safeSetSaveStatus("Đã tạo đoạn mới");
+        setTimeout(() => safeSetSaveStatus(null), 1500);
       }
     } catch (e) {
       console.error(e);
@@ -457,6 +457,13 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       delete saveDebounceTimersRef.current[id];
     }
     delete pendingUpdatesRef.current[id];
+
+    if (activeSegmentIdRef.current === id || activeSegmentId === id) {
+      wavesurferRef.current?.pause();
+      previewEndRef.current = null;
+      activeSegmentIdRef.current = null;
+      setActiveSegmentId(null);
+    }
 
     try {
       const res = await fetch(`/api/segments/${id}`, { method: "DELETE" });

@@ -38,7 +38,7 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
       source_uri TEXT NOT NULL,
       title TEXT NOT NULL,
       artist TEXT DEFAULT '',
-      duration REAL NOT NULL,
+      duration REAL NOT NULL CHECK(duration >= 0 AND duration <= 1800),
       thumbnail_url TEXT DEFAULT '',
       file_path TEXT,
       peaks_json TEXT,
@@ -58,7 +58,7 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
       color TEXT DEFAULT '#4385BE',
       sort_order INTEGER DEFAULT 0,
       created_at INTEGER DEFAULT (unixepoch()),
-      CONSTRAINT chk_time CHECK (end_time > start_time)
+      CONSTRAINT chk_time CHECK (end_time > start_time AND start_time >= 0 AND end_time <= 1800)
     );
   `);
 

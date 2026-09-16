@@ -115,6 +115,7 @@ const server = serve({
       `localhost:${PORT}`,
       `[::1]:${PORT}`,
       `::1:${PORT}`,
+      ...(PORT === 80 || PORT === 443 ? ["127.0.0.1", "localhost", "[::1]", "::1"] : []),
       ...(isDev ? ["127.0.0.1:5173", "localhost:5173", "[::1]:5173", "::1:5173"] : []),
     ];
     if (!host || !allowedHosts.includes(host)) {
@@ -360,16 +361,18 @@ const server = serve({
 
       // 3. Local Thumbnail API (Sanitized against directory traversal)
       const thumbMatch = url.pathname.match(/^\/api\/thumbs\/([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9]+)?$/);
-      if (thumbMatch && req.method === "GET") {
+      if (thumbMatch && (req.method === "GET" || req.method === "HEAD")) {
         const thumbId = thumbMatch[1];
         const allowedThumbsDir = resolve("./data/cache/thumbs");
         for (const ext of [".jpg", ".png", ".webp"]) {
           const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
           if (isSubdirectoryOf(allowedThumbsDir, thumbPath) && existsSync(thumbPath)) {
             const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-            return new Response(bunFile(thumbPath), {
-              headers: { ...corsHeaders, "Content-Type": ct },
-            });
+            const headers = { ...corsHeaders, "Content-Type": ct, "Content-Length": String(statSync(thumbPath).size) };
+            if (req.method === "HEAD") {
+              return new Response(null, { headers });
+            }
+            return new Response(bunFile(thumbPath), { headers });
           }
         }
         return new Response("Thumbnail not found", { status: 404, headers: corsHeaders });
@@ -445,6 +448,9 @@ const server = serve({
             const track = getTrack(existingSeg.track_id);
             if (!track) {
               return Response.json({ error: "Associated track not found" }, { status: 404, headers: corsHeaders });
+            }
+            if (track.status !== "ready" || track.duration <= 0) {
+              return Response.json({ error: "Bài hát chưa sẵn sàng để chỉnh sửa đoạn" }, { status: 400, headers: corsHeaders });
             }
             if (track.duration > 0 && newEnd > track.duration && newEnd <= track.duration + 0.5) {
               newEnd = track.duration;
@@ -525,12 +531,24 @@ const server = serve({
       ? safePath.toLowerCase() === distDir.toLowerCase() || safePath.toLowerCase().startsWith(distDir.toLowerCase() + sep)
       : safePath === distDir || safePath.startsWith(distDir + sep);
 
+    const securityHeaders = {
+      "Content-Security-Policy": corsHeaders["Content-Security-Policy"],
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+    };
+
     try {
       if (isInside && existsSync(safePath) && statSync(safePath).isFile()) {
         const ext = extname(safePath).toLowerCase();
         const ct = mimeTypes[ext] || "application/octet-stream";
+        const isAsset = safePath.includes(`${sep}assets${sep}`);
+        const cacheControl = isAsset ? "public, max-age=31536000, immutable" : "no-cache";
         return new Response(bunFile(safePath), {
-          headers: { "Content-Type": ct },
+          headers: {
+            ...securityHeaders,
+            "Content-Type": ct,
+            "Cache-Control": cacheControl,
+          },
         });
       }
     } catch {}
@@ -540,7 +558,11 @@ const server = serve({
     const fallbackIndex = join(distDir, "index.html");
     if (isNavRequest && existsSync(fallbackIndex)) {
       return new Response(bunFile(fallbackIndex), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: {
+          ...securityHeaders,
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
       });
     }
 

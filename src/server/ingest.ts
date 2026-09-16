@@ -1,5 +1,5 @@
 import { parseFile } from "music-metadata";
-import { existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack, getDb } from "./db";
@@ -74,7 +74,7 @@ async function acquireMetadataSlot(): Promise<void> {
 }
 
 function releaseMetadataSlot(): void {
-  activeMetadataCount--;
+  activeMetadataCount = Math.max(0, activeMetadataCount - 1);
   const next = metadataWaitQueue.shift();
   if (next) {
     next();
@@ -558,7 +558,6 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     }
 
     const fullPath = resolve(cleanedPath);
-    const { statSync } = await import("node:fs");
     if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
       return { success: false, message: `File không tồn tại hoặc không phải là file hợp lệ: ${fullPath}` };
     }
