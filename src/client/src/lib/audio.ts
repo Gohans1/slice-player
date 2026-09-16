@@ -43,6 +43,7 @@ class AudioEngine {
 
     if (typeof window !== "undefined") {
       const resumeOnGesture = () => {
+        this.init();
         this.resumeContext();
         if (this.audioCtx && this.audioCtx.state === "running") {
           window.removeEventListener("pointerdown", resumeOnGesture);
@@ -115,7 +116,6 @@ class AudioEngine {
   public setSource(streamUrl: string) {
     this.init();
     this.audioEl.src = streamUrl;
-    this.audioEl.load();
   }
 
   public async playSegment(
@@ -167,12 +167,13 @@ class AudioEngine {
       this.audioEl.src = streamUrl;
       await new Promise<void>((resolve, reject) => {
         let isDone = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
         const cleanup = () => {
           if (isDone) return;
           isDone = true;
           this.audioEl.removeEventListener("canplay", onCanPlay);
           this.audioEl.removeEventListener("error", onError);
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
         };
         const onCanPlay = () => { cleanup(); resolve(); };
         const onError = () => {
@@ -183,7 +184,7 @@ class AudioEngine {
             resolve();
           }
         };
-        const timer = setTimeout(() => {
+        timer = setTimeout(() => {
           cleanup();
           if (this.currentPlayRequestId === requestId) {
             reject(new Error("Audio load timeout (15s)"));
@@ -362,19 +363,27 @@ class AudioEngine {
   }
 
   public seek(seconds: number) {
-    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
-      seconds = Math.max(this.currentSegmentStart, Math.min(seconds, this.currentSegmentEnd));
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    this.isSeekingSettled = false;
+
+    // Disarm previous seek listener and timeout
+    if (this.activeSeekCleanup) {
+      this.activeSeekCleanup();
     }
+
     this.isFadingOut = false;
     this.pauseRequestId++;
-    this.isSeekingSettled = false;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
       this.audioEl.pause();
     }
-    if (this.activeSeekCleanup) {
-      this.activeSeekCleanup();
+
+    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
+      seconds = Math.max(
+        this.currentSegmentStart,
+        Math.min(this.currentSegmentEnd, seconds)
+      );
     }
 
     if (this.audioEl.paused) {
@@ -405,7 +414,7 @@ class AudioEngine {
       if (this.fadeGainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
         this.fadeGainNode.gain.cancelScheduledValues(now);
-        this.fadeGainNode.gain.setValueAtTime(1.0, now);
+        this.fadeGainNode.gain.setValueAtTime(0.0001, now);
       }
       return;
     }
@@ -554,7 +563,19 @@ class AudioEngine {
           this.fadeGainNode.gain.cancelScheduledValues(fadeNow);
           this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, fadeNow);
           this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + (neededRampDelay / 1000));
-          setTimeout(finishTransition, neededRampDelay);
+          if (this.tickerWorker) {
+            const currentPauseId = ++this.pauseRequestId;
+            this.onSegmentEndCallback = finishTransition;
+            this.tickerWorker.postMessage({ cmd: "pauseDelay", id: currentPauseId });
+            this.pauseTimer = setTimeout(() => {
+              if (this.pauseRequestId === currentPauseId) {
+                this.pauseTimer = null;
+                finishTransition();
+              }
+            }, neededRampDelay);
+          } else {
+            setTimeout(finishTransition, neededRampDelay);
+          }
         } else {
           finishTransition();
         }

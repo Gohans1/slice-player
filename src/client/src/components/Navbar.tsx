@@ -100,7 +100,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
     try {
       const res = await fetch("/api/segments");
       const allSegments: Segment[] = res.ok ? await res.json() : [];
-      buildShuffleQueue(allSegments, tracks, playbackMode);
+      buildShuffleQueue(allSegments, tracks, playbackMode, true);
       const q = usePlayerStore.getState().queue;
       const first = q[0];
       if (first?.segment && first?.track) {

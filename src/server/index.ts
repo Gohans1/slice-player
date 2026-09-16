@@ -150,7 +150,7 @@ const server = serve({
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
-      "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src blob:; frame-ancestors 'none';",
+      "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' blob:; worker-src blob:; frame-ancestors 'none';",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     };
@@ -241,18 +241,10 @@ const server = serve({
           if (track.file_path) {
             await cancelWaveformForFile(track.file_path);
           } else if (track.source_type === "youtube") {
-            for (const ext of [".m4a", ".webm", ".mp3", ".opus"]) {
+            const AUDIO_EXTS = [".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac"];
+            for (const ext of AUDIO_EXTS) {
               await cancelWaveformForFile(resolve(`./data/cache/audio/${track.id}${ext}`));
             }
-          }
-          const segmentsToDelete = listSegmentsByTrack(trackId);
-          const ok = deleteTrack(trackId);
-          if (!ok) {
-            return Response.json({ error: "Could not delete track from database" }, { status: 500, headers: corsHeaders });
-          }
-          serverEvents.emit("track_deleted", { trackId });
-          for (const seg of segmentsToDelete) {
-            serverEvents.emit("segment_deleted", { segmentId: seg.id, trackId });
           }
 
           // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
@@ -271,6 +263,17 @@ const server = serve({
               await unlinkWithRetry(thumbPath);
             }
           }
+
+          const segmentsToDelete = listSegmentsByTrack(trackId);
+          const ok = deleteTrack(trackId);
+          if (!ok) {
+            return Response.json({ error: "Could not delete track from database" }, { status: 500, headers: corsHeaders });
+          }
+          serverEvents.emit("track_deleted", { trackId });
+          for (const seg of segmentsToDelete) {
+            serverEvents.emit("segment_deleted", { segmentId: seg.id, trackId });
+          }
+
           return Response.json({ success: true }, { headers: corsHeaders });
         }
       }
@@ -496,6 +499,7 @@ const server = serve({
               sort_order: newSortOrder,
             });
 
+            serverEvents.emit("segment_updated", { segmentId: segId, trackId: existingSeg.track_id });
             serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
@@ -637,7 +641,7 @@ function checkIdleShutdown() {
 
 export function broadcastWs(msg: object) {
   const payload = JSON.stringify(msg);
-  for (const ws of activeSockets) {
+  for (const ws of [...activeSockets]) {
     try {
       if (ws.readyState === 1) {
         ws.send(payload);

@@ -211,7 +211,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       const res = await fetch(`/api/tracks/${track.id}/segments`);
       if (res.ok) {
         const data: Segment[] = await res.json();
-        setSegments(data);
+        setSegments(
+          data.map((seg) => {
+            const pending = pendingUpdatesRef.current[seg.id];
+            return pending ? { ...seg, ...pending } : seg;
+          })
+        );
       }
     } catch (e) {
       console.error("[SliceStudio] Fetch segments error", e);

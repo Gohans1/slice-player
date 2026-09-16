@@ -46,7 +46,7 @@ interface PlayerState {
   removeQueueItemAtIndex: (index: number) => void;
   openSliceStudio: (track: Track) => void;
   closeSliceStudio: () => void;
-  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => void;
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode, forceShuffle?: boolean) => void;
   syncUpdatedSegment: (seg: Segment) => void;
 }
 
@@ -703,9 +703,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => {
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode, forceShuffle?: boolean) => {
     dismissedSegmentIds.clear();
+    if (forceShuffle) {
+      set({ isShuffle: true });
+    }
     const mode = modeOverride || get().playbackMode;
+    const shouldShuffle = forceShuffle || get().isShuffle;
     const trackMap = new Map<string, Track>();
     for (const t of allTracks) {
       if (t.status === "ready" && t.duration > 0) {
@@ -752,7 +756,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     // Shuffle or sort sequentially based on isShuffle
-    if (get().isShuffle) {
+    if (shouldShuffle) {
       for (let i = items.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [items[i], items[j]] = [items[j], items[i]];

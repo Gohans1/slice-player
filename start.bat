@@ -1,4 +1,5 @@
 @echo off
+@chcp 65001 >nul 2>&1
 title Slice Player
 echo ===================================================
 echo       SLICE PLAYER - KHOI CHAY UNG DUNG

@@ -26,10 +26,11 @@ export async function unlinkWithRetry(filePath: string, maxAttempts = 5): Promis
   return !existsSync(filePath);
 }
 
-const cancelledTrackIds = new Set<string>();
+const cancelledTokens = new Set<string>();
+let currentDownloadToken: string | null = null;
 
 export function isTrackCancelled(trackId: string): boolean {
-  return cancelledTrackIds.has(trackId);
+  return currentDownloadingTrackId === trackId && currentDownloadToken !== null && cancelledTokens.has(currentDownloadToken);
 }
 
 export interface IngestResult {
@@ -208,7 +209,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         triggerDownloadWorker(trackId, watchUrl);
       } else if (existing.status !== "ready" && existing.status !== "downloading") {
         if (existing.status !== "queued") {
-          updateTrack(trackId, { status: "queued", error_message: null as any });
+          updateTrack(trackId, { status: "queued", error_message: null });
           serverEvents.emit("track_updated", { trackId });
           triggerDownloadWorker(trackId, watchUrl);
         }
@@ -276,14 +277,15 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
   }
 
   if (currentDownloadingTrackId === trackId) {
-    cancelledTrackIds.add(trackId);
+    if (currentDownloadToken) {
+      cancelledTokens.add(currentDownloadToken);
+    }
     if (activeDownloadProc) {
       await killProcessSafely(activeDownloadProc);
       activeDownloadProc = null;
     }
     currentDownloadingTrackId = null;
-  } else {
-    cancelledTrackIds.delete(trackId);
+    currentDownloadToken = null;
   }
 
   // Clean up any residual .part or .ytdl files
@@ -301,7 +303,6 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
 }
 
 function triggerDownloadWorker(trackId: string, url: string) {
-  cancelledTrackIds.delete(trackId);
   if (currentDownloadingTrackId === trackId || downloadQueue.some((q) => q.trackId === trackId)) return;
   downloadQueue.push({ trackId, url });
   processDownloadQueue();
@@ -319,11 +320,14 @@ async function processDownloadQueue() {
 
   const { trackId, url } = item;
   currentDownloadingTrackId = trackId;
+  const myToken = createHash("sha256").update(trackId + Date.now() + Math.random()).digest("hex");
+  currentDownloadToken = myToken;
 
   // Check if track was deleted or is already ready
   const existingTrack = getTrack(trackId);
   if (!existingTrack || existingTrack.status === "ready") {
     currentDownloadingTrackId = null;
+    currentDownloadToken = null;
     isDownloading = false;
     processDownloadQueue();
     return;
@@ -389,8 +393,8 @@ async function processDownloadQueue() {
     }
 
     // If track was cancelled or deleted while download was running, clean up and exit silently
-    if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
-      cancelledTrackIds.delete(trackId);
+    if (cancelledTokens.has(myToken) || !getTrack(trackId)) {
+      cancelledTokens.delete(myToken);
       if (finalPath && existsSync(finalPath)) {
         await unlinkWithRetry(finalPath);
       }
@@ -465,8 +469,8 @@ async function processDownloadQueue() {
       const peaks = await generatePeaks(finalPath, 1000);
 
       // Check again if track was cancelled or deleted during peaks generation
-      if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
-        cancelledTrackIds.delete(trackId);
+      if (cancelledTokens.has(myToken) || !getTrack(trackId)) {
+        cancelledTokens.delete(myToken);
         if (finalPath && existsSync(finalPath)) {
           await unlinkWithRetry(finalPath);
         }

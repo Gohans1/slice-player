@@ -11,6 +11,8 @@ interface QueueDrawerProps {
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
+  const activeTrack = usePlayerStore((s) => s.activeTrack);
+  const activeSegment = usePlayerStore((s) => s.activeSegment);
   const playSegment = usePlayerStore((s) => s.playSegment);
   const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
@@ -25,7 +27,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
       const res = await fetch("/api/segments");
       if (res.ok) {
         const allSegments = await res.json();
-        buildShuffleQueue(allSegments, tracks, playbackMode);
+        buildShuffleQueue(allSegments, tracks, playbackMode, true);
       }
     } catch (e) {
       console.error(e);
@@ -119,7 +121,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
           </div>
         ) : (
           queue.map((item, idx) => {
-            const isCurrent = idx === queueIndex;
+            const isCurrent = idx === queueIndex || (item.track.id === activeTrack?.id && item.segment.id === activeSegment?.id);
             const segDuration = item.segment.end_time - item.segment.start_time;
 
             return (
