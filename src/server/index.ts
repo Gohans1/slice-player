@@ -1,7 +1,7 @@
 import { serve, file as bunFile } from "bun";
 import { existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
-import { initDatabase, closeDatabase, getDb, getTrack, listTracks, deleteTrack, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
+import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses } from "./ingest";
 import type { Segment } from "./types";
 
@@ -49,6 +49,18 @@ const server = serve({
   port: PORT,
   async fetch(req, server) {
     const url = new URL(req.url);
+
+    // Host header validation to prevent DNS rebinding attacks
+    const host = req.headers.get("host");
+    const allowedHosts = [
+      `127.0.0.1:${PORT}`,
+      `localhost:${PORT}`,
+      "127.0.0.1:5173",
+      "localhost:5173",
+    ];
+    if (host && !allowedHosts.includes(host)) {
+      return new Response("Forbidden: Invalid Host header", { status: 403 });
+    }
 
     // CORS & Origin validation (strict loopback only)
     const origin = req.headers.get("origin");
@@ -164,18 +176,45 @@ const server = serve({
         // HTTP 206 Partial Content support for byte-range seeking
         const range = req.headers.get("range");
         if (range) {
-          const parts = range.replace(/bytes=/, "").split("-");
-          const start = parseInt(parts[0], 10);
-          const end = parts[1] ? parseInt(parts[1], 10) : audioFile.size - 1;
-          return new Response(audioFile.slice(start, end + 1), {
-            status: 206,
-            headers: {
-              ...corsHeaders,
-              "Content-Type": contentType,
-              "Content-Range": `bytes ${start}-${end}/${audioFile.size}`,
-              "Accept-Ranges": "bytes",
-            },
-          });
+          const match = range.match(/bytes=(\d*)-(\d*)/);
+          if (match) {
+            let start = match[1] ? parseInt(match[1], 10) : NaN;
+            let end = match[2] ? parseInt(match[2], 10) : NaN;
+
+            if (Number.isNaN(start) && Number.isNaN(end)) {
+              return new Response("Invalid Range", { status: 416, headers: { ...corsHeaders, "Content-Range": `bytes */${audioFile.size}` } });
+            }
+
+            if (Number.isNaN(start)) {
+              start = Math.max(0, audioFile.size - end);
+              end = audioFile.size - 1;
+            } else if (Number.isNaN(end)) {
+              end = audioFile.size - 1;
+            }
+
+            if (start >= audioFile.size || start > end) {
+              return new Response("Range Not Satisfiable", {
+                status: 416,
+                headers: {
+                  ...corsHeaders,
+                  "Content-Range": `bytes */${audioFile.size}`,
+                  "Accept-Ranges": "bytes",
+                },
+              });
+            }
+
+            end = Math.min(end, audioFile.size - 1);
+
+            return new Response(audioFile.slice(start, end + 1), {
+              status: 206,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": contentType,
+                "Content-Range": `bytes ${start}-${end}/${audioFile.size}`,
+                "Accept-Ranges": "bytes",
+              },
+            });
+          }
         }
 
         return new Response(audioFile, {
@@ -218,8 +257,8 @@ const server = serve({
             const startTime = Number(body.start_time);
             const endTime = Number(body.end_time);
             const track = getTrack(trackId);
-            if (Number.isNaN(startTime) || Number.isNaN(endTime) || startTime < 0 || startTime >= endTime) {
-              return Response.json({ error: "start_time must be >= 0 and < end_time" }, { status: 400, headers: corsHeaders });
+            if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime - startTime < 0.5) {
+              return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
             if (track && track.duration > 0 && endTime > track.duration + 0.1) {
               return Response.json({ error: `end_time (${endTime}s) exceeds track duration (${track.duration}s)` }, { status: 400, headers: corsHeaders });
@@ -232,6 +271,7 @@ const server = serve({
               end_time: endTime,
               color: body.color || "#4385BE",
             });
+            serverEvents.emit("track_updated", { trackId });
             return Response.json(created, { headers: corsHeaders });
           } catch (e: any) {
             return Response.json({ error: e.message || "Failed to create segment" }, { status: 400, headers: corsHeaders });
@@ -246,7 +286,7 @@ const server = serve({
         if (req.method === "PUT") {
           try {
             const body = (await req.json()) as Partial<Segment>;
-            const existingSeg = getDb().query("SELECT * FROM segments WHERE id = $id").get({ $id: segId }) as Segment | null;
+            const existingSeg = getSegment(segId);
             if (!existingSeg) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
 
             const newStart = body.start_time !== undefined ? Number(body.start_time) : existingSeg.start_time;
@@ -269,13 +309,18 @@ const server = serve({
               start_time: newStart,
               end_time: newEnd,
             });
+            serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
             return Response.json({ error: e.message || "Failed to update segment" }, { status: 400, headers: corsHeaders });
           }
         }
         if (req.method === "DELETE") {
+          const existingSeg = getSegment(segId);
           const ok = deleteSegment(segId);
+          if (existingSeg) {
+            serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
+          }
           return Response.json({ success: ok }, { headers: corsHeaders });
         }
       }
@@ -318,6 +363,7 @@ const server = serve({
   },
 
   websocket: {
+    idleTimeout: 255,
     open(ws) {
       activeSockets.add(ws);
       connectedClients++;

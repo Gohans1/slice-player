@@ -41,9 +41,22 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
 
-  // Cleanup pending debounce timers on unmount
+  // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
     return () => {
+      // Immediate flush of dirty debounced saves
+      for (const [id, payload] of Object.entries(pendingUpdatesRef.current)) {
+        try {
+          fetch(`/api/segments/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            keepalive: true,
+          }).catch(() => {});
+        } catch {
+          // ignore unmount flush network errors
+        }
+      }
       for (const t of Object.values(saveDebounceTimersRef.current)) {
         clearTimeout(t);
       }

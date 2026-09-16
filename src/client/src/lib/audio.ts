@@ -125,13 +125,17 @@ class AudioEngine {
         const fallback = setTimeout(() => {
           this.audioEl.removeEventListener("seeked", onSeeked);
           resolve();
-        }, 150);
+        }, 1500);
         this.audioEl.addEventListener("seeked", onSeeked);
         this.audioEl.currentTime = startTime;
       });
     }
 
     if (this.currentPlayRequestId !== requestId) return;
+
+    if (Math.abs(this.audioEl.currentTime - startTime) > 0.5) {
+      this.audioEl.currentTime = startTime;
+    }
 
     try {
       await this.audioEl.play();
@@ -217,20 +221,23 @@ class AudioEngine {
 
     if (this.currentSegmentEnd !== null) {
       if (curTime >= this.currentSegmentEnd) {
+        const cb = this.onSegmentEndCallback;
+        this.currentSegmentEnd = null;
+        this.onSegmentEndCallback = null;
+
         // Micro fade-out to prevent speaker DC offset pop
         if (this.gainNode && this.audioCtx) {
-          const now = this.audioCtx.currentTime;
-          this.gainNode.gain.cancelScheduledValues(now);
-          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
-        }
-        // Stop audio immediately so it doesn't leak into subsequent music
-        this.audioEl.pause();
-        this.currentSegmentEnd = null;
-        if (this.onSegmentEndCallback) {
-          const cb = this.onSegmentEndCallback;
-          this.onSegmentEndCallback = null;
-          cb();
+          const fadeNow = this.audioCtx.currentTime;
+          this.gainNode.gain.cancelScheduledValues(fadeNow);
+          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.015);
+          setTimeout(() => {
+            this.audioEl.pause();
+            if (cb) cb();
+          }, 16);
+        } else {
+          this.audioEl.pause();
+          if (cb) cb();
         }
       }
     }

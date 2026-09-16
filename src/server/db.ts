@@ -158,7 +158,10 @@ export function getTrack(id: string): Track | null {
 export function listTracks(): (Track & { segment_count: number })[] {
   const db = getDb();
   return db.query(`
-    SELECT tracks.*, COUNT(segments.id) AS segment_count
+    SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
+           tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
+           tracks.status, tracks.error_message, tracks.created_at,
+           COUNT(segments.id) AS segment_count
     FROM tracks
     LEFT JOIN segments ON tracks.id = segments.track_id
     GROUP BY tracks.id
@@ -173,6 +176,11 @@ export function deleteTrack(id: string): boolean {
 }
 
 // --- SEGMENT OPERATIONS ---
+
+export function getSegment(id: string): Segment | null {
+  const db = getDb();
+  return db.query("SELECT * FROM segments WHERE id = $id").get({ $id: id }) as Segment | null;
+}
 
 export function createSegment(seg: Omit<Segment, 'created_at'>): Segment {
   const db = getDb();

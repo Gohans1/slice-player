@@ -142,11 +142,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   nextSegment: () => {
-    const { queue, queueIndex } = get();
+    const { queue, queueIndex, isShuffle } = get();
     if (queue.length === 0) return;
 
     let nextIdx = queueIndex + 1;
-    if (nextIdx >= queue.length) {
+    if (isShuffle && queue.length > 1) {
+      do {
+        nextIdx = Math.floor(Math.random() * queue.length);
+      } while (nextIdx === queueIndex && queue.length > 1);
+    } else if (nextIdx >= queue.length) {
       nextIdx = 0; // loop queue
     }
 
@@ -198,32 +202,58 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeTrackFromQueue: (trackId: string) => {
     const { queue, queueIndex, activeTrack } = get();
+    const removedIndex = queue.findIndex((item) => item.track.id === trackId);
     const newQueue = queue.filter((item) => item.track.id !== trackId);
+
+    if (activeTrack?.id === trackId) {
+      audioEngine.pause();
+      if (newQueue.length === 0) {
+        set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
+        return;
+      }
+      const nextIdx = Math.min(Math.max(0, queueIndex), newQueue.length - 1);
+      const nextItem = newQueue[nextIdx];
+      set({ queue: newQueue, queueIndex: nextIdx });
+      get().playSegment(nextItem.segment, nextItem.track);
+      return;
+    }
+
     let newIndex = queueIndex;
     if (newQueue.length === 0) {
       newIndex = -1;
-      if (activeTrack?.id === trackId) {
-        audioEngine.pause();
-        set({ activeTrack: null, activeSegment: null, isPlaying: false });
-      }
+    } else if (removedIndex !== -1 && removedIndex < queueIndex) {
+      newIndex = Math.max(0, queueIndex - 1);
     } else if (newIndex >= newQueue.length) {
-      newIndex = 0;
+      newIndex = Math.max(0, newQueue.length - 1);
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },
 
   removeSegmentFromQueue: (segmentId: string) => {
     const { queue, queueIndex, activeSegment } = get();
+    const removedIndex = queue.findIndex((item) => item.segment.id === segmentId);
     const newQueue = queue.filter((item) => item.segment.id !== segmentId);
+
+    if (activeSegment?.id === segmentId) {
+      audioEngine.pause();
+      if (newQueue.length === 0) {
+        set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
+        return;
+      }
+      const nextIdx = Math.min(Math.max(0, queueIndex), newQueue.length - 1);
+      const nextItem = newQueue[nextIdx];
+      set({ queue: newQueue, queueIndex: nextIdx });
+      get().playSegment(nextItem.segment, nextItem.track);
+      return;
+    }
+
     let newIndex = queueIndex;
     if (newQueue.length === 0) {
       newIndex = -1;
-      if (activeSegment?.id === segmentId) {
-        audioEngine.pause();
-        set({ activeTrack: null, activeSegment: null, isPlaying: false });
-      }
+    } else if (removedIndex !== -1 && removedIndex < queueIndex) {
+      newIndex = Math.max(0, queueIndex - 1);
     } else if (newIndex >= newQueue.length) {
-      newIndex = 0;
+      newIndex = Math.max(0, newQueue.length - 1);
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },

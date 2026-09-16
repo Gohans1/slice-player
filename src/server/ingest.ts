@@ -1,7 +1,7 @@
 import { parseFile } from "music-metadata";
 import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, resolve } from "node:path";
+import { basename, resolve, extname } from "node:path";
 import { createTrack, updateTrack, getTrack } from "./db";
 import { generatePeaks } from "./waveform";
 import { serverEvents } from "./events";
@@ -135,7 +135,13 @@ let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
 export function abortIngestProcesses() {
   if (activeDownloadProc) {
-    try { activeDownloadProc.kill(); } catch {}
+    try {
+      if (process.platform === "win32") {
+        Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]).unref();
+      } else {
+        activeDownloadProc.kill();
+      }
+    } catch {}
     activeDownloadProc = null;
   }
 }
@@ -267,12 +273,23 @@ async function processDownloadQueue() {
  */
 export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
   try {
+    const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
+
     // Reject Windows UNC paths to prevent NetNTLM exfiltration
-    if (rawPath.startsWith("\\\\") || rawPath.startsWith("//")) {
+    if (/^[\\/]{2}/.test(cleanedPath) || /^[\\/]\?[\\/]/.test(cleanedPath)) {
       return { success: false, message: "Đường dẫn mạng UNC không được hỗ trợ vì lý do bảo mật." };
     }
 
-    const fullPath = resolve(rawPath);
+    const ext = extname(cleanedPath).toLowerCase();
+    const ALLOWED_EXTS = [".flac", ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".webm"];
+    if (!ALLOWED_EXTS.includes(ext)) {
+      return {
+        success: false,
+        message: `Định dạng file không được hỗ trợ (${ext || "không có phần mở rộng"}). Chỉ chấp nhận: ${ALLOWED_EXTS.join(", ")}`,
+      };
+    }
+
+    const fullPath = resolve(cleanedPath);
     const { statSync } = await import("node:fs");
     if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
       return { success: false, message: `File không tồn tại hoặc không phải là file hợp lệ: ${fullPath}` };
