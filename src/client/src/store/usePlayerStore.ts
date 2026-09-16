@@ -62,7 +62,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res.ok) {
         const tracks: Track[] = await res.json();
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
-        const { activeTrack, sliceStudioTrack, queue, queueIndex } = get();
+        const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
         // Concurrently fetch segments to purge deleted segments across tabs
         let validSegments: Segment[] = [];
@@ -71,11 +71,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           if (segRes.ok) validSegments = await segRes.json();
         } catch {}
         const segmentMap = new Set(validSegments.map((s) => s.id));
+        const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
-        // Purge queue items whose parent track or segment no longer exists in DB
-        const validQueue = queue.filter(
-          (item) => trackMap.has(item.track.id) && (item.segment.id.startsWith("fallback_") || segmentMap.has(item.segment.id))
-        );
+        // Purge queue items whose parent track or segment no longer exists in DB,
+        // and replace fallback_ segment if real custom segments now exist for this track
+        const validQueue = queue
+          .filter(
+            (item) =>
+              trackMap.has(item.track.id) &&
+              (
+                (item.segment.id.startsWith("fallback_") && !validSegments.some((s) => s.track_id === item.track.id)) ||
+                segmentMap.has(item.segment.id)
+              )
+          )
+          .map((item) => {
+            const freshSeg = segmentObjMap.get(item.segment.id);
+            return freshSeg ? { ...item, segment: freshSeg } : item;
+          });
+
         if (validQueue.length !== queue.length) {
           const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
           set({ queue: validQueue, queueIndex: newIdx });
@@ -83,6 +96,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
+        }
+        if (activeSegment && !activeSegment.id.startsWith("fallback_") && !segmentMap.has(activeSegment.id)) {
+          get().removeSegmentFromQueue(activeSegment.id);
         }
         if (sliceStudioTrack && !trackMap.has(sliceStudioTrack.id)) {
           set({ sliceStudioTrack: null });

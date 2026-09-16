@@ -35,6 +35,8 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       "--flat-playlist",
       "--playlist-end",
       "50",
+      "--match-filter",
+      "duration <= 1800",
       "-J",
       "--skip-download",
       "--",
@@ -133,7 +135,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         // Trigger background audio download for this track
         triggerDownloadWorker(trackId, watchUrl);
       } else if (existing.status !== "ready" && existing.status !== "downloading") {
-        updateTrack(trackId, { status: "queued", error_message: undefined });
+        updateTrack(trackId, { status: "queued", error_message: null as any });
         serverEvents.emit("track_updated", { trackId });
         triggerDownloadWorker(trackId, watchUrl);
       }
@@ -164,6 +166,10 @@ const downloadQueue: Array<{ trackId: string; url: string }> = [];
 let isDownloading = false;
 let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
+
+export function isIngestBusy(): boolean {
+  return isDownloading || activeDownloadProc !== null || downloadQueue.length > 0 || activeMetadataProcs.size > 0;
+}
 
 export async function abortIngestProcesses(): Promise<void> {
   for (const proc of activeMetadataProcs) {
@@ -390,6 +396,11 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     // Reject Windows DOS device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
     if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i.test(basename(cleanedPath))) {
       return { success: false, message: "Tên file thiết bị đặc biệt của hệ thống không được hỗ trợ." };
+    }
+
+    // Reject Windows NTFS Alternate Data Streams (: after drive specifier)
+    if (cleanedPath.slice(2).includes(":")) {
+      return { success: false, message: "Đường dẫn chứa luồng dữ liệu NTFS (Alternate Data Stream) không hợp lệ." };
     }
 
     const ext = extname(cleanedPath).toLowerCase();

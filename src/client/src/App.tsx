@@ -120,22 +120,25 @@ export function App() {
     }
   }, [tracks.length, queue.length, buildShuffleQueue, tracks]);
 
-  const handleDeleteTrack = async (id: string) => {
-    if (confirm("Bạn có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
-      try {
-        if (activeTrack?.id === id) {
-          pause();
+  const handleDeleteTrack = React.useCallback(
+    async (id: string) => {
+      if (confirm("Bạn có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
+        try {
+          if (activeTrack?.id === id) {
+            pause();
+          }
+          removeTrackFromQueue(id);
+          const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
+          if (res.ok) {
+            await fetchTracks();
+          }
+        } catch (e) {
+          console.error(e);
         }
-        removeTrackFromQueue(id);
-        const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
-        if (res.ok) {
-          await fetchTracks();
-        }
-      } catch (e) {
-        console.error(e);
       }
-    }
-  };
+    },
+    [activeTrack, pause, removeTrackFromQueue, fetchTracks]
+  );
 
   const filteredTracks = React.useMemo(() => {
     if (!searchQuery.trim()) return tracks;

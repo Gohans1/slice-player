@@ -22,12 +22,13 @@ export function formatDuration(seconds: number): string {
 }
 
 export function createDefaultFullSegment(track: Track): Segment {
+  const validDuration = Math.max(0.5, track.duration || 0);
   return {
     id: `fallback_${track.id}`,
     track_id: track.id,
     name: "Toàn bài",
     start_time: 0,
-    end_time: track.duration,
+    end_time: validDuration,
     color: "#4385BE",
     sort_order: 0,
   };

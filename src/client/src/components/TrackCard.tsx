@@ -19,7 +19,7 @@ interface TrackCardProps {
   onDelete: (id: string) => void;
 }
 
-export function TrackCard({ track, onDelete }: TrackCardProps) {
+export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const playSegment = usePlayerStore((s) => s.playSegment);
 
@@ -30,6 +30,7 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
   }, [track.segment_count]);
 
   const handlePlayFirst = async () => {
+    if (track.status !== "ready" || track.duration <= 0) return;
     let segList = segments;
     if (!segList) {
       try {
@@ -163,3 +164,5 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
     </div>
   );
 }
+
+export const TrackCard = React.memo(TrackCardComponent);

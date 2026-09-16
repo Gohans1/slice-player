@@ -7,16 +7,16 @@ echo ===================================================
 cd /d "%~dp0"
 set NODE_ENV=production
 
-if not exist "dist\index.html" (
-    echo [1/2] Dang build frontend...
+if "%1"=="--no-build" (
+    echo [1/2] Bo qua build frontend theo yeu cau.
+) else (
+    echo [1/2] Dang kiem tra va build frontend moi nhat...
     call bun run build
     if %ERRORLEVEL% NEQ 0 (
         echo [ERROR] Build frontend that bai voi ma loi %ERRORLEVEL%!
         pause
         exit /b %ERRORLEVEL%
     )
-) else (
-    echo [1/2] Frontend da duoc build san.
 )
 
 curl -s -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1

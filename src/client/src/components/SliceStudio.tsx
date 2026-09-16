@@ -27,6 +27,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const syncUpdatedSegment = usePlayerStore((s) => s.syncUpdatedSegment);
   const pause = usePlayerStore((s) => s.pause);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
+  const isGlobalPlaying = usePlayerStore((s) => s.isPlaying);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
   const regionsRef = React.useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
@@ -290,15 +291,28 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           minLength: 0.5,
         });
       } else {
-        if (Math.abs(existing.start - seg.start_time) > 0.05 || Math.abs(existing.end - seg.end_time) > 0.05) {
+        const expectedColor = seg.color ? `${seg.color}33` : "rgba(67, 133, 190, 0.2)";
+        if (
+          Math.abs(existing.start - seg.start_time) > 0.05 ||
+          Math.abs(existing.end - seg.end_time) > 0.05 ||
+          existing.color !== expectedColor
+        ) {
           existing.setOptions({
             start: seg.start_time,
             end: seg.end_time,
+            color: expectedColor,
           });
         }
       }
     }
   }, [segments, isWaveSurferReady]);
+
+  // Pause local WaveSurfer if global player starts
+  React.useEffect(() => {
+    if (isGlobalPlaying && wavesurferRef.current?.isPlaying()) {
+      wavesurferRef.current.pause();
+    }
+  }, [isGlobalPlaying]);
 
   // Handle Add New Segment at current playhead
   const handleAddNewSegment = async () => {

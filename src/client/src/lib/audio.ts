@@ -17,6 +17,7 @@ class AudioEngine {
   private currentPlayRequestId = 0;
   private pauseRequestId = 0;
   private activeSeekCleanup: (() => void) | null = null;
+  private isSeekingSettled = true;
   private lastTimeUpdate = 0;
   private pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private isFadingOut = false;
@@ -151,14 +152,17 @@ class AudioEngine {
 
     // Seek to startTime if not already there
     if (Math.abs(this.audioEl.currentTime - startTime) > 0.05) {
+      this.isSeekingSettled = false;
       await new Promise<void>((resolve) => {
         const onSeeked = () => {
           this.audioEl.removeEventListener("seeked", onSeeked);
           clearTimeout(fallback);
+          this.isSeekingSettled = true;
           resolve();
         };
         const fallback = setTimeout(() => {
           this.audioEl.removeEventListener("seeked", onSeeked);
+          this.isSeekingSettled = true;
           resolve();
         }, 1500);
         this.audioEl.addEventListener("seeked", onSeeked);
@@ -171,6 +175,7 @@ class AudioEngine {
     if (Math.abs(this.audioEl.currentTime - startTime) > 0.5) {
       this.audioEl.currentTime = startTime;
     }
+    this.isSeekingSettled = true;
 
     try {
       await this.audioEl.play();
@@ -272,6 +277,12 @@ class AudioEngine {
 
   public seek(seconds: number) {
     this.isFadingOut = false;
+    this.pauseRequestId++;
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+      this.audioEl.pause();
+    }
     if (this.activeSeekCleanup) {
       this.activeSeekCleanup();
     }
@@ -356,16 +367,14 @@ class AudioEngine {
    * while enforcing the segment cut immediately.
    */
   private checkBoundary = () => {
-    if (this.audioEl.paused || this.audioEl.seeking || this.pauseTimer !== null) return;
+    if (this.audioEl.paused || this.audioEl.seeking || this.pauseTimer !== null || !this.isSeekingSettled) return;
 
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
 
     // Guard against seeking settlement lag during same-track segment transitions
-    if (this.currentSegmentStart !== null) {
-      if (curTime < this.currentSegmentStart - 0.2 || (this.currentSegmentEnd !== null && curTime > this.currentSegmentEnd + 1.0)) {
-        return;
-      }
+    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
+      return;
     }
 
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing

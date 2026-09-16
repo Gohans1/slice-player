@@ -80,11 +80,11 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
         const { done, value } = await reader.read();
         if (done) break;
         if (value) {
-          totalBytes += value.length;
-          if (totalBytes > MAX_BYTES) {
+          if (totalBytes + value.length > MAX_BYTES) {
             killFfmpeg(proc);
             break;
           }
+          totalBytes += value.length;
           chunks.push(value);
         }
       }

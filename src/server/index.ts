@@ -58,9 +58,10 @@ const server = serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
-    // Prevent cross-site subresource leakage
+    // Prevent cross-site subresource leakage while permitting top-level navigation
     const secFetchSite = req.headers.get("sec-fetch-site");
-    if (secFetchSite === "cross-site") {
+    const isTopLevelNav = req.method === "GET" && req.headers.get("sec-fetch-mode") === "navigate";
+    if (secFetchSite === "cross-site" && !isTopLevelNav) {
       return new Response("Forbidden: Cross-site requests rejected", { status: 403 });
     }
 
@@ -125,8 +126,9 @@ const server = serve({
           const res = await ingestYouTubeUrl(body.url);
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
+          const isSyntax = err instanceof SyntaxError;
           const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: 500, headers: corsHeaders });
+          return Response.json({ error: msg }, { status: isSyntax ? 400 : 500, headers: corsHeaders });
         }
       }
 
@@ -137,8 +139,9 @@ const server = serve({
           const res = await ingestLocalFile(body.path);
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
+          const isSyntax = err instanceof SyntaxError;
           const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: 500, headers: corsHeaders });
+          return Response.json({ error: msg }, { status: isSyntax ? 400 : 500, headers: corsHeaders });
         }
       }
 
@@ -305,7 +308,7 @@ const server = serve({
             }
             const hexColor = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : "#4385BE";
             const created = createSegment({
-              id: `seg_${crypto.randomUUID().slice(0, 8)}`,
+              id: `seg_${crypto.randomUUID()}`,
               track_id: trackId,
               name: rawName,
               start_time: startTime,
@@ -435,15 +438,24 @@ const server = serve({
     },
     close(ws) {
       activeSockets.delete(ws);
-      if (activeSockets.size === 0) {
-        // Shutdown after 60s of no active clients (allows brief reconnects and system sleep)
-        shutdownTimer = setTimeout(() => {
-          gracefulShutdown();
-        }, 60000);
-      }
+      checkIdleShutdown();
     },
   },
 });
+
+function checkIdleShutdown() {
+  if (activeSockets.size === 0 && !shutdownTimer) {
+    shutdownTimer = setTimeout(async () => {
+      const { isIngestBusy } = await import("./ingest");
+      if (activeSockets.size === 0 && !isIngestBusy()) {
+        gracefulShutdown();
+      } else {
+        shutdownTimer = null;
+        checkIdleShutdown();
+      }
+    }, 60000);
+  }
+}
 
 export function broadcastWs(msg: object) {
   const payload = JSON.stringify(msg);
@@ -458,11 +470,7 @@ export function broadcastWs(msg: object) {
       activeSockets.delete(ws);
     }
   }
-  if (activeSockets.size === 0 && !shutdownTimer) {
-    shutdownTimer = setTimeout(() => {
-      gracefulShutdown();
-    }, 60000);
-  }
+  checkIdleShutdown();
 }
 
 serverEvents.on("track_updated", (payload) => {
