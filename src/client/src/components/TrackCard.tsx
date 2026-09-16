@@ -22,6 +22,7 @@ interface TrackCardProps {
 export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const playSegment = usePlayerStore((s) => s.playSegment);
+  const playbackMode = usePlayerStore((s) => s.playbackMode);
 
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
 
@@ -31,6 +32,12 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
 
   const handlePlayFirst = async () => {
     if (track.status !== "ready" || track.duration <= 0) return;
+
+    if (playbackMode === "original_only") {
+      playSegment(createDefaultFullSegment(track), track);
+      return;
+    }
+
     let segList = segments;
     if (!segList) {
       try {

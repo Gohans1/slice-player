@@ -93,16 +93,17 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
     const audioCacheDir = "./data/cache/audio";
     if (existsSync(audioCacheDir)) {
       const existingFiles = readdirSync(audioCacheDir);
+      const norm = (p: string) => process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p);
       const rows = db.query("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL").all() as { id: string; file_path: string }[];
-      const validPaths = new Set(rows.map((r) => resolve(r.file_path)));
+      const validPaths = new Set(rows.map((r) => norm(r.file_path)));
 
       for (const file of existingFiles) {
         if (file.endsWith(".part") || file.endsWith(".ytdl")) {
           try { unlinkSync(join(audioCacheDir, file)); } catch {}
         } else {
-          const fullPath = resolve(join(audioCacheDir, file));
-          if (!validPaths.has(fullPath)) {
-            try { unlinkSync(fullPath); } catch {}
+          const resolvedPath = resolve(join(audioCacheDir, file));
+          if (!validPaths.has(norm(resolvedPath))) {
+            try { unlinkSync(resolvedPath); } catch {}
           }
         }
       }

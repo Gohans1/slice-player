@@ -67,12 +67,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const res = await fetch("/api/tracks");
       if (res.ok) {
         const tracks: Track[] = await res.json();
-        const trackMap = new Map(tracks.map((t) => [t.id, t]));
+        const prevTracks = get().tracks;
+        const prevTrackMap = new Map(prevTracks.map((t) => [t.id, t]));
+        const stabilizedTracks = tracks.map((fresh) => {
+          const prev = prevTrackMap.get(fresh.id);
+          if (!prev) return fresh;
+          const isSame =
+            prev.status === fresh.status &&
+            prev.segment_count === fresh.segment_count &&
+            prev.duration === fresh.duration &&
+            prev.title === fresh.title &&
+            prev.artist === fresh.artist &&
+            prev.file_path === fresh.file_path &&
+            prev.thumbnail_url === fresh.thumbnail_url &&
+            prev.error_message === fresh.error_message;
+          return isSame ? prev : fresh;
+        });
+        const trackMap = new Map(stabilizedTracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
         const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
-
-        const prevTracks = get().tracks;
         const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
 
         if (!reconcileSegments) {
@@ -81,7 +95,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             ...item,
             track: trackMap.get(item.track.id) || item.track,
           }));
-          const updates: Partial<PlayerState> = { tracks };
+          const updates: Partial<PlayerState> = { tracks: stabilizedTracks };
           if (validQueue.length !== queue.length) {
             const newIdx = validQueue.length === 0
               ? -1
@@ -142,8 +156,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
 
         // Ingestion queue starvation fix: append tracks that newly transitioned to "ready"
-        const newlyReadyTracks = tracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
-        if (newlyReadyTracks.length > 0 && validQueue.length > 0) {
+        const newlyReadyTracks = stabilizedTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+        if (newlyReadyTracks.length > 0) {
           for (const newTrack of newlyReadyTracks) {
             const trackSlices = validSegments.filter((s) => s.track_id === newTrack.id);
             if (currentMode === "original_only") {
@@ -175,7 +189,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
 
         // Slices addition starvation fix: append newly cut slices for existing tracks
-        if (currentMode !== "original_only" && validQueue.length > 0) {
+        if (currentMode !== "original_only") {
           for (const seg of validSegments) {
             if (!seg.id.startsWith("fallback_") && !seenSegmentIds.has(seg.id)) {
               const parentTrack = trackMap.get(seg.track_id);
@@ -193,7 +207,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
             : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
         const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
-        set({ queue: validQueue, queueIndex: settledIdx });
+        set({ tracks: stabilizedTracks, queue: validQueue, queueIndex: settledIdx });
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
@@ -263,6 +277,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       console.warn("[Store] Playback error or superseded:", e);
       if (get().activeSegment?.id === segment.id) {
         set({ isPlaying: false });
+        const { queue, nextSegment } = get();
+        if (queue.length > 1) {
+          setTimeout(() => {
+            if (!get().isPlaying && get().activeSegment?.id === segment.id) {
+              nextSegment();
+            }
+          }, 500);
+        }
       }
     }
   },

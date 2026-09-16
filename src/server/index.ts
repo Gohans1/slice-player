@@ -54,6 +54,20 @@ const mimeTypes: Record<string, string> = {
   ".aac": "audio/aac",
 };
 
+function isSubdirectoryOf(parent: string, child: string): boolean {
+  const normParent = process.platform === "win32" ? resolve(parent).toLowerCase() : resolve(parent);
+  const normChild = process.platform === "win32" ? resolve(child).toLowerCase() : resolve(child);
+  return normChild.startsWith(normParent + sep);
+}
+
+async function parseJsonBody<T = Record<string, any>>(req: Request): Promise<T> {
+  const parsed = await req.json();
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TypeError("Invalid JSON: expected an object");
+  }
+  return parsed as T;
+}
+
 const server = serve({
   hostname: "127.0.0.1",
   port: PORT,
@@ -105,6 +119,7 @@ const server = serve({
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+      "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src blob:;",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     };
@@ -128,27 +143,27 @@ const server = serve({
 
       if (url.pathname === "/api/tracks/ingest-youtube" && req.method === "POST") {
         try {
-          const body = (await req.json()) as { url?: string };
+          const body = await parseJsonBody<{ url?: string }>(req);
           if (!body.url) return Response.json({ error: "Missing YouTube URL" }, { status: 400, headers: corsHeaders });
           const res = await ingestYouTubeUrl(body.url);
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
-          const isSyntax = err instanceof SyntaxError;
+          const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
           const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: isSyntax ? 400 : 500, headers: corsHeaders });
+          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
         }
       }
 
       if (url.pathname === "/api/tracks/ingest-local" && req.method === "POST") {
         try {
-          const body = (await req.json()) as { path?: string };
+          const body = await parseJsonBody<{ path?: string }>(req);
           if (!body.path) return Response.json({ error: "Missing file path" }, { status: 400, headers: corsHeaders });
           const res = await ingestLocalFile(body.path);
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
-          const isSyntax = err instanceof SyntaxError;
+          const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
           const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: isSyntax ? 400 : 500, headers: corsHeaders });
+          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
         }
       }
 
@@ -171,7 +186,7 @@ const server = serve({
           if (track.source_type === "youtube" && track.file_path) {
             const cacheAudioDir = resolve("./data/cache/audio");
             const resolvedAudio = resolve(track.file_path);
-            if (resolvedAudio.startsWith(cacheAudioDir + sep) && existsSync(resolvedAudio)) {
+            if (isSubdirectoryOf(cacheAudioDir, resolvedAudio) && existsSync(resolvedAudio)) {
               for (let i = 0; i < 5; i++) {
                 try {
                   unlinkSync(resolvedAudio);
@@ -190,7 +205,7 @@ const server = serve({
           const cacheThumbsDir = resolve("./data/cache/thumbs");
           for (const ext of [".jpg", ".png", ".webp"]) {
             const thumbPath = resolve(cacheThumbsDir, `${track.id}${ext}`);
-            if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
+            if (isSubdirectoryOf(cacheThumbsDir, thumbPath) && existsSync(thumbPath)) {
               for (let i = 0; i < 5; i++) {
                 try {
                   unlinkSync(thumbPath);
@@ -324,7 +339,7 @@ const server = serve({
         }
         if (req.method === "POST") {
           try {
-            const body = (await req.json()) as Partial<Segment>;
+            const body = await parseJsonBody<Partial<Segment>>(req);
             if (!body.name || body.start_time === undefined || body.end_time === undefined) {
               return Response.json({ error: "Missing segment fields" }, { status: 400, headers: corsHeaders });
             }
@@ -362,7 +377,8 @@ const server = serve({
             serverEvents.emit("track_updated", { trackId });
             return Response.json(created, { headers: corsHeaders });
           } catch (e: any) {
-            return Response.json({ error: e.message || "Failed to create segment" }, { status: 400, headers: corsHeaders });
+            const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+            return Response.json({ error: e.message || "Failed to create segment" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
           }
         }
       }
@@ -373,7 +389,7 @@ const server = serve({
         const segId = segmentDetailMatch[1];
         if (req.method === "PUT") {
           try {
-            const body = (await req.json()) as Partial<Segment>;
+            const body = await parseJsonBody<Partial<Segment>>(req);
             const existingSeg = getSegment(segId);
             if (!existingSeg) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
 
@@ -409,13 +425,12 @@ const server = serve({
               start_time: newStart,
               end_time: newEnd,
             });
-            if (!updated) {
-              return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
-            }
+
             serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
-            return Response.json({ error: e.message || "Failed to update segment" }, { status: 400, headers: corsHeaders });
+            const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+            return Response.json({ error: e.message || "Failed to update segment" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
           }
         }
         if (req.method === "DELETE") {
@@ -441,7 +456,13 @@ const server = serve({
     // --- STATIC FRONTEND ASSETS ---
     // Protected against path traversal with separator verification and case normalization on Windows
     const distDir = resolve("./dist");
-    let relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    let rawRel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(rawRel);
+    } catch {
+      return new Response("Bad Request", { status: 400 });
+    }
     const safePath = resolve(distDir, relativePath);
     const isInside = process.platform === "win32"
       ? safePath.toLowerCase() === distDir.toLowerCase() || safePath.toLowerCase().startsWith(distDir.toLowerCase() + sep)

@@ -310,6 +310,11 @@ async function processDownloadQueue() {
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
+    // If track was deleted while download was running, exit silently
+    if (!getTrack(trackId)) {
+      return;
+    }
+
     if (exitCode !== 0) {
       let errorMsg = `yt-dlp tải thất bại (exit code: ${exitCode})`;
       if (exitCode === 101) {

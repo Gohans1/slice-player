@@ -399,9 +399,11 @@ class AudioEngine {
       }
     }
 
-    // Guard against seeking settlement lag during same-track segment transitions
-    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
-      return;
+    // Guard against seeking settlement lag during same-track segment transitions (both forward & backward)
+    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
+      if (curTime < this.currentSegmentStart - 0.2 || curTime > this.currentSegmentEnd + 1.0) {
+        return;
+      }
     }
 
     if (this.currentSegmentEnd !== null) {
