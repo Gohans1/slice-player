@@ -1,0 +1,188 @@
+import { create } from "zustand";
+import { audioEngine } from "../lib/audio";
+import type { Track, Segment } from "@/server/types";
+
+export interface QueueItem {
+  segment: Segment;
+  track: Track;
+}
+
+interface PlayerState {
+  tracks: Track[];
+  isLoadingTracks: boolean;
+  activeTrack: Track | null;
+  activeSegment: Segment | null;
+  isPlaying: boolean;
+  isShuffle: boolean;
+  currentTime: number;
+  volume: number;
+  queue: QueueItem[];
+  queueIndex: number;
+  sliceStudioTrack: Track | null;
+
+  // Actions
+  fetchTracks: () => Promise<void>;
+  playSegment: (segment: Segment, track: Track) => Promise<void>;
+  togglePlay: () => Promise<void>;
+  nextSegment: () => void;
+  prevSegment: () => void;
+  toggleShuffle: () => void;
+  setVolume: (vol: number) => void;
+  setCurrentTime: (t: number) => void;
+  openSliceStudio: (track: Track) => void;
+  closeSliceStudio: () => void;
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => void;
+}
+
+export const usePlayerStore = create<PlayerState>((set, get) => ({
+  tracks: [],
+  isLoadingTracks: false,
+  activeTrack: null,
+  activeSegment: null,
+  isPlaying: false,
+  isShuffle: true, // Default to shuffle segments!
+  currentTime: 0,
+  volume: 0.8,
+  queue: [],
+  queueIndex: -1,
+  sliceStudioTrack: null,
+
+  fetchTracks: async () => {
+    set({ isLoadingTracks: true });
+    try {
+      const res = await fetch("/api/tracks");
+      if (res.ok) {
+        const tracks: Track[] = await res.json();
+        set({ tracks });
+      }
+    } catch (e) {
+      console.error("[Store] Failed to fetch tracks", e);
+    } finally {
+      set({ isLoadingTracks: false });
+    }
+  },
+
+  playSegment: async (segment: Segment, track: Track) => {
+    const streamUrl = `/api/tracks/${track.id}/stream`;
+    set({
+      activeTrack: track,
+      activeSegment: segment,
+      isPlaying: true,
+      currentTime: segment.start_time,
+    });
+
+    await audioEngine.playSegment(
+      streamUrl,
+      segment.start_time,
+      segment.end_time,
+      () => {
+        // Callback on segment end -> auto advance
+        get().nextSegment();
+      },
+      (time) => {
+        set({ currentTime: time });
+      }
+    );
+  },
+
+  togglePlay: async () => {
+    const { isPlaying, activeSegment, activeTrack, queue, queueIndex } = get();
+
+    if (!activeSegment || !activeTrack) {
+      // If queue has items, play first item
+      if (queue.length > 0) {
+        const item = queue[Math.max(0, queueIndex)];
+        await get().playSegment(item.segment, item.track);
+        return;
+      }
+      return;
+    }
+
+    if (isPlaying) {
+      audioEngine.pause();
+      set({ isPlaying: false });
+    } else {
+      await audioEngine.resume();
+      set({ isPlaying: true });
+    }
+  },
+
+  nextSegment: () => {
+    const { queue, queueIndex } = get();
+    if (queue.length === 0) return;
+
+    let nextIdx = queueIndex + 1;
+    if (nextIdx >= queue.length) {
+      nextIdx = 0; // loop queue
+    }
+
+    const nextItem = queue[nextIdx];
+    set({ queueIndex: nextIdx });
+    get().playSegment(nextItem.segment, nextItem.track);
+  },
+
+  prevSegment: () => {
+    const { queue, queueIndex, currentTime, activeSegment, activeTrack } = get();
+    if (!activeSegment || !activeTrack) return;
+
+    // If played more than 3s, restart current segment
+    if (currentTime - activeSegment.start_time > 3) {
+      audioEngine.seek(activeSegment.start_time);
+      return;
+    }
+
+    if (queue.length === 0) return;
+
+    let prevIdx = queueIndex - 1;
+    if (prevIdx < 0) {
+      prevIdx = queue.length - 1;
+    }
+
+    const prevItem = queue[prevIdx];
+    set({ queueIndex: prevIdx });
+    get().playSegment(prevItem.segment, prevItem.track);
+  },
+
+  toggleShuffle: () => {
+    const nextShuffle = !get().isShuffle;
+    set({ isShuffle: nextShuffle });
+  },
+
+  setVolume: (vol: number) => {
+    audioEngine.setVolume(vol);
+    set({ volume: vol });
+  },
+
+  setCurrentTime: (t: number) => {
+    set({ currentTime: t });
+  },
+
+  openSliceStudio: (track: Track) => {
+    set({ sliceStudioTrack: track });
+  },
+
+  closeSliceStudio: () => {
+    set({ sliceStudioTrack: null });
+  },
+
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => {
+    const trackMap = new Map<string, Track>();
+    for (const t of allTracks) trackMap.set(t.id, t);
+
+    const items: QueueItem[] = [];
+    for (const seg of allSegments) {
+      const trk = trackMap.get(seg.track_id);
+      if (trk && trk.status === "ready") {
+        items.push({ segment: seg, track: trk });
+      }
+    }
+
+    // Fisher-Yates shuffle
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+
+    set({ queue: items, queueIndex: 0 });
+  },
+}));

@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Flexoki Colors */
+  --color-flexoki-black: #100F0F;
+  --color-flexoki-paper: #FFFCF0;
+  --color-flexoki-950: #1C1B1A;
+  --color-flexoki-900: #282726;
+  --color-flexoki-850: #343331;
+  --color-flexoki-800: #403E3C;
+  --color-flexoki-700: #575653;
+  --color-flexoki-600: #6F6E69;
+  --color-flexoki-500: #878580;
+  --color-flexoki-400: #9F9D96;
+  --color-flexoki-300: #B7B5AC;
+  --color-flexoki-200: #CECDC3;
+  --color-flexoki-100: #E6E4D9;
+  --color-flexoki-50: #F2F0E5;
+
+  --color-flexoki-red: #D14D41;
+  --color-flexoki-orange: #DA702C;
+  --color-flexoki-yellow: #D0A215;
+  --color-flexoki-green: #879A39;
+  --color-flexoki-cyan: #3AA99F;
+  --color-flexoki-blue: #4385BE;
+  --color-flexoki-purple: #8B7EC8;
+  --color-flexoki-magenta: #CE5D97;
+
+  /* Shadcn Semantic Mapping to Flexoki */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root,
+.dark {
+  /* Default to Inky Flexoki Dark Mode */
+  --background: #100F0F;
+  --foreground: #CECDC3;
+  --card: #1C1B1A;
+  --card-foreground: #CECDC3;
+  --popover: #1C1B1A;
+  --popover-foreground: #CECDC3;
+  --primary: #4385BE;
+  --primary-foreground: #FFFCF0;
+  --secondary: #282726;
+  --secondary-foreground: #E6E4D9;
+  --muted: #282726;
+  --muted-foreground: #878580;
+  --accent: #343331;
+  --accent-foreground: #F2F0E5;
+  --destructive: #AF3029;
+  --destructive-foreground: #FFFCF0;
+  --border: #343331;
+  --input: #282726;
+  --ring: #4385BE;
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom scrollbars for clean desktop aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #100F0F;
+}
+::-webkit-scrollbar-thumb {
+  background: #343331;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #575653;
+}

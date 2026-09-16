@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["node_modules/**", "dist/**", "data/**"],
+  "plugins": [
+    "react",
+    "import",
+    "react-perf",
+    "jsx-a11y",
+    "typescript",
+    "unicorn",
+    "oxc"
+  ],
+  "jsPlugins": [
+    "@shadcn/lint"
+  ],
+  "rules": {
+    "shadcn/no-restyle": [
+      "warn",
+      {
+        "allow": ["layout"]
+      }
+    ],
+    "shadcn/no-raw-colors": "warn",
+    "shadcn/no-arbitrary-values": "warn",
+    "shadcn/require-static-classes": "warn",
+    "shadcn/no-inline-styles": "warn",
+    "shadcn/no-unknown-classes": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/client/src/components/ui/**"],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-raw-colors": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/require-static-classes": "off",
+        "shadcn/no-inline-styles": "off",
+        "shadcn/no-unknown-classes": "off"
+      }
+    }
+  ]
+}
