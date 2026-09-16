@@ -108,11 +108,12 @@ export function App() {
 
   // Initial queue build on first track load only once per session
   const hasAttemptedQueueBuildRef = React.useRef(false);
+  const hasReadyTracks = React.useMemo(() => tracks.some((t) => t.status === "ready" && t.duration > 0), [tracks]);
   React.useEffect(() => {
-    if (tracks.length > 0 && queue.length === 0 && !hasAttemptedQueueBuildRef.current) {
+    if (hasReadyTracks && queue.length === 0 && !hasAttemptedQueueBuildRef.current) {
       hasAttemptedQueueBuildRef.current = true;
       fetch("/api/segments")
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : []))
         .then((segments) => {
           if (Array.isArray(segments)) {
             buildShuffleQueue(segments, tracks);
@@ -120,7 +121,7 @@ export function App() {
         })
         .catch(console.error);
     }
-  }, [tracks.length, queue.length, buildShuffleQueue, tracks]);
+  }, [hasReadyTracks, queue.length, buildShuffleQueue, tracks]);
 
   const handleDeleteTrack = React.useCallback(
     async (id: string) => {

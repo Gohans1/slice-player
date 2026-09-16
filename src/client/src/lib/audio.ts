@@ -64,7 +64,11 @@ class AudioEngine {
 
   public async resumeContext() {
     if (this.audioCtx && this.audioCtx.state === "suspended") {
-      await this.audioCtx.resume();
+      try {
+        await this.audioCtx.resume();
+      } catch (e) {
+        console.warn("[AudioEngine] AudioContext resume deferred pending user gesture:", e);
+      }
     }
   }
 
@@ -288,7 +292,13 @@ class AudioEngine {
     }
 
     if (this.audioEl.paused) {
-      this.audioEl.currentTime = seconds;
+      if (this.audioEl.readyState === 0) {
+        this.audioEl.addEventListener("loadedmetadata", () => {
+          this.audioEl.currentTime = seconds;
+        }, { once: true });
+      } else {
+        this.audioEl.currentTime = seconds;
+      }
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
@@ -372,17 +382,17 @@ class AudioEngine {
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
 
-    // Guard against seeking settlement lag during same-track segment transitions
-    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
-      return;
-    }
-
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
     if (this.onTimeUpdateCallback && now - this.lastTimeUpdate >= 100) {
       this.lastTimeUpdate = now;
       if (typeof document === "undefined" || document.visibilityState !== "hidden") {
         this.onTimeUpdateCallback(curTime);
       }
+    }
+
+    // Guard against seeking settlement lag during same-track segment transitions
+    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
+      return;
     }
 
     if (this.currentSegmentEnd !== null) {

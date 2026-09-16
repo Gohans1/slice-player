@@ -10,6 +10,7 @@ interface QueueDrawerProps {
 
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const queue = usePlayerStore((s) => s.queue);
+  const queueIndex = usePlayerStore((s) => s.queueIndex);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
   const playSegment = usePlayerStore((s) => s.playSegment);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
@@ -119,7 +120,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
           </div>
         ) : (
           queue.map((item, idx) => {
-            const isCurrent = activeSegment?.id === item.segment.id;
+            const isCurrent = idx === queueIndex;
             const segDuration = item.segment.end_time - item.segment.start_time;
 
             return (

@@ -12,7 +12,7 @@ export interface Track {
   file_path?: string;
   peaks_json?: string; // 1000-peak JSON array
   status: TrackStatus;
-  error_message?: string;
+  error_message?: string | null;
   created_at?: number;
   segment_count?: number;
 }

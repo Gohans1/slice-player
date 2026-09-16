@@ -199,6 +199,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       activeSegmentIdRef.current = null;
       setActiveSegmentId(null);
     });
+    ws.on("interaction", () => {
+      previewEndRef.current = null;
+    });
 
     let lastTimeUpdate = 0;
     ws.on("timeupdate", (time) => {

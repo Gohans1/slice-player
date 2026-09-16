@@ -15,15 +15,16 @@ initDatabase("./data/music.db");
 console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 
 const activeSockets = new Set<any>();
-let shutdownTimer: Timer | null = setTimeout(() => {
+let shutdownTimer: Timer | null = process.env.NODE_ENV === "production" ? setTimeout(() => {
   if (activeSockets.size === 0) {
     console.log("[Server] No client connected within 60s of startup. Exiting.");
     gracefulShutdown();
   }
-}, 60000);
+}, 60000) : null;
 
 async function gracefulShutdown() {
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
+  server.stop(true);
   await abortIngestProcesses();
   await abortWaveformProcesses();
   closeDatabase();
@@ -186,7 +187,7 @@ const server = serve({
 
       // 2. Audio Stream API (HTTP 206 Partial Content handled natively by Bun)
       const streamMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/stream$/);
-      if (streamMatch && req.method === "GET") {
+      if (streamMatch && (req.method === "GET" || req.method === "HEAD")) {
         const trackId = streamMatch[1];
         const track = getTrack(trackId);
         if (!track || !track.file_path) {
@@ -200,6 +201,18 @@ const server = serve({
 
         const ext = extname(track.file_path).toLowerCase();
         const contentType = mimeTypes[ext] || "application/octet-stream";
+
+        if (req.method === "HEAD") {
+          return new Response(null, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": contentType,
+              "Content-Length": String(audioFile.size),
+              "Accept-Ranges": "bytes",
+            },
+          });
+        }
 
         // HTTP 206 Partial Content support for byte-range seeking
         const range = req.headers.get("range");

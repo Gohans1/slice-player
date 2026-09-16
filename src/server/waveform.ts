@@ -120,7 +120,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
       for (let i = 0; i < targetPoints; i++) {
         let max = 0;
         const start = i * blockSize;
-        const end = Math.min(start + blockSize, samples.length);
+        const end = i === targetPoints - 1 ? samples.length : Math.min(start + blockSize, samples.length);
         for (let j = start; j < end; j++) {
           const val = Math.abs(samples[j]);
           if (val > max) max = val;

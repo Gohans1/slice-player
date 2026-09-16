@@ -4,7 +4,6 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { createDefaultFullSegment } from "../lib/utils";
 import type { Segment } from "@/server/types";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {

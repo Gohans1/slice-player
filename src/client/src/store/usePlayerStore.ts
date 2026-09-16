@@ -69,14 +69,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
+        const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
+
         if (!reconcileSegments) {
           // Fast path for polling: only update track list and prune deleted tracks from queue
           const validQueue = queue.filter((item) => trackMap.has(item.track.id));
           const updates: Partial<PlayerState> = { tracks };
           if (validQueue.length !== queue.length) {
-            const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+            const newIdx = validQueue.length === 0
+              ? -1
+              : currentItem
+                ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
+                : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
             updates.queue = validQueue;
-            updates.queueIndex = newIdx;
+            updates.queueIndex = newIdx >= 0 ? newIdx : 0;
           }
           set(updates);
           return;
@@ -91,25 +97,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const segmentMap = new Set(validSegments.map((s) => s.id));
         const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
-        // Purge queue items whose parent track or segment no longer exists in DB,
-        // and replace fallback_ segment if real custom segments now exist for this track
-        const validQueue = queue
-          .filter(
-            (item) =>
-              trackMap.has(item.track.id) &&
-              (
-                (item.segment.id.startsWith("fallback_") && !validSegments.some((s) => s.track_id === item.track.id)) ||
-                segmentMap.has(item.segment.id)
-              )
-          )
-          .map((item) => {
-            const freshSeg = segmentObjMap.get(item.segment.id);
-            return freshSeg ? { ...item, segment: freshSeg } : item;
-          });
+        // Reconcile queue: replace fallback_ with real slices or retain both in mixed mode
+        const validQueue = queue.flatMap((item) => {
+          if (!trackMap.has(item.track.id)) return [];
+          if (item.segment.id.startsWith("fallback_")) {
+            const trackSlices = validSegments.filter((s) => s.track_id === item.track.id);
+            if (trackSlices.length > 0) {
+              if (get().playbackMode === "mixed") {
+                return [item, ...trackSlices.map((s) => ({ segment: s, track: item.track }))];
+              }
+              return trackSlices.map((s) => ({ segment: s, track: item.track }));
+            }
+            return [item];
+          }
+          if (!segmentMap.has(item.segment.id)) return [];
+          const freshSeg = segmentObjMap.get(item.segment.id);
+          return freshSeg ? [{ ...item, segment: freshSeg }] : [item];
+        });
 
         if (validQueue.length !== queue.length) {
-          const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
-          set({ queue: validQueue, queueIndex: newIdx });
+          const newIdx = validQueue.length === 0
+            ? -1
+            : currentItem
+              ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
+              : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+          set({ queue: validQueue, queueIndex: newIdx >= 0 ? newIdx : 0 });
         }
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
@@ -226,7 +238,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     // If played more than 3s, restart current segment
     if (currentTime - activeSegment.start_time > 3) {
-      audioEngine.seek(activeSegment.start_time);
+      get().seek(activeSegment.start_time);
       return;
     }
 
@@ -456,7 +468,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     }
 
-    let currentIndex = 0;
+    let currentIndex = -1;
     const { activeSegment } = get();
     if (activeSegment) {
       const foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);

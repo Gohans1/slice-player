@@ -230,7 +230,7 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
     if (existsSync(audioDir)) {
       const files = readdirSync(audioDir);
       for (const f of files) {
-        if (f.startsWith(trackId)) {
+        if (f === trackId || f.startsWith(`${trackId}.`)) {
           try { unlinkSync(join(audioDir, f)); } catch {}
         }
       }
@@ -285,7 +285,7 @@ async function processDownloadQueue() {
 
     const proc = Bun.spawn(dlCmd, {
       stdout: "ignore",
-      stderr: "ignore",
+      stderr: "pipe",
     });
     activeDownloadProc = proc;
 
@@ -300,12 +300,24 @@ async function processDownloadQueue() {
       } catch {}
     }, 300000);
 
+    let errText = "";
+    try {
+      errText = await new Response(proc.stderr).text();
+    } catch {}
+
     const exitCode = await proc.exited;
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
     if (exitCode !== 0) {
-      updateTrack(trackId, { status: "error", error_message: `yt-dlp tải thất bại (exit code: ${exitCode})` });
+      let errorMsg = `yt-dlp tải thất bại (exit code: ${exitCode})`;
+      if (exitCode === 101) {
+        errorMsg = `Video vượt quá giới hạn 30 phút (${MAX_DURATION_SECONDS}s)`;
+      } else if (errText.trim()) {
+        const lastLine = errText.trim().split(/[\r\n]+/).pop() || "";
+        errorMsg = `yt-dlp: ${lastLine.slice(0, 150)}`;
+      }
+      updateTrack(trackId, { status: "error", error_message: errorMsg });
       serverEvents.emit("track_updated", { trackId });
       return;
     }
@@ -444,16 +456,24 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     const title = metadata.common.title || basename(fullPath, extname(fullPath));
     const artist = metadata.common.artist || "Unknown Artist";
 
-    // Extract cover art if present
+    // Extract cover art if present (bounded to 4MB to prevent memory issues)
     let thumbUrl = "";
     if (metadata.common.picture && metadata.common.picture.length > 0) {
       const pic = metadata.common.picture[0];
-      const isPng = pic.format?.toLowerCase().includes("png");
-      const isWebp = pic.format?.toLowerCase().includes("webp");
-      const imgExt = isPng ? ".png" : isWebp ? ".webp" : ".jpg";
-      const thumbPath = `./data/cache/thumbs/${trackId}${imgExt}`;
-      writeFileSync(thumbPath, pic.data);
-      thumbUrl = `/api/thumbs/${trackId}`;
+      if (pic.data && pic.data.length <= 4 * 1024 * 1024) {
+        for (const ext of [".jpg", ".png", ".webp"]) {
+          const oldP = resolve(`./data/cache/thumbs/${trackId}${ext}`);
+          if (existsSync(oldP)) {
+            try { unlinkSync(oldP); } catch {}
+          }
+        }
+        const isPng = pic.format?.toLowerCase().includes("png");
+        const isWebp = pic.format?.toLowerCase().includes("webp");
+        const imgExt = isPng ? ".png" : isWebp ? ".webp" : ".jpg";
+        const thumbPath = `./data/cache/thumbs/${trackId}${imgExt}`;
+        writeFileSync(thumbPath, pic.data);
+        thumbUrl = `/api/thumbs/${trackId}`;
+      }
     }
 
     // Generate peaks
@@ -461,12 +481,26 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
 
     let existing = getTrack(trackId);
     if (existing) {
+      // Clean up zombie segments if file duration changed
+      try {
+        const { getDb } = await import("./db");
+        const db = getDb();
+        db.query("DELETE FROM segments WHERE track_id = $track_id AND start_time >= $duration;").run({
+          $track_id: trackId,
+          $duration: duration,
+        });
+        db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
+          $track_id: trackId,
+          $duration: duration,
+        });
+      } catch {}
+
       updateTrack(trackId, {
         title,
         artist,
         duration,
         file_path: fullPath,
-        thumbnail_url: thumbUrl,
+        thumbnail_url: thumbUrl || existing.thumbnail_url,
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });
