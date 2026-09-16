@@ -172,6 +172,7 @@ export function isIngestBusy(): boolean {
 }
 
 export async function abortIngestProcesses(): Promise<void> {
+  downloadQueue.length = 0;
   for (const proc of activeMetadataProcs) {
     try {
       if (process.platform === "win32") {
@@ -480,12 +481,13 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     const peaks = await generatePeaks(fullPath, 1000);
 
     let existing = getTrack(trackId);
+    const isExisting = !!existing;
     if (existing) {
       // Clean up zombie segments if file duration changed
       try {
         const { getDb } = await import("./db");
         const db = getDb();
-        db.query("DELETE FROM segments WHERE track_id = $track_id AND start_time >= $duration;").run({
+        db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
           $track_id: trackId,
           $duration: duration,
         });
@@ -493,6 +495,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
           $track_id: trackId,
           $duration: duration,
         });
+        serverEvents.emit("track_updated", { trackId });
       } catch {}
 
       updateTrack(trackId, {
@@ -520,7 +523,11 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       });
     }
 
-    serverEvents.emit("track_created", { trackId });
+    if (isExisting) {
+      serverEvents.emit("track_updated", { trackId });
+    } else {
+      serverEvents.emit("track_created", { trackId });
+    }
 
     return {
       success: true,

@@ -207,6 +207,7 @@ class AudioEngine {
   }
 
   public pause() {
+    this.currentPlayRequestId++;
     this.stopRafLoop();
     const currentPauseId = ++this.pauseRequestId;
     if (this.pauseTimer) {
@@ -248,6 +249,10 @@ class AudioEngine {
     this.currentSegmentEnd = endTime;
   }
 
+  public setOnSegmentEnd(cb: (() => void) | null) {
+    this.onSegmentEndCallback = cb;
+  }
+
   public async resume(): Promise<boolean> {
     this.pauseRequestId++;
     if (this.pauseTimer) {
@@ -280,6 +285,9 @@ class AudioEngine {
   }
 
   public seek(seconds: number) {
+    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
+      seconds = Math.max(this.currentSegmentStart, Math.min(seconds, this.currentSegmentEnd));
+    }
     this.isFadingOut = false;
     this.pauseRequestId++;
     if (this.pauseTimer) {
@@ -340,6 +348,7 @@ class AudioEngine {
   }
 
   public unload() {
+    this.currentPlayRequestId++;
     this.pauseRequestId++;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);

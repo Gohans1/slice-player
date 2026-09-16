@@ -13,7 +13,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
   const playSegment = usePlayerStore((s) => s.playSegment);
-  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
+  const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
   const tracks = usePlayerStore((s) => s.tracks);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
@@ -174,7 +174,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeSegmentFromQueue(item.segment.id);
+                      removeQueueItemAtIndex(idx);
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
                     title="Xóa khỏi hàng đợi"

@@ -172,6 +172,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               onClick={(e) => {
                 if (!activeSegment || segmentDuration <= 0) return;
                 const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width <= 0) return;
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 const targetSeconds = activeSegment.start_time + ratio * segmentDuration;
                 seek(targetSeconds);

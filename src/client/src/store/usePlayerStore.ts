@@ -38,6 +38,7 @@ interface PlayerState {
   seek: (seconds: number) => void;
   removeTrackFromQueue: (trackId: string) => void;
   removeSegmentFromQueue: (segmentId: string) => void;
+  removeQueueItemAtIndex: (index: number) => void;
   openSliceStudio: (track: Track) => void;
   closeSliceStudio: () => void;
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => void;
@@ -71,9 +72,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
 
+        const prevTracks = get().tracks;
+        const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
+
         if (!reconcileSegments) {
           // Fast path for polling: only update track list and prune deleted tracks from queue
-          const validQueue = queue.filter((item) => trackMap.has(item.track.id));
+          const validQueue = queue.filter((item) => trackMap.has(item.track.id)).map((item) => ({
+            ...item,
+            track: trackMap.get(item.track.id) || item.track,
+          }));
           const updates: Partial<PlayerState> = { tracks };
           if (validQueue.length !== queue.length) {
             const newIdx = validQueue.length === 0
@@ -97,32 +104,82 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const segmentMap = new Set(validSegments.map((s) => s.id));
         const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
-        // Reconcile queue: replace fallback_ with real slices or retain both in mixed mode
-        const validQueue = queue.flatMap((item) => {
-          if (!trackMap.has(item.track.id)) return [];
-          if (item.segment.id.startsWith("fallback_")) {
-            const trackSlices = validSegments.filter((s) => s.track_id === item.track.id);
-            if (trackSlices.length > 0) {
-              if (get().playbackMode === "mixed") {
-                return [item, ...trackSlices.map((s) => ({ segment: s, track: item.track }))];
-              }
-              return trackSlices.map((s) => ({ segment: s, track: item.track }));
-            }
-            return [item];
-          }
-          if (!segmentMap.has(item.segment.id)) return [];
-          const freshSeg = segmentObjMap.get(item.segment.id);
-          return freshSeg ? [{ ...item, segment: freshSeg }] : [item];
-        });
+        const currentMode = get().playbackMode;
+        const validQueue: QueueItem[] = [];
+        const seenSegmentIds = new Set<string>();
 
-        if (validQueue.length !== queue.length) {
-          const newIdx = validQueue.length === 0
-            ? -1
-            : currentItem
-              ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
-              : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
-          set({ queue: validQueue, queueIndex: newIdx >= 0 ? newIdx : 0 });
+        // Reconcile existing queue items without duplicate expansion
+        for (const item of queue) {
+          if (!trackMap.has(item.track.id)) continue;
+          const freshTrack = trackMap.get(item.track.id)!;
+          const isFallback = item.segment.id.startsWith("fallback_");
+
+          if (isFallback) {
+            if (currentMode === "slices_only") {
+              const trackSlices = validSegments.filter((s) => s.track_id === item.track.id);
+              if (trackSlices.length > 0) {
+                for (const s of trackSlices) {
+                  if (!seenSegmentIds.has(s.id)) {
+                    seenSegmentIds.add(s.id);
+                    validQueue.push({ segment: s, track: freshTrack });
+                  }
+                }
+                continue;
+              }
+            }
+            // Preserve fallback item in original_only or mixed (or if no slices exist)
+            validQueue.push({ ...item, track: freshTrack });
+          } else {
+            // Slices should not be in original_only mode
+            if (currentMode === "original_only") continue;
+            if (!segmentMap.has(item.segment.id)) continue;
+            const freshSeg = segmentObjMap.get(item.segment.id) || item.segment;
+            if (!seenSegmentIds.has(freshSeg.id)) {
+              seenSegmentIds.add(freshSeg.id);
+              validQueue.push({ segment: freshSeg, track: freshTrack });
+            }
+          }
         }
+
+        // Ingestion queue starvation fix: append tracks that newly transitioned to "ready"
+        const newlyReadyTracks = tracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+        if (newlyReadyTracks.length > 0 && validQueue.length > 0) {
+          for (const newTrack of newlyReadyTracks) {
+            const trackSlices = validSegments.filter((s) => s.track_id === newTrack.id);
+            if (currentMode === "original_only") {
+              validQueue.push({ segment: createDefaultFullSegment(newTrack), track: newTrack });
+            } else if (currentMode === "slices_only") {
+              if (trackSlices.length > 0) {
+                for (const s of trackSlices) {
+                  if (!seenSegmentIds.has(s.id)) {
+                    seenSegmentIds.add(s.id);
+                    validQueue.push({ segment: s, track: newTrack });
+                  }
+                }
+              } else {
+                validQueue.push({ segment: createDefaultFullSegment(newTrack), track: newTrack });
+              }
+            } else {
+              // mixed
+              if (trackSlices.length > 0) {
+                for (const s of trackSlices) {
+                  if (!seenSegmentIds.has(s.id)) {
+                    seenSegmentIds.add(s.id);
+                    validQueue.push({ segment: s, track: newTrack });
+                  }
+                }
+              }
+              validQueue.push({ segment: createDefaultFullSegment(newTrack), track: newTrack });
+            }
+          }
+        }
+
+        const newIdx = validQueue.length === 0
+          ? -1
+          : currentItem
+            ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
+            : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+        set({ queue: validQueue, queueIndex: newIdx >= 0 ? newIdx : 0 });
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
@@ -324,6 +381,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
         audioEngine.seek(nextItem.segment.start_time);
         audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
+        audioEngine.setOnSegmentEnd(() => get().nextSegment());
         set({ currentTime: nextItem.segment.start_time });
       }
       return;
@@ -361,6 +419,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
         audioEngine.seek(nextItem.segment.start_time);
         audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
+        audioEngine.setOnSegmentEnd(() => get().nextSegment());
         set({ currentTime: nextItem.segment.start_time });
       }
       return;
@@ -371,6 +430,45 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       newIndex = -1;
     } else {
       newIndex = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
+    }
+    set({ queue: newQueue, queueIndex: newIndex });
+  },
+
+  removeQueueItemAtIndex: (index: number) => {
+    const { queue, queueIndex } = get();
+    if (index < 0 || index >= queue.length) return;
+    const isCurrent = index === queueIndex;
+    const newQueue = queue.filter((_, idx) => idx !== index);
+
+    if (isCurrent) {
+      const wasPlaying = get().isPlaying;
+      audioEngine.unload();
+      if (newQueue.length === 0) {
+        set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
+        return;
+      }
+      const nextIdx = Math.max(0, Math.min(index, newQueue.length - 1));
+      const nextItem = newQueue[nextIdx];
+      set({ queue: newQueue, queueIndex: nextIdx, activeTrack: nextItem.track, activeSegment: nextItem.segment, isPlaying: false });
+      if (wasPlaying) {
+        get().playSegment(nextItem.segment, nextItem.track, nextIdx);
+      } else {
+        audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
+        audioEngine.seek(nextItem.segment.start_time);
+        audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
+        audioEngine.setOnSegmentEnd(() => get().nextSegment());
+        set({ currentTime: nextItem.segment.start_time });
+      }
+      return;
+    }
+
+    let newIndex = queueIndex;
+    if (newQueue.length === 0) {
+      newIndex = -1;
+    } else if (index < queueIndex) {
+      newIndex = Math.max(0, queueIndex - 1);
+    } else {
+      newIndex = Math.min(queueIndex, newQueue.length - 1);
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },
@@ -400,7 +498,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ playbackMode: mode });
     try {
       const res = await fetch("/api/segments");
+      if (get().playbackMode !== mode) return;
       const segments: Segment[] = res.ok ? await res.json() : [];
+      if (get().playbackMode !== mode) return;
       get().buildShuffleQueue(segments, get().tracks, mode);
     } catch (e) {
       console.error("[Store] Failed to update queue on mode change", e);

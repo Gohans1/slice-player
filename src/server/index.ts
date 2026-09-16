@@ -51,6 +51,7 @@ const mimeTypes: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".ogg": "audio/ogg",
+  ".aac": "audio/aac",
 };
 
 const server = serve({
@@ -381,6 +382,9 @@ const server = serve({
               start_time: newStart,
               end_time: newEnd,
             });
+            if (!updated) {
+              return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
+            }
             serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
@@ -464,6 +468,7 @@ const server = serve({
 });
 
 function checkIdleShutdown() {
+  if (process.env.NODE_ENV !== "production") return;
   if (activeSockets.size === 0 && !shutdownTimer) {
     shutdownTimer = setTimeout(async () => {
       const { isIngestBusy } = await import("./ingest");
