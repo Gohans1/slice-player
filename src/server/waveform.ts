@@ -1,6 +1,29 @@
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 const activeWaveformProcs = new Set<ReturnType<typeof Bun.spawn>>();
+const activeWaveformByPath = new Map<string, ReturnType<typeof Bun.spawn>>();
+
+export async function cancelWaveformForFile(filePath: string): Promise<void> {
+  const norm = resolve(filePath).toLowerCase();
+  for (const [p, proc] of activeWaveformByPath.entries()) {
+    if (resolve(p).toLowerCase() === norm) {
+      try {
+        if (process.platform === "win32") {
+          const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+            stdout: "ignore",
+            stderr: "ignore",
+          });
+          await killProc.exited;
+        } else {
+          proc.kill();
+        }
+      } catch {}
+      activeWaveformProcs.delete(proc);
+      activeWaveformByPath.delete(p);
+    }
+  }
+}
 
 export async function abortWaveformProcesses(): Promise<void> {
   for (const proc of activeWaveformProcs) {
@@ -17,6 +40,7 @@ export async function abortWaveformProcesses(): Promise<void> {
     } catch {}
   }
   activeWaveformProcs.clear();
+  activeWaveformByPath.clear();
 }
 
 /**
@@ -64,6 +88,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
       stderr: "ignore",
     });
     activeWaveformProcs.add(proc);
+    activeWaveformByPath.set(filePath, proc);
 
     // 60s timeout to kill hanging ffmpeg
     const killTimer = setTimeout(() => {
@@ -92,7 +117,10 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
       await proc.exited;
     } finally {
       clearTimeout(killTimer);
-      if (proc) activeWaveformProcs.delete(proc);
+      if (proc) {
+        activeWaveformProcs.delete(proc);
+        activeWaveformByPath.delete(filePath);
+      }
     }
 
     if (chunks.length === 0) {
@@ -131,7 +159,10 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
     return peaks;
   } catch (err) {
-    if (proc) activeWaveformProcs.delete(proc);
+    if (proc) {
+      activeWaveformProcs.delete(proc);
+      activeWaveformByPath.delete(filePath);
+    }
     console.warn("[Waveform] ffmpeg execution failed, falling back to synthetic peaks:", err);
     return Array.from({ length: targetPoints }, () => 0.1);
   }

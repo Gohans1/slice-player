@@ -1,1 +1,13 @@
-﻿{"$schema": "./node_modules/oxlint/configuration_schema.json", "rules": {"no-console": "off"}}
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "perf": "warn",
+    "suspicious": "warn"
+  },
+  "plugins": ["react", "typescript"],
+  "rules": {
+    "no-console": "off",
+    "no-unused-vars": "warn"
+  }
+}

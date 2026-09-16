@@ -82,6 +82,58 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const segmentsRef = React.useRef(segments);
   segmentsRef.current = segments;
 
+  const isMountedRef = React.useRef(true);
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const safeSetSaveStatus = React.useCallback((status: string | null) => {
+    if (isMountedRef.current) {
+      setSaveStatus(status);
+    }
+  }, []);
+
+  const flushPendingSaves = React.useCallback(async () => {
+    for (const t of Object.values(saveDebounceTimersRef.current)) {
+      clearTimeout(t);
+    }
+    saveDebounceTimersRef.current = {};
+
+    const entries = Object.entries(pendingUpdatesRef.current);
+    if (entries.length === 0) return;
+    pendingUpdatesRef.current = {};
+
+    const promises = entries.map(async ([id, payload]) => {
+      const seg = segmentsRef.current.find((s) => s.id === id);
+      if (seg) {
+        syncUpdatedSegment({ ...seg, ...payload });
+      }
+      try {
+        const res = await fetch(`/api/segments/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const updated: Segment = await res.json();
+          syncUpdatedSegment(updated);
+        }
+      } catch (e) {
+        console.error("[SliceStudio] Flush error:", e);
+      }
+    });
+
+    await Promise.all(promises);
+  }, [syncUpdatedSegment]);
+
+  const handleCloseStudio = React.useCallback(async () => {
+    await flushPendingSaves();
+    onClose();
+  }, [flushPendingSaves, onClose]);
+
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
     return () => {
@@ -125,17 +177,17 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         if (res.ok) {
           const updated: Segment = await res.json();
           syncUpdatedSegment(updated);
-          setSaveStatus(statusMsg);
-          setTimeout(() => setSaveStatus(null), 1500);
+          safeSetSaveStatus(statusMsg);
+          setTimeout(() => safeSetSaveStatus(null), 1500);
         } else {
-          setSaveStatus("Lỗi: không thể lưu mốc cắt");
-          setTimeout(() => setSaveStatus(null), 2500);
+          safeSetSaveStatus("Lỗi: không thể lưu mốc cắt");
+          setTimeout(() => safeSetSaveStatus(null), 2500);
         }
       } catch (e) {
         console.error(e);
       }
     }, 400);
-  }, [syncUpdatedSegment]);
+  }, [syncUpdatedSegment, safeSetSaveStatus]);
 
   // Fetch existing segments for this track
   const fetchSegments = React.useCallback(async () => {
@@ -438,7 +490,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             </p>
           </div>
 
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+          <Button variant="ghost" size="icon" onClick={handleCloseStudio} className="rounded-full">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -594,7 +646,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
         {/* Footer */}
         <div className="mt-8 pt-4 border-t border-border flex justify-end">
-          <Button onClick={onClose} className="px-6">
+          <Button onClick={handleCloseStudio} className="px-6">
             Xong & Đóng Studio
           </Button>
         </div>

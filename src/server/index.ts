@@ -2,8 +2,8 @@ import { serve, file as bunFile } from "bun";
 import { existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive } from "./ingest";
-import { abortWaveformProcesses } from "./waveform";
+import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry } from "./ingest";
+import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
 import type { Segment } from "./types";
 
@@ -131,13 +131,20 @@ const server = serve({
     // --- API ROUTES ---
     if (url.pathname.startsWith("/api/")) {
       if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
-        if (!req.headers.get("content-length") && req.headers.get("transfer-encoding")) {
-          return Response.json({ error: "Chunked transfer encoding not supported" }, { status: 411, headers: corsHeaders });
+        const rawLen = req.headers.get("content-length");
+        if (!rawLen) {
+          return Response.json(
+            { error: "Content-Length header is required for mutating requests" },
+            { status: 411, headers: corsHeaders }
+          );
         }
-      }
-      const contentLength = Number(req.headers.get("content-length")) || 0;
-      if (contentLength > 65536) {
-        return Response.json({ error: "Payload too large (max 64KB)" }, { status: 413, headers: corsHeaders });
+        const contentLength = Number(rawLen);
+        if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > 65536) {
+          return Response.json(
+            { error: "Payload too large or invalid length (max 64KB)" },
+            { status: 413, headers: corsHeaders }
+          );
+        }
       }
 
       // 1. Tracks API
@@ -187,6 +194,9 @@ const server = serve({
           if (!track) {
             return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
           }
+          if (track.file_path) {
+            await cancelWaveformForFile(track.file_path);
+          }
           const ok = deleteTrack(trackId);
           if (!ok) {
             return Response.json({ error: "Could not delete track from database" }, { status: 500, headers: corsHeaders });
@@ -198,18 +208,7 @@ const server = serve({
             const cacheAudioDir = resolve("./data/cache/audio");
             const resolvedAudio = resolve(track.file_path);
             if (isSubdirectoryOf(cacheAudioDir, resolvedAudio) && existsSync(resolvedAudio)) {
-              for (let i = 0; i < 5; i++) {
-                try {
-                  unlinkSync(resolvedAudio);
-                  break;
-                } catch (err: any) {
-                  if ((err.code === "EBUSY" || err.code === "EPERM") && i < 4) {
-                    await Bun.sleep(100 * (i + 1));
-                  } else {
-                    break;
-                  }
-                }
-              }
+              await unlinkWithRetry(resolvedAudio);
             }
           }
           // Unlink thumbnail if local cache
@@ -217,18 +216,7 @@ const server = serve({
           for (const ext of [".jpg", ".png", ".webp"]) {
             const thumbPath = resolve(cacheThumbsDir, `${track.id}${ext}`);
             if (isSubdirectoryOf(cacheThumbsDir, thumbPath) && existsSync(thumbPath)) {
-              for (let i = 0; i < 5; i++) {
-                try {
-                  unlinkSync(thumbPath);
-                  break;
-                } catch (err: any) {
-                  if ((err.code === "EBUSY" || err.code === "EPERM") && i < 4) {
-                    await Bun.sleep(100 * (i + 1));
-                  } else {
-                    break;
-                  }
-                }
-              }
+              await unlinkWithRetry(thumbPath);
             }
           }
           return Response.json({ success: true }, { headers: corsHeaders });
@@ -326,7 +314,7 @@ const server = serve({
         const allowedThumbsDir = resolve("./data/cache/thumbs");
         for (const ext of [".jpg", ".png", ".webp"]) {
           const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
-          if (thumbPath.startsWith(allowedThumbsDir + sep) && existsSync(thumbPath)) {
+          if (isSubdirectoryOf(allowedThumbsDir, thumbPath) && existsSync(thumbPath)) {
             const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
             return new Response(bunFile(thumbPath), {
               headers: { ...corsHeaders, "Content-Type": ct },

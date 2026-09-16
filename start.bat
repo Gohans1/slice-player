@@ -32,7 +32,7 @@ if %ERRORLEVEL% NEQ 0 (
     start "SlicePlayerServer" /min bun run src/server/index.ts
     set /a ATTEMPTS=0
     :wait_loop
-    timeout /t 1 /nobreak >nul
+    ping -n 2 127.0.0.1 >nul
     curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
     if %ERRORLEVEL% EQU 0 goto server_ready
     set /a ATTEMPTS+=1

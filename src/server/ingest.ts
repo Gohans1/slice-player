@@ -9,6 +9,29 @@ import type { Track } from "./types";
 
 const MAX_DURATION_SECONDS = 1800; // 30 minutes cap
 
+export async function unlinkWithRetry(filePath: string, maxAttempts = 5): Promise<boolean> {
+  if (!existsSync(filePath)) return true;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      unlinkSync(filePath);
+      return true;
+    } catch (err: any) {
+      if ((err.code === "EBUSY" || err.code === "EPERM") && i < maxAttempts - 1) {
+        await Bun.sleep(100 * (i + 1));
+      } else {
+        break;
+      }
+    }
+  }
+  return !existsSync(filePath);
+}
+
+const cancelledTrackIds = new Set<string>();
+
+export function isTrackCancelled(trackId: string): boolean {
+  return cancelledTrackIds.has(trackId);
+}
+
 export interface IngestResult {
   success: boolean;
   message?: string;
@@ -178,7 +201,10 @@ export async function abortIngestProcesses(): Promise<void> {
   for (const proc of activeMetadataProcs) {
     try {
       if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)]);
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
         await killProc.exited;
       } else {
         proc.kill();
@@ -190,7 +216,10 @@ export async function abortIngestProcesses(): Promise<void> {
   if (activeDownloadProc) {
     try {
       if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]);
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
         await killProc.exited;
       } else {
         activeDownloadProc.kill();
@@ -202,6 +231,7 @@ export async function abortIngestProcesses(): Promise<void> {
 }
 
 export async function cancelDownloadIfActive(trackId: string): Promise<void> {
+  cancelledTrackIds.add(trackId);
   const qIdx = downloadQueue.findIndex((q) => q.trackId === trackId);
   if (qIdx !== -1) {
     downloadQueue.splice(qIdx, 1);
@@ -228,13 +258,12 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
 
   // Clean up any residual .part or .ytdl files
   try {
-    const { readdirSync, unlinkSync } = await import("node:fs");
     const audioDir = resolve("./data/cache/audio");
     if (existsSync(audioDir)) {
       const files = readdirSync(audioDir);
       for (const f of files) {
         if (f === trackId || f.startsWith(`${trackId}.`)) {
-          try { unlinkSync(join(audioDir, f)); } catch {}
+          await unlinkWithRetry(join(audioDir, f));
         }
       }
     }
@@ -265,7 +294,7 @@ async function processDownloadQueue() {
   if (!existingTrack || existingTrack.status === "ready") {
     currentDownloadingTrackId = null;
     isDownloading = false;
-    processDownloadQueue();
+    setTimeout(processDownloadQueue, 0);
     return;
   }
 
@@ -312,8 +341,9 @@ async function processDownloadQueue() {
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
-    // If track was deleted while download was running, exit silently
-    if (!getTrack(trackId)) {
+    // If track was cancelled or deleted while download was running, exit silently
+    if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
+      cancelledTrackIds.delete(trackId);
       return;
     }
 
@@ -344,10 +374,11 @@ async function processDownloadQueue() {
       }
     }
 
-    // Check again if track was deleted while download was running
-    if (!getTrack(trackId)) {
+    // Check again if track was cancelled or deleted while download was running
+    if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
+      cancelledTrackIds.delete(trackId);
       if (finalPath && existsSync(finalPath)) {
-        try { unlinkSync(finalPath); } catch {}
+        await unlinkWithRetry(finalPath);
       }
       return;
     }
@@ -365,12 +396,17 @@ async function processDownloadQueue() {
         console.warn(`[Ingest] Could not parse downloaded metadata: ${e}`);
       }
 
-      if (actualDuration <= 0 || actualDuration > MAX_DURATION_SECONDS) {
-        try { unlinkSync(finalPath); } catch {}
+      // If container duration is missing (e.g. DASH WebM/Opus wrapper), fallback to stage 1 validated duration
+      if (actualDuration <= 0 && existingTrack?.duration && existingTrack.duration > 0 && existingTrack.duration <= MAX_DURATION_SECONDS) {
+        actualDuration = existingTrack.duration;
+      }
+
+      if (actualDuration < 0.5 || actualDuration > MAX_DURATION_SECONDS) {
+        await unlinkWithRetry(finalPath);
         updateTrack(trackId, {
           status: "error",
-          error_message: actualDuration <= 0 
-            ? "Không thể xác định thời lượng audio hoặc file rỗng"
+          error_message: actualDuration < 0.5 
+            ? "Thời lượng bài hát quá ngắn (tối thiểu 0.5 giây) hoặc file rỗng"
             : `Thời lượng thực tế (${actualDuration.toFixed(0)}s) vượt quá giới hạn 30 phút!`,
         });
         serverEvents.emit("track_updated", { trackId });
@@ -380,10 +416,11 @@ async function processDownloadQueue() {
       // Generate peaks
       const peaks = await generatePeaks(finalPath, 1000);
 
-      // Check again if track was deleted during peaks generation
-      if (!getTrack(trackId)) {
+      // Check again if track was cancelled or deleted during peaks generation
+      if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
+        cancelledTrackIds.delete(trackId);
         if (finalPath && existsSync(finalPath)) {
-          try { unlinkSync(finalPath); } catch {}
+          await unlinkWithRetry(finalPath);
         }
         return;
       }
@@ -448,12 +485,12 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     const metadata = await parseFile(fullPath);
     const duration = Number(metadata.format.duration) || 0;
 
-    // 30 minute check & strictly positive check
-    if (duration <= 0 || duration > MAX_DURATION_SECONDS) {
+    // 30 minute check & strictly positive check (minimum 0.5s for slicing compatibility)
+    if (duration < 0.5 || duration > MAX_DURATION_SECONDS) {
       return {
         success: false,
-        message: duration <= 0
-          ? "File không có thời lượng hợp lệ hoặc bị lỗi!"
+        message: duration < 0.5
+          ? "Thời lượng bài hát quá ngắn (tối thiểu 0.5 giây)!"
           : `File vượt quá thời lượng tối đa 30 phút (${duration.toFixed(0)}s > ${MAX_DURATION_SECONDS}s)!`,
       };
     }
@@ -493,10 +530,17 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       // Clean up zombie segments if file duration changed
       try {
         const db = getDb();
+        const pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
+          $track_id: trackId,
+          $duration: duration,
+        }) as { id: string }[];
         db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
           $track_id: trackId,
           $duration: duration,
         });
+        for (const p of pruned) {
+          serverEvents.emit("segment_deleted", { segmentId: p.id, trackId });
+        }
         db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
           $track_id: trackId,
           $duration: duration,

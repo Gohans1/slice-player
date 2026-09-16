@@ -120,6 +120,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const segmentMap = new Set(validSegments.map((s) => s.id));
         const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
+        const wasQueueEmpty = queue.length === 0;
         const currentMode = get().playbackMode;
         const validQueue: QueueItem[] = [];
         const seenSegmentIds = new Set<string>();
@@ -144,6 +145,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               }
             }
             // Preserve fallback item in original_only or mixed (or if no slices exist)
+            seenSegmentIds.add(item.segment.id);
             validQueue.push({ ...item, track: freshTrack });
           } else {
             // Slices should not be in original_only mode unless actively playing
@@ -172,7 +174,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                     validQueue.push({ segment: s, track: newTrack });
                   }
                 }
-              } else {
+              } else if (validQueue.length === 0) {
                 validQueue.push({ segment: createDefaultFullSegment(newTrack), track: newTrack });
               }
             } else {
@@ -200,6 +202,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                 validQueue.push({ segment: seg, track: parentTrack });
               }
             }
+          }
+        }
+
+        // Initial queue shuffle if app launched with isShuffle: true and empty queue
+        if (wasQueueEmpty && validQueue.length > 0 && get().isShuffle) {
+          for (let i = validQueue.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [validQueue[i], validQueue[j]] = [validQueue[j], validQueue[i]];
           }
         }
 
@@ -390,7 +400,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     }
 
-    let newIndex = 0;
+    let newIndex = activeSegment ? 0 : get().queueIndex;
     if (activeSegment) {
       const found = newQueue.findIndex((item) => item.segment.id === activeSegment.id);
       if (found >= 0) newIndex = found;
@@ -635,6 +645,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentIndex = foundIdx;
         if (activeSegment.id !== items[foundIdx].segment.id) {
           updatedActiveSegment = items[foundIdx].segment;
+          audioEngine.updateCurrentSegmentBounds(
+            updatedActiveSegment.start_time,
+            updatedActiveSegment.end_time
+          );
+          const curTime = audioEngine.getCurrentTime();
+          if (curTime < updatedActiveSegment.start_time || curTime > updatedActiveSegment.end_time) {
+            audioEngine.seek(updatedActiveSegment.start_time);
+          }
         }
       }
     }

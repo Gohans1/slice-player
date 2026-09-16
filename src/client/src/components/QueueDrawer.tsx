@@ -11,7 +11,6 @@ interface QueueDrawerProps {
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
-  const activeSegment = usePlayerStore((s) => s.activeSegment);
   const playSegment = usePlayerStore((s) => s.playSegment);
   const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);

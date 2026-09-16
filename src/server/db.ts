@@ -63,6 +63,7 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
   `);
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_segments_track ON segments(track_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_segments_created_at ON segments(created_at DESC);`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS playlists (

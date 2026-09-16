@@ -302,10 +302,25 @@ class AudioEngine {
 
     if (this.audioEl.paused) {
       if (this.audioEl.readyState === 0) {
-        this.audioEl.addEventListener("loadedmetadata", () => {
+        let metaTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          this.isSeekingSettled = true;
+          this.activeSeekCleanup = null;
+        }, 2000);
+        const onLoaded = () => {
+          if (metaTimer) {
+            clearTimeout(metaTimer);
+            metaTimer = null;
+          }
           this.audioEl.currentTime = seconds;
           this.isSeekingSettled = true;
-        }, { once: true });
+          this.activeSeekCleanup = null;
+        };
+        this.audioEl.addEventListener("loadedmetadata", onLoaded, { once: true });
+        this.activeSeekCleanup = () => {
+          if (metaTimer) clearTimeout(metaTimer);
+          this.audioEl.removeEventListener("loadedmetadata", onLoaded);
+          this.activeSeekCleanup = null;
+        };
       } else {
         this.audioEl.currentTime = seconds;
         this.isSeekingSettled = true;
