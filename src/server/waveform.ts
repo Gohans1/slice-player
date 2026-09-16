@@ -22,6 +22,19 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     "-"
   ];
 
+  function killFfmpeg(proc: ReturnType<typeof Bun.spawn>) {
+    try {
+      if (process.platform === "win32") {
+        Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+      } else {
+        proc.kill();
+      }
+    } catch {}
+  }
+
   try {
     const proc = Bun.spawn(ffmpegCmd, {
       stdout: "pipe",
@@ -30,9 +43,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
     // 60s timeout to kill hanging ffmpeg
     const killTimer = setTimeout(() => {
-      try {
-        proc.kill();
-      } catch {}
+      killFfmpeg(proc);
     }, 60000);
 
     const chunks: Uint8Array[] = [];
@@ -43,7 +54,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
       for await (const chunk of proc.stdout) {
         totalBytes += chunk.length;
         if (totalBytes > MAX_BYTES) {
-          proc.kill();
+          killFfmpeg(proc);
           break;
         }
         chunks.push(chunk);

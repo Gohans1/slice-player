@@ -86,10 +86,10 @@ export function App() {
   }, [fetchTracks]);
 
   // Polling interval if any track is downloading or queued to ensure UI updates
+  const hasPendingDownloads = tracks.some(
+    (t) => t.status === "downloading" || t.status === "queued"
+  );
   React.useEffect(() => {
-    const hasPendingDownloads = tracks.some(
-      (t) => t.status === "downloading" || t.status === "queued"
-    );
     if (!hasPendingDownloads) return;
 
     const interval = setInterval(() => {
@@ -97,7 +97,7 @@ export function App() {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [tracks, fetchTracks]);
+  }, [hasPendingDownloads, fetchTracks]);
 
   // Initial queue build on first track load only once per session
   const hasAttemptedQueueBuildRef = React.useRef(false);

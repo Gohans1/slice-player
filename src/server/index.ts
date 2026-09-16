@@ -7,13 +7,11 @@ import { serverEvents } from "./events";
 import type { Segment } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
-const SESSION_TOKEN = crypto.randomUUID();
 
 // Initialize SQLite database
 initDatabase("./data/music.db");
 
 console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
-console.log(`[Server] Session Token: ${SESSION_TOKEN}`);
 
 const activeSockets = new Set<any>();
 let shutdownTimer: Timer | null = setTimeout(() => {
@@ -63,13 +61,12 @@ const server = serve({
 
     // Host header validation to prevent DNS rebinding attacks
     const host = req.headers.get("host");
+    const isDev = process.env.NODE_ENV === "development";
     const allowedHosts = [
       `127.0.0.1:${PORT}`,
       `localhost:${PORT}`,
       `[::1]:${PORT}`,
-      "127.0.0.1:5173",
-      "localhost:5173",
-      "[::1]:5173",
+      ...(isDev ? ["127.0.0.1:5173", "localhost:5173", "[::1]:5173"] : []),
     ];
     if (!host || !allowedHosts.includes(host)) {
       return new Response("Forbidden: Invalid Host header", { status: 403 });
@@ -81,9 +78,7 @@ const server = serve({
       `http://127.0.0.1:${PORT}`,
       `http://localhost:${PORT}`,
       `http://[::1]:${PORT}`,
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "http://[::1]:5173",
+      ...(isDev ? ["http://localhost:5173", "http://127.0.0.1:5173", "http://[::1]:5173"] : []),
     ];
 
     if (origin && !allowedOrigins.includes(origin)) {
@@ -154,21 +149,22 @@ const server = serve({
         if (req.method === "DELETE") {
           await cancelDownloadIfActive(trackId);
           const track = getTrack(trackId);
-          if (track) {
-            // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
-            if (track.source_type === "youtube" && track.file_path) {
-              const cacheAudioDir = resolve("./data/cache/audio");
-              const resolvedAudio = resolve(track.file_path);
-              if (resolvedAudio.startsWith(cacheAudioDir + sep) && existsSync(resolvedAudio)) {
-                try { unlinkSync(resolvedAudio); } catch {}
-              }
+          if (!track) {
+            return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+          }
+          // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
+          if (track.source_type === "youtube" && track.file_path) {
+            const cacheAudioDir = resolve("./data/cache/audio");
+            const resolvedAudio = resolve(track.file_path);
+            if (resolvedAudio.startsWith(cacheAudioDir + sep) && existsSync(resolvedAudio)) {
+              try { unlinkSync(resolvedAudio); } catch {}
             }
-            // Unlink thumbnail if local cache
-            const cacheThumbsDir = resolve("./data/cache/thumbs");
-            const thumbPath = resolve(cacheThumbsDir, `${track.id}.jpg`);
-            if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
-              try { unlinkSync(thumbPath); } catch {}
-            }
+          }
+          // Unlink thumbnail if local cache
+          const cacheThumbsDir = resolve("./data/cache/thumbs");
+          const thumbPath = resolve(cacheThumbsDir, `${track.id}.jpg`);
+          if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
+            try { unlinkSync(thumbPath); } catch {}
           }
           const ok = deleteTrack(trackId);
           if (ok) {
@@ -335,9 +331,9 @@ const server = serve({
             if (!track) {
               return Response.json({ error: "Associated track not found" }, { status: 404, headers: corsHeaders });
             }
-            if (track.duration > 0 && newEnd > track.duration + 0.1) {
+            if (newEnd > 1800 || (track.duration > 0 && newEnd > track.duration + 0.1)) {
               return Response.json(
-                { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát (${track.duration}s)` },
+                { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát hoặc giới hạn 30 phút` },
                 { status: 400, headers: corsHeaders }
               );
             }
@@ -413,7 +409,7 @@ const server = serve({
         clearTimeout(shutdownTimer);
         shutdownTimer = null;
       }
-      ws.send(JSON.stringify({ type: "connected", token: SESSION_TOKEN }));
+      ws.send(JSON.stringify({ type: "connected" }));
     },
     message(ws, message) {
       // heartbeat ping/pong

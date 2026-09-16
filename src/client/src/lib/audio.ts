@@ -15,6 +15,8 @@ class AudioEngine {
   private animationFrameId: number | null = null;
   private currentPlayRequestId = 0;
   private lastTimeUpdate = 0;
+  private pauseTimer: ReturnType<typeof setTimeout> | null = null;
+  private isFadingOut = false;
 
   constructor() {
     this.audioEl = new Audio();
@@ -72,6 +74,12 @@ class AudioEngine {
   ) {
     this.init();
     await this.resumeContext();
+
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    this.isFadingOut = false;
 
     const requestId = ++this.currentPlayRequestId;
 
@@ -174,13 +182,20 @@ class AudioEngine {
   }
 
   public pause() {
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    this.isFadingOut = false;
+
     if (this.gainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
       this.gainNode.gain.cancelScheduledValues(now);
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
-      setTimeout(() => {
+      this.pauseTimer = setTimeout(() => {
         this.audioEl.pause();
+        this.pauseTimer = null;
       }, 14);
     } else {
       this.audioEl.pause();
@@ -192,6 +207,12 @@ class AudioEngine {
   }
 
   public async resume() {
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    this.isFadingOut = false;
+
     await this.resumeContext();
     try {
       await this.audioEl.play();
@@ -249,7 +270,7 @@ class AudioEngine {
    * while enforcing the segment cut immediately.
    */
   private checkBoundary = () => {
-    if (this.audioEl.paused || this.audioEl.seeking) return;
+    if (this.audioEl.paused || this.audioEl.seeking || this.pauseTimer !== null) return;
 
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
@@ -261,25 +282,27 @@ class AudioEngine {
     }
 
     if (this.currentSegmentEnd !== null) {
-      if (curTime >= this.currentSegmentEnd) {
-        const cb = this.onSegmentEndCallback;
-        this.currentSegmentEnd = null;
-        this.onSegmentEndCallback = null;
-
-        // Micro-fade to eliminate DC-offset click before pausing media stream
+      // Step 1: Pre-fade 20ms before boundary to eliminate DC-offset clicks without bleeding
+      if (curTime >= this.currentSegmentEnd - 0.020 && !this.isFadingOut) {
+        this.isFadingOut = true;
         if (this.gainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(fadeNow);
           this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.015);
-          setTimeout(() => {
-            this.audioEl.pause();
-            if (cb) cb();
-          }, 16);
-        } else {
-          this.audioEl.pause();
-          if (cb) cb();
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.018);
         }
+      }
+
+      // Step 2: Boundary reached - pause and advance IMMEDIATELY without setTimeout
+      // (immune to Chromium background tab 1000ms timer throttling)
+      if (curTime >= this.currentSegmentEnd) {
+        this.isFadingOut = false;
+        const cb = this.onSegmentEndCallback;
+        this.currentSegmentEnd = null;
+        this.onSegmentEndCallback = null;
+
+        this.audioEl.pause();
+        if (cb) cb();
       }
     }
   };
@@ -307,7 +330,9 @@ class AudioEngine {
 
     // rAF loop for high-frequency UI updates when visible
     const loop = () => {
-      this.checkBoundary();
+      if (!this.audioEl.paused) {
+        this.checkBoundary();
+      }
       this.animationFrameId = requestAnimationFrame(loop);
     };
 

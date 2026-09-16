@@ -61,7 +61,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res.ok) {
         const tracks: Track[] = await res.json();
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
-        const { activeTrack, sliceStudioTrack } = get();
+        const { activeTrack, sliceStudioTrack, queue } = get();
+
+        // Purge queue items whose parent track no longer exists in DB
+        const validQueue = queue.filter((item) => trackMap.has(item.track.id));
+        if (validQueue.length !== queue.length) {
+          set({ queue: validQueue });
+        }
+
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
         }

@@ -1,5 +1,5 @@
 import { parseFile } from "music-metadata";
-import { existsSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack } from "./db";
@@ -44,7 +44,6 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       stderr: "pipe",
     });
     activeMetadataProcs.add(proc);
-    activeMetadataProc = proc;
 
     const killTimer = setTimeout(() => {
       try { proc.kill(); } catch {}
@@ -67,7 +66,15 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
     const createdTracks: Track[] = [];
 
     // Check if it's a playlist or a single video
-    const entries = Array.isArray(data.entries) ? data.entries : [data];
+    const rawEntries = Array.isArray(data.entries) ? data.entries : [data];
+    if (rawEntries.length === 0) {
+      return {
+        success: false,
+        message: "Không tìm thấy bài hát nào (playlist rỗng hoặc video ở chế độ riêng tư)!",
+      };
+    }
+    const MAX_PLAYLIST_ITEMS = 50;
+    const entries = rawEntries.slice(0, MAX_PLAYLIST_ITEMS);
 
     for (const entry of entries) {
       if (!entry || !entry.id || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(entry.id))) continue;
@@ -200,7 +207,7 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
 }
 
 function triggerDownloadWorker(trackId: string, url: string) {
-  if (downloadQueue.some((q) => q.trackId === trackId)) return;
+  if (currentDownloadingTrackId === trackId || downloadQueue.some((q) => q.trackId === trackId)) return;
   downloadQueue.push({ trackId, url });
   processDownloadQueue();
 }
@@ -221,6 +228,7 @@ async function processDownloadQueue() {
   // Check if track was deleted or is already ready
   const existingTrack = getTrack(trackId);
   if (!existingTrack || existingTrack.status === "ready") {
+    currentDownloadingTrackId = null;
     isDownloading = false;
     processDownloadQueue();
     return;
@@ -258,14 +266,16 @@ async function processDownloadQueue() {
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
-    // Find actual downloaded file in ./data/cache/audio/
-    const possibleExtensions = ["m4a", "webm", "opus", "mp4"];
+    // Find actual downloaded file in ./data/cache/audio/ dynamically
+    const audioDir = "./data/cache/audio";
     let finalPath = "";
-    for (const ext of possibleExtensions) {
-      const p = `./data/cache/audio/${trackId}.${ext}`;
-      if (existsSync(p)) {
-        finalPath = p;
-        break;
+    if (existsSync(audioDir)) {
+      const files = readdirSync(audioDir);
+      for (const f of files) {
+        if (f.startsWith(`${trackId}.`) && !f.endsWith(".part") && !f.endsWith(".ytdl")) {
+          finalPath = join(audioDir, f);
+          break;
+        }
       }
     }
 

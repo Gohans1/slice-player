@@ -14,10 +14,14 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-echo [2/2] Dang khoi dong server Bun...
-start "SlicePlayerServer" /min bun run src/server/index.ts
-
-timeout /t 2 /nobreak >nul
+netstat -ano | findstr :3000 | findstr LISTENING >nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [2/2] Dang khoi dong server Bun...
+    start "SlicePlayerServer" /min bun run src/server/index.ts
+    timeout /t 2 /nobreak >nul
+) else (
+    echo [2/2] Server Bun dang hoat dong tren port 3000.
+)
 
 set "EDGE_PATH="
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (

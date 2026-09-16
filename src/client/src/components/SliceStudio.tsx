@@ -196,8 +196,13 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       }
     });
 
-    // Region drag / resize handlers
+    // Region drag / resize handlers throttled to prevent React render thrashing
+    let lastRegionUpdate = 0;
     wsRegions.on("region-updated", (region) => {
+      const now = performance.now();
+      if (now - lastRegionUpdate < 40) return;
+      lastRegionUpdate = now;
+
       const segId = region.id;
       const start = Number(region.start.toFixed(2));
       const end = Number(region.end.toFixed(2));

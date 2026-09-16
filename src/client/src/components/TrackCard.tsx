@@ -27,6 +27,10 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
 
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
 
+  React.useEffect(() => {
+    setSegments(null);
+  }, [track.segment_count]);
+
   const handlePlayFirst = async () => {
     let segList = segments;
     if (!segList) {
