@@ -65,7 +65,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
     const entries = Array.isArray(data.entries) ? data.entries : [data];
 
     for (const entry of entries) {
-      if (!entry || !entry.id) continue;
+      if (!entry || !entry.id || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(entry.id))) continue;
 
       // Skip livestreams
       if (entry.is_live || entry.live_status === "is_live") {
@@ -76,13 +76,13 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       const duration = Number(entry.duration) || 0;
       const title = entry.title || "Unknown YouTube Track";
       const uploader = entry.uploader || entry.channel || "";
-      const videoId = entry.id;
+      const videoId = String(entry.id);
       const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const thumb = entry.thumbnail || entry.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-      // 30-minute cap check (if duration is known)
-      if (duration > MAX_DURATION_SECONDS) {
-        console.warn(`[Skip] Track "${title}" exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
+      // Strict 30-minute cap check and non-zero duration
+      if (duration <= 0 || duration > MAX_DURATION_SECONDS) {
+        console.warn(`[Skip] Track "${title}" duration invalid or exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
         continue;
       }
 
@@ -131,10 +131,30 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
 // Queue worker for downloads (strictly sequential: concurrency = 1)
 const downloadQueue: Array<{ trackId: string; url: string }> = [];
 let isDownloading = false;
+let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
-export function abortIngestProcesses() {
+export async function abortIngestProcesses(): Promise<void> {
   if (activeDownloadProc) {
+    try {
+      if (process.platform === "win32") {
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]);
+        await killProc.exited;
+      } else {
+        activeDownloadProc.kill();
+      }
+    } catch {}
+    activeDownloadProc = null;
+    currentDownloadingTrackId = null;
+  }
+}
+
+export function cancelDownloadIfActive(trackId: string) {
+  const qIdx = downloadQueue.findIndex((q) => q.trackId === trackId);
+  if (qIdx !== -1) {
+    downloadQueue.splice(qIdx, 1);
+  }
+  if (currentDownloadingTrackId === trackId && activeDownloadProc) {
     try {
       if (process.platform === "win32") {
         Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]).unref();
@@ -143,6 +163,7 @@ export function abortIngestProcesses() {
       }
     } catch {}
     activeDownloadProc = null;
+    currentDownloadingTrackId = null;
   }
 }
 
@@ -163,6 +184,7 @@ async function processDownloadQueue() {
   }
 
   const { trackId, url } = item;
+  currentDownloadingTrackId = trackId;
 
   // Check if track was deleted or is already ready
   const existingTrack = getTrack(trackId);
@@ -262,6 +284,7 @@ async function processDownloadQueue() {
     updateTrack(trackId, { status: "error", error_message: msg });
     serverEvents.emit("track_updated", { trackId });
   } finally {
+    currentDownloadingTrackId = null;
     isDownloading = false;
     // Process next item after small delay to be polite
     setTimeout(processDownloadQueue, 1000);

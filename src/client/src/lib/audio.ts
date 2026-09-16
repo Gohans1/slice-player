@@ -103,8 +103,22 @@ class AudioEngine {
           clearTimeout(timer);
         };
         const onCanPlay = () => { cleanup(); resolve(); };
-        const onError = () => { cleanup(); reject(new Error("Audio load failed or 404")); };
-        const timer = setTimeout(() => { cleanup(); reject(new Error("Audio load timeout (10s)")); }, 10000);
+        const onError = () => {
+          cleanup();
+          if (this.currentPlayRequestId === requestId) {
+            reject(new Error("Audio load failed or 404"));
+          } else {
+            resolve();
+          }
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          if (this.currentPlayRequestId === requestId) {
+            reject(new Error("Audio load timeout (10s)"));
+          } else {
+            resolve();
+          }
+        }, 10000);
 
         this.audioEl.addEventListener("canplay", onCanPlay);
         this.audioEl.addEventListener("error", onError);
@@ -148,11 +162,14 @@ class AudioEngine {
       // Ramp gain up to 1.0 in 15ms after playback successfully starts
       if (this.gainNode && this.audioCtx) {
         const playNow = this.audioCtx.currentTime;
+        this.gainNode.gain.cancelScheduledValues(playNow);
         this.gainNode.gain.setValueAtTime(0.0001, playNow);
         this.gainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
       }
     } catch (err) {
-      console.warn("[AudioEngine] Autoplay prevented:", err);
+      if (this.currentPlayRequestId === requestId) {
+        throw err;
+      }
     }
   }
 
@@ -173,6 +190,7 @@ class AudioEngine {
       await this.audioEl.play();
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
+        this.gainNode.gain.cancelScheduledValues(now);
         this.gainNode.gain.setValueAtTime(0.0001, now);
         this.gainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
       }
@@ -225,20 +243,14 @@ class AudioEngine {
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 
-        // Micro fade-out to prevent speaker DC offset pop
+        // Immediate mute and pause without setTimeout to prevent background throttling freeze
         if (this.gainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(fadeNow);
-          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.015);
-          setTimeout(() => {
-            this.audioEl.pause();
-            if (cb) cb();
-          }, 16);
-        } else {
-          this.audioEl.pause();
-          if (cb) cb();
+          this.gainNode.gain.setValueAtTime(0.0001, fadeNow);
         }
+        this.audioEl.pause();
+        if (cb) cb();
       }
     }
   };

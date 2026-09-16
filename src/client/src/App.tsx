@@ -33,6 +33,8 @@ export function App() {
     let reconnectTimeout: any = null;
     let isUnmounted = false;
 
+    let wsDebounceTimer: any = null;
+
     function connectWs() {
       if (isUnmounted) return;
       try {
@@ -48,7 +50,10 @@ export function App() {
           try {
             const data = JSON.parse(event.data);
             if (data.type === "track_updated" || data.type === "track_created") {
-              fetchTracks();
+              clearTimeout(wsDebounceTimer);
+              wsDebounceTimer = setTimeout(() => {
+                fetchTracks();
+              }, 250);
             }
           } catch {}
         };
@@ -74,6 +79,7 @@ export function App() {
       isUnmounted = true;
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (wsDebounceTimer) clearTimeout(wsDebounceTimer);
       if (ws) ws.close();
     };
   }, [fetchTracks]);
@@ -92,9 +98,11 @@ export function App() {
     return () => clearInterval(interval);
   }, [tracks, fetchTracks]);
 
-  // Initial queue build on first track load only if queue is empty
+  // Initial queue build on first track load only once per session
+  const hasAttemptedQueueBuildRef = React.useRef(false);
   React.useEffect(() => {
-    if (tracks.length > 0 && queue.length === 0) {
+    if (tracks.length > 0 && queue.length === 0 && !hasAttemptedQueueBuildRef.current) {
+      hasAttemptedQueueBuildRef.current = true;
       fetch("/api/segments")
         .then((r) => r.json())
         .then((segments) => {

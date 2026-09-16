@@ -24,7 +24,9 @@ interface SliceStudioProps {
 }
 
 export function SliceStudio({ track, onClose }: SliceStudioProps) {
-  const { playSegment } = usePlayerStore();
+  const syncUpdatedSegment = usePlayerStore((s) => s.syncUpdatedSegment);
+  const pause = usePlayerStore((s) => s.pause);
+  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
   const regionsRef = React.useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
@@ -35,8 +37,6 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
 
-  const pause = usePlayerStore((s) => s.pause);
-  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
   const isInternalUpdateRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
@@ -78,6 +78,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           body: JSON.stringify(payload),
         });
         if (res.ok) {
+          const updated: Segment = await res.json();
+          syncUpdatedSegment(updated);
           setSaveStatus(statusMsg);
           setTimeout(() => setSaveStatus(null), 1500);
         } else {
@@ -256,9 +258,19 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Preview segment in studio
   const handlePreviewSegment = (seg: Segment) => {
-    wavesurferRef.current?.pause();
     setActiveSegmentId(seg.id);
-    playSegment(seg, track);
+    pause(); // pause global queue playback
+    const ws = wavesurferRef.current;
+    if (ws) {
+      const regions = regionsRef.current?.getRegions() || [];
+      const region = regions.find((r) => r.id === seg.id);
+      if (region) {
+        region.play();
+      } else {
+        ws.setTime(seg.start_time);
+        ws.play();
+      }
+    }
   };
 
   return (

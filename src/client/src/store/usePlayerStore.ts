@@ -36,6 +36,7 @@ interface PlayerState {
   openSliceStudio: (track: Track) => void;
   closeSliceStudio: () => void;
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => void;
+  syncUpdatedSegment: (seg: Segment) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -103,14 +104,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       );
     } catch (e) {
-      console.warn("[Store] Failed to play segment:", e);
-      const currentQ = get().queue;
-      if (currentQ.length > 1) {
-        set({ queue: currentQ.filter((q) => q.segment.id !== segment.id) });
-        get().nextSegment();
-      } else {
-        set({ isPlaying: false });
-      }
+      console.warn("[Store] Playback error or superseded:", e);
+      set({ isPlaying: false });
     }
   },
 
@@ -202,7 +197,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeTrackFromQueue: (trackId: string) => {
     const { queue, queueIndex, activeTrack } = get();
-    const removedIndex = queue.findIndex((item) => item.track.id === trackId);
+    const removedBeforeCurrent = queue.slice(0, queueIndex).filter((item) => item.track.id === trackId).length;
     const newQueue = queue.filter((item) => item.track.id !== trackId);
 
     if (activeTrack?.id === trackId) {
@@ -211,7 +206,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
         return;
       }
-      const nextIdx = Math.min(Math.max(0, queueIndex), newQueue.length - 1);
+      const nextIdx = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
       const nextItem = newQueue[nextIdx];
       set({ queue: newQueue, queueIndex: nextIdx });
       get().playSegment(nextItem.segment, nextItem.track);
@@ -221,17 +216,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let newIndex = queueIndex;
     if (newQueue.length === 0) {
       newIndex = -1;
-    } else if (removedIndex !== -1 && removedIndex < queueIndex) {
-      newIndex = Math.max(0, queueIndex - 1);
-    } else if (newIndex >= newQueue.length) {
-      newIndex = Math.max(0, newQueue.length - 1);
+    } else {
+      newIndex = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },
 
   removeSegmentFromQueue: (segmentId: string) => {
     const { queue, queueIndex, activeSegment } = get();
-    const removedIndex = queue.findIndex((item) => item.segment.id === segmentId);
+    const removedBeforeCurrent = queue.slice(0, queueIndex).filter((item) => item.segment.id === segmentId).length;
     const newQueue = queue.filter((item) => item.segment.id !== segmentId);
 
     if (activeSegment?.id === segmentId) {
@@ -240,7 +233,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
         return;
       }
-      const nextIdx = Math.min(Math.max(0, queueIndex), newQueue.length - 1);
+      const nextIdx = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
       const nextItem = newQueue[nextIdx];
       set({ queue: newQueue, queueIndex: nextIdx });
       get().playSegment(nextItem.segment, nextItem.track);
@@ -250,12 +243,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let newIndex = queueIndex;
     if (newQueue.length === 0) {
       newIndex = -1;
-    } else if (removedIndex !== -1 && removedIndex < queueIndex) {
-      newIndex = Math.max(0, queueIndex - 1);
-    } else if (newIndex >= newQueue.length) {
-      newIndex = Math.max(0, newQueue.length - 1);
+    } else {
+      newIndex = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
     }
     set({ queue: newQueue, queueIndex: newIndex });
+  },
+
+  syncUpdatedSegment: (seg: Segment) => {
+    const { queue, activeSegment } = get();
+    const newQueue = queue.map((item) =>
+      item.segment.id === seg.id ? { ...item, segment: seg } : item
+    );
+    const updates: Partial<PlayerState> = { queue: newQueue };
+    if (activeSegment?.id === seg.id) {
+      updates.activeSegment = seg;
+    }
+    set(updates);
   },
 
   openSliceStudio: (track: Track) => {

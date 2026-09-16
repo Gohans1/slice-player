@@ -22,66 +22,74 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     "-"
   ];
 
-  const proc = Bun.spawn(ffmpegCmd, {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-
-  // 60s timeout to kill hanging ffmpeg
-  const killTimer = setTimeout(() => {
-    try {
-      proc.kill();
-    } catch {}
-  }, 60000);
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap to prevent OOM
-
   try {
-    for await (const chunk of proc.stdout) {
-      totalBytes += chunk.length;
-      if (totalBytes > MAX_BYTES) {
+    const proc = Bun.spawn(ffmpegCmd, {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+
+    // 60s timeout to kill hanging ffmpeg
+    const killTimer = setTimeout(() => {
+      try {
         proc.kill();
-        break;
+      } catch {}
+    }, 60000);
+
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap to prevent OOM
+
+    try {
+      for await (const chunk of proc.stdout) {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_BYTES) {
+          proc.kill();
+          break;
+        }
+        chunks.push(chunk);
       }
-      chunks.push(chunk);
+    } finally {
+      clearTimeout(killTimer);
     }
-  } finally {
-    clearTimeout(killTimer);
-  }
 
-  await proc.exited;
+    await proc.exited;
 
-  if (chunks.length === 0) {
-    // Return empty fallback array
+    if (chunks.length === 0) {
+      return Array.from({ length: targetPoints }, () => 0.1);
+    }
+
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const samples = new Int8Array(merged.buffer, merged.byteOffset, merged.byteLength);
+    const blockSize = Math.floor(samples.length / targetPoints);
+    const peaks: number[] = [];
+
+    if (blockSize <= 1) {
+      for (let i = 0; i < targetPoints; i++) {
+        const val = i < samples.length ? Math.abs(samples[i]) / 128 : 0.05;
+        peaks.push(Number(val.toFixed(3)));
+      }
+    } else {
+      for (let i = 0; i < targetPoints; i++) {
+        let max = 0;
+        const start = i * blockSize;
+        const end = Math.min(start + blockSize, samples.length);
+        for (let j = start; j < end; j++) {
+          const val = Math.abs(samples[j]);
+          if (val > max) max = val;
+        }
+        peaks.push(Number((max / 128).toFixed(3)));
+      }
+    }
+
+    return peaks;
+  } catch (err) {
+    console.warn("[Waveform] ffmpeg execution failed, falling back to synthetic peaks:", err);
     return Array.from({ length: targetPoints }, () => 0.1);
   }
-
-  // Combine chunks into a single Int8Array (since pcm_s8 is signed 8-bit, -128 to 127)
-  const rawData = new Int8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    rawData.set(new Int8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength), offset);
-    offset += chunk.byteLength;
-  }
-
-  // Downsample/bucket rawData into targetPoints (e.g. 1000)
-  const peaks: number[] = [];
-  const step = rawData.length / targetPoints;
-
-  for (let i = 0; i < targetPoints; i++) {
-    const start = Math.floor(i * step);
-    const end = Math.max(start + 1, Math.min(Math.floor((i + 1) * step), rawData.length));
-    let max = 0;
-    for (let j = start; j < end; j++) {
-      const absVal = Math.abs(rawData[j]);
-      if (absVal > max) max = absVal;
-    }
-    // Normalize 0..127 to 0.0..1.0, with minimum 0.02 so quiet parts are still visible
-    const normalized = Math.max(0.02, Math.min(1.0, max / 127));
-    peaks.push(Number(normalized.toFixed(3)));
-  }
-
-  return peaks;
 }

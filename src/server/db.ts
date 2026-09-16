@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, constants } from "bun:sqlite";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Track, Segment } from "./types";
@@ -26,6 +26,9 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
   db.run("PRAGMA journal_mode = WAL;");
   db.run("PRAGMA busy_timeout = 5000;");
   db.run("PRAGMA foreign_keys = ON;");
+  if (constants?.SQLITE_FCNTL_PERSIST_WAL) {
+    db.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0);
+  }
 
   // Schema creation
   db.run(`
@@ -160,7 +163,7 @@ export function listTracks(): (Track & { segment_count: number })[] {
   return db.query(`
     SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
            tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
-           tracks.status, tracks.error_message, tracks.created_at,
+           tracks.peaks_json, tracks.status, tracks.error_message, tracks.created_at,
            COUNT(segments.id) AS segment_count
     FROM tracks
     LEFT JOIN segments ON tracks.id = segments.track_id

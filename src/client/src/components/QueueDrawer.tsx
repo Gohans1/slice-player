@@ -9,8 +9,12 @@ interface QueueDrawerProps {
 }
 
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
-  const { queue, queueIndex, activeSegment, playSegment, buildShuffleQueue, tracks } =
-    usePlayerStore();
+  const queue = usePlayerStore((s) => s.queue);
+  const activeSegment = usePlayerStore((s) => s.activeSegment);
+  const playSegment = usePlayerStore((s) => s.playSegment);
+  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
+  const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
+  const tracks = usePlayerStore((s) => s.tracks);
 
   if (!isOpen) return null;
 
@@ -114,10 +118,21 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <span className="font-mono text-[10px] text-muted-foreground">
                     {formatDuration(segDuration)}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSegmentFromQueue(item.segment.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+                    title="Xóa khỏi hàng đợi"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                     <Play className="h-3.5 w-3.5 fill-current text-primary" />
                   </div>

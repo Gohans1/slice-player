@@ -2,7 +2,8 @@ import { serve, file as bunFile } from "bun";
 import { existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses } from "./ingest";
+import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive } from "./ingest";
+import { serverEvents } from "./events";
 import type { Segment } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -14,19 +15,18 @@ initDatabase("./data/music.db");
 console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 console.log(`[Server] Session Token: ${SESSION_TOKEN}`);
 
-// Client connection tracking for auto-shutdown when window closes
-let connectedClients = 0;
+const activeSockets = new Set<any>();
 let shutdownTimer: Timer | null = null;
 
-function gracefulShutdown() {
+async function gracefulShutdown() {
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
-  abortIngestProcesses();
+  await abortIngestProcesses();
   closeDatabase();
   process.exit(0);
 }
 
-process.on("SIGINT", gracefulShutdown);
-process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", () => { gracefulShutdown(); });
+process.on("SIGTERM", () => { gracefulShutdown(); });
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -50,15 +50,23 @@ const server = serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
+    // Prevent cross-site subresource leakage
+    const secFetchSite = req.headers.get("sec-fetch-site");
+    if (secFetchSite === "cross-site") {
+      return new Response("Forbidden: Cross-site requests rejected", { status: 403 });
+    }
+
     // Host header validation to prevent DNS rebinding attacks
     const host = req.headers.get("host");
     const allowedHosts = [
       `127.0.0.1:${PORT}`,
       `localhost:${PORT}`,
+      `[::1]:${PORT}`,
       "127.0.0.1:5173",
       "localhost:5173",
+      "[::1]:5173",
     ];
-    if (host && !allowedHosts.includes(host)) {
+    if (!host || !allowedHosts.includes(host)) {
       return new Response("Forbidden: Invalid Host header", { status: 403 });
     }
 
@@ -67,8 +75,10 @@ const server = serve({
     const allowedOrigins = [
       `http://127.0.0.1:${PORT}`,
       `http://localhost:${PORT}`,
+      `http://[::1]:${PORT}`,
       "http://localhost:5173",
       "http://127.0.0.1:5173",
+      "http://[::1]:5173",
     ];
 
     if (origin && !allowedOrigins.includes(origin)) {
@@ -134,6 +144,7 @@ const server = serve({
           return Response.json(track, { headers: corsHeaders });
         }
         if (req.method === "DELETE") {
+          cancelDownloadIfActive(trackId);
           const track = getTrack(trackId);
           if (track) {
             // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
@@ -292,8 +303,8 @@ const server = serve({
             const newStart = body.start_time !== undefined ? Number(body.start_time) : existingSeg.start_time;
             const newEnd = body.end_time !== undefined ? Number(body.end_time) : existingSeg.end_time;
 
-            if (!Number.isFinite(newStart) || !Number.isFinite(newEnd) || newStart < 0 || newStart >= newEnd) {
-              return Response.json({ error: "start_time must be >= 0 and < end_time" }, { status: 400, headers: corsHeaders });
+            if (!Number.isFinite(newStart) || !Number.isFinite(newEnd) || newStart < 0 || newEnd - newStart < 0.5) {
+              return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
 
             const track = getTrack(existingSeg.track_id);
@@ -366,7 +377,6 @@ const server = serve({
     idleTimeout: 255,
     open(ws) {
       activeSockets.add(ws);
-      connectedClients++;
       if (shutdownTimer) {
         clearTimeout(shutdownTimer);
         shutdownTimer = null;
@@ -381,8 +391,7 @@ const server = serve({
     },
     close(ws) {
       activeSockets.delete(ws);
-      connectedClients--;
-      if (connectedClients <= 0) {
+      if (activeSockets.size === 0) {
         // Shutdown after 10s of no active clients
         shutdownTimer = setTimeout(() => {
           gracefulShutdown();
@@ -391,10 +400,6 @@ const server = serve({
     },
   },
 });
-
-import { serverEvents } from "./events";
-
-const activeSockets = new Set<any>();
 
 export function broadcastWs(msg: object) {
   const payload = JSON.stringify(msg);
