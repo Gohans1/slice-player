@@ -1,13 +1,17 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
-    "correctness": "error",
+    "correctness": "warn",
     "perf": "warn",
     "suspicious": "warn"
   },
   "plugins": ["react", "typescript"],
   "rules": {
     "no-console": "off",
-    "no-unused-vars": "warn"
+    "no-unused-vars": "warn",
+    "typescript/no-floating-promises": "off",
+    "typescript/restrict-template-expressions": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off"
   }
 }

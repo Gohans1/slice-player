@@ -74,40 +74,42 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
   `);
 
   // Startup cleanup: purge residual .part, .ytdl or orphaned cache files from disk
-  try {
-    const audioCacheDir = "./data/cache/audio";
-    if (existsSync(audioCacheDir)) {
-      const existingFiles = readdirSync(audioCacheDir);
-      const norm = (p: string) => process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p);
-      const rows = db.query("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL").all() as { id: string; file_path: string }[];
-      const validPaths = new Set(rows.map((r) => norm(r.file_path)));
+  if (dbPath === "./data/music.db" && process.env.NODE_ENV !== "test") {
+    try {
+      const audioCacheDir = "./data/cache/audio";
+      if (existsSync(audioCacheDir)) {
+        const existingFiles = readdirSync(audioCacheDir);
+        const norm = (p: string) => process.platform === "win32" ? resolve(p).toLowerCase() : resolve(p);
+        const rows = db.query("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL").all() as { id: string; file_path: string }[];
+        const validPaths = new Set(rows.map((r) => norm(r.file_path)));
 
-      for (const file of existingFiles) {
-        if (file.endsWith(".part") || file.endsWith(".ytdl")) {
-          try { unlinkSync(join(audioCacheDir, file)); } catch {}
-        } else {
-          const resolvedPath = resolve(join(audioCacheDir, file));
-          if (!validPaths.has(norm(resolvedPath))) {
-            try { unlinkSync(resolvedPath); } catch {}
+        for (const file of existingFiles) {
+          if (file.endsWith(".part") || file.endsWith(".ytdl")) {
+            try { unlinkSync(join(audioCacheDir, file)); } catch {}
+          } else {
+            const resolvedPath = resolve(join(audioCacheDir, file));
+            if (!validPaths.has(norm(resolvedPath))) {
+              try { unlinkSync(resolvedPath); } catch {}
+            }
           }
         }
       }
-    }
 
-    const thumbCacheDir = "./data/cache/thumbs";
-    if (existsSync(thumbCacheDir)) {
-      const existingThumbs = readdirSync(thumbCacheDir);
-      const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
-      const validTrackIds = new Set(trackRows.map((r) => r.id));
-      for (const thumb of existingThumbs) {
-        const dotIdx = thumb.lastIndexOf(".");
-        const trackId = dotIdx !== -1 ? thumb.slice(0, dotIdx) : thumb;
-        if (!validTrackIds.has(trackId)) {
-          try { unlinkSync(join(thumbCacheDir, thumb)); } catch {}
+      const thumbCacheDir = "./data/cache/thumbs";
+      if (existsSync(thumbCacheDir)) {
+        const existingThumbs = readdirSync(thumbCacheDir);
+        const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
+        const validTrackIds = new Set(trackRows.map((r) => r.id));
+        for (const thumb of existingThumbs) {
+          const dotIdx = thumb.lastIndexOf(".");
+          const trackId = dotIdx !== -1 ? thumb.slice(0, dotIdx) : thumb;
+          if (!validTrackIds.has(trackId)) {
+            try { unlinkSync(join(thumbCacheDir, thumb)); } catch {}
+          }
         }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   dbInstance = db;
   return db;
@@ -271,7 +273,7 @@ export function closeDatabase(): void {
 
 export function listSegmentsByTrack(trackId: string): Segment[] {
   const db = getDb();
-  return db.query("SELECT * FROM segments WHERE track_id = $track_id ORDER BY start_time ASC").all({ $track_id: trackId }) as Segment[];
+  return db.query("SELECT * FROM segments WHERE track_id = $track_id ORDER BY sort_order ASC, start_time ASC").all({ $track_id: trackId }) as Segment[];
 }
 
 export function listAllSegments(): Segment[] {

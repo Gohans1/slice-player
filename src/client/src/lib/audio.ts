@@ -132,6 +132,10 @@ class AudioEngine {
     const isSameSource = this.audioEl.src === new URL(streamUrl, window.location.href).href;
 
     if (!isSameSource) {
+      if (!this.audioEl.paused && this.gainNode && this.audioCtx) {
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      if (this.currentPlayRequestId !== requestId) return;
       this.audioEl.src = streamUrl;
       await new Promise<void>((resolve, reject) => {
         let isDone = false;
@@ -378,9 +382,7 @@ class AudioEngine {
         this.activeSeekCleanup = null;
       };
       this.audioEl.addEventListener("seeked", onSeeked);
-      seekTimer = setTimeout(() => {
-        this.audioEl.currentTime = seconds;
-      }, 10);
+      this.audioEl.currentTime = seconds;
     } else {
       this.audioEl.currentTime = seconds;
       this.isSeekingSettled = true;
@@ -444,9 +446,6 @@ class AudioEngine {
       return;
     }
     if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
-      return;
-    }
-    if (this.currentSegmentEnd !== null && curTime > this.currentSegmentEnd + 0.5) {
       return;
     }
 
@@ -560,6 +559,14 @@ class AudioEngine {
             this.audioEl.pause();
             this.stopTicker();
           }
+        }
+      };
+
+      this.tickerWorker.onerror = (e) => {
+        console.warn("[AudioEngine] Ticker worker error, falling back to interval:", e);
+        this.tickerWorker = null;
+        if (!this.fallbackTickerInterval && !this.audioEl.paused) {
+          this.fallbackTickerInterval = setInterval(this.checkBoundary, 30);
         }
       };
     } catch {

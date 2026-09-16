@@ -12,7 +12,7 @@ export type PlaybackMode = "mixed" | "slices_only" | "original_only";
 
 let consecutivePlaybackFailures = 0;
 const dismissedSegmentIds = new Set<string>();
-let isInitiatingPlayback = false;
+let activeInitiationCount = 0;
 let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface PlayerState {
@@ -91,22 +91,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const trackMap = new Map(stabilizedTracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
         const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
+        const hasNewlyReady = stabilizedTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
 
         if (!reconcileSegments) {
+          if (hasNewlyReady) {
+            return get().fetchTracks(true);
+          }
           const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
-          // Fast path for polling: only update track list and prune deleted tracks from queue
+          // Fast path for polling: update track list and commit refreshed track metadata in queue
           const validQueue = queue.filter((item) => trackMap.has(item.track.id)).map((item) => ({
             ...item,
             track: trackMap.get(item.track.id) || item.track,
           }));
-          const updates: Partial<PlayerState> = { tracks: stabilizedTracks };
+          const updates: Partial<PlayerState> = { tracks: stabilizedTracks, queue: validQueue };
           if (validQueue.length !== queue.length) {
             const newIdx = validQueue.length === 0
               ? -1
               : currentItem
                 ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
                 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
-            updates.queue = validQueue;
             updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
           }
           set(updates);
@@ -326,7 +329,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       autoSkipTimer = null;
     }
 
-    isInitiatingPlayback = true;
+    activeInitiationCount++;
     try {
       await audioEngine.playSegment(
         streamUrl,
@@ -362,7 +365,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       }
     } finally {
-      isInitiatingPlayback = false;
+      activeInitiationCount = Math.max(0, activeInitiationCount - 1);
     }
   },
 
@@ -721,6 +724,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           const curTime = audioEngine.getCurrentTime();
           if (curTime < updatedActiveSegment.start_time || curTime > updatedActiveSegment.end_time) {
             audioEngine.seek(updatedActiveSegment.start_time);
+            set({ currentTime: updatedActiveSegment.start_time });
           }
         }
       }
@@ -749,7 +753,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
 // Mid-stream audio element error listener to prevent UI lockup
 audioEngine.setOnErrorCallback((err) => {
-  if (isInitiatingPlayback) {
+  if (activeInitiationCount > 0) {
     // Ignored here because playSegment catch block is already handling the initial load error
     return;
   }

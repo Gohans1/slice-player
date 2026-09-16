@@ -238,24 +238,26 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
     downloadQueue.splice(qIdx, 1);
   }
 
-  if (currentDownloadingTrackId === trackId && activeDownloadProc) {
+  if (currentDownloadingTrackId === trackId) {
     cancelledTrackIds.add(trackId);
-    const proc = activeDownloadProc;
-    try {
-      if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        await killProc.exited;
-      } else {
-        proc.kill();
-      }
+    if (activeDownloadProc) {
+      const proc = activeDownloadProc;
       try {
-        await proc.exited;
+        if (process.platform === "win32") {
+          const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+            stdout: "ignore",
+            stderr: "ignore",
+          });
+          await killProc.exited;
+        } else {
+          proc.kill();
+        }
+        try {
+          await proc.exited;
+        } catch {}
       } catch {}
-    } catch {}
-    activeDownloadProc = null;
+      activeDownloadProc = null;
+    }
     currentDownloadingTrackId = null;
   } else {
     cancelledTrackIds.delete(trackId);
@@ -307,6 +309,17 @@ async function processDownloadQueue() {
   try {
     updateTrack(trackId, { status: "downloading" });
     serverEvents.emit("track_updated", { trackId });
+
+    // Purge prior cache / residual files for this track to avoid picking up stale/corrupt partial files
+    const audioDir = "./data/cache/audio";
+    if (existsSync(audioDir)) {
+      for (const f of readdirSync(audioDir)) {
+        if (f.startsWith(`${trackId}.`)) {
+          await unlinkWithRetry(join(audioDir, f));
+        }
+      }
+    }
+
     const outputTemplate = `./data/cache/audio/${trackId}.%(ext)s`;
 
     // Download format 140 (AAC/M4A) without re-encoding, or bestaudio
@@ -367,7 +380,6 @@ async function processDownloadQueue() {
     }
 
     // Find actual downloaded file in ./data/cache/audio/ dynamically
-    const audioDir = "./data/cache/audio";
     let finalPath = "";
     const AUDIO_EXTS = new Set([".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac"]);
     if (existsSync(audioDir)) {
@@ -589,21 +601,24 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       // Clean up zombie segments if file duration changed
       try {
         const db = getDb();
-        const pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
-          $track_id: trackId,
-          $duration: duration,
-        }) as { id: string }[];
-        db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
-          $track_id: trackId,
-          $duration: duration,
-        });
+        let pruned: { id: string }[] = [];
+        db.transaction(() => {
+          pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
+            $track_id: trackId,
+            $duration: duration,
+          }) as { id: string }[];
+          db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
+            $track_id: trackId,
+            $duration: duration,
+          });
+          db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
+            $track_id: trackId,
+            $duration: duration,
+          });
+        })();
         for (const p of pruned) {
           serverEvents.emit("segment_deleted", { segmentId: p.id, trackId });
         }
-        db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
-          $track_id: trackId,
-          $duration: duration,
-        });
         serverEvents.emit("track_updated", { trackId });
       } catch {}
 

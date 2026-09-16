@@ -100,7 +100,8 @@ const server = serve({
       `127.0.0.1:${PORT}`,
       `localhost:${PORT}`,
       `[::1]:${PORT}`,
-      ...(isDev ? ["127.0.0.1:5173", "localhost:5173", "[::1]:5173"] : []),
+      `::1:${PORT}`,
+      ...(isDev ? ["127.0.0.1:5173", "localhost:5173", "[::1]:5173", "::1:5173"] : []),
     ];
     if (!host || !allowedHosts.includes(host)) {
       return new Response("Forbidden: Invalid Host header", { status: 403 });
@@ -341,7 +342,7 @@ const server = serve({
       }
 
       // 3. Local Thumbnail API (Sanitized against directory traversal)
-      const thumbMatch = url.pathname.match(/^\/api\/thumbs\/([a-zA-Z0-9_-]+)$/);
+      const thumbMatch = url.pathname.match(/^\/api\/thumbs\/([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9]+)?$/);
       if (thumbMatch && req.method === "GET") {
         const thumbId = thumbMatch[1];
         const allowedThumbsDir = resolve("./data/cache/thumbs");
