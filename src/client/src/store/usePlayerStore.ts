@@ -105,7 +105,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       );
     } catch (e) {
       console.warn("[Store] Playback error or superseded:", e);
-      set({ isPlaying: false });
+      if (get().activeSegment?.id === segment.id) {
+        set({ isPlaying: false });
+      }
     }
   },
 
@@ -137,15 +139,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   nextSegment: () => {
-    const { queue, queueIndex, isShuffle } = get();
+    const { queue, queueIndex } = get();
     if (queue.length === 0) return;
 
     let nextIdx = queueIndex + 1;
-    if (isShuffle && queue.length > 1) {
-      do {
-        nextIdx = Math.floor(Math.random() * queue.length);
-      } while (nextIdx === queueIndex && queue.length > 1);
-    } else if (nextIdx >= queue.length) {
+    if (nextIdx >= queue.length) {
       nextIdx = 0; // loop queue
     }
 
@@ -257,6 +255,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const updates: Partial<PlayerState> = { queue: newQueue };
     if (activeSegment?.id === seg.id) {
       updates.activeSegment = seg;
+      audioEngine.updateCurrentSegmentEnd(seg.end_time);
     }
     set(updates);
   },

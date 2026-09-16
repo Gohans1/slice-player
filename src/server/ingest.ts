@@ -17,6 +17,8 @@ export interface IngestResult {
 
 const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)\/.+/i;
 
+let activeMetadataProc: ReturnType<typeof Bun.spawn> | null = null;
+
 /**
  * Handle YouTube URL (single video or playlist)
  */
@@ -41,6 +43,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       stdout: "pipe",
       stderr: "pipe",
     });
+    activeMetadataProc = proc;
 
     const killTimer = setTimeout(() => {
       try { proc.kill(); } catch {}
@@ -53,6 +56,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
 
     clearTimeout(killTimer);
     await proc.exited;
+    activeMetadataProc = null;
 
     if (!outputText || outputText.trim() === "") {
       return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };
@@ -80,9 +84,9 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const thumb = entry.thumbnail || entry.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-      // Strict 30-minute cap check and non-zero duration
-      if (duration <= 0 || duration > MAX_DURATION_SECONDS) {
-        console.warn(`[Skip] Track "${title}" duration invalid or exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
+      // Strict 30-minute cap check (if duration is known from metadata)
+      if (duration > MAX_DURATION_SECONDS) {
+        console.warn(`[Skip] Track "${title}" exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
         continue;
       }
 
@@ -135,6 +139,18 @@ let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
 export async function abortIngestProcesses(): Promise<void> {
+  if (activeMetadataProc) {
+    try {
+      if (process.platform === "win32") {
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeMetadataProc.pid)]);
+        await killProc.exited;
+      } else {
+        activeMetadataProc.kill();
+      }
+    } catch {}
+    activeMetadataProc = null;
+  }
+
   if (activeDownloadProc) {
     try {
       if (process.platform === "win32") {
@@ -149,7 +165,7 @@ export async function abortIngestProcesses(): Promise<void> {
   }
 }
 
-export function cancelDownloadIfActive(trackId: string) {
+export async function cancelDownloadIfActive(trackId: string): Promise<void> {
   const qIdx = downloadQueue.findIndex((q) => q.trackId === trackId);
   if (qIdx !== -1) {
     downloadQueue.splice(qIdx, 1);
@@ -157,7 +173,8 @@ export function cancelDownloadIfActive(trackId: string) {
   if (currentDownloadingTrackId === trackId && activeDownloadProc) {
     try {
       if (process.platform === "win32") {
-        Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]).unref();
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]);
+        await killProc.exited;
       } else {
         activeDownloadProc.kill();
       }
@@ -165,6 +182,20 @@ export function cancelDownloadIfActive(trackId: string) {
     activeDownloadProc = null;
     currentDownloadingTrackId = null;
   }
+
+  // Clean up any residual .part or .ytdl files
+  try {
+    const { readdirSync, unlinkSync } = await import("node:fs");
+    const audioDir = resolve("./data/cache/audio");
+    if (existsSync(audioDir)) {
+      const files = readdirSync(audioDir);
+      for (const f of files) {
+        if (f.startsWith(trackId)) {
+          try { unlinkSync(join(audioDir, f)); } catch {}
+        }
+      }
+    }
+  } catch {}
 }
 
 function triggerDownloadWorker(trackId: string, url: string) {

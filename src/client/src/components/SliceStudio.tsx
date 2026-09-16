@@ -31,6 +31,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
   const regionsRef = React.useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
 
+  const [trackDetail, setTrackDetail] = React.useState<Track>(track);
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const [isPlayingWave, setIsPlayingWave] = React.useState(false);
   const [currentPlayTime, setCurrentPlayTime] = React.useState(0);
@@ -40,6 +41,25 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const isInternalUpdateRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
+
+  // Fetch full track detail for precomputed peaks if not loaded in listTracks
+  React.useEffect(() => {
+    setTrackDetail(track);
+    let isMounted = true;
+    if (!track.peaks_json) {
+      fetch(`/api/tracks/${track.id}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: Track | null) => {
+          if (isMounted && data && data.peaks_json) {
+            setTrackDetail(data);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [track]);
 
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
@@ -89,7 +109,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         console.error(e);
       }
     }, 400);
-  }, []);
+  }, [syncUpdatedSegment]);
 
   // Fetch existing segments for this track
   const fetchSegments = React.useCallback(async () => {
@@ -114,9 +134,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     // Parse precomputed peaks from database
     let peaks: number[][] | undefined = undefined;
-    if (track.peaks_json) {
+    if (trackDetail.peaks_json) {
       try {
-        const rawPeaks = JSON.parse(track.peaks_json);
+        const rawPeaks = JSON.parse(trackDetail.peaks_json);
         if (Array.isArray(rawPeaks) && rawPeaks.length > 0) {
           peaks = [rawPeaks];
         }
@@ -136,9 +156,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       cursorWidth: 2,
       height: 128,
       normalize: true,
-      url: `/api/tracks/${track.id}/stream`,
+      url: `/api/tracks/${trackDetail.id}/stream`,
       peaks: peaks,
-      duration: track.duration,
+      duration: trackDetail.duration,
       plugins: [wsRegions],
     });
 
@@ -168,7 +188,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     return () => {
       ws.destroy();
     };
-  }, [track.id, track.duration, track.peaks_json, debouncedSaveSegment]);
+  }, [trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause]);
 
   // Sync segments with WaveSurfer regions
   React.useEffect(() => {

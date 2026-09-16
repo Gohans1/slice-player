@@ -49,7 +49,7 @@ export function App() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.type === "track_updated" || data.type === "track_created") {
+            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted") {
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
                 fetchTracks();

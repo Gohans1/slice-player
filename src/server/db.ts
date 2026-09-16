@@ -163,7 +163,7 @@ export function listTracks(): (Track & { segment_count: number })[] {
   return db.query(`
     SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
            tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
-           tracks.peaks_json, tracks.status, tracks.error_message, tracks.created_at,
+           tracks.status, tracks.error_message, tracks.created_at,
            COUNT(segments.id) AS segment_count
     FROM tracks
     LEFT JOIN segments ON tracks.id = segments.track_id

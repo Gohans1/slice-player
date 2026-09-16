@@ -98,13 +98,17 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
     try {
       const res = await fetch("/api/segments");
       if (res.ok) {
-        const allSegments = await res.json();
-        if (allSegments.length > 0) {
-          buildShuffleQueue(allSegments, tracks);
-          const first = allSegments[Math.floor(Math.random() * allSegments.length)];
-          const trk = tracks.find((t) => t.id === first.track_id);
-          if (trk) {
-            playSegment(first, trk);
+        const allSegments: Segment[] = await res.json();
+        const readyTrackMap = new Map(tracks.filter((t) => t.status === "ready").map((t) => [t.id, t]));
+        const validSegments = allSegments.filter((s) => readyTrackMap.has(s.track_id));
+
+        if (validSegments.length > 0) {
+          buildShuffleQueue(validSegments, tracks);
+          const q = usePlayerStore.getState().queue;
+          const first = q[0];
+          if (first) {
+            const trk = readyTrackMap.get(first.track_id);
+            if (trk) playSegment(first, trk);
           }
         } else if (tracks.length > 0) {
           // Fallback: create default full-track virtual segments
@@ -121,9 +125,12 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
             }));
           if (fallbackSegments.length > 0) {
             buildShuffleQueue(fallbackSegments, tracks);
-            const first = fallbackSegments[Math.floor(Math.random() * fallbackSegments.length)];
-            const trk = tracks.find((t) => t.id === first.track_id);
-            if (trk) playSegment(first, trk);
+            const q = usePlayerStore.getState().queue;
+            const first = q[0];
+            if (first) {
+              const trk = readyTrackMap.get(first.track_id);
+              if (trk) playSegment(first, trk);
+            }
           }
         }
       }

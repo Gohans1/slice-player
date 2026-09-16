@@ -16,7 +16,12 @@ console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 console.log(`[Server] Session Token: ${SESSION_TOKEN}`);
 
 const activeSockets = new Set<any>();
-let shutdownTimer: Timer | null = null;
+let shutdownTimer: Timer | null = setTimeout(() => {
+  if (activeSockets.size === 0) {
+    console.log("[Server] No client connected within 60s of startup. Exiting.");
+    gracefulShutdown();
+  }
+}, 60000);
 
 async function gracefulShutdown() {
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
@@ -96,6 +101,8 @@ const server = serve({
       "Access-Control-Allow-Origin": origin || `http://127.0.0.1:${PORT}`,
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
     };
 
     if (req.method === "OPTIONS") {
@@ -144,7 +151,7 @@ const server = serve({
           return Response.json(track, { headers: corsHeaders });
         }
         if (req.method === "DELETE") {
-          cancelDownloadIfActive(trackId);
+          await cancelDownloadIfActive(trackId);
           const track = getTrack(trackId);
           if (track) {
             // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
@@ -163,6 +170,9 @@ const server = serve({
             }
           }
           const ok = deleteTrack(trackId);
+          if (ok) {
+            serverEvents.emit("track_deleted", { trackId });
+          }
           return Response.json({ success: ok }, { headers: corsHeaders });
         }
       }
@@ -221,6 +231,7 @@ const server = serve({
               headers: {
                 ...corsHeaders,
                 "Content-Type": contentType,
+                "Content-Length": String(end - start + 1),
                 "Content-Range": `bytes ${start}-${end}/${audioFile.size}`,
                 "Accept-Ranges": "bytes",
               },
@@ -232,6 +243,7 @@ const server = serve({
           headers: {
             ...corsHeaders,
             "Content-Type": contentType,
+            "Content-Length": String(audioFile.size),
             "Accept-Ranges": "bytes",
           },
         });
@@ -415,6 +427,9 @@ serverEvents.on("track_updated", (payload) => {
 });
 serverEvents.on("track_created", (payload) => {
   broadcastWs({ type: "track_created", ...payload });
+});
+serverEvents.on("track_deleted", (payload) => {
+  broadcastWs({ type: "track_deleted", ...payload });
 });
 
 export { server };

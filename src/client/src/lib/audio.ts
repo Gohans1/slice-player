@@ -174,14 +174,18 @@ class AudioEngine {
   }
 
   public pause() {
+    this.currentSegmentEnd = null;
+    this.onSegmentEndCallback = null;
     if (this.gainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
-      setTimeout(() => this.audioEl.pause(), 16);
-    } else {
-      this.audioEl.pause();
+      this.gainNode.gain.cancelScheduledValues(now);
+      this.gainNode.gain.setValueAtTime(0.0001, now);
     }
+    this.audioEl.pause();
+  }
+
+  public updateCurrentSegmentEnd(endTime: number) {
+    this.currentSegmentEnd = endTime;
   }
 
   public async resume() {
@@ -226,7 +230,7 @@ class AudioEngine {
    * while enforcing the segment cut immediately.
    */
   private checkBoundary = () => {
-    if (this.audioEl.paused) return;
+    if (this.audioEl.paused || this.audioEl.seeking) return;
 
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
@@ -256,15 +260,22 @@ class AudioEngine {
   };
 
   /**
-   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and setInterval
-   * to ensure background/minimized windows never miss segment boundaries.
+   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a Web Worker ticker
+   * to ensure background/minimized windows never miss segment boundaries due to Chromium 1000ms timer throttling.
    */
   private startBoundaryMonitor = () => {
     // Native timeupdate listener
     this.audioEl.addEventListener("timeupdate", this.checkBoundary);
 
-    // 50ms interval fallback for when Chromium suspends rAF in background/minimized mode
-    setInterval(this.checkBoundary, 50);
+    // Web Worker ticker (not subject to Chromium background tab 1000ms timer throttling)
+    try {
+      const blob = new Blob(["setInterval(() => postMessage(0), 30);"], { type: "text/javascript" });
+      const workerUrl = URL.createObjectURL(blob);
+      const worker = new Worker(workerUrl);
+      worker.onmessage = () => this.checkBoundary();
+    } catch {
+      setInterval(this.checkBoundary, 30);
+    }
 
     // rAF loop for high-frequency UI updates when visible
     const loop = () => {
