@@ -23,6 +23,11 @@ class AudioEngine {
   private isFadingOut = false;
   private tickerWorker: Worker | null = null;
   private fallbackTickerInterval: ReturnType<typeof setInterval> | null = null;
+  private onErrorCallback: ((err: MediaError | null) => void) | null = null;
+
+  public setOnErrorCallback(cb: ((err: MediaError | null) => void) | null) {
+    this.onErrorCallback = cb;
+  }
 
   constructor() {
     this.audioEl = new Audio();
@@ -56,6 +61,15 @@ class AudioEngine {
         this.currentSegmentStart = null;
         this.currentSegmentEnd = null;
         cb();
+      }
+    });
+
+    this.audioEl.addEventListener("error", () => {
+      this.stopTicker();
+      this.stopRafLoop();
+      this.isFadingOut = false;
+      if (this.onErrorCallback) {
+        this.onErrorCallback(this.audioEl.error);
       }
     });
 
@@ -339,6 +353,7 @@ class AudioEngine {
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
 
+      let seekTimer: any = null;
       const onSeeked = () => {
         this.isSeekingSettled = true;
         if (this.activeSeekCleanup) {
@@ -346,6 +361,7 @@ class AudioEngine {
         }
         this.audioEl.removeEventListener("seeked", onSeeked);
         clearTimeout(fallback);
+        if (seekTimer) clearTimeout(seekTimer);
         if (this.gainNode && this.audioCtx && !this.audioEl.paused) {
           const unpauseNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(unpauseNow);
@@ -358,10 +374,13 @@ class AudioEngine {
         this.isSeekingSettled = true;
         this.audioEl.removeEventListener("seeked", onSeeked);
         clearTimeout(fallback);
+        if (seekTimer) clearTimeout(seekTimer);
         this.activeSeekCleanup = null;
       };
       this.audioEl.addEventListener("seeked", onSeeked);
-      this.audioEl.currentTime = seconds;
+      seekTimer = setTimeout(() => {
+        this.audioEl.currentTime = seconds;
+      }, 10);
     } else {
       this.audioEl.currentTime = seconds;
       this.isSeekingSettled = true;

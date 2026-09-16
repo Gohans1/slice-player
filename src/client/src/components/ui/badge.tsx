@@ -11,9 +11,9 @@ const badgeVariants = cva(
         secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
         outline: "text-foreground",
-        cyan: "border-transparent bg-[var(--color-flexoki-cyan)]/20 text-[var(--color-flexoki-cyan)]",
-        green: "border-transparent bg-[var(--color-flexoki-green)]/20 text-[var(--color-flexoki-green)]",
-        orange: "border-transparent bg-[var(--color-flexoki-orange)]/20 text-[var(--color-flexoki-orange)]",
+        cyan: "border-transparent bg-flexoki-cyan/20 text-flexoki-cyan",
+        green: "border-transparent bg-flexoki-green/20 text-flexoki-green",
+        orange: "border-transparent bg-flexoki-orange/20 text-flexoki-orange",
       },
     },
     defaultVariants: {

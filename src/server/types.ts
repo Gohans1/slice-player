@@ -28,18 +28,6 @@ export interface Segment {
   created_at?: number;
 }
 
-export interface Playlist {
-  id: string;
-  name: string;
-  created_at?: number;
-}
-
-export interface PlaylistItem {
-  id: string;
-  playlist_id: string;
-  segment_id: string;
-  sort_order: number;
-}
 
 export interface VirtualPlaylistItem {
   segment: Segment;

@@ -2,7 +2,7 @@ import { serve, file as bunFile } from "bun";
 import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry } from "./ingest";
+import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
 import type { Segment } from "./types";
@@ -128,24 +128,27 @@ const server = serve({
     if (url.pathname.startsWith("/api/")) {
       if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
         const rawLen = req.headers.get("content-length");
-        if (!rawLen) {
+        const isChunked = req.headers.get("transfer-encoding")?.includes("chunked");
+        if (!rawLen && !isChunked) {
           return Response.json(
-            { error: "Content-Length header is required for mutating requests" },
+            { error: "Content-Length or Transfer-Encoding: chunked is required for mutating requests" },
             { status: 411, headers: corsHeaders }
           );
         }
-        const contentLength = Number(rawLen);
-        if (!Number.isFinite(contentLength) || contentLength <= 0) {
-          return Response.json(
-            { error: "Empty or invalid request body" },
-            { status: 400, headers: corsHeaders }
-          );
-        }
-        if (contentLength > 65536) {
-          return Response.json(
-            { error: "Payload too large (max 64KB)" },
-            { status: 413, headers: corsHeaders }
-          );
+        if (rawLen) {
+          const contentLength = Number(rawLen);
+          if (!Number.isFinite(contentLength) || contentLength <= 0) {
+            return Response.json(
+              { error: "Empty or invalid request body" },
+              { status: 400, headers: corsHeaders }
+            );
+          }
+          if (contentLength > 65536) {
+            return Response.json(
+              { error: "Payload too large (max 64KB)" },
+              { status: 413, headers: corsHeaders }
+            );
+          }
         }
       }
 
@@ -198,12 +201,20 @@ const server = serve({
           }
           if (track.file_path) {
             await cancelWaveformForFile(track.file_path);
+          } else if (track.source_type === "youtube") {
+            for (const ext of [".m4a", ".webm", ".mp3", ".opus"]) {
+              await cancelWaveformForFile(resolve(`./data/cache/audio/${track.id}${ext}`));
+            }
           }
+          const segmentsToDelete = listSegmentsByTrack(trackId);
           const ok = deleteTrack(trackId);
           if (!ok) {
             return Response.json({ error: "Could not delete track from database" }, { status: 500, headers: corsHeaders });
           }
           serverEvents.emit("track_deleted", { trackId });
+          for (const seg of segmentsToDelete) {
+            serverEvents.emit("segment_deleted", { segmentId: seg.id, trackId });
+          }
 
           // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
           if (track.source_type === "youtube" && track.file_path) {
@@ -405,9 +416,9 @@ const server = serve({
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
 
-            if (newEnd > 1800 || (track.duration > 0 && newEnd > track.duration + 0.1)) {
+            if (newEnd > 1800 || (track.duration > 0 && newEnd > track.duration + 0.1) || (track.duration > 0 && newStart >= track.duration)) {
               return Response.json(
-                { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát hoặc giới hạn 30 phút` },
+                { error: `start_time hoặc end_time vượt quá thời lượng bài hát hoặc giới hạn 30 phút` },
                 { status: 400, headers: corsHeaders }
               );
             }
@@ -432,12 +443,16 @@ const server = serve({
         }
         if (req.method === "DELETE") {
           const existingSeg = getSegment(segId);
-          const ok = deleteSegment(segId);
-          if (existingSeg) {
-            serverEvents.emit("segment_deleted", { segmentId: segId, trackId: existingSeg.track_id });
-            serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
+          if (!existingSeg) {
+            return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
           }
-          return Response.json({ success: ok }, { headers: corsHeaders });
+          const ok = deleteSegment(segId);
+          if (!ok) {
+            return Response.json({ error: "Could not delete segment" }, { status: 500, headers: corsHeaders });
+          }
+          serverEvents.emit("segment_deleted", { segmentId: segId, trackId: existingSeg.track_id });
+          serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
+          return Response.json({ success: true }, { headers: corsHeaders });
         }
       }
 
@@ -519,8 +534,7 @@ const server = serve({
 function checkIdleShutdown() {
   if (process.env.NODE_ENV !== "production") return;
   if (activeSockets.size === 0 && !shutdownTimer) {
-    shutdownTimer = setTimeout(async () => {
-      const { isIngestBusy } = await import("./ingest");
+    shutdownTimer = setTimeout(() => {
       if (activeSockets.size === 0 && !isIngestBusy()) {
         gracefulShutdown();
       } else {

@@ -55,7 +55,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Fetch full track detail for precomputed peaks if not loaded in listTracks
   React.useEffect(() => {
-    setTrackDetail(track);
+    setTrackDetail((prev) => ({
+      ...track,
+      peaks_json: prev.peaks_json || track.peaks_json,
+    }));
     let isMounted = true;
     if (!track.peaks_json) {
       fetch(`/api/tracks/${track.id}`)
@@ -133,6 +136,19 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     await flushPendingSaves();
     onClose();
   }, [flushPendingSaves, onClose]);
+
+  // Handle Escape key to close studio
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleCloseStudio();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCloseStudio]);
 
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {

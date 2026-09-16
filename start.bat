@@ -24,6 +24,15 @@ if %ERRORLEVEL% NEQ 0 (
     echo [WARNING] Khong tim thay yt-dlp trong PATH! Chuc nang tai YouTube se khong hoat dong.
 )
 
+set PORT_NUM=3000
+if defined PORT set PORT_NUM=%PORT%
+
+curl -s -f -m 1 http://127.0.0.1:%PORT_NUM%/api/tracks >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [1/2] Server Slice Player dang hoat dong san tren port %PORT_NUM%.
+    goto launch_client
+)
+
 if "%~1"=="--no-build" (
     echo [1/2] Bo qua build frontend theo yeu cau.
 ) else (
@@ -36,19 +45,13 @@ if "%~1"=="--no-build" (
     )
 )
 
-curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo [2/2] Server Slice Player dang hoat dong san tren port 3000.
-    goto launch_client
-)
-
 echo [2/2] Dang khoi dong server Bun...
 start "SlicePlayerServer" /min bun run src/server/index.ts
 set /a ATTEMPTS=0
 
 :wait_loop
 ping -n 2 127.0.0.1 >nul
-curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
+curl -s -f -m 1 http://127.0.0.1:%PORT_NUM%/api/tracks >nul 2>&1
 if %ERRORLEVEL% EQU 0 goto launch_client
 set /a ATTEMPTS+=1
 if %ATTEMPTS% GEQ 15 (
@@ -70,12 +73,12 @@ if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
 
 if defined EDGE_PATH (
     echo Dang mo giao dien MS Edge App Mode...
-    start "" "%EDGE_PATH%" --app=http://127.0.0.1:3000 --user-data-dir="%~dp0data\edge_profile" --window-size=1280,850
+    start "" "%EDGE_PATH%" --app=http://127.0.0.1:%PORT_NUM% --user-data-dir="%~dp0data\edge_profile" --autoplay-policy=no-user-gesture-required --window-size=1280,850
 ) else (
     echo Dang mo trinh duyet mac dinh...
-    start http://127.0.0.1:3000
+    start http://127.0.0.1:%PORT_NUM%
 )
 
 echo ===================================================
-echo Slice Player da san sang tren http://127.0.0.1:3000
+echo Slice Player da san sang tren http://127.0.0.1:%PORT_NUM%
 echo ===================================================

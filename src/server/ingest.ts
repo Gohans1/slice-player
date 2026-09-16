@@ -1,5 +1,5 @@
 import { parseFile } from "music-metadata";
-import { existsSync, writeFileSync, unlinkSync, readdirSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack, getDb } from "./db";
@@ -503,7 +503,25 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     }
 
     const metadata = await parseFile(fullPath);
-    const duration = Number(metadata.format.duration) || 0;
+    let duration = Number(metadata.format.duration) || 0;
+
+    // Fallback probe via ffprobe if container duration is missing
+    if (duration <= 0) {
+      try {
+        const probeProc = Bun.spawn(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", fullPath], {
+          stdout: "pipe",
+          stderr: "ignore",
+        });
+        const probeTimer = setTimeout(() => { try { probeProc.kill(); } catch {} }, 5000);
+        const probeOut = await new Response(probeProc.stdout).text();
+        clearTimeout(probeTimer);
+        await probeProc.exited;
+        const probed = parseFloat(probeOut.trim());
+        if (Number.isFinite(probed) && probed > 0) {
+          duration = probed;
+        }
+      } catch {}
+    }
 
     // 30 minute check & strictly positive check (minimum 0.5s for slicing compatibility)
     if (duration < 0.5 || duration > MAX_DURATION_SECONDS) {
@@ -521,23 +539,40 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     const title = metadata.common.title || basename(fullPath, extname(fullPath));
     const artist = metadata.common.artist || "Unknown Artist";
 
-    // Extract cover art if present (bounded to 4MB to prevent memory issues)
+    // Extract cover art if present (bounded to 4MB and magic byte verified)
     let thumbUrl = "";
     if (metadata.common.picture && metadata.common.picture.length > 0) {
       const pic = metadata.common.picture[0];
-      if (pic.data && pic.data.length <= 4 * 1024 * 1024) {
-        for (const ext of [".jpg", ".png", ".webp"]) {
-          const oldP = resolve(`./data/cache/thumbs/${trackId}${ext}`);
-          if (existsSync(oldP)) {
-            try { unlinkSync(oldP); } catch {}
+      if (pic.data && pic.data.length >= 4 && pic.data.length <= 4 * 1024 * 1024) {
+        const isJpeg = pic.data[0] === 0xff && pic.data[1] === 0xd8 && pic.data[2] === 0xff;
+        const isPng = pic.data[0] === 0x89 && pic.data[1] === 0x50 && pic.data[2] === 0x4e && pic.data[3] === 0x47;
+        const isWebp = pic.data.length >= 12 && pic.data[0] === 0x52 && pic.data[1] === 0x49 && pic.data[2] === 0x46 && pic.data[3] === 0x46;
+        
+        let imgExt = ".jpg";
+        if (isPng) imgExt = ".png";
+        else if (isWebp) imgExt = ".webp";
+
+        if (isJpeg || isPng || isWebp) {
+          const thumbCacheDir = "./data/cache/thumbs";
+          mkdirSync(thumbCacheDir, { recursive: true });
+          const thumbPath = join(thumbCacheDir, `${trackId}${imgExt}`);
+          try {
+            const oldPaths = [
+              join(thumbCacheDir, `${trackId}.jpg`),
+              join(thumbCacheDir, `${trackId}.png`),
+              join(thumbCacheDir, `${trackId}.webp`),
+            ];
+            for (const oldP of oldPaths) {
+              if (oldP !== thumbPath && existsSync(oldP)) {
+                try { unlinkSync(oldP); } catch {}
+              }
+            }
+            writeFileSync(thumbPath, pic.data);
+            thumbUrl = `/api/thumbs/${trackId}${imgExt}`;
+          } catch {
+            // ignore thumb write error
           }
         }
-        const isPng = pic.format?.toLowerCase().includes("png");
-        const isWebp = pic.format?.toLowerCase().includes("webp");
-        const imgExt = isPng ? ".png" : isWebp ? ".webp" : ".jpg";
-        const thumbPath = `./data/cache/thumbs/${trackId}${imgExt}`;
-        writeFileSync(thumbPath, pic.data);
-        thumbUrl = `/api/thumbs/${trackId}`;
       }
     }
 

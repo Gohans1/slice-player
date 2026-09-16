@@ -88,11 +88,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         });
         const trackMap = new Map(stabilizedTracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
-
-        const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
         const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
 
         if (!reconcileSegments) {
+          const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
           // Fast path for polling: only update track list and prune deleted tracks from queue
           const validQueue = queue.filter((item) => trackMap.has(item.track.id)).map((item) => ({
             ...item,
@@ -121,13 +120,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const segmentMap = new Set(validSegments.map((s) => s.id));
         const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
-        const wasQueueEmpty = queue.length === 0;
-        const currentMode = get().playbackMode;
+        const freshState = get();
+        const currentQueue = freshState.queue;
+        const currentQueueIndex = freshState.queueIndex;
+        const currentActiveSegment = freshState.activeSegment;
+        const currentItem = currentQueueIndex >= 0 ? currentQueue[currentQueueIndex] : null;
+        const wasQueueEmpty = currentQueue.length === 0;
+        const currentMode = freshState.playbackMode;
         const validQueue: QueueItem[] = [];
         const seenSegmentIds = new Set<string>();
 
         // Reconcile existing queue items without duplicate expansion
-        for (const item of queue) {
+        for (const item of currentQueue) {
           if (!trackMap.has(item.track.id)) continue;
           const freshTrack = trackMap.get(item.track.id)!;
           const isFallback = item.segment.id.startsWith("fallback_");
@@ -144,21 +148,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                 }
                 continue;
               }
-              // If other tracks have custom slices, exclude fallback tracks without slices in slices_only mode
+              // If other tracks have custom slices, exclude fallback tracks without slices in slices_only mode UNLESS actively playing
               const hasAnyCustomSlices = validSegments.some((s) => !s.id.startsWith("fallback_"));
-              if (hasAnyCustomSlices) {
+              if (hasAnyCustomSlices && item.segment.id !== currentActiveSegment?.id) {
                 continue;
               }
             }
             // Preserve fallback item in original_only or mixed (or if no custom slices exist in library)
-            if (!dismissedSegmentIds.has(item.segment.id)) {
+            if (!dismissedSegmentIds.has(item.segment.id) || item.segment.id === currentActiveSegment?.id) {
               seenSegmentIds.add(item.segment.id);
               validQueue.push({ ...item, track: freshTrack });
             }
           } else {
             // Slices should not be in original_only mode unless actively playing
-            if (currentMode === "original_only" && item.segment.id !== activeSegment?.id) continue;
-            if (!segmentMap.has(item.segment.id) || dismissedSegmentIds.has(item.segment.id)) continue;
+            if (currentMode === "original_only" && item.segment.id !== currentActiveSegment?.id) continue;
+            if (!segmentMap.has(item.segment.id) || (dismissedSegmentIds.has(item.segment.id) && item.segment.id !== currentActiveSegment?.id)) continue;
             const freshSeg = segmentObjMap.get(item.segment.id) || item.segment;
             if (!seenSegmentIds.has(freshSeg.id)) {
               seenSegmentIds.add(freshSeg.id);
@@ -286,6 +290,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playSegment: async (segment: Segment, track: Track, overrideIndex?: number) => {
+    dismissedSegmentIds.delete(segment.id);
     const streamUrl = `/api/tracks/${track.id}/stream`;
     const { queue, queueIndex } = get();
     let newIndex = queueIndex;
@@ -584,6 +589,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   syncUpdatedSegment: (seg: Segment) => {
+    dismissedSegmentIds.delete(seg.id);
     const { queue, activeSegment } = get();
     const newQueue = queue.map((item) =>
       item.segment.id === seg.id ? { ...item, segment: seg } : item
@@ -715,3 +721,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 }));
+
+// Mid-stream audio element error listener to prevent UI lockup
+audioEngine.setOnErrorCallback((err) => {
+  console.warn("[Store] Mid-stream audio element error:", err);
+  const { isPlaying, queue, nextSegment, activeSegment } = usePlayerStore.getState();
+  if (isPlaying) {
+    usePlayerStore.setState({ isPlaying: false });
+    if (queue.length > 1 && consecutivePlaybackFailures < Math.min(3, queue.length)) {
+      consecutivePlaybackFailures++;
+      setTimeout(() => {
+        const state = usePlayerStore.getState();
+        if (!state.isPlaying && state.activeSegment?.id === activeSegment?.id) {
+          nextSegment();
+        }
+      }, 1000);
+    }
+  }
+});
+

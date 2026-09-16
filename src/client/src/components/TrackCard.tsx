@@ -30,8 +30,15 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
     setSegments(null);
   }, [track.segment_count]);
 
+  const isPlayBusyRef = React.useRef(false);
+
   const handlePlayFirst = async () => {
+    if (isPlayBusyRef.current) return;
     if (track.status !== "ready" || track.duration <= 0) return;
+    isPlayBusyRef.current = true;
+    setTimeout(() => {
+      isPlayBusyRef.current = false;
+    }, 400);
 
     if (playbackMode === "original_only") {
       playSegment(createDefaultFullSegment(track), track);

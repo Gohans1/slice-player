@@ -160,6 +160,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     return peaks;
   } catch (err) {
     if (proc) {
+      killFfmpeg(proc);
       activeWaveformProcs.delete(proc);
       activeWaveformByPath.delete(filePath);
     }

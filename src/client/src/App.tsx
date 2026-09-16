@@ -72,7 +72,7 @@ export function App() {
           }
         };
         ws.onerror = () => {
-          if (ws) ws.close();
+          // Socket error transitions immediately to onclose
         };
       } catch {
         if (!isUnmounted) {

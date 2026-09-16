@@ -65,22 +65,6 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
   db.run(`CREATE INDEX IF NOT EXISTS idx_segments_track ON segments(track_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_segments_created_at ON segments(created_at DESC);`);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS playlists (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      created_at INTEGER DEFAULT (unixepoch())
-    );
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS playlist_items (
-      id TEXT PRIMARY KEY,
-      playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
-      segment_id TEXT NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
-      sort_order INTEGER DEFAULT 0
-    );
-  `);
 
   // Startup recovery: reconcile interrupted downloads from previous process crash
   db.run(`
