@@ -2,7 +2,7 @@ import { parseFile } from "music-metadata";
 import { existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
-import { createTrack, updateTrack, getTrack, getDb } from "./db";
+import { createTrack, updateTrack, getTrack, getDb, reconcileTrackSegments } from "./db";
 import { generatePeaks, isWaveformBusy } from "./waveform";
 import { serverEvents } from "./events";
 import type { Track } from "./types";
@@ -63,10 +63,14 @@ async function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null): Pro
   } catch {}
 }
 
+const MAX_METADATA_QUEUE_DEPTH = 10;
 async function acquireMetadataSlot(): Promise<void> {
   if (activeMetadataCount < MAX_CONCURRENT_METADATA) {
     activeMetadataCount++;
     return;
+  }
+  if (metadataWaitQueue.length >= MAX_METADATA_QUEUE_DEPTH) {
+    throw new Error("Máy chủ đang bận xử lý nhiều yêu cầu tải nhạc, vui lòng thử lại sau.");
   }
   return new Promise<void>((resolve) => {
     metadataWaitQueue.push(() => {
@@ -256,7 +260,10 @@ export function isIngestBusy(): boolean {
 
 export async function abortIngestProcesses(): Promise<void> {
   downloadQueue.length = 0;
-  metadataWaitQueue.length = 0;
+  while (metadataWaitQueue.length > 0) {
+    const fn = metadataWaitQueue.shift();
+    try { fn?.(); } catch {}
+  }
   activeMetadataCount = 0;
   for (const proc of activeMetadataProcs) {
     await killProcessSafely(proc);
@@ -477,9 +484,22 @@ async function processDownloadQueue() {
         return;
       }
 
+      const finalDuration = Number(actualDuration.toFixed(2));
+      try {
+        const { pruned, clamped } = reconcileTrackSegments(trackId, finalDuration);
+        for (const p of pruned) {
+          serverEvents.emit("segment_deleted", { segmentId: p.id, trackId });
+        }
+        for (const c of clamped) {
+          serverEvents.emit("segment_updated", { segmentId: c.id, trackId });
+        }
+      } catch (e) {
+        console.warn(`[Ingest] Segment reconciliation failed for track ${trackId}:`, e);
+      }
+
       updateTrack(trackId, {
         file_path: finalPath,
-        duration: Number(actualDuration.toFixed(2)),
+        duration: finalDuration,
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });
@@ -617,27 +637,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     if (existing) {
       // Clean up zombie segments if file duration changed
       try {
-        const db = getDb();
-        let pruned: { id: string }[] = [];
-        let clamped: { id: string }[] = [];
-        db.transaction(() => {
-          pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
-            $track_id: trackId,
-            $duration: duration,
-          }) as { id: string }[];
-          db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
-            $track_id: trackId,
-            $duration: duration,
-          });
-          clamped = db.query("SELECT id FROM segments WHERE track_id = $track_id AND end_time > $duration;").all({
-            $track_id: trackId,
-            $duration: duration,
-          }) as { id: string }[];
-          db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
-            $track_id: trackId,
-            $duration: duration,
-          });
-        })();
+        const { pruned, clamped } = reconcileTrackSegments(trackId, duration);
         for (const p of pruned) {
           serverEvents.emit("segment_deleted", { segmentId: p.id, trackId });
         }

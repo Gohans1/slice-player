@@ -27,7 +27,7 @@ async function gracefulShutdown() {
     clearTimeout(shutdownTimer);
     shutdownTimer = null;
   }
-  server.stop(true);
+  await server.stop(true);
   await abortIngestProcesses();
   await abortWaveformProcesses();
   closeDatabase();
@@ -349,6 +349,15 @@ const server = serve({
                 "Accept-Ranges": "bytes",
               },
             });
+          } else {
+            return new Response("Range Not Satisfiable", {
+              status: 416,
+              headers: {
+                ...corsHeaders,
+                "Content-Range": `bytes */${audioFile.size}`,
+                "Accept-Ranges": "bytes",
+              },
+            });
           }
         }
 
@@ -406,8 +415,8 @@ const server = serve({
             if (!body.name || body.start_time === undefined || body.end_time === undefined) {
               return Response.json({ error: "Missing segment fields" }, { status: 400, headers: corsHeaders });
             }
-            const startTime = Number(body.start_time);
-            let endTime = Number(body.end_time);
+            const startTime = Number(Number(body.start_time).toFixed(2));
+            let endTime = Number(Number(body.end_time).toFixed(2));
             const track = getTrack(trackId);
             if (!track) {
               return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
@@ -429,6 +438,7 @@ const server = serve({
               return Response.json({ error: "Tên đoạn không được để trống" }, { status: 400, headers: corsHeaders });
             }
             const hexColor = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : "#4385BE";
+            const sortOrder = Number.isInteger(body.sort_order) && Number(body.sort_order) >= 0 && Number(body.sort_order) <= 100000 ? Number(body.sort_order) : 0;
             const created = createSegment({
               id: `seg_${crypto.randomUUID()}`,
               track_id: trackId,
@@ -436,6 +446,7 @@ const server = serve({
               start_time: startTime,
               end_time: endTime,
               color: hexColor,
+              sort_order: sortOrder,
             });
             serverEvents.emit("track_updated", { trackId });
             return Response.json(created, { headers: corsHeaders });
@@ -456,8 +467,8 @@ const server = serve({
             const existingSeg = getSegment(segId);
             if (!existingSeg) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
 
-            const newStart = body.start_time !== undefined && body.start_time !== null ? Number(body.start_time) : existingSeg.start_time;
-            let newEnd = body.end_time !== undefined && body.end_time !== null ? Number(body.end_time) : existingSeg.end_time;
+            const newStart = body.start_time !== undefined && body.start_time !== null ? Number(Number(body.start_time).toFixed(2)) : existingSeg.start_time;
+            let newEnd = body.end_time !== undefined && body.end_time !== null ? Number(Number(body.end_time).toFixed(2)) : existingSeg.end_time;
 
             const track = getTrack(existingSeg.track_id);
             if (!track) {
@@ -534,23 +545,26 @@ const server = serve({
     // --- STATIC FRONTEND ASSETS ---
     // Protected against path traversal with separator verification and case normalization on Windows
     const distDir = resolve("./dist");
-    let rawRel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-    let relativePath: string;
-    try {
-      relativePath = decodeURIComponent(rawRel);
-    } catch {
-      return new Response("Bad Request", { status: 400 });
-    }
-    const safePath = resolve(distDir, relativePath);
-    const isInside = process.platform === "win32"
-      ? safePath.toLowerCase() === distDir.toLowerCase() || safePath.toLowerCase().startsWith(distDir.toLowerCase() + sep)
-      : safePath === distDir || safePath.startsWith(distDir + sep);
-
     const securityHeaders = {
       "Content-Security-Policy": corsHeaders["Content-Security-Policy"],
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     };
+
+    let rawRel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    let relativePath: string;
+    try {
+      relativePath = decodeURIComponent(rawRel);
+    } catch {
+      return new Response("Bad Request", {
+        status: 400,
+        headers: { ...securityHeaders, "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+    const safePath = resolve(distDir, relativePath);
+    const isInside = process.platform === "win32"
+      ? safePath.toLowerCase() === distDir.toLowerCase() || safePath.toLowerCase().startsWith(distDir.toLowerCase() + sep)
+      : safePath === distDir || safePath.startsWith(distDir + sep);
 
     try {
       if (isInside && existsSync(safePath) && statSync(safePath).isFile()) {
@@ -582,11 +596,14 @@ const server = serve({
     }
 
     if (!isNavRequest) {
-      return new Response("Not Found", { status: 404 });
+      return new Response("Not Found", {
+        status: 404,
+        headers: { ...securityHeaders, "Content-Type": "text/plain; charset=utf-8" },
+      });
     }
 
     return new Response("Slice Player Backend Running. Frontend is being built...", {
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: { ...securityHeaders, "Content-Type": "text/plain; charset=utf-8" },
     });
   },
 

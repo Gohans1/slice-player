@@ -552,8 +552,18 @@ class AudioEngine {
         this.stopTicker();
         this.stopRafLoop();
 
+        let transitioned = false;
         const finishTransition = () => {
+          if (transitioned) return;
+          transitioned = true;
+          this.onSegmentEndCallback = null;
+          if (this.pauseTimer !== null) {
+            clearTimeout(this.pauseTimer);
+            this.pauseTimer = null;
+          }
           this.audioEl.pause();
+          this.stopTicker();
+          this.stopRafLoop();
           if (cb) cb();
         };
 
@@ -569,7 +579,6 @@ class AudioEngine {
             this.tickerWorker.postMessage({ cmd: "pauseDelay", id: currentPauseId });
             this.pauseTimer = setTimeout(() => {
               if (this.pauseRequestId === currentPauseId) {
-                this.pauseTimer = null;
                 finishTransition();
               }
             }, neededRampDelay);
@@ -643,19 +652,25 @@ class AudioEngine {
       const blob = new Blob([code], { type: "text/javascript" });
       const workerUrl = URL.createObjectURL(blob);
       this.tickerWorker = new Worker(workerUrl);
-      setTimeout(() => {
-        try { URL.revokeObjectURL(workerUrl); } catch {}
-      }, 3000);
+      try { URL.revokeObjectURL(workerUrl); } catch {}
 
       this.tickerWorker.onmessage = (e) => {
         if (e.data === "tick") {
           this.checkBoundary();
         } else if (e.data && e.data.cmd === "paused") {
-          if (e.data.id === this.pauseRequestId && this.pauseTimer !== null) {
-            clearTimeout(this.pauseTimer);
-            this.pauseTimer = null;
-            this.audioEl.pause();
-            this.stopTicker();
+          if (e.data.id === this.pauseRequestId) {
+            if (this.onSegmentEndCallback) {
+              const cb = this.onSegmentEndCallback;
+              this.onSegmentEndCallback = null;
+              cb();
+            } else {
+              if (this.pauseTimer !== null) {
+                clearTimeout(this.pauseTimer);
+                this.pauseTimer = null;
+              }
+              this.audioEl.pause();
+              this.stopTicker();
+            }
           }
         }
       };

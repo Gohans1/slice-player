@@ -202,7 +202,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const newlyReadyTracks = stabilizedTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
         if (newlyReadyTracks.length > 0) {
           for (const newTrack of newlyReadyTracks) {
+            dismissedSegmentIds.delete(`fallback_${newTrack.id}`);
             const trackSlices = validSegments.filter((s) => s.track_id === newTrack.id);
+            for (const s of trackSlices) {
+              dismissedSegmentIds.delete(s.id);
+            }
             if (currentMode === "original_only") {
               validQueue.push({ segment: createDefaultFullSegment(newTrack), track: newTrack });
             } else if (currentMode === "slices_only") {
@@ -346,7 +350,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playSegment: async (segment: Segment, track: Track, overrideIndex?: number) => {
-    consecutivePlaybackFailures = 0;
+    if (overrideIndex !== undefined) {
+      consecutivePlaybackFailures = 0;
+    }
     dismissedSegmentIds.delete(segment.id);
     dismissedSegmentIds.delete(`fallback_${track.id}`);
     const currentQ = get().queue;
@@ -515,10 +521,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     }
 
-    let newIndex = activeSegment ? 0 : get().queueIndex;
+    let newIndex = -1;
     if (activeSegment) {
       const found = newQueue.findIndex((item) => item.segment.id === activeSegment.id);
       if (found >= 0) newIndex = found;
+    }
+    if (newIndex === -1 && get().queueIndex >= 0) {
+      newIndex = Math.min(get().queueIndex, newQueue.length - 1);
     }
 
     set({ isShuffle: nextShuffle, queue: newQueue, queueIndex: newIndex });

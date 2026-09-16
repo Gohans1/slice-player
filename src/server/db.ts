@@ -286,3 +286,28 @@ export function deleteSegment(id: string): boolean {
   const res = db.query("DELETE FROM segments WHERE id = $id").run({ $id: id });
   return res.changes > 0;
 }
+
+export function reconcileTrackSegments(trackId: string, duration: number): { pruned: { id: string }[]; clamped: { id: string }[] } {
+  const db = getDb();
+  let pruned: { id: string }[] = [];
+  let clamped: { id: string }[] = [];
+  db.transaction(() => {
+    pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
+      $track_id: trackId,
+      $duration: duration,
+    }) as { id: string }[];
+    db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
+      $track_id: trackId,
+      $duration: duration,
+    });
+    clamped = db.query("SELECT id FROM segments WHERE track_id = $track_id AND end_time > $duration;").all({
+      $track_id: trackId,
+      $duration: duration,
+    }) as { id: string }[];
+    db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
+      $track_id: trackId,
+      $duration: duration,
+    });
+  })();
+  return { pruned, clamped };
+}

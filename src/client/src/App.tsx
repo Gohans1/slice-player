@@ -6,6 +6,7 @@ import { SliceStudio } from "./components/SliceStudio";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { Music, Loader2 } from "lucide-react";
+import { audioEngine } from "./lib/audio";
 
 export function App() {
   const tracks = usePlayerStore((s) => s.tracks);
@@ -133,6 +134,9 @@ export function App() {
     async (id: string) => {
       if (confirm("Bạn có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
         try {
+          if (usePlayerStore.getState().activeTrack?.id === id) {
+            audioEngine.unload();
+          }
           removeTrackFromQueue(id);
           const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
           if (res.ok) {
@@ -217,7 +221,9 @@ export function App() {
           track={sliceStudioTrack}
           onClose={() => {
             closeSliceStudio();
-            fetchTracks();
+            setTimeout(() => {
+              fetchTracks();
+            }, 100);
           }}
         />
       )}

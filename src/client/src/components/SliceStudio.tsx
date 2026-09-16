@@ -362,7 +362,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     return () => {
       setIsWaveSurferReady(false);
-      ws.destroy();
+      try { wsRegions.unAll(); } catch {}
+      try { ws.destroy(); } catch {}
       wavesurferRef.current = null;
       regionsRef.current = null;
     };
