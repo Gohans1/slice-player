@@ -14,10 +14,17 @@ export interface IngestResult {
   tracks?: Track[];
 }
 
+const YOUTUBE_URL_REGEX = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+
 /**
  * Handle YouTube URL (single video or playlist)
  */
-export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
+export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
+  const url = rawUrl.trim();
+  if (!YOUTUBE_URL_REGEX.test(url)) {
+    return { success: false, message: "URL không hợp lệ. Chỉ chấp nhận link YouTube (youtube.com hoặc youtu.be)!" };
+  }
+
   try {
     // Stage 1: Fast metadata extraction via yt-dlp
     const metaCmd = [
@@ -25,6 +32,7 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
       "--flat-playlist",
       "-J",
       "--skip-download",
+      "--",
       url
     ];
 
@@ -33,11 +41,19 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
       stderr: "pipe",
     });
 
-    const outputText = await new Response(proc.stdout).text();
+    const killTimer = setTimeout(() => {
+      try { proc.kill(); } catch {}
+    }, 45000);
+
+    const [outputText, errText] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+
+    clearTimeout(killTimer);
     await proc.exited;
 
     if (!outputText || outputText.trim() === "") {
-      const errText = await new Response(proc.stderr).text();
       return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };
     }
 
@@ -50,6 +66,12 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
     for (const entry of entries) {
       if (!entry || !entry.id) continue;
 
+      // Skip livestreams
+      if (entry.is_live || entry.live_status === "is_live") {
+        console.warn(`[Skip] Bỏ qua livestream: ${entry.title}`);
+        continue;
+      }
+
       const duration = Number(entry.duration) || 0;
       const title = entry.title || "Unknown YouTube Track";
       const uploader = entry.uploader || entry.channel || "";
@@ -57,7 +79,7 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
       const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
       const thumb = entry.thumbnail || entry.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 
-      // 30-minute cap check
+      // 30-minute cap check (if duration is known)
       if (duration > MAX_DURATION_SECONDS) {
         console.warn(`[Skip] Track "${title}" exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
         continue;
@@ -87,7 +109,7 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
     if (createdTracks.length === 0 && entries.length > 0) {
       return {
         success: false,
-        message: `Mọi video trong link đều vượt quá giới hạn 30 phút (${MAX_DURATION_SECONDS}s) hoặc không hợp lệ!`,
+        message: `Mọi video trong link đều vượt quá giới hạn 30 phút (${MAX_DURATION_SECONDS}s), là livestream hoặc không hợp lệ!`,
       };
     }
 
@@ -105,6 +127,14 @@ export async function ingestYouTubeUrl(url: string): Promise<IngestResult> {
 // Queue worker for downloads (strictly sequential: concurrency = 1)
 const downloadQueue: Array<{ trackId: string; url: string }> = [];
 let isDownloading = false;
+let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
+
+export function abortIngestProcesses() {
+  if (activeDownloadProc) {
+    try { activeDownloadProc.kill(); } catch {}
+    activeDownloadProc = null;
+  }
+}
 
 function triggerDownloadWorker(trackId: string, url: string) {
   downloadQueue.push({ trackId, url });
@@ -132,15 +162,24 @@ async function processDownloadQueue() {
       "-f", "140/ba[ext=m4a]/ba",
       "-o", outputTemplate,
       "--no-playlist",
+      "--",
       url
     ];
 
     const proc = Bun.spawn(dlCmd, {
-      stdout: "pipe",
-      stderr: "pipe",
+      stdout: "ignore",
+      stderr: "ignore",
     });
+    activeDownloadProc = proc;
+
+    // 5-minute timeout to avoid hanging download indefinitely
+    const dlTimeout = setTimeout(() => {
+      try { proc.kill(); } catch {}
+    }, 300000);
 
     await proc.exited;
+    clearTimeout(dlTimeout);
+    activeDownloadProc = null;
 
     // Find actual downloaded file in ./data/cache/audio/
     const possibleExtensions = ["m4a", "webm", "opus", "mp4"];
@@ -156,10 +195,30 @@ async function processDownloadQueue() {
     if (!finalPath) {
       updateTrack(trackId, { status: "error", error_message: "Download failed or output file not found" });
     } else {
+      // Re-verify actual audio duration using music-metadata
+      let actualDuration = 0;
+      try {
+        const meta = await parseFile(finalPath);
+        actualDuration = Number(meta.format.duration) || 0;
+      } catch (e) {
+        console.warn(`[Ingest] Could not parse downloaded metadata: ${e}`);
+      }
+
+      if (actualDuration > MAX_DURATION_SECONDS) {
+        const { unlinkSync } = await import("node:fs");
+        try { unlinkSync(finalPath); } catch {}
+        updateTrack(trackId, {
+          status: "error",
+          error_message: `Thời lượng thực tế (${actualDuration.toFixed(0)}s) vượt quá giới hạn 30 phút!`,
+        });
+        return;
+      }
+
       // Generate peaks
       const peaks = await generatePeaks(finalPath, 1000);
       updateTrack(trackId, {
         file_path: finalPath,
+        duration: actualDuration > 0 ? Number(actualDuration.toFixed(2)) : undefined,
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });

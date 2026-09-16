@@ -71,12 +71,21 @@ class AudioEngine {
 
     if (!isSameSource) {
       this.audioEl.src = streamUrl;
-      await new Promise<void>((resolve) => {
-        const onCanPlay = () => {
+      await new Promise<void>((resolve, reject) => {
+        let isDone = false;
+        const cleanup = () => {
+          if (isDone) return;
+          isDone = true;
           this.audioEl.removeEventListener("canplay", onCanPlay);
-          resolve();
+          this.audioEl.removeEventListener("error", onError);
+          clearTimeout(timer);
         };
+        const onCanPlay = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error("Audio load failed or 404")); };
+        const timer = setTimeout(() => { cleanup(); reject(new Error("Audio load timeout (10s)")); }, 10000);
+
         this.audioEl.addEventListener("canplay", onCanPlay);
+        this.audioEl.addEventListener("error", onError);
         this.audioEl.load();
       });
     }
@@ -121,7 +130,7 @@ class AudioEngine {
   }
 
   /**
-   * 15ms linear micro-fade down to 0, seek, then 15ms linear ramp up to 1
+   * 15ms linear micro-fade down to 0, seek, wait for seeked, then 15ms linear ramp up to 1
    * Completely silences DC offset click transients.
    */
   public async microFadeSeek(targetSeconds: number) {
@@ -137,7 +146,21 @@ class AudioEngine {
     this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
 
     await new Promise((r) => setTimeout(r, 16));
-    this.audioEl.currentTime = targetSeconds;
+
+    // Seek and wait for seeked event (with 100ms timeout fallback)
+    await new Promise<void>((resolve) => {
+      const onSeeked = () => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        clearTimeout(fallback);
+        resolve();
+      };
+      const fallback = setTimeout(() => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        resolve();
+      }, 100);
+      this.audioEl.addEventListener("seeked", onSeeked);
+      this.audioEl.currentTime = targetSeconds;
+    });
 
     // Ramp up to 1 in 15ms
     const nextNow = this.audioCtx.currentTime;
@@ -146,28 +169,42 @@ class AudioEngine {
   }
 
   /**
-   * Monitor currentTime using requestAnimationFrame for sub-millisecond precision
+   * Unified boundary checking logic used by rAF, timeupdate event, and background interval
    */
-  private startBoundaryMonitor = () => {
-    const loop = () => {
-      if (!this.audioEl.paused) {
-        const curTime = this.audioEl.currentTime;
-        if (this.onTimeUpdateCallback) {
-          this.onTimeUpdateCallback(curTime);
-        }
+  private checkBoundary = () => {
+    if (this.audioEl.paused) return;
 
-        if (this.currentSegmentEnd !== null) {
-          // If 15ms before end, prepare transition
-          if (curTime >= this.currentSegmentEnd) {
-            this.currentSegmentEnd = null; // prevent multiple triggers
-            if (this.onSegmentEndCallback) {
-              const cb = this.onSegmentEndCallback;
-              this.onSegmentEndCallback = null;
-              cb();
-            }
-          }
+    const curTime = this.audioEl.currentTime;
+    if (this.onTimeUpdateCallback) {
+      this.onTimeUpdateCallback(curTime);
+    }
+
+    if (this.currentSegmentEnd !== null) {
+      if (curTime >= this.currentSegmentEnd) {
+        this.currentSegmentEnd = null; // prevent multiple triggers
+        if (this.onSegmentEndCallback) {
+          const cb = this.onSegmentEndCallback;
+          this.onSegmentEndCallback = null;
+          cb();
         }
       }
+    }
+  };
+
+  /**
+   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and setInterval
+   * to ensure background/minimized windows never miss segment boundaries.
+   */
+  private startBoundaryMonitor = () => {
+    // Native timeupdate listener
+    this.audioEl.addEventListener("timeupdate", this.checkBoundary);
+
+    // 50ms interval fallback for when Chromium suspends rAF in background/minimized mode
+    setInterval(this.checkBoundary, 50);
+
+    // rAF loop for high-frequency UI updates when visible
+    const loop = () => {
+      this.checkBoundary();
       this.animationFrameId = requestAnimationFrame(loop);
     };
 

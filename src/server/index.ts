@@ -1,8 +1,8 @@
 import { serve, file as bunFile } from "bun";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
-import { initDatabase, getTrack, listTracks, deleteTrack, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile } from "./ingest";
+import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
+import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses } from "./ingest";
 import type { Segment } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -17,6 +17,16 @@ console.log(`[Server] Session Token: ${SESSION_TOKEN}`);
 // Client connection tracking for auto-shutdown when window closes
 let connectedClients = 0;
 let shutdownTimer: Timer | null = null;
+
+function gracefulShutdown() {
+  console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
+  abortIngestProcesses();
+  closeDatabase();
+  process.exit(0);
+}
+
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -35,6 +45,7 @@ const mimeTypes: Record<string, string> = {
 };
 
 const server = serve({
+  hostname: "127.0.0.1",
   port: PORT,
   async fetch(req, server) {
     const url = new URL(req.url);
@@ -99,6 +110,18 @@ const server = serve({
           return Response.json(track, { headers: corsHeaders });
         }
         if (req.method === "DELETE") {
+          const track = getTrack(trackId);
+          if (track) {
+            // Unlink audio file if in cache
+            if (track.file_path && track.file_path.includes("data") && existsSync(track.file_path)) {
+              try { unlinkSync(track.file_path); } catch {}
+            }
+            // Unlink thumbnail if local cache
+            const thumbPath = resolve(`./data/cache/thumbs/${track.id}.jpg`);
+            if (existsSync(thumbPath)) {
+              try { unlinkSync(thumbPath); } catch {}
+            }
+          }
           const ok = deleteTrack(trackId);
           return Response.json({ success: ok }, { headers: corsHeaders });
         }
@@ -132,13 +155,14 @@ const server = serve({
         return response;
       }
 
-      // 3. Local Thumbnail API
-      const thumbMatch = url.pathname.match(/^\/api\/thumbs\/([^/]+)$/);
+      // 3. Local Thumbnail API (Sanitized against directory traversal)
+      const thumbMatch = url.pathname.match(/^\/api\/thumbs\/([a-zA-Z0-9_-]+)$/);
       if (thumbMatch && req.method === "GET") {
         const thumbId = thumbMatch[1];
-        const thumbFile = bunFile(`./data/cache/thumbs/${thumbId}.jpg`);
-        if (await thumbFile.exists()) {
-          return new Response(thumbFile, {
+        const allowedThumbsDir = resolve("./data/cache/thumbs");
+        const thumbPath = resolve(allowedThumbsDir, `${thumbId}.jpg`);
+        if (thumbPath.startsWith(allowedThumbsDir) && existsSync(thumbPath)) {
+          return new Response(bunFile(thumbPath), {
             headers: { ...corsHeaders, "Content-Type": "image/jpeg" },
           });
         }
@@ -154,19 +178,28 @@ const server = serve({
           return Response.json(segments, { headers: corsHeaders });
         }
         if (req.method === "POST") {
-          const body = (await req.json()) as Partial<Segment>;
-          if (!body.name || body.start_time === undefined || body.end_time === undefined) {
-            return Response.json({ error: "Missing segment fields" }, { status: 400, headers: corsHeaders });
+          try {
+            const body = (await req.json()) as Partial<Segment>;
+            if (!body.name || body.start_time === undefined || body.end_time === undefined) {
+              return Response.json({ error: "Missing segment fields" }, { status: 400, headers: corsHeaders });
+            }
+            const startTime = Number(body.start_time);
+            const endTime = Number(body.end_time);
+            if (startTime >= endTime || startTime < 0) {
+              return Response.json({ error: "start_time must be >= 0 and < end_time" }, { status: 400, headers: corsHeaders });
+            }
+            const created = createSegment({
+              id: `seg_${crypto.randomUUID().slice(0, 8)}`,
+              track_id: trackId,
+              name: body.name,
+              start_time: startTime,
+              end_time: endTime,
+              color: body.color || "#4385BE",
+            });
+            return Response.json(created, { headers: corsHeaders });
+          } catch (e: any) {
+            return Response.json({ error: e.message || "Failed to create segment" }, { status: 400, headers: corsHeaders });
           }
-          const created = createSegment({
-            id: `seg_${crypto.randomUUID().slice(0, 8)}`,
-            track_id: trackId,
-            name: body.name,
-            start_time: Number(body.start_time),
-            end_time: Number(body.end_time),
-            color: body.color || "#4385BE",
-          });
-          return Response.json(created, { headers: corsHeaders });
         }
       }
 
@@ -175,10 +208,19 @@ const server = serve({
       if (segmentDetailMatch) {
         const segId = segmentDetailMatch[1];
         if (req.method === "PUT") {
-          const body = (await req.json()) as Partial<Segment>;
-          const updated = updateSegment(segId, body);
-          if (!updated) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
-          return Response.json(updated, { headers: corsHeaders });
+          try {
+            const body = (await req.json()) as Partial<Segment>;
+            if (body.start_time !== undefined && body.end_time !== undefined) {
+              if (Number(body.start_time) >= Number(body.end_time) || Number(body.start_time) < 0) {
+                return Response.json({ error: "start_time must be >= 0 and < end_time" }, { status: 400, headers: corsHeaders });
+              }
+            }
+            const updated = updateSegment(segId, body);
+            if (!updated) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
+            return Response.json(updated, { headers: corsHeaders });
+          } catch (e: any) {
+            return Response.json({ error: e.message || "Failed to update segment" }, { status: 400, headers: corsHeaders });
+          }
         }
         if (req.method === "DELETE") {
           const ok = deleteSegment(segId);
@@ -196,15 +238,15 @@ const server = serve({
     }
 
     // --- STATIC FRONTEND ASSETS ---
-    // Try serving built frontend in dist/
+    // Protected against path traversal
     const distDir = resolve("./dist");
     let relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-    let filePath = join(distDir, relativePath);
+    const safePath = resolve(distDir, relativePath);
 
-    if (existsSync(filePath) && statSync(filePath).isFile()) {
-      const ext = extname(filePath).toLowerCase();
+    if (safePath.startsWith(distDir) && existsSync(safePath) && statSync(safePath).isFile()) {
+      const ext = extname(safePath).toLowerCase();
       const ct = mimeTypes[ext] || "application/octet-stream";
-      return new Response(bunFile(filePath), {
+      return new Response(bunFile(safePath), {
         headers: { "Content-Type": ct },
       });
     }
@@ -242,8 +284,7 @@ const server = serve({
       if (connectedClients <= 0) {
         // Shutdown after 10s of no active clients
         shutdownTimer = setTimeout(() => {
-          console.log("[Server] Window closed and no clients connected. Shutting down cleanly.");
-          process.exit(0);
+          gracefulShutdown();
         }, 10000);
       }
     },

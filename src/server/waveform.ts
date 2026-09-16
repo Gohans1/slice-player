@@ -24,12 +24,31 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
   const proc = Bun.spawn(ffmpegCmd, {
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "ignore",
   });
 
+  // 60s timeout to kill hanging ffmpeg
+  const killTimer = setTimeout(() => {
+    try {
+      proc.kill();
+    } catch {}
+  }, 60000);
+
   const chunks: Uint8Array[] = [];
-  for await (const chunk of proc.stdout) {
-    chunks.push(chunk);
+  let totalBytes = 0;
+  const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap to prevent OOM
+
+  try {
+    for await (const chunk of proc.stdout) {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_BYTES) {
+        proc.kill();
+        break;
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    clearTimeout(killTimer);
   }
 
   await proc.exited;
@@ -40,8 +59,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
   }
 
   // Combine chunks into a single Int8Array (since pcm_s8 is signed 8-bit, -128 to 127)
-  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
-  const rawData = new Int8Array(totalLength);
+  const rawData = new Int8Array(totalBytes);
   let offset = 0;
   for (const chunk of chunks) {
     rawData.set(new Int8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength), offset);
@@ -54,7 +72,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
   for (let i = 0; i < targetPoints; i++) {
     const start = Math.floor(i * step);
-    const end = Math.min(Math.floor((i + 1) * step), rawData.length);
+    const end = Math.max(start + 1, Math.min(Math.floor((i + 1) * step), rawData.length));
     let max = 0;
     for (let j = start; j < end; j++) {
       const absVal = Math.abs(rawData[j]);

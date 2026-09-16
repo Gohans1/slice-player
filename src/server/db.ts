@@ -108,35 +108,27 @@ export function createTrack(track: Track): Track {
 
 export function updateTrack(id: string, updates: Partial<Track>): Track | null {
   const db = getDb();
-  const current = getTrack(id);
-  if (!current) return null;
+  const allowedKeys: (keyof Track)[] = [
+    "title", "artist", "duration", "thumbnail_url",
+    "file_path", "peaks_json", "status", "error_message"
+  ];
+  const keysToUpdate = Object.keys(updates).filter((k) => allowedKeys.includes(k as keyof Track));
+  if (keysToUpdate.length === 0) return getTrack(id);
 
-  const merged = { ...current, ...updates };
+  const setClauses = keysToUpdate.map((k) => `${k} = $${k}`).join(", ");
+  const params: Record<string, any> = { $id: id };
+  for (const k of keysToUpdate) {
+    params[`$${k}`] = (updates as any)[k] ?? null;
+  }
+
   const query = db.query(`
     UPDATE tracks
-    SET title = $title,
-        artist = $artist,
-        duration = $duration,
-        thumbnail_url = $thumbnail_url,
-        file_path = $file_path,
-        peaks_json = $peaks_json,
-        status = $status,
-        error_message = $error_message
+    SET ${setClauses}
     WHERE id = $id
     RETURNING *;
   `);
 
-  return query.get({
-    $id: id,
-    $title: merged.title,
-    $artist: merged.artist ?? '',
-    $duration: merged.duration,
-    $thumbnail_url: merged.thumbnail_url ?? '',
-    $file_path: merged.file_path ?? null,
-    $peaks_json: merged.peaks_json ?? null,
-    $status: merged.status,
-    $error_message: merged.error_message ?? null,
-  }) as Track;
+  return query.get(params) as Track | null;
 }
 
 export function getTrack(id: string): Track | null {
@@ -155,13 +147,16 @@ export function deleteTrack(id: string): boolean {
   return res.changes > 0;
 }
 
-// Segment operations
-export function createSegment(seg: Segment): Segment {
+// --- SEGMENT OPERATIONS ---
+
+export function createSegment(seg: Omit<Segment, 'created_at'>): Segment {
   const db = getDb();
   const query = db.query(`
-    INSERT INTO segments (id, track_id, name, start_time, end_time, color, sort_order)
-    VALUES ($id, $track_id, $name, $start_time, $end_time, $color, $sort_order)
-    RETURNING *;
+    INSERT INTO segments (
+      id, track_id, name, start_time, end_time, color, sort_order
+    ) VALUES (
+      $id, $track_id, $name, $start_time, $end_time, $color, $sort_order
+    ) RETURNING *;
   `);
 
   return query.get({
@@ -177,29 +172,40 @@ export function createSegment(seg: Segment): Segment {
 
 export function updateSegment(id: string, updates: Partial<Segment>): Segment | null {
   const db = getDb();
-  const current = db.query("SELECT * FROM segments WHERE id = $id").get({ $id: id }) as Segment | null;
-  if (!current) return null;
+  const allowedKeys: (keyof Segment)[] = [
+    "name", "start_time", "end_time", "color", "sort_order"
+  ];
+  const keysToUpdate = Object.keys(updates).filter((k) => allowedKeys.includes(k as keyof Segment));
+  if (keysToUpdate.length === 0) {
+    return db.query("SELECT * FROM segments WHERE id = $id").get({ $id: id }) as Segment | null;
+  }
 
-  const merged = { ...current, ...updates };
+  const setClauses = keysToUpdate.map((k) => `${k} = $${k}`).join(", ");
+  const params: Record<string, any> = { $id: id };
+  for (const k of keysToUpdate) {
+    params[`$${k}`] = (updates as any)[k] ?? null;
+  }
+
   const query = db.query(`
     UPDATE segments
-    SET name = $name,
-        start_time = $start_time,
-        end_time = $end_time,
-        color = $color,
-        sort_order = $sort_order
+    SET ${setClauses}
     WHERE id = $id
     RETURNING *;
   `);
 
-  return query.get({
-    $id: id,
-    $name: merged.name,
-    $start_time: merged.start_time,
-    $end_time: merged.end_time,
-    $color: merged.color ?? '#4385BE',
-    $sort_order: merged.sort_order ?? 0,
-  }) as Segment;
+  return query.get(params) as Segment | null;
+}
+
+export function closeDatabase(): void {
+  if (dbInstance) {
+    try {
+      dbInstance.run("PRAGMA wal_checkpoint(TRUNCATE);");
+      dbInstance.close();
+    } catch (e) {
+      console.error("[DB] Error closing database:", e);
+    }
+    dbInstance = null;
+  }
 }
 
 export function listSegmentsByTrack(trackId: string): Segment[] {

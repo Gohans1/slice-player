@@ -1,4 +1,5 @@
 import * as React from "react";
+import { usePlayerStore } from "./store/usePlayerStore";
 import { Navbar } from "./components/Navbar";
 import { TrackCard } from "./components/TrackCard";
 import { SliceStudio } from "./components/SliceStudio";

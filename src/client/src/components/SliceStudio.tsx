@@ -35,6 +35,28 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
 
+  const isInternalUpdateRef = React.useRef(false);
+  const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const debouncedSaveSegment = React.useCallback((id: string, updates: Partial<Segment>, statusMsg: string = "Đã lưu") => {
+    if (saveDebounceTimersRef.current[id]) {
+      clearTimeout(saveDebounceTimersRef.current[id]);
+    }
+    saveDebounceTimersRef.current[id] = setTimeout(async () => {
+      try {
+        await fetch(`/api/segments/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        });
+        setSaveStatus(statusMsg);
+        setTimeout(() => setSaveStatus(null), 1500);
+      } catch (e) {
+        console.error(e);
+      }
+    }, 400);
+  }, []);
+
   // Fetch existing segments for this track
   const fetchSegments = React.useCallback(async () => {
     try {
@@ -60,12 +82,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     let peaks: number[][] | undefined = undefined;
     if (track.peaks_json) {
       try {
-        const parsed = JSON.parse(track.peaks_json);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          peaks = [parsed]; // single channel format for WaveSurfer v7
+        const rawPeaks = JSON.parse(track.peaks_json);
+        if (Array.isArray(rawPeaks) && rawPeaks.length > 0) {
+          peaks = [rawPeaks];
         }
       } catch (e) {
-        console.warn("[SliceStudio] Failed to parse peaks_json", e);
+        console.warn("[SliceStudio] Could not parse peaks_json", e);
       }
     }
 
@@ -74,14 +96,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
-      waveColor: "#343331", // Flexoki 850
-      progressColor: "#4385BE", // Flexoki Blue
-      cursorColor: "#CECDC3", // Flexoki 200
+      waveColor: "#403e3c", // flexoki-base-200
+      progressColor: "#d14d41", // flexoki-red
+      cursorColor: "#ce5d97", // flexoki-magenta
       cursorWidth: 2,
-      height: 96,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
+      height: 128,
+      normalize: true,
       url: `/api/tracks/${track.id}/stream`,
       peaks: peaks,
       duration: track.duration,
@@ -95,38 +115,33 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     ws.on("timeupdate", (time) => setCurrentPlayTime(time));
 
     // Region drag / resize handlers
-    wsRegions.on("region-updated", async (region) => {
+    wsRegions.on("region-updated", (region) => {
       const segId = region.id;
       const start = Number(region.start.toFixed(2));
       const end = Number(region.end.toFixed(2));
 
+      isInternalUpdateRef.current = true;
       setSegments((prev) =>
         prev.map((s) => (s.id === segId ? { ...s, start_time: start, end_time: end } : s))
       );
 
-      // Debounced save
-      try {
-        await fetch(`/api/segments/${segId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ start_time: start, end_time: end }),
-        });
-        setSaveStatus("Đã lưu mốc cắt");
-        setTimeout(() => setSaveStatus(null), 1500);
-      } catch (e) {
-        console.error(e);
-      }
+      debouncedSaveSegment(segId, { start_time: start, end_time: end }, "Đã lưu mốc cắt");
     });
 
     return () => {
       ws.destroy();
     };
-  }, [track.id, track.duration, track.peaks_json]);
+  }, [track.id, track.duration, track.peaks_json, debouncedSaveSegment]);
 
   // Sync segments with WaveSurfer regions
   React.useEffect(() => {
     const wsRegions = regionsRef.current;
     if (!wsRegions) return;
+
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+      return;
+    }
 
     wsRegions.clearRegions();
 
@@ -187,17 +202,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   };
 
   // Update segment name
-  const handleUpdateName = async (id: string, name: string) => {
+  const handleUpdateName = (id: string, name: string) => {
     setSegments((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
-    try {
-      await fetch(`/api/segments/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-    } catch (e) {
-      console.error(e);
-    }
+    debouncedSaveSegment(id, { name }, "Đã đổi tên đoạn");
   };
 
   // Preview segment in studio

@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Music2, FolderPlus, Shuffle, Search, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 

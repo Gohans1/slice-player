@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle } from "lucide-react";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -84,7 +85,7 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
         <div className="absolute top-2 left-2">
           {track.source_type === "youtube" ? (
             <Badge variant="destructive" className="flex items-center gap-1 text-[10px] py-0.5">
-              <Youtube className="h-3 w-3" />
+              <YoutubeIcon className="h-3 w-3" />
               <span>YouTube</span>
             </Badge>
           ) : (
