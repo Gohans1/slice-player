@@ -33,6 +33,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
   const ffmpegCmd = [
     "ffmpeg",
     "-v", "error",
+    "-t", "1800",
     "-i", filePath,
     "-ac", "1",
     "-filter:a", "aresample=200",
@@ -88,12 +89,11 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
           chunks.push(value);
         }
       }
+      await proc.exited;
     } finally {
       clearTimeout(killTimer);
+      if (proc) activeWaveformProcs.delete(proc);
     }
-
-    await proc.exited;
-    activeWaveformProcs.delete(proc);
 
     if (chunks.length === 0) {
       return Array.from({ length: targetPoints }, () => 0.1);

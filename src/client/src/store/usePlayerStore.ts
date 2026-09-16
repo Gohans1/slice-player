@@ -10,6 +10,8 @@ export interface QueueItem {
 
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
 
+let consecutivePlaybackFailures = 0;
+
 interface PlayerState {
   tracks: Track[];
   isLoadingTracks: boolean;
@@ -201,12 +203,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
 
-        const newIdx = validQueue.length === 0
-          ? -1
-          : currentItem
-            ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
-            : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
-        const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
+        let newIdx = -1;
+        if (validQueue.length > 0 && currentItem) {
+          const segIdx = validQueue.findIndex((it) => it.segment.id === currentItem.segment.id);
+          if (segIdx !== -1) {
+            newIdx = segIdx;
+          } else {
+            const trkIdx = validQueue.findIndex((it) => it.track.id === currentItem.track.id);
+            if (trkIdx !== -1) {
+              newIdx = trkIdx;
+            }
+          }
+        }
+        const fallbackIdx = Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+        const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
         set({ tracks: stabilizedTracks, queue: validQueue, queueIndex: settledIdx });
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
@@ -222,7 +232,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             set({ sliceStudioTrack: trackMap.get(sliceStudioTrack.id)! });
           }
         }
-        set({ tracks });
       }
     } catch (e) {
       console.error("[Store] Failed to fetch tracks", e);
@@ -273,17 +282,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           set({ currentTime: time });
         }
       );
+      consecutivePlaybackFailures = 0;
     } catch (e) {
       console.warn("[Store] Playback error or superseded:", e);
       if (get().activeSegment?.id === segment.id) {
         set({ isPlaying: false });
+        consecutivePlaybackFailures++;
+        const isUserGestureError = (e as any)?.name === "NotAllowedError";
         const { queue, nextSegment } = get();
-        if (queue.length > 1) {
+        if (!isUserGestureError && queue.length > 1 && consecutivePlaybackFailures < Math.min(3, queue.length)) {
           setTimeout(() => {
             if (!get().isPlaying && get().activeSegment?.id === segment.id) {
               nextSegment();
             }
           }, 500);
+        } else if (consecutivePlaybackFailures >= Math.min(3, queue.length)) {
+          console.warn("[Store] Consecutive playback failures reached limit, stopping auto-skip loop");
+          consecutivePlaybackFailures = 0;
         }
       }
     }
@@ -610,14 +625,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     let currentIndex = -1;
     const { activeSegment } = get();
+    let updatedActiveSegment = activeSegment;
     if (activeSegment) {
       let foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
       if (foundIdx < 0) {
         foundIdx = items.findIndex((item) => item.track.id === activeSegment.track_id);
       }
-      if (foundIdx >= 0) currentIndex = foundIdx;
+      if (foundIdx >= 0) {
+        currentIndex = foundIdx;
+        if (activeSegment.id !== items[foundIdx].segment.id) {
+          updatedActiveSegment = items[foundIdx].segment;
+        }
+      }
     }
 
-    set({ queue: items, queueIndex: items.length > 0 ? (currentIndex >= 0 ? currentIndex : 0) : -1 });
+    set({
+      queue: items,
+      queueIndex: items.length > 0 ? (currentIndex >= 0 ? currentIndex : 0) : -1,
+      activeSegment: updatedActiveSegment,
+    });
   },
 }));

@@ -130,6 +130,11 @@ const server = serve({
 
     // --- API ROUTES ---
     if (url.pathname.startsWith("/api/")) {
+      if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+        if (!req.headers.get("content-length") && req.headers.get("transfer-encoding")) {
+          return Response.json({ error: "Chunked transfer encoding not supported" }, { status: 411, headers: corsHeaders });
+        }
+      }
       const contentLength = Number(req.headers.get("content-length")) || 0;
       if (contentLength > 65536) {
         return Response.json({ error: "Payload too large (max 64KB)" }, { status: 413, headers: corsHeaders });
@@ -182,6 +187,12 @@ const server = serve({
           if (!track) {
             return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
           }
+          const ok = deleteTrack(trackId);
+          if (!ok) {
+            return Response.json({ error: "Could not delete track from database" }, { status: 500, headers: corsHeaders });
+          }
+          serverEvents.emit("track_deleted", { trackId });
+
           // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
           if (track.source_type === "youtube" && track.file_path) {
             const cacheAudioDir = resolve("./data/cache/audio");
@@ -220,11 +231,7 @@ const server = serve({
               }
             }
           }
-          const ok = deleteTrack(trackId);
-          if (ok) {
-            serverEvents.emit("track_deleted", { trackId });
-          }
-          return Response.json({ success: ok }, { headers: corsHeaders });
+          return Response.json({ success: true }, { headers: corsHeaders });
         }
       }
 

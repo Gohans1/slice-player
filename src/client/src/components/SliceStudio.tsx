@@ -42,6 +42,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
 
   const isInternalUpdateRef = React.useRef(false);
+  const isDraggingRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
   const previewEndRef = React.useRef<number | null>(null);
@@ -226,6 +227,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     // Region drag / resize handlers throttled to prevent React render thrashing
     let lastRegionUpdate = 0;
     wsRegions.on("region-update", (region) => {
+      isDraggingRef.current = true;
       const now = performance.now();
       if (now - lastRegionUpdate < 40) return;
       lastRegionUpdate = now;
@@ -246,6 +248,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     // Capture exact settled coordinates upon drag/resize release
     wsRegions.on("region-updated", (region) => {
+      isDraggingRef.current = false;
       const segId = region.id;
       const start = Number(region.start.toFixed(2));
       const end = Number(region.end.toFixed(2));
@@ -273,7 +276,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   // Sync segments with WaveSurfer regions without destructive full teardowns
   React.useEffect(() => {
     const wsRegions = regionsRef.current;
-    if (!wsRegions || !isWaveSurferReady) return;
+    if (!wsRegions || !isWaveSurferReady || isDraggingRef.current) return;
 
     if (isInternalUpdateRef.current) {
       isInternalUpdateRef.current = false;

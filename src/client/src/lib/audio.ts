@@ -290,6 +290,7 @@ class AudioEngine {
     }
     this.isFadingOut = false;
     this.pauseRequestId++;
+    this.isSeekingSettled = false;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -303,9 +304,11 @@ class AudioEngine {
       if (this.audioEl.readyState === 0) {
         this.audioEl.addEventListener("loadedmetadata", () => {
           this.audioEl.currentTime = seconds;
+          this.isSeekingSettled = true;
         }, { once: true });
       } else {
         this.audioEl.currentTime = seconds;
+        this.isSeekingSettled = true;
       }
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
@@ -322,6 +325,7 @@ class AudioEngine {
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
 
       const onSeeked = () => {
+        this.isSeekingSettled = true;
         if (this.activeSeekCleanup) {
           this.activeSeekCleanup = null;
         }
@@ -336,6 +340,7 @@ class AudioEngine {
       };
       const fallback = setTimeout(onSeeked, 2000);
       this.activeSeekCleanup = () => {
+        this.isSeekingSettled = true;
         this.audioEl.removeEventListener("seeked", onSeeked);
         clearTimeout(fallback);
         this.activeSeekCleanup = null;
@@ -344,6 +349,7 @@ class AudioEngine {
       this.audioEl.currentTime = seconds;
     } else {
       this.audioEl.currentTime = seconds;
+      this.isSeekingSettled = true;
     }
   }
 
@@ -400,10 +406,8 @@ class AudioEngine {
     }
 
     // Guard against seeking settlement lag during same-track segment transitions (both forward & backward)
-    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
-      if (curTime < this.currentSegmentStart - 0.2 || curTime > this.currentSegmentEnd + 1.0) {
-        return;
-      }
+    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
+      return;
     }
 
     if (this.currentSegmentEnd !== null) {

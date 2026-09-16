@@ -14,7 +14,7 @@ export function App() {
   const sliceStudioTrack = usePlayerStore((s) => s.sliceStudioTrack);
   const closeSliceStudio = usePlayerStore((s) => s.closeSliceStudio);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
-  const queue = usePlayerStore((s) => s.queue);
+  const isQueueEmpty = usePlayerStore((s) => s.queue.length === 0);
   const removeTrackFromQueue = usePlayerStore((s) => s.removeTrackFromQueue);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
 
@@ -110,7 +110,7 @@ export function App() {
   const hasAttemptedQueueBuildRef = React.useRef(false);
   const hasReadyTracks = React.useMemo(() => tracks.some((t) => t.status === "ready" && t.duration > 0), [tracks]);
   React.useEffect(() => {
-    if (hasReadyTracks && queue.length === 0 && !hasAttemptedQueueBuildRef.current) {
+    if (hasReadyTracks && isQueueEmpty && !hasAttemptedQueueBuildRef.current) {
       hasAttemptedQueueBuildRef.current = true;
       fetch("/api/segments")
         .then((r) => (r.ok ? r.json() : []))
@@ -121,7 +121,7 @@ export function App() {
         })
         .catch(console.error);
     }
-  }, [hasReadyTracks, queue.length, buildShuffleQueue, tracks]);
+  }, [hasReadyTracks, isQueueEmpty, buildShuffleQueue, tracks]);
 
   const handleDeleteTrack = React.useCallback(
     async (id: string) => {

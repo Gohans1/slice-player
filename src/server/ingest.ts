@@ -97,6 +97,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
 
     for (const entry of entries) {
       if (!entry || !entry.id || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(entry.id))) continue;
+      if (entry.title === "[Private video]" || entry.title === "[Deleted video]") continue;
 
       // Skip livestreams
       if (entry.is_live || entry.live_status === "is_live") {
@@ -138,6 +139,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         updateTrack(trackId, { status: "queued", error_message: null as any });
         serverEvents.emit("track_updated", { trackId });
         triggerDownloadWorker(trackId, watchUrl);
+        existing = getTrack(trackId) || { ...existing, status: "queued", error_message: null };
       }
 
       createdTracks.push(existing);
