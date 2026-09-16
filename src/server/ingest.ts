@@ -204,13 +204,20 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
     downloadQueue.splice(qIdx, 1);
   }
   if (currentDownloadingTrackId === trackId && activeDownloadProc) {
+    const proc = activeDownloadProc;
     try {
       if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)]);
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
         await killProc.exited;
       } else {
-        activeDownloadProc.kill();
+        proc.kill();
       }
+      try {
+        await proc.exited;
+      } catch {}
     } catch {}
     activeDownloadProc = null;
     currentDownloadingTrackId = null;

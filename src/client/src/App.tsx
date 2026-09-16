@@ -15,8 +15,6 @@ export function App() {
   const closeSliceStudio = usePlayerStore((s) => s.closeSliceStudio);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
   const queue = usePlayerStore((s) => s.queue);
-  const activeTrack = usePlayerStore((s) => s.activeTrack);
-  const pause = usePlayerStore((s) => s.pause);
   const removeTrackFromQueue = usePlayerStore((s) => s.removeTrackFromQueue);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
 
@@ -55,10 +53,14 @@ export function App() {
             if (data.type === "segment_deleted" && segmentId) {
               removeSegmentFromQueue(segmentId);
             }
+            const trackId = data.trackId || data.data?.trackId;
+            if (data.type === "track_deleted" && trackId) {
+              removeTrackFromQueue(trackId);
+            }
             if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted") {
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
-                fetchTracks();
+                fetchTracks(true);
               }, 250);
             }
           } catch {}
@@ -88,7 +90,7 @@ export function App() {
       if (wsDebounceTimer) clearTimeout(wsDebounceTimer);
       if (ws) ws.close();
     };
-  }, [fetchTracks, removeSegmentFromQueue]);
+  }, [fetchTracks, removeSegmentFromQueue, removeTrackFromQueue]);
 
   // Polling interval if any track is downloading or queued to ensure UI updates
   const hasPendingDownloads = tracks.some(
@@ -98,7 +100,7 @@ export function App() {
     if (!hasPendingDownloads) return;
 
     const interval = setInterval(() => {
-      fetchTracks();
+      fetchTracks(false);
     }, 2500);
 
     return () => clearInterval(interval);
@@ -124,20 +126,17 @@ export function App() {
     async (id: string) => {
       if (confirm("Bạn có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
         try {
-          if (activeTrack?.id === id) {
-            pause();
-          }
           removeTrackFromQueue(id);
           const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
           if (res.ok) {
-            await fetchTracks();
+            await fetchTracks(true);
           }
         } catch (e) {
           console.error(e);
         }
       }
     },
-    [activeTrack, pause, removeTrackFromQueue, fetchTracks]
+    [removeTrackFromQueue, fetchTracks]
   );
 
   const filteredTracks = React.useMemo(() => {

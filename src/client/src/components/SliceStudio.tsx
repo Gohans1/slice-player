@@ -122,7 +122,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           setSaveStatus(statusMsg);
           setTimeout(() => setSaveStatus(null), 1500);
         } else {
-          console.warn("[SliceStudio] Save segment rejected by server");
+          setSaveStatus("Lỗi: không thể lưu mốc cắt");
+          setTimeout(() => setSaveStatus(null), 2500);
         }
       } catch (e) {
         console.error(e);
@@ -162,6 +163,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       } catch (e) {
         console.warn("[SliceStudio] Could not parse peaks_json", e);
       }
+    }
+    if (!peaks) {
+      // Fallback synthetic peaks to prevent client-side 600MB decodeAudioData crash
+      peaks = [Array.from({ length: 1000 }, () => 0.1)];
     }
 
     const wsRegions = RegionsPlugin.create();
@@ -324,7 +329,11 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     const end = Math.min(trackDur, Number((start + 20).toFixed(2)));
     if (end - start < 0.5) return;
 
-    const newIndex = segments.length + 1;
+    const existingNums = segments.map((s) => {
+      const m = s.name.match(/\d+/);
+      return m ? parseInt(m[0], 10) : 0;
+    });
+    const newIndex = (existingNums.length > 0 ? Math.max(...existingNums) : 0) + 1;
     const color = FLEXOKI_COLORS[(newIndex - 1) % FLEXOKI_COLORS.length];
 
     try {

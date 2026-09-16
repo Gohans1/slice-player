@@ -19,7 +19,7 @@ if "%1"=="--no-build" (
     )
 )
 
-curl -s -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
+curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [2/2] Dang khoi dong server Bun...
     start "SlicePlayerServer" /min bun run src/server/index.ts

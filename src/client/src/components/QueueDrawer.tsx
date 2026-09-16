@@ -15,6 +15,8 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
   const tracks = usePlayerStore((s) => s.tracks);
+  const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const setPlaybackMode = usePlayerStore((s) => s.setPlaybackMode);
 
   if (!isOpen) return null;
 
@@ -23,7 +25,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
       const res = await fetch("/api/segments");
       if (res.ok) {
         const allSegments = await res.json();
-        buildShuffleQueue(allSegments, tracks);
+        buildShuffleQueue(allSegments, tracks, playbackMode);
       }
     } catch (e) {
       console.error(e);
@@ -57,6 +59,51 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
           <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full">
             <X className="h-4 w-4" />
           </Button>
+        </div>
+      </div>
+
+      {/* Mode Selector */}
+      <div className="py-2.5 border-b border-border/50">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5 font-medium">
+          <span>Chế độ phát:</span>
+          <span className="font-mono text-[10px] text-primary">
+            {playbackMode === "slices_only" ? "Chỉ lát cắt" : playbackMode === "original_only" ? "Chỉ bài gốc" : "Trộn cả 2"}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-background/60 border border-border/40 text-xs">
+          <button
+            type="button"
+            onClick={() => setPlaybackMode("slices_only")}
+            className={`py-1 px-2 rounded-md transition-all font-medium text-center ${
+              playbackMode === "slices_only"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Lát cắt
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlaybackMode("original_only")}
+            className={`py-1 px-2 rounded-md transition-all font-medium text-center ${
+              playbackMode === "original_only"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Bài gốc
+          </button>
+          <button
+            type="button"
+            onClick={() => setPlaybackMode("mixed")}
+            className={`py-1 px-2 rounded-md transition-all font-medium text-center ${
+              playbackMode === "mixed"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Trộn cả 2
+          </button>
         </div>
       </div>
 

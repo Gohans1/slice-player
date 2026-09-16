@@ -8,6 +8,8 @@ export interface QueueItem {
   track: Track;
 }
 
+export type PlaybackMode = "mixed" | "slices_only" | "original_only";
+
 interface PlayerState {
   tracks: Track[];
   isLoadingTracks: boolean;
@@ -15,6 +17,7 @@ interface PlayerState {
   activeSegment: Segment | null;
   isPlaying: boolean;
   isShuffle: boolean;
+  playbackMode: PlaybackMode;
   currentTime: number;
   volume: number;
   queue: QueueItem[];
@@ -22,13 +25,14 @@ interface PlayerState {
   sliceStudioTrack: Track | null;
 
   // Actions
-  fetchTracks: () => Promise<void>;
+  fetchTracks: (reconcileSegments?: boolean) => Promise<void>;
   playSegment: (segment: Segment, track: Track, overrideIndex?: number) => Promise<void>;
   pause: () => void;
   togglePlay: () => Promise<void>;
   nextSegment: () => void;
   prevSegment: () => void;
   toggleShuffle: () => void;
+  setPlaybackMode: (mode: PlaybackMode) => Promise<void>;
   setVolume: (vol: number) => void;
   setCurrentTime: (t: number) => void;
   seek: (seconds: number) => void;
@@ -36,7 +40,7 @@ interface PlayerState {
   removeSegmentFromQueue: (segmentId: string) => void;
   openSliceStudio: (track: Track) => void;
   closeSliceStudio: () => void;
-  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => void;
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => void;
   syncUpdatedSegment: (seg: Segment) => void;
 }
 
@@ -47,13 +51,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeSegment: null,
   isPlaying: false,
   isShuffle: true, // Default to shuffle segments!
+  playbackMode: "mixed",
   currentTime: 0,
   volume: 0.8,
   queue: [],
   queueIndex: -1,
   sliceStudioTrack: null,
 
-  fetchTracks: async () => {
+  fetchTracks: async (reconcileSegments = true) => {
     if (get().tracks.length === 0) {
       set({ isLoadingTracks: true });
     }
@@ -64,7 +69,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
-        // Concurrently fetch segments to purge deleted segments across tabs
+        if (!reconcileSegments) {
+          // Fast path for polling: only update track list and prune deleted tracks from queue
+          const validQueue = queue.filter((item) => trackMap.has(item.track.id));
+          const updates: Partial<PlayerState> = { tracks };
+          if (validQueue.length !== queue.length) {
+            const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
+            updates.queue = validQueue;
+            updates.queueIndex = newIdx;
+          }
+          set(updates);
+          return;
+        }
+
+        // Full reconciliation path: fetch segments to purge deleted segments across tabs
         let validSegments: Segment[] = [];
         try {
           const segRes = await fetch("/api/segments");
@@ -225,8 +243,36 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   toggleShuffle: () => {
-    const nextShuffle = !get().isShuffle;
-    set({ isShuffle: nextShuffle });
+    const { queue, activeSegment, isShuffle } = get();
+    const nextShuffle = !isShuffle;
+    if (queue.length <= 1) {
+      set({ isShuffle: nextShuffle });
+      return;
+    }
+
+    const newQueue = [...queue];
+    if (nextShuffle) {
+      // Fisher-Yates shuffle
+      for (let i = newQueue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newQueue[i], newQueue[j]] = [newQueue[j], newQueue[i]];
+      }
+    } else {
+      // Sequential order: by track title, then segment start_time
+      newQueue.sort((a, b) => {
+        const titleCmp = (a.track.title || "").localeCompare(b.track.title || "");
+        if (titleCmp !== 0) return titleCmp;
+        return a.segment.start_time - b.segment.start_time;
+      });
+    }
+
+    let newIndex = 0;
+    if (activeSegment) {
+      const found = newQueue.findIndex((item) => item.segment.id === activeSegment.id);
+      if (found >= 0) newIndex = found;
+    }
+
+    set({ isShuffle: nextShuffle, queue: newQueue, queueIndex: newIndex });
   },
 
   setVolume: (vol: number) => {
@@ -338,7 +384,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ sliceStudioTrack: null });
   },
 
-  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => {
+  setPlaybackMode: async (mode: PlaybackMode) => {
+    set({ playbackMode: mode });
+    try {
+      const res = await fetch("/api/segments");
+      const segments: Segment[] = res.ok ? await res.json() : [];
+      get().buildShuffleQueue(segments, get().tracks, mode);
+    } catch (e) {
+      console.error("[Store] Failed to update queue on mode change", e);
+    }
+  },
+
+  buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => {
+    const mode = modeOverride || get().playbackMode;
     const trackMap = new Map<string, Track>();
     for (const t of allTracks) {
       if (t.status === "ready" && t.duration > 0) {
@@ -347,29 +405,55 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     const items: QueueItem[] = [];
-    const tracksWithSegments = new Set<string>();
-    for (const seg of allSegments) {
-      const trk = trackMap.get(seg.track_id);
-      if (trk) {
-        items.push({ segment: seg, track: trk });
-        tracksWithSegments.add(trk.id);
+
+    if (mode === "slices_only") {
+      // Only include custom slices (exclude fallback_)
+      for (const seg of allSegments) {
+        if (!seg.id.startsWith("fallback_")) {
+          const trk = trackMap.get(seg.track_id);
+          if (trk) {
+            items.push({ segment: seg, track: trk });
+          }
+        }
+      }
+      // If no custom slices exist at all in library, fallback to full tracks so queue isn't blank
+      if (items.length === 0) {
+        for (const trk of trackMap.values()) {
+          items.push({ segment: createDefaultFullSegment(trk), track: trk });
+        }
+      }
+    } else if (mode === "original_only") {
+      // Only full original tracks
+      for (const trk of trackMap.values()) {
+        items.push({ segment: createDefaultFullSegment(trk), track: trk });
+      }
+    } else {
+      // "mixed": include both custom slices AND full tracks
+      for (const seg of allSegments) {
+        if (!seg.id.startsWith("fallback_")) {
+          const trk = trackMap.get(seg.track_id);
+          if (trk) {
+            items.push({ segment: seg, track: trk });
+          }
+        }
+      }
+      for (const trk of trackMap.values()) {
+        items.push({ segment: createDefaultFullSegment(trk), track: trk });
       }
     }
 
-    // Include ready tracks without custom segments as default full-track segments
-    for (const [tId, trk] of trackMap.entries()) {
-      if (!tracksWithSegments.has(tId)) {
-        items.push({
-          segment: createDefaultFullSegment(trk),
-          track: trk,
-        });
+    // Shuffle or sort sequentially based on isShuffle
+    if (get().isShuffle) {
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
       }
-    }
-
-    // Fisher-Yates shuffle
-    for (let i = items.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [items[i], items[j]] = [items[j], items[i]];
+    } else {
+      items.sort((a, b) => {
+        const titleCmp = (a.track.title || "").localeCompare(b.track.title || "");
+        if (titleCmp !== 0) return titleCmp;
+        return a.segment.start_time - b.segment.start_time;
+      });
     }
 
     let currentIndex = 0;

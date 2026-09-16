@@ -288,13 +288,16 @@ const server = serve({
               return Response.json({ error: "Missing segment fields" }, { status: 400, headers: corsHeaders });
             }
             const startTime = Number(body.start_time);
-            const endTime = Number(body.end_time);
+            let endTime = Number(body.end_time);
             const track = getTrack(trackId);
             if (!track) {
               return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
             }
             if (track.status !== "ready" || track.duration <= 0) {
               return Response.json({ error: "Track audio is still downloading or processing" }, { status: 400, headers: corsHeaders });
+            }
+            if (track.duration > 0 && endTime > track.duration && endTime <= track.duration + 0.5) {
+              endTime = track.duration;
             }
             if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime - startTime < 0.5) {
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
@@ -334,16 +337,20 @@ const server = serve({
             if (!existingSeg) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
 
             const newStart = body.start_time !== undefined ? Number(body.start_time) : existingSeg.start_time;
-            const newEnd = body.end_time !== undefined ? Number(body.end_time) : existingSeg.end_time;
-
-            if (!Number.isFinite(newStart) || !Number.isFinite(newEnd) || newStart < 0 || newEnd - newStart < 0.5) {
-              return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
-            }
+            let newEnd = body.end_time !== undefined ? Number(body.end_time) : existingSeg.end_time;
 
             const track = getTrack(existingSeg.track_id);
             if (!track) {
               return Response.json({ error: "Associated track not found" }, { status: 404, headers: corsHeaders });
             }
+            if (track.duration > 0 && newEnd > track.duration && newEnd <= track.duration + 0.5) {
+              newEnd = track.duration;
+            }
+
+            if (!Number.isFinite(newStart) || !Number.isFinite(newEnd) || newStart < 0 || newEnd - newStart < 0.5) {
+              return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
+            }
+
             if (newEnd > 1800 || (track.duration > 0 && newEnd > track.duration + 0.1)) {
               return Response.json(
                 { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát hoặc giới hạn 30 phút` },

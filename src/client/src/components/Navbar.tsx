@@ -25,6 +25,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
   const fetchTracks = usePlayerStore((s) => s.fetchTracks);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
   const playSegment = usePlayerStore((s) => s.playSegment);
+  const playbackMode = usePlayerStore((s) => s.playbackMode);
 
   const [isYtModalOpen, setIsYtModalOpen] = React.useState(false);
   const [ytUrl, setYtUrl] = React.useState("");
@@ -99,32 +100,12 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
   const handleQuickShuffle = async () => {
     try {
       const res = await fetch("/api/segments");
-      if (res.ok) {
-        const allSegments: Segment[] = await res.json();
-        const readyTrackMap = new Map(tracks.filter((t) => t.status === "ready").map((t) => [t.id, t]));
-        const validSegments = allSegments.filter((s) => readyTrackMap.has(s.track_id));
-
-        if (validSegments.length > 0) {
-          buildShuffleQueue(validSegments, tracks);
-          const q = usePlayerStore.getState().queue;
-          const first = q[0];
-          if (first?.segment && first?.track) {
-            playSegment(first.segment, first.track);
-          }
-        } else if (tracks.length > 0) {
-          // Fallback: create default full-track virtual segments
-          const fallbackSegments = tracks
-            .filter((t) => t.status === "ready" && t.duration > 0)
-            .map(createDefaultFullSegment);
-          if (fallbackSegments.length > 0) {
-            buildShuffleQueue(fallbackSegments, tracks);
-            const q = usePlayerStore.getState().queue;
-            const first = q[0];
-            if (first?.segment && first?.track) {
-              playSegment(first.segment, first.track);
-            }
-          }
-        }
+      const allSegments: Segment[] = res.ok ? await res.json() : [];
+      buildShuffleQueue(allSegments, tracks, playbackMode);
+      const q = usePlayerStore.getState().queue;
+      const first = q[0];
+      if (first?.segment && first?.track) {
+        playSegment(first.segment, first.track);
       }
     } catch (e) {
       console.error("[Navbar] Shuffle error:", e);

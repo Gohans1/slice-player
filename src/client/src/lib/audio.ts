@@ -380,7 +380,9 @@ class AudioEngine {
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
     if (this.onTimeUpdateCallback && now - this.lastTimeUpdate >= 100) {
       this.lastTimeUpdate = now;
-      this.onTimeUpdateCallback(curTime);
+      if (typeof document === "undefined" || document.visibilityState !== "hidden") {
+        this.onTimeUpdateCallback(curTime);
+      }
     }
 
     if (this.currentSegmentEnd !== null) {
