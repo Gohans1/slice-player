@@ -102,15 +102,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             return get().fetchTracks(true);
           }
           const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
-          // Fast path for polling: update track list and commit refreshed track metadata in queue
-          const validQueue = queue.filter((item) => trackMap.has(item.track.id)).map((item) => ({
-            ...item,
-            track: trackMap.get(item.track.id) || item.track,
-          }));
-          const isQueueIdentical =
-            validQueue.length === queue.length &&
-            validQueue.every((it, idx) => it.track === queue[idx].track && it.segment === queue[idx].segment);
-          const finalQueue = isQueueIdentical ? queue : validQueue;
+          // Fast path for polling: only recreate queue items if a track reference actually changed
+          let hasQueueChanged = false;
+          const validQueue = queue.filter((item) => trackMap.has(item.track.id)).map((item) => {
+            const fresh = trackMap.get(item.track.id);
+            if (fresh && fresh !== item.track) {
+              hasQueueChanged = true;
+              return { ...item, track: fresh };
+            }
+            return item;
+          });
+          if (validQueue.length !== queue.length) {
+            hasQueueChanged = true;
+          }
+          const finalQueue = hasQueueChanged ? validQueue : queue;
 
           const updates: Partial<PlayerState> = { tracks: finalTracks, queue: finalQueue };
           const freshActive = activeTrack ? trackMap.get(activeTrack.id) : null;
@@ -341,7 +346,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playSegment: async (segment: Segment, track: Track, overrideIndex?: number) => {
+    consecutivePlaybackFailures = 0;
     dismissedSegmentIds.delete(segment.id);
+    dismissedSegmentIds.delete(`fallback_${track.id}`);
+    const currentQ = get().queue;
+    for (const item of currentQ) {
+      if (item.track.id === track.id) {
+        dismissedSegmentIds.delete(item.segment.id);
+      }
+    }
     const streamUrl = `/api/tracks/${track.id}/stream`;
     const { queue, queueIndex } = get();
     let newIndex = queueIndex;
@@ -803,6 +816,8 @@ audioEngine.setOnErrorCallback((err) => {
           nextSegment();
         }
       }, 1000);
+    } else {
+      consecutivePlaybackFailures = 0;
     }
   }
 });

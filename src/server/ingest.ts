@@ -141,7 +141,18 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       releaseMetadataSlot();
     }
 
-    const data = JSON.parse(outputText);
+    let data: any;
+    try {
+      const jsonStart = outputText.indexOf("{");
+      const jsonEnd = outputText.lastIndexOf("}");
+      if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+        throw new Error("No JSON object found in output");
+      }
+      data = JSON.parse(outputText.slice(jsonStart, jsonEnd + 1));
+    } catch (parseErr) {
+      return { success: false, message: `yt-dlp JSON parse error: ${errText || outputText.slice(0, 150)}` };
+    }
+
     const createdTracks: Track[] = [];
 
     // Check if it's a playlist or a single video
@@ -335,9 +346,12 @@ async function processDownloadQueue() {
       "--audio-quality",
       "0",
       "--match-filter",
-      `duration <=? ${MAX_DURATION_SECONDS}`,
+      `duration <= ${MAX_DURATION_SECONDS} & !is_live`,
+      "--max-filesize",
+      "150M",
       "-o",
       join(audioDir, `${trackId}.%(ext)s`),
+      "--",
       url
     ];
 
@@ -582,7 +596,8 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
               }
             }
             writeFileSync(thumbPath, pic.data);
-            thumbUrl = `/api/thumbs/${trackId}${imgExt}`;
+            const thumbHash = createHash("md5").update(pic.data).digest("hex").slice(0, 8);
+            thumbUrl = `/api/thumbs/${trackId}${imgExt}?v=${thumbHash}`;
           } catch {
             // ignore thumb write error
           }
@@ -600,6 +615,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       try {
         const db = getDb();
         let pruned: { id: string }[] = [];
+        let clamped: { id: string }[] = [];
         db.transaction(() => {
           pruned = db.query("SELECT id FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").all({
             $track_id: trackId,
@@ -609,6 +625,10 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
             $track_id: trackId,
             $duration: duration,
           });
+          clamped = db.query("SELECT id FROM segments WHERE track_id = $track_id AND end_time > $duration;").all({
+            $track_id: trackId,
+            $duration: duration,
+          }) as { id: string }[];
           db.query("UPDATE segments SET end_time = $duration WHERE track_id = $track_id AND end_time > $duration;").run({
             $track_id: trackId,
             $duration: duration,
@@ -616,6 +636,9 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
         })();
         for (const p of pruned) {
           serverEvents.emit("segment_deleted", { segmentId: p.id, trackId });
+        }
+        for (const c of clamped) {
+          serverEvents.emit("segment_updated", { segmentId: c.id, trackId });
         }
         serverEvents.emit("track_updated", { trackId });
       } catch {}

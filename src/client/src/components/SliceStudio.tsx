@@ -220,7 +220,19 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   React.useEffect(() => {
     fetchSegments();
-  }, [fetchSegments]);
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && (detail.trackId === track.id || detail.trackId === trackDetail.id)) {
+        fetchSegments();
+      }
+    };
+    window.addEventListener("app:track_updated", handleUpdate);
+    window.addEventListener("app:segment_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("app:track_updated", handleUpdate);
+      window.removeEventListener("app:segment_updated", handleUpdate);
+    };
+  }, [fetchSegments, track.id, trackDetail.id]);
 
   // Initialize WaveSurfer with precomputed peaks
   React.useEffect(() => {
@@ -328,6 +340,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         } else {
           start = Math.max(0, Number((end - 0.5).toFixed(2)));
         }
+        region.setOptions({ start, end });
       }
 
       if (activeSegmentIdRef.current === segId) {
@@ -422,8 +435,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     }
 
     const existingNums = segments.map((s) => {
-      const m = s.name.match(/\d+/);
-      return m ? parseInt(m[0], 10) : 0;
+      const m = s.name.match(/^Đoạn\s+(\d+)$/i);
+      return m ? parseInt(m[1], 10) : 0;
     });
     const newIndex = (existingNums.length > 0 ? existingNums.reduce((max, val) => Math.max(max, val), 0) : 0) + 1;
     const color = FLEXOKI_COLORS[(newIndex - 1) % FLEXOKI_COLORS.length];

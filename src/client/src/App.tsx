@@ -57,7 +57,13 @@ export function App() {
             if (data.type === "track_deleted" && trackId) {
               removeTrackFromQueue(trackId);
             }
-            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted") {
+            if (data.type === "track_updated") {
+              window.dispatchEvent(new CustomEvent("app:track_updated", { detail: data }));
+            }
+            if (data.type === "segment_updated") {
+              window.dispatchEvent(new CustomEvent("app:segment_updated", { detail: data }));
+            }
+            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted" || data.type === "segment_updated") {
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
                 fetchTracks(true);

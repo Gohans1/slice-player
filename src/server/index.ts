@@ -368,7 +368,18 @@ const server = serve({
           const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
           if (isSubdirectoryOf(allowedThumbsDir, thumbPath) && existsSync(thumbPath)) {
             const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-            const headers = { ...corsHeaders, "Content-Type": ct, "Content-Length": String(statSync(thumbPath).size) };
+            const stat = statSync(thumbPath);
+            const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
+            const headers = {
+              ...corsHeaders,
+              "Content-Type": ct,
+              "Content-Length": String(stat.size),
+              "ETag": etag,
+              "Cache-Control": "public, max-age=86400",
+            };
+            if (req.headers.get("if-none-match") === etag) {
+              return new Response(null, { status: 304, headers });
+            }
             if (req.method === "HEAD") {
               return new Response(null, { headers });
             }
@@ -576,7 +587,7 @@ const server = serve({
   },
 
   websocket: {
-    idleTimeout: 255,
+    idleTimeout: 30,
     open(ws) {
       activeSockets.add(ws);
       hasHadInitialConnection = true;
@@ -602,8 +613,18 @@ const server = serve({
 function checkIdleShutdown() {
   if (process.env.NODE_ENV !== "production") return;
   if (!hasHadInitialConnection) return;
+  for (const ws of activeSockets) {
+    if (ws.readyState !== 1) {
+      activeSockets.delete(ws);
+    }
+  }
   if (activeSockets.size === 0 && !shutdownTimer) {
     shutdownTimer = setTimeout(() => {
+      for (const ws of activeSockets) {
+        if (ws.readyState !== 1) {
+          activeSockets.delete(ws);
+        }
+      }
       if (activeSockets.size === 0 && !isIngestBusy()) {
         gracefulShutdown();
       } else {
@@ -641,6 +662,9 @@ serverEvents.on("track_deleted", (payload) => {
 });
 serverEvents.on("segment_deleted", (payload) => {
   broadcastWs({ type: "segment_deleted", ...payload });
+});
+serverEvents.on("segment_updated", (payload) => {
+  broadcastWs({ type: "segment_updated", ...payload });
 });
 
 export { server };
