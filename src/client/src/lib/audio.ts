@@ -177,9 +177,14 @@ class AudioEngine {
     if (this.gainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
       this.gainNode.gain.cancelScheduledValues(now);
-      this.gainNode.gain.setValueAtTime(0.0001, now);
+      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
+      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
+      setTimeout(() => {
+        this.audioEl.pause();
+      }, 14);
+    } else {
+      this.audioEl.pause();
     }
-    this.audioEl.pause();
   }
 
   public updateCurrentSegmentEnd(endTime: number) {
@@ -261,15 +266,20 @@ class AudioEngine {
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 
-        // Micro-fade to eliminate DC-offset click
+        // Micro-fade to eliminate DC-offset click before pausing media stream
         if (this.gainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(fadeNow);
           this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.012);
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.015);
+          setTimeout(() => {
+            this.audioEl.pause();
+            if (cb) cb();
+          }, 16);
+        } else {
+          this.audioEl.pause();
+          if (cb) cb();
         }
-        this.audioEl.pause();
-        if (cb) cb();
       }
     }
   };
@@ -287,7 +297,9 @@ class AudioEngine {
       const blob = new Blob(["setInterval(() => postMessage(0), 30);"], { type: "text/javascript" });
       const workerUrl = URL.createObjectURL(blob);
       const worker = new Worker(workerUrl);
-      URL.revokeObjectURL(workerUrl);
+      setTimeout(() => {
+        try { URL.revokeObjectURL(workerUrl); } catch {}
+      }, 3000);
       worker.onmessage = () => this.checkBoundary();
     } catch {
       setInterval(this.checkBoundary, 30);

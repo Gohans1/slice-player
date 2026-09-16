@@ -33,6 +33,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   const [trackDetail, setTrackDetail] = React.useState<Track>(track);
   const [isDetailLoaded, setIsDetailLoaded] = React.useState(!!track.peaks_json);
+  const [isWaveSurferReady, setIsWaveSurferReady] = React.useState(false);
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const [isPlayingWave, setIsPlayingWave] = React.useState(false);
   const [currentPlayTime, setCurrentPlayTime] = React.useState(0);
@@ -69,12 +70,15 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     };
   }, [track]);
 
+  const segmentsRef = React.useRef(segments);
+  segmentsRef.current = segments;
+
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
     return () => {
       // Immediate flush of dirty debounced saves and sync to player store
       for (const [id, payload] of Object.entries(pendingUpdatesRef.current)) {
-        const seg = segments.find((s) => s.id === id);
+        const seg = segmentsRef.current.find((s) => s.id === id);
         if (seg) {
           syncUpdatedSegment({ ...seg, ...payload });
         }
@@ -93,7 +97,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         clearTimeout(t);
       }
     };
-  }, [segments, syncUpdatedSegment]);
+  }, [syncUpdatedSegment]);
 
   const debouncedSaveSegment = React.useCallback((id: string, updates: Partial<Segment>, statusMsg: string = "Đã lưu") => {
     pendingUpdatesRef.current[id] = { ...pendingUpdatesRef.current[id], ...updates };
@@ -175,13 +179,22 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     });
 
     wavesurferRef.current = ws;
+    setIsWaveSurferReady(true);
 
     ws.on("play", () => {
       pause(); // Pause global player so both don't play simultaneously
       setIsPlayingWave(true);
     });
     ws.on("pause", () => setIsPlayingWave(false));
-    ws.on("timeupdate", (time) => setCurrentPlayTime(time));
+
+    let lastTimeUpdate = 0;
+    ws.on("timeupdate", (time) => {
+      const now = performance.now();
+      if (now - lastTimeUpdate >= 100) {
+        lastTimeUpdate = now;
+        setCurrentPlayTime(time);
+      }
+    });
 
     // Region drag / resize handlers
     wsRegions.on("region-updated", (region) => {
@@ -198,6 +211,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     });
 
     return () => {
+      setIsWaveSurferReady(false);
       ws.destroy();
     };
   }, [isDetailLoaded, trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause]);
@@ -205,7 +219,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   // Sync segments with WaveSurfer regions without destructive full teardowns
   React.useEffect(() => {
     const wsRegions = regionsRef.current;
-    if (!wsRegions) return;
+    if (!wsRegions || !isWaveSurferReady) return;
 
     if (isInternalUpdateRef.current) {
       isInternalUpdateRef.current = false;
@@ -244,7 +258,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         }
       }
     }
-  }, [segments]);
+  }, [segments, isWaveSurferReady]);
 
   // Handle Add New Segment at current playhead
   const handleAddNewSegment = async () => {

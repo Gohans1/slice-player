@@ -107,6 +107,18 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
         }
       }
     }
+
+    const thumbCacheDir = "./data/cache/thumbs";
+    if (existsSync(thumbCacheDir)) {
+      const existingThumbs = readdirSync(thumbCacheDir);
+      const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
+      const validThumbs = new Set(trackRows.map((r) => `${r.id}.jpg`));
+      for (const thumb of existingThumbs) {
+        if (!validThumbs.has(thumb)) {
+          try { unlinkSync(join(thumbCacheDir, thumb)); } catch {}
+        }
+      }
+    }
   } catch {}
 
   dbInstance = db;

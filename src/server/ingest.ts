@@ -1,7 +1,7 @@
 import { parseFile } from "music-metadata";
 import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, resolve, extname } from "node:path";
+import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack } from "./db";
 import { generatePeaks } from "./waveform";
 import { serverEvents } from "./events";
@@ -17,7 +17,7 @@ export interface IngestResult {
 
 const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)\/.+/i;
 
-let activeMetadataProc: ReturnType<typeof Bun.spawn> | null = null;
+const activeMetadataProcs = new Set<ReturnType<typeof Bun.spawn>>();
 
 /**
  * Handle YouTube URL (single video or playlist)
@@ -43,6 +43,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       stdout: "pipe",
       stderr: "pipe",
     });
+    activeMetadataProcs.add(proc);
     activeMetadataProc = proc;
 
     const killTimer = setTimeout(() => {
@@ -56,7 +57,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
 
     clearTimeout(killTimer);
     await proc.exited;
-    activeMetadataProc = null;
+    activeMetadataProcs.delete(proc);
 
     if (!outputText || outputText.trim() === "") {
       return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };
@@ -139,17 +140,17 @@ let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
 export async function abortIngestProcesses(): Promise<void> {
-  if (activeMetadataProc) {
+  for (const proc of activeMetadataProcs) {
     try {
       if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeMetadataProc.pid)]);
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)]);
         await killProc.exited;
       } else {
-        activeMetadataProc.kill();
+        proc.kill();
       }
     } catch {}
-    activeMetadataProc = null;
   }
+  activeMetadataProcs.clear();
 
   if (activeDownloadProc) {
     try {
@@ -227,6 +228,7 @@ async function processDownloadQueue() {
 
   try {
     updateTrack(trackId, { status: "downloading" });
+    serverEvents.emit("track_updated", { trackId });
     const outputTemplate = `./data/cache/audio/${trackId}.%(ext)s`;
 
     // Download format 140 (AAC/M4A) without re-encoding, or bestaudio
@@ -364,7 +366,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
 
     const hash = createHash("md5").update(fullPath).digest("hex").slice(0, 12);
     const trackId = `loc_${hash}`;
-    const title = metadata.common.title || basename(fullPath, ".flac");
+    const title = metadata.common.title || basename(fullPath, extname(fullPath));
     const artist = metadata.common.artist || "Unknown Artist";
 
     // Extract cover art if present

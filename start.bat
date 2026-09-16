@@ -8,9 +8,14 @@ cd /d "%~dp0"
 
 echo [1/2] Dang build frontend...
 call bun run build
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Build frontend that bai voi ma loi %ERRORLEVEL%!
+    pause
+    exit /b %ERRORLEVEL%
+)
 
 echo [2/2] Dang khoi dong server Bun...
-start "SlicePlayerServer" /B bun run src/server/index.ts
+start "SlicePlayerServer" /min bun run src/server/index.ts
 
 timeout /t 2 /nobreak >nul
 

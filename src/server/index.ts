@@ -101,6 +101,7 @@ const server = serve({
       "Access-Control-Allow-Origin": origin || `http://127.0.0.1:${PORT}`,
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     };
@@ -292,13 +293,18 @@ const server = serve({
             if (endTime > track.duration + 0.1) {
               return Response.json({ error: `end_time (${endTime}s) exceeds track duration (${track.duration}s)` }, { status: 400, headers: corsHeaders });
             }
+            const rawName = String(body.name || "").trim().slice(0, 100);
+            if (!rawName) {
+              return Response.json({ error: "Tên đoạn không được để trống" }, { status: 400, headers: corsHeaders });
+            }
+            const hexColor = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : "#4385BE";
             const created = createSegment({
               id: `seg_${crypto.randomUUID().slice(0, 8)}`,
               track_id: trackId,
-              name: body.name,
+              name: rawName,
               start_time: startTime,
               end_time: endTime,
-              color: body.color || "#4385BE",
+              color: hexColor,
             });
             serverEvents.emit("track_updated", { trackId });
             return Response.json(created, { headers: corsHeaders });
@@ -326,15 +332,23 @@ const server = serve({
             }
 
             const track = getTrack(existingSeg.track_id);
-            if (track && track.duration > 0 && newEnd > track.duration + 0.1) {
+            if (!track) {
+              return Response.json({ error: "Associated track not found" }, { status: 404, headers: corsHeaders });
+            }
+            if (track.duration > 0 && newEnd > track.duration + 0.1) {
               return Response.json(
                 { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát (${track.duration}s)` },
                 { status: 400, headers: corsHeaders }
               );
             }
 
+            const rawName = body.name !== undefined ? String(body.name).trim().slice(0, 100) : existingSeg.name;
+            const hexColor = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : existingSeg.color;
+
             const updated = updateSegment(segId, {
               ...body,
+              name: rawName || existingSeg.name,
+              color: hexColor,
               start_time: newStart,
               end_time: newEnd,
             });
@@ -410,10 +424,10 @@ const server = serve({
     close(ws) {
       activeSockets.delete(ws);
       if (activeSockets.size === 0) {
-        // Shutdown after 10s of no active clients
+        // Shutdown after 60s of no active clients (allows brief reconnects and system sleep)
         shutdownTimer = setTimeout(() => {
           gracefulShutdown();
-        }, 10000);
+        }, 60000);
       }
     },
   },

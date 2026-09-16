@@ -9,8 +9,8 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     throw new Error(`Audio file not found: ${filePath}`);
   }
 
-  // Use ffmpeg to downsample audio to mono 8-bit PCM (pcm_s8) at 100Hz
-  // 100 samples/sec is fast and lightweight
+  // Extract mono 8-bit PCM at 200Hz directly to stdout via ffmpeg
+  // 200 samples/sec is fast and lightweight (a 30-minute track is only ~360,000 bytes)
   const ffmpegCmd = [
     "ffmpeg",
     "-v", "error",
@@ -71,7 +71,8 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
     if (blockSize <= 1) {
       for (let i = 0; i < targetPoints; i++) {
-        const val = i < samples.length ? Math.abs(samples[i]) / 128 : 0.05;
+        const sampleIdx = Math.floor((i / targetPoints) * samples.length);
+        const val = samples.length > 0 ? Math.abs(samples[sampleIdx] || 0) / 128 : 0.05;
         peaks.push(Number(val.toFixed(3)));
       }
     } else {

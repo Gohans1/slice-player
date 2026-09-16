@@ -60,6 +60,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const res = await fetch("/api/tracks");
       if (res.ok) {
         const tracks: Track[] = await res.json();
+        const trackMap = new Map(tracks.map((t) => [t.id, t]));
+        const { activeTrack, sliceStudioTrack } = get();
+        if (activeTrack && !trackMap.has(activeTrack.id)) {
+          get().removeTrackFromQueue(activeTrack.id);
+        }
+        if (sliceStudioTrack && !trackMap.has(sliceStudioTrack.id)) {
+          set({ sliceStudioTrack: null });
+        }
         set({ tracks });
       }
     } catch (e) {
@@ -71,16 +79,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   playSegment: async (segment: Segment, track: Track) => {
     const streamUrl = `/api/tracks/${track.id}/stream`;
-    const { queue } = get();
-    const existingIndex = queue.findIndex((item) => item.segment.id === segment.id);
-    let newIndex = existingIndex;
+    const { queue, queueIndex } = get();
+    let newIndex = queueIndex;
     let newQueue = queue;
 
-    if (existingIndex !== -1) {
-      newIndex = existingIndex;
+    if (queueIndex >= 0 && queue[queueIndex]?.segment.id === segment.id) {
+      newIndex = queueIndex;
     } else {
-      newQueue = [...queue, { segment, track }];
-      newIndex = newQueue.length - 1;
+      const existingIndex = queue.findIndex((item) => item.segment.id === segment.id);
+      if (existingIndex !== -1) {
+        newIndex = existingIndex;
+      } else {
+        newQueue = [...queue, { segment, track }];
+        newIndex = newQueue.length - 1;
+      }
     }
 
     set({
@@ -203,6 +215,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const newQueue = queue.filter((item) => item.track.id !== trackId);
 
     if (activeTrack?.id === trackId) {
+      const wasPlaying = get().isPlaying;
       audioEngine.pause();
       if (newQueue.length === 0) {
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
@@ -210,8 +223,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       const nextIdx = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
       const nextItem = newQueue[nextIdx];
-      set({ queue: newQueue, queueIndex: nextIdx });
-      get().playSegment(nextItem.segment, nextItem.track);
+      set({ queue: newQueue, queueIndex: nextIdx, activeTrack: nextItem.track, activeSegment: nextItem.segment, isPlaying: false });
+      if (wasPlaying) {
+        get().playSegment(nextItem.segment, nextItem.track);
+      }
       return;
     }
 
@@ -232,6 +247,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const newQueue = queue.filter((item) => item.segment.id !== segmentId);
 
     if (activeSegment?.id === segmentId) {
+      const wasPlaying = get().isPlaying;
       audioEngine.pause();
       if (newQueue.length === 0) {
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
@@ -239,8 +255,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       const nextIdx = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
       const nextItem = newQueue[nextIdx];
-      set({ queue: newQueue, queueIndex: nextIdx });
-      get().playSegment(nextItem.segment, nextItem.track);
+      set({ queue: newQueue, queueIndex: nextIdx, activeTrack: nextItem.track, activeSegment: nextItem.segment, isPlaying: false });
+      if (wasPlaying) {
+        get().playSegment(nextItem.segment, nextItem.track);
+      }
       return;
     }
 
@@ -292,6 +310,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       [items[i], items[j]] = [items[j], items[i]];
     }
 
-    set({ queue: items, queueIndex: 0 });
+    let currentIndex = 0;
+    const { activeSegment } = get();
+    if (activeSegment) {
+      const foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
+      if (foundIdx >= 0) currentIndex = foundIdx;
+    }
+
+    set({ queue: items, queueIndex: currentIndex });
   },
 }));
