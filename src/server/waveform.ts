@@ -106,17 +106,22 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     try {
       const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
       const reader = stdoutStream.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          if (totalBytes + value.length > MAX_BYTES) {
-            killFfmpeg(proc);
-            break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            if (totalBytes + value.length > MAX_BYTES) {
+              killFfmpeg(proc);
+              try { await reader.cancel(); } catch {}
+              break;
+            }
+            totalBytes += value.length;
+            chunks.push(value);
           }
-          totalBytes += value.length;
-          chunks.push(value);
         }
+      } finally {
+        reader.releaseLock();
       }
       await proc.exited;
     } finally {

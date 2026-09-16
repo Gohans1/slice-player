@@ -17,7 +17,7 @@ class EventBus {
   }
 
   emit(event: string, payload: any) {
-    const list = this.listeners[event] || [];
+    const list = [...(this.listeners[event] || [])];
     for (const fn of list) {
       try {
         fn(payload);

@@ -337,13 +337,14 @@ class AudioEngine {
     // volume between 0 and 1
     const vol = Math.max(0, Math.min(1, volume));
     this.currentVolume = vol;
+    const gainVal = Math.pow(vol, 2);
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
       const now = this.audioCtx.currentTime;
       this.volumeGainNode.gain.cancelScheduledValues(now);
-      this.volumeGainNode.gain.setValueAtTime(vol, now);
+      this.volumeGainNode.gain.setValueAtTime(gainVal, now);
     } else {
-      this.audioEl.volume = vol;
+      this.audioEl.volume = gainVal;
     }
   }
 
@@ -450,10 +451,6 @@ class AudioEngine {
     }
     this.audioEl.pause();
     this.stopTicker();
-    if (this.tickerWorker) {
-      try { this.tickerWorker.terminate(); } catch {}
-      this.tickerWorker = null;
-    }
     this.stopRafLoop();
     this.currentSegmentStart = null;
     this.currentSegmentEnd = null;
@@ -555,6 +552,9 @@ class AudioEngine {
   };
 
   private startTicker = () => {
+    if (!this.tickerWorker) {
+      this.initTickerWorker();
+    }
     if (this.tickerWorker) {
       this.tickerWorker.postMessage("start");
     } else if (!this.fallbackTickerInterval) {
@@ -572,15 +572,8 @@ class AudioEngine {
     }
   };
 
-  /**
-   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a controllable Web Worker ticker
-   * to ensure background/minimized windows never miss segment boundaries due to Chromium 1000ms timer throttling.
-   */
-  private startBoundaryMonitor = () => {
-    // Native timeupdate listener
-    this.audioEl.addEventListener("timeupdate", this.checkBoundary);
-
-    // Controllable Web Worker ticker (not subject to Chromium background tab 1000ms timer throttling)
+  private initTickerWorker = () => {
+    if (this.tickerWorker) return;
     try {
       const code = `
         let intervalId = null;
@@ -626,6 +619,16 @@ class AudioEngine {
     } catch {
       // Worker not supported, will fallback to interval when active
     }
+  };
+
+  /**
+   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a controllable Web Worker ticker
+   * to ensure background/minimized windows never miss segment boundaries due to Chromium 1000ms timer throttling.
+   */
+  private startBoundaryMonitor = () => {
+    // Native timeupdate listener
+    this.audioEl.addEventListener("timeupdate", this.checkBoundary);
+    this.initTickerWorker();
   };
 }
 

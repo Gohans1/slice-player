@@ -88,10 +88,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             prev.error_message === fresh.error_message;
           return isSame ? prev : fresh;
         });
-        const trackMap = new Map(stabilizedTracks.map((t) => [t.id, t]));
+        const isTracksIdentical =
+          stabilizedTracks.length === prevTracks.length &&
+          stabilizedTracks.every((t, idx) => t === prevTracks[idx]);
+        const finalTracks = isTracksIdentical ? prevTracks : stabilizedTracks;
+        const trackMap = new Map(finalTracks.map((t) => [t.id, t]));
         const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
         const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
-        const hasNewlyReady = stabilizedTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+        const hasNewlyReady = finalTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
 
         if (!reconcileSegments) {
           if (hasNewlyReady) {
@@ -108,7 +112,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             validQueue.every((it, idx) => it.track === queue[idx].track && it.segment === queue[idx].segment);
           const finalQueue = isQueueIdentical ? queue : validQueue;
 
-          const updates: Partial<PlayerState> = { tracks: stabilizedTracks, queue: finalQueue };
+          const updates: Partial<PlayerState> = { tracks: finalTracks, queue: finalQueue };
+          const freshActive = activeTrack ? trackMap.get(activeTrack.id) : null;
+          if (freshActive && freshActive !== activeTrack) {
+            updates.activeTrack = freshActive;
+          }
+          const freshStudio = sliceStudioTrack ? trackMap.get(sliceStudioTrack.id) : null;
+          if (freshStudio && freshStudio !== sliceStudioTrack) {
+            updates.sliceStudioTrack = freshStudio;
+          }
           if (validQueue.length !== queue.length) {
             const newIdx = validQueue.length === 0
               ? -1
@@ -273,7 +285,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           validQueue.every((it, idx) => it.track === queue[idx].track && it.segment === queue[idx].segment);
         const finalQueue = isQueueIdentical ? queue : validQueue;
 
-        set({ tracks: stabilizedTracks, queue: finalQueue, queueIndex: settledIdx });
+        const reconcileUpdates: Partial<PlayerState> = {
+          tracks: finalTracks,
+          queue: finalQueue,
+          queueIndex: settledIdx,
+        };
+        const freshActiveTrack = activeTrack ? trackMap.get(activeTrack.id) : null;
+        if (freshActiveTrack && freshActiveTrack !== activeTrack) {
+          reconcileUpdates.activeTrack = freshActiveTrack;
+        }
+        const freshStudioTrack = sliceStudioTrack ? trackMap.get(sliceStudioTrack.id) : null;
+        if (freshStudioTrack && freshStudioTrack !== sliceStudioTrack) {
+          reconcileUpdates.sliceStudioTrack = freshStudioTrack;
+        }
+        set(reconcileUpdates);
 
         // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server
         if (activeSegment && segmentObjMap.has(activeSegment.id)) {
@@ -434,8 +459,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { queue, queueIndex, currentTime, activeSegment, activeTrack } = get();
     if (!activeSegment || !activeTrack) return;
 
-    // If played more than 3s, restart current segment
-    if (currentTime - activeSegment.start_time > 3) {
+    // If played more than threshold (adaptive for micro-slices < 3s), restart current segment
+    const restartThreshold = Math.min(3, Math.max(0.5, (activeSegment.end_time - activeSegment.start_time) * 0.4));
+    if (currentTime - activeSegment.start_time > restartThreshold) {
       get().seek(activeSegment.start_time);
       return;
     }

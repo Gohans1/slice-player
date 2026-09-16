@@ -164,6 +164,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
+            keepalive: true,
           }).catch(() => {});
         } catch {
           // ignore unmount flush network errors
@@ -424,7 +425,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       const m = s.name.match(/\d+/);
       return m ? parseInt(m[0], 10) : 0;
     });
-    const newIndex = (existingNums.length > 0 ? Math.max(...existingNums) : 0) + 1;
+    const newIndex = (existingNums.length > 0 ? existingNums.reduce((max, val) => Math.max(max, val), 0) : 0) + 1;
     const color = FLEXOKI_COLORS[(newIndex - 1) % FLEXOKI_COLORS.length];
 
     try {

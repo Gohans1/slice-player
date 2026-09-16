@@ -46,17 +46,19 @@ let activeMetadataCount = 0;
 const metadataWaitQueue: Array<() => void> = [];
 let activeLocalIngests = 0;
 
-function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null) {
+async function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null): Promise<void> {
   if (!proc) return;
   try {
     if (process.platform === "win32") {
-      Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+      const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
         stdout: "ignore",
         stderr: "ignore",
       });
+      await killProc.exited;
     } else {
       proc.kill();
     }
+    try { await proc.exited; } catch {}
   } catch {}
 }
 
@@ -245,32 +247,12 @@ export async function abortIngestProcesses(): Promise<void> {
   metadataWaitQueue.length = 0;
   activeMetadataCount = 0;
   for (const proc of activeMetadataProcs) {
-    try {
-      if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        await killProc.exited;
-      } else {
-        proc.kill();
-      }
-    } catch {}
+    await killProcessSafely(proc);
   }
   activeMetadataProcs.clear();
 
   if (activeDownloadProc) {
-    try {
-      if (process.platform === "win32") {
-        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(activeDownloadProc.pid)], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        await killProc.exited;
-      } else {
-        activeDownloadProc.kill();
-      }
-    } catch {}
+    await killProcessSafely(activeDownloadProc);
     activeDownloadProc = null;
     currentDownloadingTrackId = null;
   }
@@ -285,21 +267,7 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
   if (currentDownloadingTrackId === trackId) {
     cancelledTrackIds.add(trackId);
     if (activeDownloadProc) {
-      const proc = activeDownloadProc;
-      try {
-        if (process.platform === "win32") {
-          const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
-            stdout: "ignore",
-            stderr: "ignore",
-          });
-          await killProc.exited;
-        } else {
-          proc.kill();
-        }
-        try {
-          await proc.exited;
-        } catch {}
-      } catch {}
+      await killProcessSafely(activeDownloadProc);
       activeDownloadProc = null;
     }
     currentDownloadingTrackId = null;
@@ -346,35 +314,30 @@ async function processDownloadQueue() {
   if (!existingTrack || existingTrack.status === "ready") {
     currentDownloadingTrackId = null;
     isDownloading = false;
-    setTimeout(processDownloadQueue, 0);
+    processDownloadQueue();
     return;
+  }
+
+  const audioDir = resolve("./data/cache/audio");
+  if (!existsSync(audioDir)) {
+    mkdirSync(audioDir, { recursive: true });
   }
 
   try {
     updateTrack(trackId, { status: "downloading" });
     serverEvents.emit("track_updated", { trackId });
 
-    // Purge prior cache / residual files for this track to avoid picking up stale/corrupt partial files
-    const audioDir = "./data/cache/audio";
-    if (existsSync(audioDir)) {
-      for (const f of readdirSync(audioDir)) {
-        if (f.startsWith(`${trackId}.`)) {
-          await unlinkWithRetry(join(audioDir, f));
-        }
-      }
-    }
-
-    const outputTemplate = `./data/cache/audio/${trackId}.%(ext)s`;
-
-    // Download format 140 (AAC/M4A) without re-encoding, or bestaudio
+    // Download audio using yt-dlp
     const dlCmd = [
       "yt-dlp",
-      "-f", "140/ba[ext=m4a]/ba",
-      "-o", outputTemplate,
       "--no-playlist",
-      "--match-filter", "duration <= 1800",
-      "--max-filesize", "150M",
-      "--",
+      "-x",
+      "--audio-quality",
+      "0",
+      "--match-filter",
+      `duration <=? ${MAX_DURATION_SECONDS}`,
+      "-o",
+      join(audioDir, `${trackId}.%(ext)s`),
       url
     ];
 
@@ -385,14 +348,8 @@ async function processDownloadQueue() {
     activeDownloadProc = proc;
 
     // 5-minute timeout to avoid hanging download indefinitely
-    const dlTimeout = setTimeout(() => {
-      try {
-        if (process.platform === "win32") {
-          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], { stdout: "ignore", stderr: "ignore" });
-        } else {
-          proc.kill();
-        }
-      } catch {}
+    const dlTimeout = setTimeout(async () => {
+      await killProcessSafely(proc);
     }, 300000);
 
     let errText = "";
@@ -403,25 +360,6 @@ async function processDownloadQueue() {
     const exitCode = await proc.exited;
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
-
-    // If track was cancelled or deleted while download was running, exit silently
-    if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
-      cancelledTrackIds.delete(trackId);
-      return;
-    }
-
-    if (exitCode !== 0) {
-      let errorMsg = `yt-dlp tải thất bại (exit code: ${exitCode})`;
-      if (exitCode === 101) {
-        errorMsg = `Video vượt quá giới hạn 30 phút (${MAX_DURATION_SECONDS}s)`;
-      } else if (errText.trim()) {
-        const lastLine = errText.trim().split(/[\r\n]+/).pop() || "";
-        errorMsg = `yt-dlp: ${lastLine.slice(0, 150)}`;
-      }
-      updateTrack(trackId, { status: "error", error_message: errorMsg });
-      serverEvents.emit("track_updated", { trackId });
-      return;
-    }
 
     // Find actual downloaded file in ./data/cache/audio/ dynamically
     let finalPath = "";
@@ -436,12 +374,28 @@ async function processDownloadQueue() {
       }
     }
 
-    // Check again if track was cancelled or deleted while download was running
+    // If track was cancelled or deleted while download was running, clean up and exit silently
     if (cancelledTrackIds.has(trackId) || !getTrack(trackId)) {
       cancelledTrackIds.delete(trackId);
       if (finalPath && existsSync(finalPath)) {
         await unlinkWithRetry(finalPath);
       }
+      return;
+    }
+
+    if (exitCode !== 0) {
+      if (finalPath && existsSync(finalPath)) {
+        await unlinkWithRetry(finalPath);
+      }
+      let errorMsg = `yt-dlp tải thất bại (exit code: ${exitCode})`;
+      if (exitCode === 101) {
+        errorMsg = `Video vượt quá giới hạn 30 phút (${MAX_DURATION_SECONDS}s)`;
+      } else if (errText.trim()) {
+        const lastLine = errText.trim().split(/[\r\n]+/).pop() || "";
+        errorMsg = `yt-dlp: ${lastLine.slice(0, 150)}`;
+      }
+      updateTrack(trackId, { status: "error", error_message: errorMsg });
+      serverEvents.emit("track_updated", { trackId });
       return;
     }
 
