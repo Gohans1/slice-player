@@ -101,6 +101,8 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
     // Stage 1: Fast metadata extraction via yt-dlp
     const metaCmd = [
       "yt-dlp",
+      "--js-runtimes",
+      "bun",
       "--flat-playlist",
       "--playlist-end",
       "50",
@@ -352,6 +354,8 @@ async function processDownloadQueue() {
     // Download audio using yt-dlp
     const dlCmd = [
       "yt-dlp",
+      "--js-runtimes",
+      "bun",
       "--no-playlist",
       "-x",
       "--audio-quality",

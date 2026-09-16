@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { initDatabase, closeDatabase, createTrack, getTrack, deleteTrack, createSegment, listSegmentsByTrack, updateSegment } from "./db";
+import { initDatabase, closeDatabase, createTrack, getTrack, updateTrack, deleteTrack, listTracks, createSegment, listSegmentsByTrack, updateSegment, validateVolume } from "./db";
 import { unlinkSync, existsSync } from "node:fs";
 
 const TEST_DB_PATH = "./data/test_music.db";
@@ -90,4 +90,109 @@ describe("Database layer (bun:sqlite)", () => {
     const remainingSegments = listSegmentsByTrack("track-2");
     expect(remainingSegments.length).toBe(0);
   });
+
+  it("should persist and update per-track volume", () => {
+    // 1. Explicit volume
+    const track = createTrack({
+      id: "track-vol",
+      source_type: "youtube",
+      source_uri: "https://youtube.com/watch?v=vol",
+      title: "Volume Test",
+      duration: 120,
+      status: "ready",
+      volume: 0.45,
+    });
+
+    expect(track.volume).toBe(0.45);
+    const fetched = getTrack("track-vol");
+    expect(fetched?.volume).toBe(0.45);
+
+    updateTrack("track-vol", { volume: 0.25 });
+    const updated = getTrack("track-vol");
+    expect(updated?.volume).toBe(0.25);
+
+    // 2. Default volume when omitted is 0.8
+    const defaultTrack = createTrack({
+      id: "track-default-vol",
+      source_type: "youtube",
+      source_uri: "https://youtube.com/watch?v=def",
+      title: "Default Volume Test",
+      duration: 60,
+      status: "ready",
+    });
+    expect(defaultTrack.volume).toBe(0.8);
+    expect(getTrack("track-default-vol")?.volume).toBe(0.8);
+
+    // 3. Boundary & clamping checks
+    updateTrack("track-vol", { volume: 0.0 });
+    expect(getTrack("track-vol")?.volume).toBe(0.0);
+
+    updateTrack("track-vol", { volume: 1.0 });
+    expect(getTrack("track-vol")?.volume).toBe(1.0);
+
+    updateTrack("track-vol", { volume: 1.5 }); // clamped to 1.0
+    expect(getTrack("track-vol")?.volume).toBe(1.0);
+
+    updateTrack("track-vol", { volume: -0.5 }); // clamped to 0.0
+    expect(getTrack("track-vol")?.volume).toBe(0.0);
+
+    // 4. Clamping on createTrack
+    const clampedHigh = createTrack({
+      id: "track-clamp-high",
+      source_type: "youtube",
+      source_uri: "https://youtube.com/watch?v=chigh",
+      title: "Clamp High",
+      duration: 50,
+      status: "ready",
+      volume: 1.5,
+    });
+    expect(clampedHigh.volume).toBe(1.0);
+    expect(getTrack("track-clamp-high")?.volume).toBe(1.0);
+
+    const clampedLow = createTrack({
+      id: "track-clamp-low",
+      source_type: "youtube",
+      source_uri: "https://youtube.com/watch?v=clow",
+      title: "Clamp Low",
+      duration: 50,
+      status: "ready",
+      volume: -0.5,
+    });
+    expect(clampedLow.volume).toBe(0.0);
+    expect(getTrack("track-clamp-low")?.volume).toBe(0.0);
+
+    const explicitZero = createTrack({
+      id: "track-zero",
+      source_type: "youtube",
+      source_uri: "https://youtube.com/watch?v=zero",
+      title: "Zero Volume",
+      duration: 50,
+      status: "ready",
+      volume: 0.0,
+    });
+    expect(explicitZero.volume).toBe(0.0);
+    expect(getTrack("track-zero")?.volume).toBe(0.0);
+
+    // 5. Projection in listTracks
+    const allTracks = listTracks();
+    const listed = allTracks.find((t) => t.id === "track-default-vol");
+    expect(listed).toBeDefined();
+    expect(listed?.volume).toBe(0.8);
+  });
+
+  it("should validate volume boundaries and types correctly", () => {
+    expect(validateVolume(0.5)).toBe(true);
+    expect(validateVolume(0.0)).toBe(true);
+    expect(validateVolume(1.0)).toBe(true);
+    expect(validateVolume(-0.1)).toBe(false);
+    expect(validateVolume(1.01)).toBe(false);
+    expect(validateVolume(NaN)).toBe(false);
+    expect(validateVolume(Infinity)).toBe(false);
+    expect(validateVolume(-Infinity)).toBe(false);
+    expect(validateVolume("0.5")).toBe(false);
+    expect(validateVolume(null)).toBe(false);
+    expect(validateVolume(undefined)).toBe(false);
+    expect(validateVolume({})).toBe(false);
+  });
 });
+

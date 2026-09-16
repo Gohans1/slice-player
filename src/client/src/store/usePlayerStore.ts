@@ -39,6 +39,7 @@ interface PlayerState {
   toggleShuffle: () => void;
   setPlaybackMode: (mode: PlaybackMode) => Promise<void>;
   setVolume: (vol: number) => void;
+  setTrackVolume: (trackId: string, volume: number) => Promise<void>;
   setCurrentTime: (t: number) => void;
   seek: (seconds: number) => void;
   removeTrackFromQueue: (trackId: string) => void;
@@ -85,7 +86,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             prev.artist === fresh.artist &&
             prev.file_path === fresh.file_path &&
             prev.thumbnail_url === fresh.thumbnail_url &&
-            prev.error_message === fresh.error_message;
+            prev.error_message === fresh.error_message &&
+            prev.volume === fresh.volume;
           return isSame ? prev : fresh;
         });
         const isTracksIdentical =
@@ -119,8 +121,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
           const updates: Partial<PlayerState> = { tracks: finalTracks, queue: finalQueue };
           const freshActive = activeTrack ? trackMap.get(activeTrack.id) : null;
-          if (freshActive && freshActive !== activeTrack) {
+          if (freshActive && activeTrack && freshActive !== activeTrack) {
             updates.activeTrack = freshActive;
+            if (freshActive.volume !== activeTrack.volume) {
+              const masterVol = get().volume;
+              const trackGain = typeof freshActive.volume === "number" ? freshActive.volume : 0.8;
+              audioEngine.setVolume(masterVol * trackGain);
+            }
           }
           const freshStudio = sliceStudioTrack ? trackMap.get(sliceStudioTrack.id) : null;
           if (freshStudio && freshStudio !== sliceStudioTrack) {
@@ -300,12 +307,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           queueIndex: settledIdx,
         };
         const freshActiveTrack = activeTrack ? trackMap.get(activeTrack.id) : null;
-        if (freshActiveTrack && freshActiveTrack !== activeTrack) {
+        if (freshActiveTrack && activeTrack && freshActiveTrack !== activeTrack) {
           reconcileUpdates.activeTrack = freshActiveTrack;
+          if (freshActiveTrack.volume !== activeTrack.volume) {
+            const masterVol = get().volume;
+            const trackGain = typeof freshActiveTrack.volume === "number" ? freshActiveTrack.volume : 0.8;
+            audioEngine.setVolume(masterVol * trackGain);
+          }
         }
-        const freshStudioTrack = sliceStudioTrack ? trackMap.get(sliceStudioTrack.id) : null;
-        if (freshStudioTrack && freshStudioTrack !== sliceStudioTrack) {
-          reconcileUpdates.sliceStudioTrack = freshStudioTrack;
+        if (sliceStudioTrack) {
+          if (!trackMap.has(sliceStudioTrack.id)) {
+            reconcileUpdates.sliceStudioTrack = null;
+          } else {
+            const freshStudioTrack = trackMap.get(sliceStudioTrack.id)!;
+            if (freshStudioTrack !== sliceStudioTrack) {
+              reconcileUpdates.sliceStudioTrack = freshStudioTrack;
+            }
+          }
         }
         set(reconcileUpdates);
 
@@ -333,13 +351,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
         if (activeSegment && !activeSegment.id.startsWith("fallback_") && !segmentMap.has(activeSegment.id)) {
           get().removeSegmentFromQueue(activeSegment.id);
-        }
-        if (sliceStudioTrack) {
-          if (!trackMap.has(sliceStudioTrack.id)) {
-            set({ sliceStudioTrack: null });
-          } else {
-            set({ sliceStudioTrack: trackMap.get(sliceStudioTrack.id)! });
-          }
         }
       }
     } catch (e) {
@@ -379,6 +390,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         newIndex = newQueue.length - 1;
       }
     }
+
+    const masterVol = get().volume;
+    const trackGain = typeof track.volume === "number" ? track.volume : 0.8;
+    audioEngine.setVolume(masterVol * trackGain);
 
     set({
       activeTrack: track,
@@ -534,8 +549,46 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setVolume: (vol: number) => {
-    audioEngine.setVolume(vol);
-    set({ volume: vol });
+    const safeVol = Math.max(0, Math.min(1, vol));
+    set({ volume: safeVol });
+    const { activeTrack } = get();
+    const trackGain = typeof activeTrack?.volume === "number" ? activeTrack.volume : 0.8;
+    audioEngine.setVolume(safeVol * trackGain);
+  },
+
+  setTrackVolume: async (trackId: string, volume: number) => {
+    const safeVol = Math.max(0, Math.min(1, volume));
+    const { tracks, activeTrack, queue, sliceStudioTrack, volume: masterVol } = get();
+    const updatedTracks = tracks.map((t) => (t.id === trackId ? { ...t, volume: safeVol } : t));
+    const updatedQueue = queue.map((item) =>
+      item.track.id === trackId ? { ...item, track: { ...item.track, volume: safeVol } } : item
+    );
+    const updates: Partial<PlayerState> = {
+      tracks: updatedTracks,
+      queue: updatedQueue,
+    };
+    if (activeTrack?.id === trackId) {
+      updates.activeTrack = { ...activeTrack, volume: safeVol };
+      audioEngine.setVolume(masterVol * safeVol);
+    }
+    if (sliceStudioTrack?.id === trackId) {
+      updates.sliceStudioTrack = { ...sliceStudioTrack, volume: safeVol };
+    }
+    set(updates);
+
+    try {
+      const res = await fetch(`/api/tracks/${trackId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ volume: safeVol }),
+        keepalive: true,
+      });
+      if (!res.ok) {
+        console.warn(`[Store] Server rejected track volume update (status ${res.status})`);
+      }
+    } catch (e) {
+      console.error("[Store] Failed to update track volume:", e);
+    }
   },
 
   setCurrentTime: (t: number) => {

@@ -1,7 +1,7 @@
 import * as React from "react";
 import WaveSurfer from "wavesurfer.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
-import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw } from "lucide-react";
+import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { formatTime, formatDuration } from "../lib/utils";
@@ -27,6 +27,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const syncUpdatedSegment = usePlayerStore((s) => s.syncUpdatedSegment);
   const pause = usePlayerStore((s) => s.pause);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
+  const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
+  const masterVolume = usePlayerStore((s) => s.volume);
   const isGlobalPlaying = usePlayerStore((s) => s.isPlaying);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
@@ -40,6 +42,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [currentPlayTime, setCurrentPlayTime] = React.useState(0);
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
+  const [volume, setVolume] = React.useState<number>(typeof track.volume === "number" ? track.volume : 0.8);
+  const [isMuted, setIsMuted] = React.useState(false);
+  const prevVolumeRef = React.useRef(volume);
 
   const isInternalUpdateRef = React.useRef(false);
   const isDraggingRef = React.useRef(false);
@@ -47,6 +52,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
   const previewEndRef = React.useRef<number | null>(null);
   const activeSegmentIdRef = React.useRef<string | null>(null);
+  const volumeDebounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingVolumeRef = React.useRef<number | null>(null);
 
   // Pause global player bar audio when opening Slice Studio
   React.useEffect(() => {
@@ -57,16 +64,23 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   React.useEffect(() => {
     setTrackDetail((prev) => ({
       ...track,
-      peaks_json: prev.peaks_json || track.peaks_json,
+      peaks_json: prev?.peaks_json || track.peaks_json,
     }));
+    const initialVol = typeof track.volume === "number" ? track.volume : 0.8;
+    setVolume(initialVol);
+    prevVolumeRef.current = initialVol;
+
     let isMounted = true;
     if (!track.peaks_json) {
       fetch(`/api/tracks/${track.id}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data: Track | null) => {
           if (isMounted) {
-            if (data && data.peaks_json) {
-              setTrackDetail(data);
+            if (data?.peaks_json) {
+              setTrackDetail((prev) => ({
+                ...prev,
+                peaks_json: data.peaks_json,
+              }));
             }
             setIsDetailLoaded(true);
           }
@@ -80,7 +94,15 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     return () => {
       isMounted = false;
     };
-  }, [track]);
+  }, [track.id]);
+
+  // Sync WaveSurfer gain whenever master volume, track volume, or mute state changes
+  React.useEffect(() => {
+    if (wavesurferRef.current) {
+      const effectiveVol = isMuted ? 0 : volume * masterVolume;
+      wavesurferRef.current.setVolume(effectiveVol);
+    }
+  }, [masterVolume, volume, isMuted]);
 
   const segmentsRef = React.useRef(segments);
   segmentsRef.current = segments;
@@ -90,8 +112,17 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (volumeDebounceTimerRef.current) {
+        clearTimeout(volumeDebounceTimerRef.current);
+        volumeDebounceTimerRef.current = null;
+      }
+      if (pendingVolumeRef.current !== null && track.id) {
+        const volToSave = pendingVolumeRef.current;
+        pendingVolumeRef.current = null;
+        setTrackVolume(track.id, volToSave);
+      }
     };
-  }, []);
+  }, [track.id, setTrackVolume]);
 
   const safeSetSaveStatus = React.useCallback((status: string | null) => {
     if (isMountedRef.current) {
@@ -100,6 +131,16 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   }, []);
 
   const flushPendingSaves = React.useCallback(async () => {
+    if (volumeDebounceTimerRef.current) {
+      clearTimeout(volumeDebounceTimerRef.current);
+      volumeDebounceTimerRef.current = null;
+    }
+    if (pendingVolumeRef.current !== null && track.id) {
+      const volToSave = pendingVolumeRef.current;
+      pendingVolumeRef.current = null;
+      await setTrackVolume(track.id, volToSave);
+    }
+
     for (const t of Object.values(saveDebounceTimersRef.current)) {
       clearTimeout(t);
     }
@@ -130,7 +171,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     });
 
     await Promise.all(promises);
-  }, [syncUpdatedSegment]);
+  }, [track.id, setTrackVolume, syncUpdatedSegment]);
 
   const handleCloseStudio = React.useCallback(async () => {
     await flushPendingSaves();
@@ -227,6 +268,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     fetchSegments();
     const handleUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
+      if (detail?.reason === "volume") return;
       if (detail && (detail.trackId === track.id || detail.trackId === trackDetail.id)) {
         fetchSegments();
       }
@@ -263,6 +305,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     const wsRegions = RegionsPlugin.create();
     regionsRef.current = wsRegions;
 
+    const currentVol = (isMuted ? 0 : (typeof volume === "number" ? volume : (typeof trackDetail.volume === "number" ? trackDetail.volume : 0.8))) * masterVolume;
     const ws = WaveSurfer.create({
       container: containerRef.current,
       waveColor: "#403e3c", // flexoki-base-200
@@ -277,6 +320,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       plugins: [wsRegions],
     });
 
+    ws.setVolume(currentVol);
     wavesurferRef.current = ws;
     setIsWaveSurferReady(true);
 
@@ -521,6 +565,40 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     }
   };
 
+  const handleVolumeChange = (newVol: number) => {
+    const safe = Math.max(0, Math.min(1, newVol));
+    setVolume(safe);
+    if (safe > 0) {
+      setIsMuted(false);
+      prevVolumeRef.current = safe;
+    } else {
+      setIsMuted(true);
+    }
+    if (wavesurferRef.current) {
+      wavesurferRef.current.setVolume(safe * masterVolume);
+    }
+
+    pendingVolumeRef.current = safe;
+    if (volumeDebounceTimerRef.current) {
+      clearTimeout(volumeDebounceTimerRef.current);
+    }
+    volumeDebounceTimerRef.current = setTimeout(() => {
+      setTrackVolume(track.id, safe);
+      pendingVolumeRef.current = null;
+      volumeDebounceTimerRef.current = null;
+    }, 350);
+  };
+
+  const handleToggleMute = () => {
+    if (isMuted || volume === 0) {
+      const restore = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.8;
+      handleVolumeChange(restore);
+    } else {
+      prevVolumeRef.current = volume > 0 ? volume : 0.8;
+      handleVolumeChange(0);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-md p-4 sm:p-6 overflow-y-auto">
       <div className="max-w-5xl mx-auto w-full flex-1 flex flex-col">
@@ -563,7 +641,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           <div ref={containerRef} className="rounded-lg bg-background p-2 border border-border/50 cursor-pointer" />
 
           {/* Controls below waveform */}
-          <div className="mt-4 flex items-center justify-between gap-4">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -591,6 +669,41 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 <RotateCcw className="h-3.5 w-3.5" />
                 <span>Về đầu (0:00)</span>
               </Button>
+            </div>
+
+            {/* Volume Control */}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 border border-border/50">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleToggleMute}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                title={isMuted || volume === 0 ? "Bật âm thanh" : "Tắt âm"}
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="h-4 w-4 text-destructive" />
+                ) : (
+                  <Volume2 className="h-4 w-4 text-foreground" />
+                )}
+              </Button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                aria-label="Âm lượng riêng bài hát"
+                aria-valuemin={0}
+                aria-valuemax={1}
+                aria-valuenow={isMuted ? 0 : volume}
+                aria-valuetext={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                value={isMuted ? 0 : volume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                className="w-24 sm:w-28 h-1.5 accent-primary cursor-pointer"
+                title={`Âm lượng riêng bài này: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+              />
+              <span className="font-mono text-xs text-muted-foreground w-9 text-right select-none">
+                {Math.round((isMuted ? 0 : volume) * 100)}%
+              </span>
             </div>
 
             <Button
@@ -633,7 +746,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             </div>
           ) : (
             <div className="grid gap-2.5">
-              {segments.map((seg, idx) => {
+              {segments.map((seg) => {
                 const duration = seg.end_time - seg.start_time;
                 const isActive = activeSegmentId === seg.id;
 

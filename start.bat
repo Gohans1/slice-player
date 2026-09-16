@@ -36,15 +36,18 @@ if %ERRORLEVEL% EQU 0 (
 
 if "%~1"=="--no-build" (
     echo [1/2] Bo qua build frontend theo yeu cau.
-) else (
-    echo [1/2] Dang kiem tra va build frontend moi nhat...
-    call bun run build
-    if %ERRORLEVEL% NEQ 0 (
-        echo [ERROR] Build frontend that bai voi ma loi %ERRORLEVEL%!
-        pause
-        exit /b %ERRORLEVEL%
-    )
+    goto skip_build
 )
+
+echo [1/2] Dang kiem tra va build frontend moi nhat...
+call bun run build
+if errorlevel 1 (
+    echo [ERROR] Build frontend that bai voi ma loi %ERRORLEVEL%!
+    pause
+    exit /b %ERRORLEVEL%
+)
+
+:skip_build
 
 echo [2/2] Dang khoi dong server Bun...
 start "SlicePlayerServer" /min bun run src/server/index.ts

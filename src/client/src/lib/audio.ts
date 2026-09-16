@@ -113,6 +113,17 @@ class AudioEngine {
     }
   }
 
+  private cancelFadeGain(time: number) {
+    if (!this.fadeGainNode) return;
+    const gain = this.fadeGainNode.gain;
+    if (typeof (gain as any).cancelAndHoldAtTime === "function") {
+      (gain as any).cancelAndHoldAtTime(time);
+    } else {
+      gain.cancelScheduledValues(time);
+      gain.setValueAtTime(gain.value, time);
+    }
+  }
+
   public setSource(streamUrl: string) {
     this.init();
     this.audioEl.src = streamUrl;
@@ -149,8 +160,7 @@ class AudioEngine {
     // Soft fade-out current audio before loading new track or seeking
     if (this.fadeGainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.fadeGainNode.gain.cancelScheduledValues(now);
-      this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, now);
+      this.cancelFadeGain(now);
       this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
     }
 
@@ -259,7 +269,7 @@ class AudioEngine {
       // Ramp gain up to 1.0 in 15ms after playback successfully starts
       if (this.fadeGainNode && this.audioCtx) {
         const playNow = this.audioCtx.currentTime;
-        this.fadeGainNode.gain.cancelScheduledValues(playNow);
+        this.cancelFadeGain(playNow);
         this.fadeGainNode.gain.setValueAtTime(0.0001, playNow);
         this.fadeGainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
       }
@@ -282,13 +292,12 @@ class AudioEngine {
 
     if (this.fadeGainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.fadeGainNode.gain.cancelScheduledValues(now);
-      this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, now);
+      this.cancelFadeGain(now);
       this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
 
       // Trigger pause after 15ms micro-fade via Web Worker (immune to Chromium background tab 1000ms throttling)
       if (this.tickerWorker) {
-        this.tickerWorker.postMessage({ cmd: "pauseDelay", id: currentPauseId });
+        this.tickerWorker.postMessage({ cmd: "manualPauseDelay", id: currentPauseId });
       }
 
       this.pauseTimer = setTimeout(() => {
@@ -332,7 +341,7 @@ class AudioEngine {
       this.startTicker();
       if (this.fadeGainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
-        this.fadeGainNode.gain.cancelScheduledValues(now);
+        this.cancelFadeGain(now);
         this.fadeGainNode.gain.setValueAtTime(0.0001, now);
         this.fadeGainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
       }

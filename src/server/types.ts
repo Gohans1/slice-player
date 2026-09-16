@@ -13,6 +13,7 @@ export interface Track {
   peaks_json?: string; // 1000-peak JSON array
   status: TrackStatus;
   error_message?: string | null;
+  volume?: number; // 0.0 - 1.0, default 0.8
   created_at?: number;
   segment_count?: number;
 }

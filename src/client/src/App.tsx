@@ -65,9 +65,10 @@ export function App() {
               window.dispatchEvent(new CustomEvent("app:segment_updated", { detail: data }));
             }
             if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted" || data.type === "segment_updated") {
+              const shouldReconcileSegments = data.type !== "track_updated" || data.reason !== "volume";
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
-                fetchTracks(true);
+                fetchTracks(shouldReconcileSegments);
               }, 250);
             }
           } catch {}

@@ -44,9 +44,14 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
       peaks_json TEXT,
       status TEXT DEFAULT 'ready' CHECK(status IN ('queued', 'downloading', 'ready', 'error')),
       error_message TEXT,
+      volume REAL NOT NULL DEFAULT 0.8 CHECK(volume >= 0 AND volume <= 1),
       created_at INTEGER DEFAULT (unixepoch())
     );
   `);
+
+  try {
+    db.run("ALTER TABLE tracks ADD COLUMN volume REAL NOT NULL DEFAULT 0.8 CHECK(volume >= 0 AND volume <= 1);");
+  } catch {}
 
   db.run(`
     CREATE TABLE IF NOT EXISTS segments (
@@ -129,10 +134,10 @@ export function createTrack(track: Omit<Track, 'created_at'>): Track {
   const query = db.query(`
     INSERT INTO tracks (
       id, source_type, source_uri, title, artist, duration,
-      thumbnail_url, file_path, peaks_json, status, error_message
+      thumbnail_url, file_path, peaks_json, status, error_message, volume
     ) VALUES (
       $id, $source_type, $source_uri, $title, $artist, $duration,
-      $thumbnail_url, $file_path, $peaks_json, $status, $error_message
+      $thumbnail_url, $file_path, $peaks_json, $status, $error_message, $volume
     )
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
@@ -152,22 +157,41 @@ export function createTrack(track: Omit<Track, 'created_at'>): Track {
     $peaks_json: track.peaks_json ?? null,
     $status: track.status ?? 'ready',
     $error_message: track.error_message ?? null,
+    $volume: typeof track.volume === "number" && Number.isFinite(track.volume)
+      ? Math.max(0, Math.min(1, track.volume))
+      : 0.8,
   }) as Track;
+}
+
+export function validateVolume(vol: unknown): boolean {
+  return typeof vol === "number" && Number.isFinite(vol) && vol >= 0 && vol <= 1;
 }
 
 export function updateTrack(id: string, updates: Partial<Track>): Track | null {
   const db = getDb();
   const allowedKeys: (keyof Track)[] = [
     "title", "artist", "duration", "thumbnail_url",
-    "file_path", "peaks_json", "status", "error_message"
+    "file_path", "peaks_json", "status", "error_message", "volume"
   ];
-  const keysToUpdate = Object.keys(updates).filter((k) => (updates as any)[k] !== undefined && allowedKeys.includes(k as keyof Track));
+  const keysToUpdate = Object.keys(updates).filter((k) => {
+    if ((updates as any)[k] === undefined || !allowedKeys.includes(k as keyof Track)) return false;
+    if (k === "volume") {
+      const vol = (updates as any).volume;
+      return typeof vol === "number" && Number.isFinite(vol);
+    }
+    return true;
+  });
   if (keysToUpdate.length === 0) return getTrack(id);
 
   const setClauses = keysToUpdate.map((k) => `${k} = $${k}`).join(", ");
   const params: Record<string, any> = { $id: id };
   for (const k of keysToUpdate) {
-    params[`$${k}`] = (updates as any)[k] ?? null;
+    if (k === "volume") {
+      const vol = (updates as any).volume;
+      params[`$${k}`] = Math.max(0, Math.min(1, vol));
+    } else {
+      params[`$${k}`] = (updates as any)[k] ?? null;
+    }
   }
 
   const query = db.query(`
@@ -190,7 +214,7 @@ export function listTracks(): (Track & { segment_count: number })[] {
   return db.query(`
     SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
            tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
-           tracks.status, tracks.error_message, tracks.created_at,
+           tracks.status, tracks.error_message, tracks.volume, tracks.created_at,
            COUNT(segments.id) AS segment_count
     FROM tracks
     LEFT JOIN segments ON tracks.id = segments.track_id

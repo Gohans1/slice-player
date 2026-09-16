@@ -1,11 +1,11 @@
 import { serve, file as bunFile, type ServerWebSocket } from "bun";
 import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
-import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
+import { initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments, validateVolume } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
-import type { Segment } from "./types";
+import type { Segment, Track } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -147,7 +147,7 @@ const server = serve({
 
     const corsHeaders = {
       "Access-Control-Allow-Origin": origin || `http://127.0.0.1:${PORT}`,
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
       "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' blob:; worker-src blob:; frame-ancestors 'none';",
@@ -232,6 +232,44 @@ const server = serve({
           if (!track) return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
           return Response.json(track, { headers: corsHeaders });
         }
+        if (req.method === "PUT" || req.method === "PATCH") {
+          try {
+            const body = await parseJsonBody<Partial<Track>>(req);
+            if (body.volume !== undefined) {
+              if (!validateVolume(body.volume)) {
+                return Response.json(
+                  { error: "Volume must be a finite number between 0.0 and 1.0" },
+                  { status: 400, headers: corsHeaders }
+                );
+              }
+            }
+            const updated = updateTrack(trackId, body);
+            if (!updated) {
+              return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+            }
+            const allowedTrackKeys: (keyof Track)[] = [
+              "title", "artist", "duration", "thumbnail_url",
+              "file_path", "peaks_json", "status", "error_message", "volume"
+            ];
+            const modifiedKeys = Object.keys(body).filter(
+              (k) => (body as any)[k] !== undefined && allowedTrackKeys.includes(k as keyof Track)
+            );
+            const isVolumeOnly = modifiedKeys.length === 1 && modifiedKeys[0] === "volume";
+            serverEvents.emit("track_updated", {
+              trackId,
+              track: updated,
+              reason: isVolumeOnly ? "volume" : "general"
+            });
+            return Response.json(updated, { headers: corsHeaders });
+          } catch (err: unknown) {
+            const isClientErr =
+              err instanceof SyntaxError ||
+              err instanceof TypeError ||
+              (err instanceof Error && err.message.toLowerCase().includes("constraint"));
+            const msg = err instanceof Error ? err.message : String(err);
+            return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          }
+        }
         if (req.method === "DELETE") {
           await cancelDownloadIfActive(trackId);
           const track = getTrack(trackId);
@@ -275,6 +313,25 @@ const server = serve({
           }
 
           return Response.json({ success: true }, { headers: corsHeaders });
+        }
+      }
+
+      // Track retry
+      const retryMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/retry$/);
+      if (retryMatch && req.method === "POST") {
+        const trackId = retryMatch[1];
+        const track = getTrack(trackId);
+        if (!track) {
+          return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+        }
+        if (track.source_type === "youtube") {
+          const res = await ingestYouTubeUrl(track.source_uri);
+          return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
+        } else if (track.source_type === "local") {
+          const res = await ingestLocalFile(track.source_uri);
+          return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
+        } else {
+          return Response.json({ error: "Unsupported source type" }, { status: 400, headers: corsHeaders });
         }
       }
 

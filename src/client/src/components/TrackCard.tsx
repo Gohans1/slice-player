@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle } from "lucide-react";
+import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration, createDefaultFullSegment } from "../lib/utils";
@@ -23,8 +23,30 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const playSegment = usePlayerStore((s) => s.playSegment);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const fetchTracks = usePlayerStore((s) => s.fetchTracks);
 
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
+  const [isRetrying, setIsRetrying] = React.useState(false);
+
+  const handleRetry = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (isRetrying) return;
+    setIsRetrying(true);
+    try {
+      const res = await fetch(`/api/tracks/${track.id}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        fetchTracks(true);
+      }
+    } catch (err) {
+      console.error("Retry track error:", err);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   React.useEffect(() => {
     setSegments(null);
@@ -134,12 +156,22 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
         )}
 
         {track.status === "error" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-3 text-center">
-            <AlertCircle className="h-6 w-6 text-destructive mb-1" />
-            <span className="text-xs text-destructive font-medium">Lỗi tải audio</span>
-            <span className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-3 text-center z-10">
+            <AlertCircle className="h-5 w-5 text-destructive mb-1 shrink-0" />
+            <span className="text-xs text-destructive font-semibold">Lỗi tải audio</span>
+            <span className="text-[10px] text-muted-foreground mt-0.5 mb-2 line-clamp-2" title={track.error_message || ""}>
               {track.error_message || "Không xác định"}
             </span>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="h-7 text-xs px-3 gap-1.5 shadow-md cursor-pointer hover:bg-destructive/90"
+            >
+              <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+              <span>{isRetrying ? "Đang gửi..." : "Thử lại"}</span>
+            </Button>
           </div>
         )}
       </div>
@@ -162,16 +194,29 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
           </Badge>
 
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openSliceStudio(track)}
-              disabled={track.status !== "ready"}
-              className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary"
-            >
-              <Scissors className="h-3.5 w-3.5" />
-              <span>Cắt đoạn</span>
-            </Button>
+            {track.status === "error" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                disabled={isRetrying}
+                className="h-8 text-xs gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+              >
+                <RotateCcw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                <span>{isRetrying ? "Đang gửi..." : "Thử lại"}</span>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openSliceStudio(track)}
+                disabled={track.status !== "ready"}
+                className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary"
+              >
+                <Scissors className="h-3.5 w-3.5" />
+                <span>Cắt đoạn</span>
+              </Button>
+            )}
 
             <Button
               variant="ghost"
