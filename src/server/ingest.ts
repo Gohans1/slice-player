@@ -33,6 +33,8 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
     const metaCmd = [
       "yt-dlp",
       "--flat-playlist",
+      "--playlist-end",
+      "50",
       "-J",
       "--skip-download",
       "--",
@@ -46,7 +48,16 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
     activeMetadataProcs.add(proc);
 
     const killTimer = setTimeout(() => {
-      try { proc.kill(); } catch {}
+      try {
+        if (process.platform === "win32") {
+          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+            stdout: "ignore",
+            stderr: "ignore",
+          });
+        } else {
+          proc.kill();
+        }
+      } catch {}
     }, 45000);
 
     let outputText = "";
@@ -122,6 +133,8 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         // Trigger background audio download for this track
         triggerDownloadWorker(trackId, watchUrl);
       } else if (existing.status !== "ready" && existing.status !== "downloading") {
+        updateTrack(trackId, { status: "queued", error_message: undefined });
+        serverEvents.emit("track_updated", { trackId });
         triggerDownloadWorker(trackId, watchUrl);
       }
 
@@ -268,9 +281,15 @@ async function processDownloadQueue() {
       try { proc.kill(); } catch {}
     }, 300000);
 
-    await proc.exited;
+    const exitCode = await proc.exited;
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
+
+    if (exitCode !== 0) {
+      updateTrack(trackId, { status: "error", error_message: `yt-dlp tải thất bại (exit code: ${exitCode})` });
+      serverEvents.emit("track_updated", { trackId });
+      return;
+    }
 
     // Find actual downloaded file in ./data/cache/audio/ dynamically
     const audioDir = "./data/cache/audio";
@@ -320,6 +339,15 @@ async function processDownloadQueue() {
 
       // Generate peaks
       const peaks = await generatePeaks(finalPath, 1000);
+
+      // Check again if track was deleted during peaks generation
+      if (!getTrack(trackId)) {
+        if (finalPath && existsSync(finalPath)) {
+          try { unlinkSync(finalPath); } catch {}
+        }
+        return;
+      }
+
       updateTrack(trackId, {
         file_path: finalPath,
         duration: Number(actualDuration.toFixed(2)),
@@ -385,7 +413,8 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       };
     }
 
-    const hash = createHash("md5").update(fullPath).digest("hex").slice(0, 12);
+    const normalizedPath = process.platform === "win32" ? fullPath.toLowerCase() : fullPath;
+    const hash = createHash("md5").update(normalizedPath).digest("hex").slice(0, 12);
     const trackId = `loc_${hash}`;
     const title = metadata.common.title || basename(fullPath, extname(fullPath));
     const artist = metadata.common.artist || "Unknown Artist";
@@ -394,7 +423,10 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     let thumbUrl = "";
     if (metadata.common.picture && metadata.common.picture.length > 0) {
       const pic = metadata.common.picture[0];
-      const thumbPath = `./data/cache/thumbs/${trackId}.jpg`;
+      const isPng = pic.format?.toLowerCase().includes("png");
+      const isWebp = pic.format?.toLowerCase().includes("webp");
+      const imgExt = isPng ? ".png" : isWebp ? ".webp" : ".jpg";
+      const thumbPath = `./data/cache/thumbs/${trackId}${imgExt}`;
       writeFileSync(thumbPath, pic.data);
       thumbUrl = `/api/thumbs/${trackId}`;
     }

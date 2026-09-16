@@ -2,7 +2,7 @@ import * as React from "react";
 import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { formatDuration } from "../lib/utils";
+import { formatDuration, createDefaultFullSegment } from "../lib/utils";
 import { usePlayerStore } from "../store/usePlayerStore";
 import type { Track, Segment } from "@/server/types";
 
@@ -47,14 +47,7 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
       playSegment(segList[0], track);
     } else {
       // Create a default full-length segment if none exists
-      const fullSegment: Segment = {
-        id: `seg_full_${track.id}`,
-        track_id: track.id,
-        name: "Toàn bài",
-        start_time: 0,
-        end_time: track.duration,
-      };
-      playSegment(fullSegment, track);
+      playSegment(createDefaultFullSegment(track), track);
     }
   };
 

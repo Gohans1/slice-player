@@ -211,11 +211,27 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     // Region drag / resize handlers throttled to prevent React render thrashing
     let lastRegionUpdate = 0;
-    wsRegions.on("region-updated", (region) => {
+    wsRegions.on("region-update", (region) => {
       const now = performance.now();
       if (now - lastRegionUpdate < 40) return;
       lastRegionUpdate = now;
 
+      const segId = region.id;
+      const start = Number(region.start.toFixed(2));
+      const end = Number(region.end.toFixed(2));
+
+      if (activeSegmentIdRef.current === segId) {
+        previewEndRef.current = end;
+      }
+
+      isInternalUpdateRef.current = true;
+      setSegments((prev) =>
+        prev.map((s) => (s.id === segId ? { ...s, start_time: start, end_time: end } : s))
+      );
+    });
+
+    // Capture exact settled coordinates upon drag/resize release
+    wsRegions.on("region-updated", (region) => {
       const segId = region.id;
       const start = Number(region.start.toFixed(2));
       const end = Number(region.end.toFixed(2));
@@ -235,6 +251,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     return () => {
       setIsWaveSurferReady(false);
       ws.destroy();
+      wavesurferRef.current = null;
+      regionsRef.current = null;
     };
   }, [isDetailLoaded, trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause]);
 

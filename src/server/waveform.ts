@@ -1,5 +1,24 @@
 import { existsSync } from "node:fs";
 
+const activeWaveformProcs = new Set<ReturnType<typeof Bun.spawn>>();
+
+export async function abortWaveformProcesses(): Promise<void> {
+  for (const proc of activeWaveformProcs) {
+    try {
+      if (process.platform === "win32") {
+        const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        await killProc.exited;
+      } else {
+        proc.kill();
+      }
+    } catch {}
+  }
+  activeWaveformProcs.clear();
+}
+
 /**
  * Generate 1000 normalized peak points for WaveSurfer from an audio file using ffmpeg.
  * Bypasses browser decodeAudioData, saving gigabytes of RAM.
@@ -22,24 +41,28 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     "-"
   ];
 
-  function killFfmpeg(proc: ReturnType<typeof Bun.spawn>) {
+  function killFfmpeg(p: ReturnType<typeof Bun.spawn> | null) {
+    if (!p) return;
     try {
+      activeWaveformProcs.delete(p);
       if (process.platform === "win32") {
-        Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+        Bun.spawn(["taskkill", "/F", "/T", "/PID", String(p.pid)], {
           stdout: "ignore",
           stderr: "ignore",
         });
       } else {
-        proc.kill();
+        p.kill();
       }
     } catch {}
   }
 
+  let proc: ReturnType<typeof Bun.spawn> | null = null;
   try {
-    const proc = Bun.spawn(ffmpegCmd, {
+    proc = Bun.spawn(ffmpegCmd, {
       stdout: "pipe",
       stderr: "ignore",
     });
+    activeWaveformProcs.add(proc);
 
     // 60s timeout to kill hanging ffmpeg
     const killTimer = setTimeout(() => {
@@ -51,7 +74,8 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap to prevent OOM
 
     try {
-      const reader = proc.stdout.getReader();
+      const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
+      const reader = stdoutStream.getReader();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -69,6 +93,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     }
 
     await proc.exited;
+    activeWaveformProcs.delete(proc);
 
     if (chunks.length === 0) {
       return Array.from({ length: targetPoints }, () => 0.1);
@@ -106,6 +131,7 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
 
     return peaks;
   } catch (err) {
+    if (proc) activeWaveformProcs.delete(proc);
     console.warn("[Waveform] ffmpeg execution failed, falling back to synthetic peaks:", err);
     return Array.from({ length: targetPoints }, () => 0.1);
   }

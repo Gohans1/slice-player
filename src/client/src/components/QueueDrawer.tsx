@@ -78,7 +78,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
             return (
               <div
                 key={`${item.segment.id}-${idx}`}
-                onClick={() => playSegment(item.segment, item.track)}
+                onClick={() => playSegment(item.segment, item.track, idx)}
                 className={`group flex items-center justify-between gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
                   isCurrent
                     ? "border-primary bg-primary/10 shadow-sm"

@@ -3,6 +3,7 @@ import { existsSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive } from "./ingest";
+import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
 import type { Segment } from "./types";
 
@@ -24,6 +25,7 @@ let shutdownTimer: Timer | null = setTimeout(() => {
 async function gracefulShutdown() {
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
   await abortIngestProcesses();
+  await abortWaveformProcesses();
   closeDatabase();
   process.exit(0);
 }
@@ -254,11 +256,14 @@ const server = serve({
       if (thumbMatch && req.method === "GET") {
         const thumbId = thumbMatch[1];
         const allowedThumbsDir = resolve("./data/cache/thumbs");
-        const thumbPath = resolve(allowedThumbsDir, `${thumbId}.jpg`);
-        if (thumbPath.startsWith(allowedThumbsDir + sep) && existsSync(thumbPath)) {
-          return new Response(bunFile(thumbPath), {
-            headers: { ...corsHeaders, "Content-Type": "image/jpeg" },
-          });
+        for (const ext of [".jpg", ".png", ".webp"]) {
+          const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
+          if (thumbPath.startsWith(allowedThumbsDir + sep) && existsSync(thumbPath)) {
+            const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+            return new Response(bunFile(thumbPath), {
+              headers: { ...corsHeaders, "Content-Type": ct },
+            });
+          }
         }
         return new Response("Thumbnail not found", { status: 404, headers: corsHeaders });
       }
@@ -289,8 +294,8 @@ const server = serve({
             if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime - startTime < 0.5) {
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
-            if (endTime > track.duration + 0.1) {
-              return Response.json({ error: `end_time (${endTime}s) exceeds track duration (${track.duration}s)` }, { status: 400, headers: corsHeaders });
+            if (endTime > 1800 || (track.duration > 0 && endTime > track.duration + 0.1)) {
+              return Response.json({ error: `end_time (${endTime}s) vượt quá thời lượng bài hát hoặc giới hạn 30 phút` }, { status: 400, headers: corsHeaders });
             }
             const rawName = String(body.name || "").trim().slice(0, 100);
             if (!rawName) {
@@ -361,6 +366,7 @@ const server = serve({
           const existingSeg = getSegment(segId);
           const ok = deleteSegment(segId);
           if (existingSeg) {
+            serverEvents.emit("segment_deleted", { segmentId: segId, trackId: existingSeg.track_id });
             serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
           }
           return Response.json({ success: ok }, { headers: corsHeaders });
@@ -391,12 +397,17 @@ const server = serve({
       });
     }
 
-    // Fallback to dist/index.html for SPA routing if dist exists
+    // Fallback to dist/index.html ONLY for navigation requests (HTML/routes)
+    const isNavRequest = !extname(url.pathname) || req.headers.get("accept")?.includes("text/html");
     const fallbackIndex = join(distDir, "index.html");
-    if (existsSync(fallbackIndex)) {
+    if (isNavRequest && existsSync(fallbackIndex)) {
       return new Response(bunFile(fallbackIndex), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
+    }
+
+    if (!isNavRequest) {
+      return new Response("Not Found", { status: 404 });
     }
 
     return new Response("Slice Player Backend Running. Frontend is being built...", {

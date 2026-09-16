@@ -18,6 +18,8 @@ class AudioEngine {
   private lastTimeUpdate = 0;
   private pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private isFadingOut = false;
+  private tickerWorker: Worker | null = null;
+  private fallbackTickerInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.audioEl = new Audio();
@@ -165,6 +167,7 @@ class AudioEngine {
       await this.audioEl.play();
       if (this.currentPlayRequestId !== requestId) return;
       this.startRafLoop();
+      this.startTicker();
 
       // Arm boundary monitor ONLY AFTER playback successfully starts at the target seek point
       this.currentSegmentStart = startTime;
@@ -199,18 +202,25 @@ class AudioEngine {
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
 
-      if (document.hidden) {
-        // Bypass 1000ms timer throttling in background/minimized mode
-        this.audioEl.pause();
-      } else {
-        this.pauseTimer = setTimeout(() => {
-          this.audioEl.pause();
-          this.pauseTimer = null;
-        }, 14);
+      // Trigger pause after 15ms micro-fade via Web Worker (immune to Chromium background tab 1000ms throttling)
+      if (this.tickerWorker) {
+        this.tickerWorker.postMessage("pauseDelay");
       }
+
+      this.pauseTimer = setTimeout(() => {
+        this.audioEl.pause();
+        this.stopTicker();
+        this.pauseTimer = null;
+      }, 15);
     } else {
       this.audioEl.pause();
+      this.stopTicker();
     }
+  }
+
+  public updateCurrentSegmentBounds(startTime: number, endTime: number) {
+    this.currentSegmentStart = startTime;
+    this.currentSegmentEnd = endTime;
   }
 
   public updateCurrentSegmentEnd(endTime: number) {
@@ -228,6 +238,7 @@ class AudioEngine {
     try {
       await this.audioEl.play();
       this.startRafLoop();
+      this.startTicker();
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
@@ -250,7 +261,11 @@ class AudioEngine {
     this.isFadingOut = false;
     if (this.audioEl.paused) {
       this.audioEl.currentTime = seconds;
-      if (this.gainNode) this.gainNode.gain.value = 1.0;
+      if (this.gainNode && this.audioCtx) {
+        const now = this.audioCtx.currentTime;
+        this.gainNode.gain.cancelScheduledValues(now);
+        this.gainNode.gain.setValueAtTime(1.0, now);
+      }
       return;
     }
 
@@ -270,7 +285,7 @@ class AudioEngine {
           this.gainNode.gain.linearRampToValueAtTime(1.0, unpauseNow + 0.015);
         }
       };
-      const fallback = setTimeout(onSeeked, 500);
+      const fallback = setTimeout(onSeeked, 2000);
       this.audioEl.addEventListener("seeked", onSeeked);
       this.audioEl.currentTime = seconds;
     } else {
@@ -280,6 +295,8 @@ class AudioEngine {
 
   public unload() {
     this.pause();
+    this.stopTicker();
+    this.stopRafLoop();
     this.currentSegmentStart = null;
     this.currentSegmentEnd = null;
     this.onSegmentEndCallback = null;
@@ -346,6 +363,7 @@ class AudioEngine {
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 
+        this.stopTicker();
         this.stopRafLoop();
         this.audioEl.pause();
         if (cb) cb();
@@ -373,25 +391,67 @@ class AudioEngine {
     }
   };
 
+  private startTicker = () => {
+    if (this.tickerWorker) {
+      this.tickerWorker.postMessage("start");
+    } else if (!this.fallbackTickerInterval) {
+      this.fallbackTickerInterval = setInterval(this.checkBoundary, 30);
+    }
+  };
+
+  private stopTicker = () => {
+    if (this.tickerWorker) {
+      this.tickerWorker.postMessage("stop");
+    }
+    if (this.fallbackTickerInterval) {
+      clearInterval(this.fallbackTickerInterval);
+      this.fallbackTickerInterval = null;
+    }
+  };
+
   /**
-   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a Web Worker ticker
+   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a controllable Web Worker ticker
    * to ensure background/minimized windows never miss segment boundaries due to Chromium 1000ms timer throttling.
    */
   private startBoundaryMonitor = () => {
     // Native timeupdate listener
     this.audioEl.addEventListener("timeupdate", this.checkBoundary);
 
-    // Web Worker ticker (not subject to Chromium background tab 1000ms timer throttling)
+    // Controllable Web Worker ticker (not subject to Chromium background tab 1000ms timer throttling)
     try {
-      const blob = new Blob(["setInterval(() => postMessage(0), 30);"], { type: "text/javascript" });
+      const code = `
+        let intervalId = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (!intervalId) intervalId = setInterval(function() { postMessage('tick'); }, 30);
+          } else if (e.data === 'stop') {
+            if (intervalId) { clearInterval(intervalId); intervalId = null; }
+          } else if (e.data === 'pauseDelay') {
+            setTimeout(function() { postMessage('paused'); }, 15);
+          }
+        };
+      `;
+      const blob = new Blob([code], { type: "text/javascript" });
       const workerUrl = URL.createObjectURL(blob);
-      const worker = new Worker(workerUrl);
+      this.tickerWorker = new Worker(workerUrl);
       setTimeout(() => {
         try { URL.revokeObjectURL(workerUrl); } catch {}
       }, 3000);
-      worker.onmessage = () => this.checkBoundary();
+
+      this.tickerWorker.onmessage = (e) => {
+        if (e.data === "tick") {
+          this.checkBoundary();
+        } else if (e.data === "paused") {
+          if (this.pauseTimer) {
+            clearTimeout(this.pauseTimer);
+            this.pauseTimer = null;
+          }
+          this.audioEl.pause();
+          this.stopTicker();
+        }
+      };
     } catch {
-      setInterval(this.checkBoundary, 30);
+      // Worker not supported, will fallback to interval when active
     }
   };
 }

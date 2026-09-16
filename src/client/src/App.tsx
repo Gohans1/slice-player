@@ -18,6 +18,7 @@ export function App() {
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const pause = usePlayerStore((s) => s.pause);
   const removeTrackFromQueue = usePlayerStore((s) => s.removeTrackFromQueue);
+  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const [isQueueOpen, setIsQueueOpen] = React.useState(false);
@@ -50,7 +51,10 @@ export function App() {
           if (event.data === "pong") return;
           try {
             const data = JSON.parse(event.data);
-            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted") {
+            if (data.type === "segment_deleted" && data.data?.segmentId) {
+              removeSegmentFromQueue(data.data.segmentId);
+            }
+            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted") {
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
                 fetchTracks();
@@ -83,7 +87,7 @@ export function App() {
       if (wsDebounceTimer) clearTimeout(wsDebounceTimer);
       if (ws) ws.close();
     };
-  }, [fetchTracks]);
+  }, [fetchTracks, removeSegmentFromQueue]);
 
   // Polling interval if any track is downloading or queued to ensure UI updates
   const hasPendingDownloads = tracks.some(

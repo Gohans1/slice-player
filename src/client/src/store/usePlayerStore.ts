@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { audioEngine } from "../lib/audio";
+import { createDefaultFullSegment } from "../lib/utils";
 import type { Track, Segment } from "@/server/types";
 
 export interface QueueItem {
@@ -22,7 +23,7 @@ interface PlayerState {
 
   // Actions
   fetchTracks: () => Promise<void>;
-  playSegment: (segment: Segment, track: Track) => Promise<void>;
+  playSegment: (segment: Segment, track: Track, overrideIndex?: number) => Promise<void>;
   pause: () => void;
   togglePlay: () => Promise<void>;
   nextSegment: () => void;
@@ -63,8 +64,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
         const { activeTrack, sliceStudioTrack, queue, queueIndex } = get();
 
-        // Purge queue items whose parent track no longer exists in DB
-        const validQueue = queue.filter((item) => trackMap.has(item.track.id));
+        // Concurrently fetch segments to purge deleted segments across tabs
+        let validSegments: Segment[] = [];
+        try {
+          const segRes = await fetch("/api/segments");
+          if (segRes.ok) validSegments = await segRes.json();
+        } catch {}
+        const segmentMap = new Set(validSegments.map((s) => s.id));
+
+        // Purge queue items whose parent track or segment no longer exists in DB
+        const validQueue = queue.filter(
+          (item) => trackMap.has(item.track.id) && (item.segment.id.startsWith("fallback_") || segmentMap.has(item.segment.id))
+        );
         if (validQueue.length !== queue.length) {
           const newIdx = validQueue.length === 0 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
           set({ queue: validQueue, queueIndex: newIdx });
@@ -85,13 +96,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  playSegment: async (segment: Segment, track: Track) => {
+  playSegment: async (segment: Segment, track: Track, overrideIndex?: number) => {
     const streamUrl = `/api/tracks/${track.id}/stream`;
     const { queue, queueIndex } = get();
     let newIndex = queueIndex;
     let newQueue = queue;
 
-    if (queueIndex >= 0 && queue[queueIndex]?.segment.id === segment.id) {
+    if (overrideIndex !== undefined && overrideIndex >= 0 && overrideIndex < queue.length) {
+      newIndex = overrideIndex;
+    } else if (queueIndex >= 0 && queue[queueIndex]?.segment.id === segment.id) {
       newIndex = queueIndex;
     } else {
       const existingIndex = queue.findIndex((item) => item.segment.id === segment.id);
@@ -232,7 +245,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const nextItem = newQueue[nextIdx];
       set({ queue: newQueue, queueIndex: nextIdx, activeTrack: nextItem.track, activeSegment: nextItem.segment, isPlaying: false });
       if (wasPlaying) {
-        get().playSegment(nextItem.segment, nextItem.track);
+        get().playSegment(nextItem.segment, nextItem.track, nextIdx);
+      } else {
+        audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
+        audioEngine.seek(nextItem.segment.start_time);
+        audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
       }
       return;
     }
@@ -241,7 +258,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (newQueue.length === 0) {
       newIndex = -1;
     } else {
-      newIndex = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
+      newIndex = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },
@@ -255,7 +272,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (activeSegment?.id === segmentId) {
       const wasPlaying = get().isPlaying;
-      audioEngine.pause();
+      audioEngine.unload();
       if (newQueue.length === 0) {
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
         return;
@@ -264,7 +281,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const nextItem = newQueue[nextIdx];
       set({ queue: newQueue, queueIndex: nextIdx, activeTrack: nextItem.track, activeSegment: nextItem.segment, isPlaying: false });
       if (wasPlaying) {
-        get().playSegment(nextItem.segment, nextItem.track);
+        get().playSegment(nextItem.segment, nextItem.track, nextIdx);
+      } else {
+        audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
+        audioEngine.seek(nextItem.segment.start_time);
+        audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
       }
       return;
     }
@@ -273,7 +294,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (newQueue.length === 0) {
       newIndex = -1;
     } else {
-      newIndex = Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
+      newIndex = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
     }
     set({ queue: newQueue, queueIndex: newIndex });
   },
@@ -286,7 +307,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const updates: Partial<PlayerState> = { queue: newQueue };
     if (activeSegment?.id === seg.id) {
       updates.activeSegment = seg;
-      audioEngine.updateCurrentSegmentEnd(seg.end_time);
+      audioEngine.updateCurrentSegmentBounds(seg.start_time, seg.end_time);
     }
     set(updates);
   },
@@ -316,13 +337,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       for (const t of allTracks) {
         if (t.status === "ready") {
           items.push({
-            segment: {
-              id: `fallback_${t.id}`,
-              track_id: t.id,
-              name: "Toàn bài",
-              start_time: 0,
-              end_time: t.duration,
-            },
+            segment: createDefaultFullSegment(t),
             track: t,
           });
         }

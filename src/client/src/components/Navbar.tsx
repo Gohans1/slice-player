@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
 import { usePlayerStore } from "../store/usePlayerStore";
+import { createDefaultFullSegment } from "../lib/utils";
 import type { Segment } from "@/server/types";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -114,15 +115,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
           // Fallback: create default full-track virtual segments
           const fallbackSegments = tracks
             .filter((t) => t.status === "ready" && t.duration > 0)
-            .map((t) => ({
-              id: `fallback_${t.id}`,
-              track_id: t.id,
-              name: "Toàn bài",
-              start_time: 0,
-              end_time: t.duration,
-              color: "#4385BE",
-              sort_order: 0,
-            }));
+            .map(createDefaultFullSegment);
           if (fallbackSegments.length > 0) {
             buildShuffleQueue(fallbackSegments, tracks);
             const q = usePlayerStore.getState().queue;
