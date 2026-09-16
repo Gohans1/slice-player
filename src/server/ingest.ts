@@ -233,12 +233,13 @@ export async function abortIngestProcesses(): Promise<void> {
 }
 
 export async function cancelDownloadIfActive(trackId: string): Promise<void> {
-  cancelledTrackIds.add(trackId);
   const qIdx = downloadQueue.findIndex((q) => q.trackId === trackId);
   if (qIdx !== -1) {
     downloadQueue.splice(qIdx, 1);
   }
+
   if (currentDownloadingTrackId === trackId && activeDownloadProc) {
+    cancelledTrackIds.add(trackId);
     const proc = activeDownloadProc;
     try {
       if (process.platform === "win32") {
@@ -256,6 +257,8 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
     } catch {}
     activeDownloadProc = null;
     currentDownloadingTrackId = null;
+  } else {
+    cancelledTrackIds.delete(trackId);
   }
 
   // Clean up any residual .part or .ytdl files
@@ -273,6 +276,7 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
 }
 
 function triggerDownloadWorker(trackId: string, url: string) {
+  cancelledTrackIds.delete(trackId);
   if (currentDownloadingTrackId === trackId || downloadQueue.some((q) => q.trackId === trackId)) return;
   downloadQueue.push({ trackId, url });
   processDownloadQueue();

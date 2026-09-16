@@ -154,11 +154,11 @@ class AudioEngine {
         const timer = setTimeout(() => {
           cleanup();
           if (this.currentPlayRequestId === requestId) {
-            reject(new Error("Audio load timeout (10s)"));
+            reject(new Error("Audio load timeout (15s)"));
           } else {
             resolve();
           }
-        }, 10000);
+        }, 15000);
 
         this.audioEl.addEventListener("canplay", onCanPlay);
         this.audioEl.addEventListener("error", onError);
@@ -440,7 +440,13 @@ class AudioEngine {
     }
 
     // Guard against seeking settlement lag during same-track segment transitions (both forward & backward)
+    if (!this.isSeekingSettled) {
+      return;
+    }
     if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
+      return;
+    }
+    if (this.currentSegmentEnd !== null && curTime > this.currentSegmentEnd + 0.5) {
       return;
     }
 

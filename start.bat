@@ -25,7 +25,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 set PORT_NUM=3000
-if defined PORT set PORT_NUM=%PORT%
+if defined PORT set "PORT_NUM=%PORT%"
 
 curl -s -f -m 1 http://127.0.0.1:%PORT_NUM%/api/tracks >nul 2>&1
 if %ERRORLEVEL% EQU 0 (

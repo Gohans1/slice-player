@@ -12,6 +12,8 @@ export type PlaybackMode = "mixed" | "slices_only" | "original_only";
 
 let consecutivePlaybackFailures = 0;
 const dismissedSegmentIds = new Set<string>();
+let isInitiatingPlayback = false;
+let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface PlayerState {
   tracks: Track[];
@@ -319,6 +321,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       queueIndex: newIndex >= 0 ? newIndex : 0,
     });
 
+    if (autoSkipTimer) {
+      clearTimeout(autoSkipTimer);
+      autoSkipTimer = null;
+    }
+
+    isInitiatingPlayback = true;
     try {
       await audioEngine.playSegment(
         streamUrl,
@@ -341,7 +349,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const isUserGestureError = (e as any)?.name === "NotAllowedError";
         const { queue, nextSegment } = get();
         if (!isUserGestureError && queue.length > 1 && consecutivePlaybackFailures < Math.min(3, queue.length)) {
-          setTimeout(() => {
+          if (autoSkipTimer) clearTimeout(autoSkipTimer);
+          autoSkipTimer = setTimeout(() => {
+            autoSkipTimer = null;
             if (!get().isPlaying && get().activeSegment?.id === segment.id) {
               nextSegment();
             }
@@ -351,6 +361,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           consecutivePlaybackFailures = 0;
         }
       }
+    } finally {
+      isInitiatingPlayback = false;
     }
   },
 
@@ -714,9 +726,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     }
 
+    let finalQueueIndex = -1;
+    if (items.length > 0) {
+      if (currentIndex >= 0) {
+        finalQueueIndex = currentIndex;
+      } else if (activeSegment) {
+        // Active segment is playing but not present in the current mode's queue
+        // Keep -1 so nextSegment() starts cleanly at index 0 without skipping it
+        finalQueueIndex = -1;
+      } else {
+        finalQueueIndex = 0;
+      }
+    }
+
     set({
       queue: items,
-      queueIndex: items.length > 0 ? (currentIndex >= 0 ? currentIndex : 0) : -1,
+      queueIndex: finalQueueIndex,
       activeSegment: updatedActiveSegment,
     });
   },
@@ -724,13 +749,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
 // Mid-stream audio element error listener to prevent UI lockup
 audioEngine.setOnErrorCallback((err) => {
+  if (isInitiatingPlayback) {
+    // Ignored here because playSegment catch block is already handling the initial load error
+    return;
+  }
   console.warn("[Store] Mid-stream audio element error:", err);
   const { isPlaying, queue, nextSegment, activeSegment } = usePlayerStore.getState();
   if (isPlaying) {
     usePlayerStore.setState({ isPlaying: false });
     if (queue.length > 1 && consecutivePlaybackFailures < Math.min(3, queue.length)) {
       consecutivePlaybackFailures++;
-      setTimeout(() => {
+      if (autoSkipTimer) clearTimeout(autoSkipTimer);
+      autoSkipTimer = setTimeout(() => {
+        autoSkipTimer = null;
         const state = usePlayerStore.getState();
         if (!state.isPlaying && state.activeSegment?.id === activeSegment?.id) {
           nextSegment();

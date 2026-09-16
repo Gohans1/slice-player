@@ -16,10 +16,17 @@ console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 
 const activeSockets = new Set<any>();
 let shutdownTimer: Timer | null = null;
-checkIdleShutdown();
+let isShuttingDown = false;
+let hasHadInitialConnection = false;
 
 async function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
+  if (shutdownTimer) {
+    clearTimeout(shutdownTimer);
+    shutdownTimer = null;
+  }
   server.stop(true);
   await abortIngestProcesses();
   await abortWaveformProcesses();
@@ -57,7 +64,16 @@ function isSubdirectoryOf(parent: string, child: string): boolean {
 }
 
 async function parseJsonBody<T = Record<string, any>>(req: Request): Promise<T> {
-  const parsed = await req.json();
+  const text = await req.text();
+  if (text.length > 65536) {
+    throw new Error("Payload too large (max 64KB)");
+  }
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new SyntaxError("Invalid JSON: syntax error in request body");
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new TypeError("Invalid JSON: expected an object");
   }
@@ -115,7 +131,7 @@ const server = serve({
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
       "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
-      "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src blob:;",
+      "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:; worker-src blob:; frame-ancestors 'none';",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
     };
@@ -128,27 +144,31 @@ const server = serve({
     if (url.pathname.startsWith("/api/")) {
       if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
         const rawLen = req.headers.get("content-length");
-        const isChunked = req.headers.get("transfer-encoding")?.includes("chunked");
-        if (!rawLen && !isChunked) {
+        const isChunked = req.headers.get("transfer-encoding")?.toLowerCase().includes("chunked");
+        if (isChunked) {
           return Response.json(
-            { error: "Content-Length or Transfer-Encoding: chunked is required for mutating requests" },
+            { error: "Chunked transfer encoding is not supported" },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        if (!rawLen) {
+          return Response.json(
+            { error: "Content-Length header is required for mutating requests" },
             { status: 411, headers: corsHeaders }
           );
         }
-        if (rawLen) {
-          const contentLength = Number(rawLen);
-          if (!Number.isFinite(contentLength) || contentLength <= 0) {
-            return Response.json(
-              { error: "Empty or invalid request body" },
-              { status: 400, headers: corsHeaders }
-            );
-          }
-          if (contentLength > 65536) {
-            return Response.json(
-              { error: "Payload too large (max 64KB)" },
-              { status: 413, headers: corsHeaders }
-            );
-          }
+        const contentLength = Number(rawLen);
+        if (!Number.isFinite(contentLength) || contentLength <= 0) {
+          return Response.json(
+            { error: "Empty or invalid request body" },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        if (contentLength > 65536) {
+          return Response.json(
+            { error: "Payload too large (max 64KB)" },
+            { status: 413, headers: corsHeaders }
+          );
         }
       }
 
@@ -366,7 +386,7 @@ const server = serve({
             if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime - startTime < 0.5) {
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
-            if (endTime > 1800 || (track.duration > 0 && endTime > track.duration + 0.1)) {
+            if (endTime > 1800 || (track.duration > 0 && (endTime > track.duration + 0.1 || startTime >= track.duration))) {
               return Response.json({ error: `end_time (${endTime}s) vượt quá thời lượng bài hát hoặc giới hạn 30 phút` }, { status: 400, headers: corsHeaders });
             }
             const rawName = String(body.name || "").trim().slice(0, 100);
@@ -401,8 +421,8 @@ const server = serve({
             const existingSeg = getSegment(segId);
             if (!existingSeg) return Response.json({ error: "Segment not found" }, { status: 404, headers: corsHeaders });
 
-            const newStart = body.start_time !== undefined ? Number(body.start_time) : existingSeg.start_time;
-            let newEnd = body.end_time !== undefined ? Number(body.end_time) : existingSeg.end_time;
+            const newStart = body.start_time !== undefined && body.start_time !== null ? Number(body.start_time) : existingSeg.start_time;
+            let newEnd = body.end_time !== undefined && body.end_time !== null ? Number(body.end_time) : existingSeg.end_time;
 
             const track = getTrack(existingSeg.track_id);
             if (!track) {
@@ -416,7 +436,7 @@ const server = serve({
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
 
-            if (newEnd > 1800 || (track.duration > 0 && newEnd > track.duration + 0.1) || (track.duration > 0 && newStart >= track.duration)) {
+            if (newEnd > 1800 || (track.duration > 0 && (newEnd > track.duration + 0.1 || newStart >= track.duration))) {
               return Response.json(
                 { error: `start_time hoặc end_time vượt quá thời lượng bài hát hoặc giới hạn 30 phút` },
                 { status: 400, headers: corsHeaders }
@@ -425,13 +445,20 @@ const server = serve({
 
             const rawName = body.name !== undefined ? String(body.name).trim().slice(0, 100) : existingSeg.name;
             const hexColor = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color) ? body.color : existingSeg.color;
+            let newSortOrder = existingSeg.sort_order;
+            if (body.sort_order !== undefined && body.sort_order !== null) {
+              const parsedOrder = Number(body.sort_order);
+              if (Number.isInteger(parsedOrder) && parsedOrder >= 0 && parsedOrder < 100000) {
+                newSortOrder = parsedOrder;
+              }
+            }
 
             const updated = updateSegment(segId, {
-              ...body,
               name: rawName || existingSeg.name,
               color: hexColor,
               start_time: newStart,
               end_time: newEnd,
+              sort_order: newSortOrder,
             });
 
             serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
@@ -512,6 +539,7 @@ const server = serve({
     idleTimeout: 255,
     open(ws) {
       activeSockets.add(ws);
+      hasHadInitialConnection = true;
       if (shutdownTimer) {
         clearTimeout(shutdownTimer);
         shutdownTimer = null;
@@ -533,6 +561,7 @@ const server = serve({
 
 function checkIdleShutdown() {
   if (process.env.NODE_ENV !== "production") return;
+  if (!hasHadInitialConnection) return;
   if (activeSockets.size === 0 && !shutdownTimer) {
     shutdownTimer = setTimeout(() => {
       if (activeSockets.size === 0 && !isIngestBusy()) {

@@ -291,6 +291,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       }
     });
 
+    const maxTrackDur = trackDetail?.duration || 1800;
+
     // Region drag / resize handlers throttled to prevent React render thrashing
     let lastRegionUpdate = 0;
     wsRegions.on("region-update", (region) => {
@@ -300,8 +302,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       lastRegionUpdate = now;
 
       const segId = region.id;
-      const start = Number(region.start.toFixed(2));
-      const end = Number(region.end.toFixed(2));
+      const start = Math.max(0, Number(region.start.toFixed(2)));
+      const end = Math.min(maxTrackDur, Number(region.end.toFixed(2)));
 
       if (activeSegmentIdRef.current === segId) {
         previewEndRef.current = end;
@@ -317,8 +319,15 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     wsRegions.on("region-updated", (region) => {
       isDraggingRef.current = false;
       const segId = region.id;
-      const start = Number(region.start.toFixed(2));
-      const end = Number(region.end.toFixed(2));
+      let start = Math.max(0, Number(region.start.toFixed(2)));
+      let end = Math.min(maxTrackDur, Number(region.end.toFixed(2)));
+      if (end - start < 0.5) {
+        if (start + 0.5 <= maxTrackDur) {
+          end = Number((start + 0.5).toFixed(2));
+        } else {
+          start = Math.max(0, Number((end - 0.5).toFixed(2)));
+        }
+      }
 
       if (activeSegmentIdRef.current === segId) {
         previewEndRef.current = end;
