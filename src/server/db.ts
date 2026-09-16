@@ -1,6 +1,6 @@
 import { Database, constants } from "bun:sqlite";
-import { mkdirSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, existsSync, readdirSync, unlinkSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { Track, Segment } from "./types";
 
 let dbInstance: Database | null = null;
@@ -87,6 +87,27 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
     SET status = 'error', error_message = 'Bị gián đoạn do ứng dụng đóng' 
     WHERE status IN ('downloading', 'queued');
   `);
+
+  // Startup cleanup: purge residual .part, .ytdl or orphaned cache files from disk
+  try {
+    const audioCacheDir = "./data/cache/audio";
+    if (existsSync(audioCacheDir)) {
+      const existingFiles = readdirSync(audioCacheDir);
+      const rows = db.query("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL").all() as { id: string; file_path: string }[];
+      const validPaths = new Set(rows.map((r) => resolve(r.file_path)));
+
+      for (const file of existingFiles) {
+        if (file.endsWith(".part") || file.endsWith(".ytdl")) {
+          try { unlinkSync(join(audioCacheDir, file)); } catch {}
+        } else {
+          const fullPath = resolve(join(audioCacheDir, file));
+          if (!validPaths.has(fullPath)) {
+            try { unlinkSync(fullPath); } catch {}
+          }
+        }
+      }
+    }
+  } catch {}
 
   dbInstance = db;
   return db;

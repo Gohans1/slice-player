@@ -47,6 +47,7 @@ export function App() {
           }, 5000);
         };
         ws.onmessage = (event) => {
+          if (event.data === "pong") return;
           try {
             const data = JSON.parse(event.data);
             if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted") {

@@ -32,6 +32,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const regionsRef = React.useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
 
   const [trackDetail, setTrackDetail] = React.useState<Track>(track);
+  const [isDetailLoaded, setIsDetailLoaded] = React.useState(!!track.peaks_json);
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const [isPlayingWave, setIsPlayingWave] = React.useState(false);
   const [currentPlayTime, setCurrentPlayTime] = React.useState(0);
@@ -50,11 +51,18 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       fetch(`/api/tracks/${track.id}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data: Track | null) => {
-          if (isMounted && data && data.peaks_json) {
-            setTrackDetail(data);
+          if (isMounted) {
+            if (data && data.peaks_json) {
+              setTrackDetail(data);
+            }
+            setIsDetailLoaded(true);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (isMounted) setIsDetailLoaded(true);
+        });
+    } else {
+      setIsDetailLoaded(true);
     }
     return () => {
       isMounted = false;
@@ -64,8 +72,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
     return () => {
-      // Immediate flush of dirty debounced saves
+      // Immediate flush of dirty debounced saves and sync to player store
       for (const [id, payload] of Object.entries(pendingUpdatesRef.current)) {
+        const seg = segments.find((s) => s.id === id);
+        if (seg) {
+          syncUpdatedSegment({ ...seg, ...payload });
+        }
         try {
           fetch(`/api/segments/${id}`, {
             method: "PUT",
@@ -81,7 +93,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         clearTimeout(t);
       }
     };
-  }, []);
+  }, [segments, syncUpdatedSegment]);
 
   const debouncedSaveSegment = React.useCallback((id: string, updates: Partial<Segment>, statusMsg: string = "Đã lưu") => {
     pendingUpdatesRef.current[id] = { ...pendingUpdatesRef.current[id], ...updates };
@@ -130,7 +142,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Initialize WaveSurfer with precomputed peaks
   React.useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !isDetailLoaded) return;
 
     // Parse precomputed peaks from database
     let peaks: number[][] | undefined = undefined;
@@ -188,9 +200,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     return () => {
       ws.destroy();
     };
-  }, [trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause]);
+  }, [isDetailLoaded, trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause]);
 
-  // Sync segments with WaveSurfer regions
+  // Sync segments with WaveSurfer regions without destructive full teardowns
   React.useEffect(() => {
     const wsRegions = regionsRef.current;
     if (!wsRegions) return;
@@ -200,36 +212,48 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       return;
     }
 
-    // Only rebuild regions if region count, start_times, end_times or colors changed
     const currentRegions = wsRegions.getRegions();
-    const isMismatch =
-      currentRegions.length !== segments.length ||
-      segments.some((seg) => {
-        const r = currentRegions.find((reg) => reg.id === seg.id);
-        return !r || Math.abs(r.start - seg.start_time) > 0.05 || Math.abs(r.end - seg.end_time) > 0.05;
-      });
+    const segmentMap = new Map(segments.map((s) => [s.id, s]));
 
-    if (!isMismatch) return;
+    // Remove deleted regions
+    for (const r of currentRegions) {
+      if (!segmentMap.has(r.id)) {
+        r.remove();
+      }
+    }
 
-    wsRegions.clearRegions();
-
+    // Add new regions or update existing if changed externally
     for (const seg of segments) {
-      wsRegions.addRegion({
-        id: seg.id,
-        start: seg.start_time,
-        end: seg.end_time,
-        color: seg.color ? `${seg.color}33` : "rgba(67, 133, 190, 0.2)",
-        drag: true,
-        resize: true,
-      });
+      const existing = currentRegions.find((r) => r.id === seg.id);
+      if (!existing) {
+        wsRegions.addRegion({
+          id: seg.id,
+          start: seg.start_time,
+          end: seg.end_time,
+          color: seg.color ? `${seg.color}33` : "rgba(67, 133, 190, 0.2)",
+          drag: true,
+          resize: true,
+          minLength: 0.5,
+        });
+      } else {
+        if (Math.abs(existing.start - seg.start_time) > 0.05 || Math.abs(existing.end - seg.end_time) > 0.05) {
+          existing.setOptions({
+            start: seg.start_time,
+            end: seg.end_time,
+          });
+        }
+      }
     }
   }, [segments]);
 
   // Handle Add New Segment at current playhead
   const handleAddNewSegment = async () => {
-    const start = Math.max(0, Number(currentPlayTime.toFixed(2)));
-    const end = Math.min(track.duration, Number((start + 20).toFixed(2))); // default 20s slice
-    if (end <= start) return;
+    let start = Math.max(0, Number(currentPlayTime.toFixed(2)));
+    if (track.duration > 0 && start > track.duration - 0.5) {
+      start = Math.max(0, track.duration - 20);
+    }
+    const end = Math.min(track.duration, Number((start + 20).toFixed(2)));
+    if (end - start < 0.5) return;
 
     const newIndex = segments.length + 1;
     const color = FLEXOKI_COLORS[(newIndex - 1) % FLEXOKI_COLORS.length];

@@ -1,5 +1,10 @@
 import * as React from "react";
 import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle } from "lucide-react";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { formatDuration } from "../lib/utils";
+import { usePlayerStore } from "../store/usePlayerStore";
+import type { Track, Segment } from "@/server/types";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -8,11 +13,6 @@ function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
     </svg>
   );
 }
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { formatDuration } from "../lib/utils";
-import { usePlayerStore } from "../store/usePlayerStore";
-import type { Track, Segment } from "@/server/types";
 
 interface TrackCardProps {
   track: Track;

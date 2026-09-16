@@ -53,7 +53,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   sliceStudioTrack: null,
 
   fetchTracks: async () => {
-    set({ isLoadingTracks: true });
+    if (get().tracks.length === 0) {
+      set({ isLoadingTracks: true });
+    }
     try {
       const res = await fetch("/api/tracks");
       if (res.ok) {
@@ -195,7 +197,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeTrackFromQueue: (trackId: string) => {
     const { queue, queueIndex, activeTrack } = get();
-    const removedBeforeCurrent = queue.slice(0, queueIndex).filter((item) => item.track.id === trackId).length;
+    const removedBeforeCurrent = queueIndex > 0
+      ? queue.slice(0, queueIndex).filter((item) => item.track.id === trackId).length
+      : 0;
     const newQueue = queue.filter((item) => item.track.id !== trackId);
 
     if (activeTrack?.id === trackId) {
@@ -222,7 +226,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeSegmentFromQueue: (segmentId: string) => {
     const { queue, queueIndex, activeSegment } = get();
-    const removedBeforeCurrent = queue.slice(0, queueIndex).filter((item) => item.segment.id === segmentId).length;
+    const removedBeforeCurrent = queueIndex > 0
+      ? queue.slice(0, queueIndex).filter((item) => item.segment.id === segmentId).length
+      : 0;
     const newQueue = queue.filter((item) => item.segment.id !== segmentId);
 
     if (activeSegment?.id === segmentId) {

@@ -1,6 +1,10 @@
 import * as React from "react";
 import { Music2, FolderPlus, Shuffle, Search, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Modal } from "./ui/modal";
+import { usePlayerStore } from "../store/usePlayerStore";
+import type { Segment } from "@/server/types";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
@@ -9,9 +13,6 @@ function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
     </svg>
   );
 }
-import { Input } from "./ui/input";
-import { Modal } from "./ui/modal";
-import { usePlayerStore } from "../store/usePlayerStore";
 
 interface NavbarProps {
   searchQuery: string;
@@ -106,9 +107,8 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
           buildShuffleQueue(validSegments, tracks);
           const q = usePlayerStore.getState().queue;
           const first = q[0];
-          if (first) {
-            const trk = readyTrackMap.get(first.track_id);
-            if (trk) playSegment(first, trk);
+          if (first?.segment && first?.track) {
+            playSegment(first.segment, first.track);
           }
         } else if (tracks.length > 0) {
           // Fallback: create default full-track virtual segments
@@ -127,9 +127,8 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
             buildShuffleQueue(fallbackSegments, tracks);
             const q = usePlayerStore.getState().queue;
             const first = q[0];
-            if (first) {
-              const trk = readyTrackMap.get(first.track_id);
-              if (trk) playSegment(first, trk);
+            if (first?.segment && first?.track) {
+              playSegment(first.segment, first.track);
             }
           }
         }

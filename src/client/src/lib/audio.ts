@@ -174,8 +174,6 @@ class AudioEngine {
   }
 
   public pause() {
-    this.currentSegmentEnd = null;
-    this.onSegmentEndCallback = null;
     if (this.gainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
       this.gainNode.gain.cancelScheduledValues(now);
@@ -209,7 +207,23 @@ class AudioEngine {
   }
 
   public seek(seconds: number) {
-    this.audioEl.currentTime = seconds;
+    if (this.gainNode && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.gainNode.gain.cancelScheduledValues(now);
+      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
+      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
+      setTimeout(() => {
+        this.audioEl.currentTime = seconds;
+        if (this.gainNode && this.audioCtx && !this.audioEl.paused) {
+          const unpauseNow = this.audioCtx.currentTime;
+          this.gainNode.gain.cancelScheduledValues(unpauseNow);
+          this.gainNode.gain.setValueAtTime(0.0001, unpauseNow);
+          this.gainNode.gain.linearRampToValueAtTime(1.0, unpauseNow + 0.015);
+        }
+      }, 10);
+    } else {
+      this.audioEl.currentTime = seconds;
+    }
   }
 
   public getCurrentTime(): number {
@@ -236,7 +250,7 @@ class AudioEngine {
     const now = performance.now();
 
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
-    if (this.onTimeUpdateCallback && (now - this.lastTimeUpdate >= 100 || curTime < 0.1)) {
+    if (this.onTimeUpdateCallback && now - this.lastTimeUpdate >= 100) {
       this.lastTimeUpdate = now;
       this.onTimeUpdateCallback(curTime);
     }
@@ -247,11 +261,12 @@ class AudioEngine {
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 
-        // Immediate mute and pause without setTimeout to prevent background throttling freeze
+        // Micro-fade to eliminate DC-offset click
         if (this.gainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
           this.gainNode.gain.cancelScheduledValues(fadeNow);
-          this.gainNode.gain.setValueAtTime(0.0001, fadeNow);
+          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + 0.012);
         }
         this.audioEl.pause();
         if (cb) cb();
@@ -272,6 +287,7 @@ class AudioEngine {
       const blob = new Blob(["setInterval(() => postMessage(0), 30);"], { type: "text/javascript" });
       const workerUrl = URL.createObjectURL(blob);
       const worker = new Worker(workerUrl);
+      URL.revokeObjectURL(workerUrl);
       worker.onmessage = () => this.checkBoundary();
     } catch {
       setInterval(this.checkBoundary, 30);

@@ -280,10 +280,16 @@ const server = serve({
             const startTime = Number(body.start_time);
             const endTime = Number(body.end_time);
             const track = getTrack(trackId);
+            if (!track) {
+              return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+            }
+            if (track.status !== "ready" || track.duration <= 0) {
+              return Response.json({ error: "Track audio is still downloading or processing" }, { status: 400, headers: corsHeaders });
+            }
             if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime < 0 || endTime - startTime < 0.5) {
               return Response.json({ error: "start_time phải >= 0 và thời lượng tối thiểu 0.5s" }, { status: 400, headers: corsHeaders });
             }
-            if (track && track.duration > 0 && endTime > track.duration + 0.1) {
+            if (endTime > track.duration + 0.1) {
               return Response.json({ error: `end_time (${endTime}s) exceeds track duration (${track.duration}s)` }, { status: 400, headers: corsHeaders });
             }
             const created = createSegment({
