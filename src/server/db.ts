@@ -112,9 +112,11 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
     if (existsSync(thumbCacheDir)) {
       const existingThumbs = readdirSync(thumbCacheDir);
       const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
-      const validThumbs = new Set(trackRows.map((r) => `${r.id}.jpg`));
+      const validTrackIds = new Set(trackRows.map((r) => r.id));
       for (const thumb of existingThumbs) {
-        if (!validThumbs.has(thumb)) {
+        const dotIdx = thumb.lastIndexOf(".");
+        const trackId = dotIdx !== -1 ? thumb.slice(0, dotIdx) : thumb;
+        if (!validTrackIds.has(trackId)) {
           try { unlinkSync(join(thumbCacheDir, thumb)); } catch {}
         }
       }

@@ -183,7 +183,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const nextItem = queue[nextIdx];
     if (!nextItem) return;
     set({ queueIndex: nextIdx });
-    get().playSegment(nextItem.segment, nextItem.track);
+    get().playSegment(nextItem.segment, nextItem.track, nextIdx);
   },
 
   prevSegment: () => {
@@ -205,7 +205,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const prevItem = queue[prevIdx];
     set({ queueIndex: prevIdx });
-    get().playSegment(prevItem.segment, prevItem.track);
+    get().playSegment(prevItem.segment, prevItem.track, prevIdx);
   },
 
   toggleShuffle: () => {
@@ -250,6 +250,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
         audioEngine.seek(nextItem.segment.start_time);
         audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
+        set({ currentTime: nextItem.segment.start_time });
       }
       return;
     }
@@ -286,6 +287,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         audioEngine.setSource(`/api/tracks/${nextItem.track.id}/stream`);
         audioEngine.seek(nextItem.segment.start_time);
         audioEngine.updateCurrentSegmentBounds(nextItem.segment.start_time, nextItem.segment.end_time);
+        set({ currentTime: nextItem.segment.start_time });
       }
       return;
     }
@@ -322,25 +324,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => {
     const trackMap = new Map<string, Track>();
-    for (const t of allTracks) trackMap.set(t.id, t);
-
-    const items: QueueItem[] = [];
-    for (const seg of allSegments) {
-      const trk = trackMap.get(seg.track_id);
-      if (trk && trk.status === "ready") {
-        items.push({ segment: seg, track: trk });
+    for (const t of allTracks) {
+      if (t.status === "ready" && t.duration > 0) {
+        trackMap.set(t.id, t);
       }
     }
 
-    // Fallback: If no segments exist yet, create virtual full-track segments
-    if (items.length === 0) {
-      for (const t of allTracks) {
-        if (t.status === "ready") {
-          items.push({
-            segment: createDefaultFullSegment(t),
-            track: t,
-          });
-        }
+    const items: QueueItem[] = [];
+    const tracksWithSegments = new Set<string>();
+    for (const seg of allSegments) {
+      const trk = trackMap.get(seg.track_id);
+      if (trk) {
+        items.push({ segment: seg, track: trk });
+        tracksWithSegments.add(trk.id);
+      }
+    }
+
+    // Include ready tracks without custom segments as default full-track segments
+    for (const [tId, trk] of trackMap.entries()) {
+      if (!tracksWithSegments.has(tId)) {
+        items.push({
+          segment: createDefaultFullSegment(trk),
+          track: trk,
+        });
       }
     }
 

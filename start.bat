@@ -5,6 +5,7 @@ echo       SLICE PLAYER - KHOI CHAY UNG DUNG
 echo ===================================================
 
 cd /d "%~dp0"
+set NODE_ENV=production
 
 if not exist "dist\index.html" (
     echo [1/2] Dang build frontend...

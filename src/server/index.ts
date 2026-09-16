@@ -167,9 +167,11 @@ const server = serve({
           }
           // Unlink thumbnail if local cache
           const cacheThumbsDir = resolve("./data/cache/thumbs");
-          const thumbPath = resolve(cacheThumbsDir, `${track.id}.jpg`);
-          if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
-            try { unlinkSync(thumbPath); } catch {}
+          for (const ext of [".jpg", ".png", ".webp"]) {
+            const thumbPath = resolve(cacheThumbsDir, `${track.id}${ext}`);
+            if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
+              try { unlinkSync(thumbPath); } catch {}
+            }
           }
           const ok = deleteTrack(trackId);
           if (ok) {
@@ -471,6 +473,9 @@ serverEvents.on("track_created", (payload) => {
 });
 serverEvents.on("track_deleted", (payload) => {
   broadcastWs({ type: "track_deleted", ...payload });
+});
+serverEvents.on("segment_deleted", (payload) => {
+  broadcastWs({ type: "segment_deleted", ...payload });
 });
 
 export { server };

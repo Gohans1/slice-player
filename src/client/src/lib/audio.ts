@@ -15,6 +15,8 @@ class AudioEngine {
   private onTimeUpdateCallback: ((currentTime: number) => void) | null = null;
   private animationFrameId: number | null = null;
   private currentPlayRequestId = 0;
+  private pauseRequestId = 0;
+  private activeSeekCleanup: (() => void) | null = null;
   private lastTimeUpdate = 0;
   private pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private isFadingOut = false;
@@ -45,9 +47,12 @@ class AudioEngine {
     }
 
     this.audioEl.addEventListener("ended", () => {
+      this.stopTicker();
+      this.stopRafLoop();
       if (this.onSegmentEndCallback) {
         const cb = this.onSegmentEndCallback;
         this.onSegmentEndCallback = null;
+        this.currentSegmentStart = null;
         this.currentSegmentEnd = null;
         cb();
       }
@@ -78,9 +83,13 @@ class AudioEngine {
     this.init();
     await this.resumeContext();
 
+    this.pauseRequestId++;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
+    }
+    if (this.activeSeekCleanup) {
+      this.activeSeekCleanup();
     }
     this.isFadingOut = false;
 
@@ -190,6 +199,7 @@ class AudioEngine {
 
   public pause() {
     this.stopRafLoop();
+    const currentPauseId = ++this.pauseRequestId;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -204,13 +214,15 @@ class AudioEngine {
 
       // Trigger pause after 15ms micro-fade via Web Worker (immune to Chromium background tab 1000ms throttling)
       if (this.tickerWorker) {
-        this.tickerWorker.postMessage("pauseDelay");
+        this.tickerWorker.postMessage({ cmd: "pauseDelay", id: currentPauseId });
       }
 
       this.pauseTimer = setTimeout(() => {
-        this.audioEl.pause();
-        this.stopTicker();
-        this.pauseTimer = null;
+        if (this.pauseRequestId === currentPauseId) {
+          this.audioEl.pause();
+          this.stopTicker();
+          this.pauseTimer = null;
+        }
       }, 15);
     } else {
       this.audioEl.pause();
@@ -228,6 +240,7 @@ class AudioEngine {
   }
 
   public async resume(): Promise<boolean> {
+    this.pauseRequestId++;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -259,6 +272,10 @@ class AudioEngine {
 
   public seek(seconds: number) {
     this.isFadingOut = false;
+    if (this.activeSeekCleanup) {
+      this.activeSeekCleanup();
+    }
+
     if (this.audioEl.paused) {
       this.audioEl.currentTime = seconds;
       if (this.gainNode && this.audioCtx) {
@@ -276,6 +293,9 @@ class AudioEngine {
       this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
 
       const onSeeked = () => {
+        if (this.activeSeekCleanup) {
+          this.activeSeekCleanup = null;
+        }
         this.audioEl.removeEventListener("seeked", onSeeked);
         clearTimeout(fallback);
         if (this.gainNode && this.audioCtx && !this.audioEl.paused) {
@@ -286,6 +306,11 @@ class AudioEngine {
         }
       };
       const fallback = setTimeout(onSeeked, 2000);
+      this.activeSeekCleanup = () => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        clearTimeout(fallback);
+        this.activeSeekCleanup = null;
+      };
       this.audioEl.addEventListener("seeked", onSeeked);
       this.audioEl.currentTime = seconds;
     } else {
@@ -294,7 +319,15 @@ class AudioEngine {
   }
 
   public unload() {
-    this.pause();
+    this.pauseRequestId++;
+    if (this.pauseTimer) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    if (this.activeSeekCleanup) {
+      this.activeSeekCleanup();
+    }
+    this.audioEl.pause();
     this.stopTicker();
     this.stopRafLoop();
     this.currentSegmentStart = null;
@@ -329,8 +362,10 @@ class AudioEngine {
     const now = performance.now();
 
     // Guard against seeking settlement lag during same-track segment transitions
-    if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
-      return;
+    if (this.currentSegmentStart !== null) {
+      if (curTime < this.currentSegmentStart - 0.2 || (this.currentSegmentEnd !== null && curTime > this.currentSegmentEnd + 1.0)) {
+        return;
+      }
     }
 
     // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
@@ -426,8 +461,9 @@ class AudioEngine {
             if (!intervalId) intervalId = setInterval(function() { postMessage('tick'); }, 30);
           } else if (e.data === 'stop') {
             if (intervalId) { clearInterval(intervalId); intervalId = null; }
-          } else if (e.data === 'pauseDelay') {
-            setTimeout(function() { postMessage('paused'); }, 15);
+          } else if (e.data && e.data.cmd === 'pauseDelay') {
+            const id = e.data.id;
+            setTimeout(function() { postMessage({ cmd: 'paused', id: id }); }, 15);
           }
         };
       `;
@@ -441,13 +477,13 @@ class AudioEngine {
       this.tickerWorker.onmessage = (e) => {
         if (e.data === "tick") {
           this.checkBoundary();
-        } else if (e.data === "paused") {
-          if (this.pauseTimer) {
+        } else if (e.data && e.data.cmd === "paused") {
+          if (e.data.id === this.pauseRequestId && this.pauseTimer !== null) {
             clearTimeout(this.pauseTimer);
             this.pauseTimer = null;
+            this.audioEl.pause();
+            this.stopTicker();
           }
-          this.audioEl.pause();
-          this.stopTicker();
         }
       };
     } catch {

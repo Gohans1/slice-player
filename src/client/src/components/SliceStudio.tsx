@@ -302,11 +302,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Handle Add New Segment at current playhead
   const handleAddNewSegment = async () => {
+    const trackDur = trackDetail.duration > 0 ? trackDetail.duration : track.duration;
     let start = Math.max(0, Number(currentPlayTime.toFixed(2)));
-    if (track.duration > 0 && start > track.duration - 0.5) {
-      start = Math.max(0, track.duration - 20);
+    if (trackDur > 0 && start > trackDur - 0.5) {
+      start = Math.max(0, trackDur - 20);
     }
-    const end = Math.min(track.duration, Number((start + 20).toFixed(2)));
+    const end = Math.min(trackDur, Number((start + 20).toFixed(2)));
     if (end - start < 0.5) return;
 
     const newIndex = segments.length + 1;

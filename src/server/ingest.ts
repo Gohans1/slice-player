@@ -278,7 +278,13 @@ async function processDownloadQueue() {
 
     // 5-minute timeout to avoid hanging download indefinitely
     const dlTimeout = setTimeout(() => {
-      try { proc.kill(); } catch {}
+      try {
+        if (process.platform === "win32") {
+          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], { stdout: "ignore", stderr: "ignore" });
+        } else {
+          proc.kill();
+        }
+      } catch {}
     }, 300000);
 
     const exitCode = await proc.exited;
@@ -294,10 +300,11 @@ async function processDownloadQueue() {
     // Find actual downloaded file in ./data/cache/audio/ dynamically
     const audioDir = "./data/cache/audio";
     let finalPath = "";
+    const AUDIO_EXTS = new Set([".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac"]);
     if (existsSync(audioDir)) {
       const files = readdirSync(audioDir);
       for (const f of files) {
-        if (f.startsWith(`${trackId}.`) && !f.endsWith(".part") && !f.endsWith(".ytdl")) {
+        if (f.startsWith(`${trackId}.`) && !f.endsWith(".part") && !f.endsWith(".ytdl") && AUDIO_EXTS.has(extname(f).toLowerCase())) {
           finalPath = join(audioDir, f);
           break;
         }
@@ -376,7 +383,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
 
     // Reject Windows UNC paths to prevent NetNTLM exfiltration
-    if (/^[\\/]{2}/.test(cleanedPath) || /^[\\/]\?[\\/]/.test(cleanedPath)) {
+    if (/^[\\/]{2}/.test(cleanedPath) || /^[\\/]\?{1,2}[\\/]/.test(cleanedPath)) {
       return { success: false, message: "Đường dẫn mạng UNC không được hỗ trợ vì lý do bảo mật." };
     }
 
