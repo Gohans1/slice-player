@@ -8,50 +8,70 @@ import { QueueDrawer } from "./components/QueueDrawer";
 import { Music, Loader2 } from "lucide-react";
 
 export function App() {
-  const {
-    tracks,
-    isLoadingTracks,
-    fetchTracks,
-    sliceStudioTrack,
-    closeSliceStudio,
-    buildShuffleQueue,
-  } = usePlayerStore();
+  const tracks = usePlayerStore((s) => s.tracks);
+  const isLoadingTracks = usePlayerStore((s) => s.isLoadingTracks);
+  const fetchTracks = usePlayerStore((s) => s.fetchTracks);
+  const sliceStudioTrack = usePlayerStore((s) => s.sliceStudioTrack);
+  const closeSliceStudio = usePlayerStore((s) => s.closeSliceStudio);
+  const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
+  const queue = usePlayerStore((s) => s.queue);
+  const activeTrack = usePlayerStore((s) => s.activeTrack);
+  const pause = usePlayerStore((s) => s.pause);
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const [isQueueOpen, setIsQueueOpen] = React.useState(false);
 
-  // Initial load & WebSocket heartbeat
+  // Initial load & WebSocket heartbeat with auto-reconnect
   React.useEffect(() => {
     fetchTracks();
 
-    // Setup WebSocket connection for window lifecycle heartbeat
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     let ws: WebSocket | null = null;
     let heartbeatInterval: Timer | null = null;
+    let reconnectTimeout: Timer | null = null;
+    let isUnmounted = false;
 
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        heartbeatInterval = setInterval(() => {
-          if (ws?.readyState === WebSocket.OPEN) {
-            ws.send("ping");
+    function connectWs() {
+      if (isUnmounted) return;
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          heartbeatInterval = setInterval(() => {
+            if (ws?.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 5000);
+        };
+        ws.onclose = () => {
+          if (heartbeatInterval) clearInterval(heartbeatInterval);
+          if (!isUnmounted) {
+            reconnectTimeout = setTimeout(connectWs, 2000);
           }
-        }, 5000);
-      };
-    } catch (e) {
-      console.warn("[App] WebSocket connection failed", e);
+        };
+        ws.onerror = () => {
+          if (ws) ws.close();
+        };
+      } catch {
+        if (!isUnmounted) {
+          reconnectTimeout = setTimeout(connectWs, 3000);
+        }
+      }
     }
 
+    connectWs();
+
     return () => {
+      isUnmounted = true;
       if (heartbeatInterval) clearInterval(heartbeatInterval);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) ws.close();
     };
   }, [fetchTracks]);
 
-  // Initial queue build on first track load
+  // Initial queue build on first track load only if queue is empty
   React.useEffect(() => {
-    if (tracks.length > 0) {
+    if (tracks.length > 0 && queue.length === 0) {
       fetch("/api/segments")
         .then((r) => r.json())
         .then((segments) => {
@@ -61,11 +81,14 @@ export function App() {
         })
         .catch(console.error);
     }
-  }, [tracks, buildShuffleQueue]);
+  }, [tracks.length, queue.length, buildShuffleQueue, tracks]);
 
   const handleDeleteTrack = async (id: string) => {
-    if (confirm("M có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
+    if (confirm("Bạn có chắc chắn muốn xóa bài hát này và toàn bộ các đoạn cắt liên quan?")) {
       try {
+        if (activeTrack?.id === id) {
+          pause();
+        }
         const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
         if (res.ok) {
           await fetchTracks();

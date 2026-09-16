@@ -20,20 +20,19 @@ interface PlayerBarProps {
 }
 
 export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
-  const {
-    activeTrack,
-    activeSegment,
-    isPlaying,
-    isShuffle,
-    currentTime,
-    volume,
-    queue,
-    togglePlay,
-    nextSegment,
-    prevSegment,
-    toggleShuffle,
-    setVolume,
-  } = usePlayerStore();
+  const activeTrack = usePlayerStore((s) => s.activeTrack);
+  const activeSegment = usePlayerStore((s) => s.activeSegment);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isShuffle = usePlayerStore((s) => s.isShuffle);
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const volume = usePlayerStore((s) => s.volume);
+  const queue = usePlayerStore((s) => s.queue);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const nextSegment = usePlayerStore((s) => s.nextSegment);
+  const prevSegment = usePlayerStore((s) => s.prevSegment);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const setVolume = usePlayerStore((s) => s.setVolume);
+  const seek = usePlayerStore((s) => s.seek);
 
   const [isMuted, setIsMuted] = React.useState(false);
   const [previousVolume, setPreviousVolume] = React.useState(volume);
@@ -169,7 +168,17 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
           {/* Segment Progress Bar */}
           <div className="flex items-center gap-2 w-full max-w-md text-[10px] font-mono text-muted-foreground">
             <span className="w-10 text-right">{formatTime(elapsedInSegment)}</span>
-            <div className="relative flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
+            <div
+              onClick={(e) => {
+                if (!activeSegment || segmentDuration <= 0) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const targetSeconds = activeSegment.start_time + ratio * segmentDuration;
+                seek(targetSeconds);
+              }}
+              className="relative flex-1 h-2 rounded-full bg-secondary overflow-hidden cursor-pointer hover:h-2.5 transition-all"
+              title="Nhấn để tua trong đoạn"
+            >
               <div
                 className="absolute top-0 bottom-0 left-0 rounded-full transition-all duration-100"
                 style={{

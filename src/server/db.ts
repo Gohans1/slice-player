@@ -71,6 +71,13 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
     );
   `);
 
+  // Startup recovery: reconcile interrupted downloads from previous process crash
+  db.run(`
+    UPDATE tracks 
+    SET status = 'error', error_message = 'Bị gián đoạn do ứng dụng đóng' 
+    WHERE status IN ('downloading', 'queued');
+  `);
+
   dbInstance = db;
   return db;
 }
@@ -82,13 +89,18 @@ export function getDb(): Database {
   return dbInstance;
 }
 
-// Track operations
-export function createTrack(track: Track): Track {
+// --- TRACK OPERATIONS ---
+
+export function createTrack(track: Omit<Track, 'created_at'>): Track {
   const db = getDb();
   const query = db.query(`
-    INSERT INTO tracks (id, source_type, source_uri, title, artist, duration, thumbnail_url, file_path, peaks_json, status, error_message)
-    VALUES ($id, $source_type, $source_uri, $title, $artist, $duration, $thumbnail_url, $file_path, $peaks_json, $status, $error_message)
-    RETURNING *;
+    INSERT INTO tracks (
+      id, source_type, source_uri, title, artist, duration,
+      thumbnail_url, file_path, peaks_json, status, error_message
+    ) VALUES (
+      $id, $source_type, $source_uri, $title, $artist, $duration,
+      $thumbnail_url, $file_path, $peaks_json, $status, $error_message
+    ) RETURNING *;
   `);
 
   return query.get({
@@ -112,7 +124,7 @@ export function updateTrack(id: string, updates: Partial<Track>): Track | null {
     "title", "artist", "duration", "thumbnail_url",
     "file_path", "peaks_json", "status", "error_message"
   ];
-  const keysToUpdate = Object.keys(updates).filter((k) => allowedKeys.includes(k as keyof Track));
+  const keysToUpdate = Object.keys(updates).filter((k) => (updates as any)[k] !== undefined && allowedKeys.includes(k as keyof Track));
   if (keysToUpdate.length === 0) return getTrack(id);
 
   const setClauses = keysToUpdate.map((k) => `${k} = $${k}`).join(", ");
@@ -175,7 +187,7 @@ export function updateSegment(id: string, updates: Partial<Segment>): Segment | 
   const allowedKeys: (keyof Segment)[] = [
     "name", "start_time", "end_time", "color", "sort_order"
   ];
-  const keysToUpdate = Object.keys(updates).filter((k) => allowedKeys.includes(k as keyof Segment));
+  const keysToUpdate = Object.keys(updates).filter((k) => (updates as any)[k] !== undefined && allowedKeys.includes(k as keyof Segment));
   if (keysToUpdate.length === 0) {
     return db.query("SELECT * FROM segments WHERE id = $id").get({ $id: id }) as Segment | null;
   }
@@ -200,7 +212,7 @@ export function closeDatabase(): void {
   if (dbInstance) {
     try {
       dbInstance.run("PRAGMA wal_checkpoint(TRUNCATE);");
-      dbInstance.close();
+      dbInstance.close(true);
     } catch (e) {
       console.error("[DB] Error closing database:", e);
     }

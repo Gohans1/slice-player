@@ -35,22 +35,31 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
 
+  const pause = usePlayerStore((s) => s.pause);
   const isInternalUpdateRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
 
   const debouncedSaveSegment = React.useCallback((id: string, updates: Partial<Segment>, statusMsg: string = "Đã lưu") => {
+    pendingUpdatesRef.current[id] = { ...pendingUpdatesRef.current[id], ...updates };
     if (saveDebounceTimersRef.current[id]) {
       clearTimeout(saveDebounceTimersRef.current[id]);
     }
     saveDebounceTimersRef.current[id] = setTimeout(async () => {
+      const payload = pendingUpdatesRef.current[id] || updates;
+      delete pendingUpdatesRef.current[id];
       try {
-        await fetch(`/api/segments/${id}`, {
+        const res = await fetch(`/api/segments/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updates),
+          body: JSON.stringify(payload),
         });
-        setSaveStatus(statusMsg);
-        setTimeout(() => setSaveStatus(null), 1500);
+        if (res.ok) {
+          setSaveStatus(statusMsg);
+          setTimeout(() => setSaveStatus(null), 1500);
+        } else {
+          console.warn("[SliceStudio] Save segment rejected by server");
+        }
       } catch (e) {
         console.error(e);
       }
@@ -110,7 +119,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     wavesurferRef.current = ws;
 
-    ws.on("play", () => setIsPlayingWave(true));
+    ws.on("play", () => {
+      pause(); // Pause global player so both don't play simultaneously
+      setIsPlayingWave(true);
+    });
     ws.on("pause", () => setIsPlayingWave(false));
     ws.on("timeupdate", (time) => setCurrentPlayTime(time));
 
@@ -209,6 +221,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Preview segment in studio
   const handlePreviewSegment = (seg: Segment) => {
+    wavesurferRef.current?.pause();
     setActiveSegmentId(seg.id);
     playSegment(seg, track);
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { initDatabase, createTrack, getTrack, deleteTrack, createSegment, listSegmentsByTrack, updateSegment } from "./db";
+import { initDatabase, closeDatabase, createTrack, getTrack, deleteTrack, createSegment, listSegmentsByTrack, updateSegment } from "./db";
 import { unlinkSync, existsSync } from "node:fs";
 
 const TEST_DB_PATH = "./data/test_music.db";
@@ -11,6 +11,7 @@ describe("Database layer (bun:sqlite)", () => {
   });
 
   afterAll(() => {
+    closeDatabase();
     if (existsSync(TEST_DB_PATH)) {
       try {
         unlinkSync(TEST_DB_PATH);

@@ -13,6 +13,8 @@ class AudioEngine {
   private onSegmentEndCallback: (() => void) | null = null;
   private onTimeUpdateCallback: ((currentTime: number) => void) | null = null;
   private animationFrameId: number | null = null;
+  private currentPlayRequestId = 0;
+  private lastTimeUpdate = 0;
 
   constructor() {
     this.audioEl = new Audio();
@@ -22,6 +24,7 @@ class AudioEngine {
 
   public init() {
     if (this.isInitialized) return;
+    this.isInitialized = true;
 
     try {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -32,7 +35,6 @@ class AudioEngine {
 
       source.connect(this.gainNode);
       this.gainNode.connect(this.audioCtx.destination);
-      this.isInitialized = true;
     } catch (e) {
       console.warn("[AudioEngine] Web Audio graph init fallback to direct audio element", e);
     }
@@ -62,9 +64,19 @@ class AudioEngine {
     this.init();
     await this.resumeContext();
 
+    const requestId = ++this.currentPlayRequestId;
+
     this.currentSegmentEnd = endTime;
     this.onSegmentEndCallback = onEnd;
     this.onTimeUpdateCallback = onTimeUpdate || null;
+
+    // Soft fade-out current audio before loading new track
+    if (this.gainNode && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.gainNode.gain.cancelScheduledValues(now);
+      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
+      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+    }
 
     // Check if same track is already loaded
     const isSameSource = this.audioEl.src === new URL(streamUrl, window.location.href).href;
@@ -90,22 +102,61 @@ class AudioEngine {
       });
     }
 
-    // Micro-fade seek
-    await this.microFadeSeek(startTime);
+    if (this.currentPlayRequestId !== requestId) return;
+
+    // Seek to startTime while muted
+    await new Promise<void>((resolve) => {
+      const onSeeked = () => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        clearTimeout(fallback);
+        resolve();
+      };
+      const fallback = setTimeout(() => {
+        this.audioEl.removeEventListener("seeked", onSeeked);
+        resolve();
+      }, 100);
+      this.audioEl.addEventListener("seeked", onSeeked);
+      this.audioEl.currentTime = startTime;
+    });
+
+    if (this.currentPlayRequestId !== requestId) return;
+
     try {
       await this.audioEl.play();
+      // Ramp gain up to 1.0 in 15ms after playback successfully starts
+      if (this.gainNode && this.audioCtx) {
+        const playNow = this.audioCtx.currentTime;
+        this.gainNode.gain.setValueAtTime(0.0001, playNow);
+        this.gainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
+      }
     } catch (err) {
       console.warn("[AudioEngine] Autoplay prevented:", err);
     }
   }
 
   public pause() {
-    this.audioEl.pause();
+    if (this.gainNode && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
+      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+      setTimeout(() => this.audioEl.pause(), 16);
+    } else {
+      this.audioEl.pause();
+    }
   }
 
   public async resume() {
     await this.resumeContext();
-    await this.audioEl.play();
+    try {
+      await this.audioEl.play();
+      if (this.gainNode && this.audioCtx) {
+        const now = this.audioCtx.currentTime;
+        this.gainNode.gain.setValueAtTime(0.0001, now);
+        this.gainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
+      }
+    } catch (err) {
+      console.warn("[AudioEngine] Resume prevented:", err);
+    }
   }
 
   public setVolume(volume: number) {
@@ -130,58 +181,27 @@ class AudioEngine {
   }
 
   /**
-   * 15ms linear micro-fade down to 0, seek, wait for seeked, then 15ms linear ramp up to 1
-   * Completely silences DC offset click transients.
-   */
-  public async microFadeSeek(targetSeconds: number) {
-    if (!this.gainNode || !this.audioCtx) {
-      this.audioEl.currentTime = targetSeconds;
-      return;
-    }
-
-    const now = this.audioCtx.currentTime;
-    // Ramp down to 0 in 15ms
-    this.gainNode.gain.cancelScheduledValues(now);
-    this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-    this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
-
-    await new Promise((r) => setTimeout(r, 16));
-
-    // Seek and wait for seeked event (with 100ms timeout fallback)
-    await new Promise<void>((resolve) => {
-      const onSeeked = () => {
-        this.audioEl.removeEventListener("seeked", onSeeked);
-        clearTimeout(fallback);
-        resolve();
-      };
-      const fallback = setTimeout(() => {
-        this.audioEl.removeEventListener("seeked", onSeeked);
-        resolve();
-      }, 100);
-      this.audioEl.addEventListener("seeked", onSeeked);
-      this.audioEl.currentTime = targetSeconds;
-    });
-
-    // Ramp up to 1 in 15ms
-    const nextNow = this.audioCtx.currentTime;
-    this.gainNode.gain.setValueAtTime(0.0001, nextNow);
-    this.gainNode.gain.linearRampToValueAtTime(1.0, nextNow + 0.015);
-  }
-
-  /**
-   * Unified boundary checking logic used by rAF, timeupdate event, and background interval
+   * Unified boundary checking logic used by rAF, timeupdate event, and background interval.
+   * Throttles UI progress notification to 10Hz to prevent global React 140 FPS thrashing,
+   * while enforcing the segment cut immediately.
    */
   private checkBoundary = () => {
     if (this.audioEl.paused) return;
 
     const curTime = this.audioEl.currentTime;
-    if (this.onTimeUpdateCallback) {
+    const now = performance.now();
+
+    // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
+    if (this.onTimeUpdateCallback && (now - this.lastTimeUpdate >= 100 || curTime < 0.1)) {
+      this.lastTimeUpdate = now;
       this.onTimeUpdateCallback(curTime);
     }
 
     if (this.currentSegmentEnd !== null) {
       if (curTime >= this.currentSegmentEnd) {
-        this.currentSegmentEnd = null; // prevent multiple triggers
+        // Stop audio immediately so it doesn't leak into subsequent music
+        this.audioEl.pause();
+        this.currentSegmentEnd = null;
         if (this.onSegmentEndCallback) {
           const cb = this.onSegmentEndCallback;
           this.onSegmentEndCallback = null;

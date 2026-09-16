@@ -14,7 +14,7 @@ export interface IngestResult {
   tracks?: Track[];
 }
 
-const YOUTUBE_URL_REGEX = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?(?:youtube\.com|youtu\.be)\/.+/i;
 
 /**
  * Handle YouTube URL (single video or playlist)
@@ -22,7 +22,7 @@ const YOUTUBE_URL_REGEX = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/i;
 export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
   const url = rawUrl.trim();
   if (!YOUTUBE_URL_REGEX.test(url)) {
-    return { success: false, message: "URL không hợp lệ. Chỉ chấp nhận link YouTube (youtube.com hoặc youtu.be)!" };
+    return { success: false, message: "URL không hợp lệ. Chỉ chấp nhận link YouTube (youtube.com, m.youtube.com, music.youtube.com, hoặc youtu.be)!" };
   }
 
   try {
@@ -99,11 +99,13 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
           thumbnail_url: thumb,
           status: "queued",
         });
+        // Trigger background audio download for this track
+        triggerDownloadWorker(trackId, watchUrl);
+      } else if (existing.status !== "ready" && existing.status !== "downloading") {
+        triggerDownloadWorker(trackId, watchUrl);
       }
 
       createdTracks.push(existing);
-      // Trigger background audio download for this track
-      triggerDownloadWorker(trackId, watchUrl);
     }
 
     if (createdTracks.length === 0 && entries.length > 0) {
@@ -152,6 +154,14 @@ async function processDownloadQueue() {
   }
 
   const { trackId, url } = item;
+
+  // Check if track was deleted while sitting in queue
+  if (!getTrack(trackId)) {
+    isDownloading = false;
+    processDownloadQueue();
+    return;
+  }
+
   try {
     updateTrack(trackId, { status: "downloading" });
     const outputTemplate = `./data/cache/audio/${trackId}.%(ext)s`;
@@ -162,6 +172,8 @@ async function processDownloadQueue() {
       "-f", "140/ba[ext=m4a]/ba",
       "-o", outputTemplate,
       "--no-playlist",
+      "--match-filter", "duration <= 1800",
+      "--max-filesize", "150M",
       "--",
       url
     ];
@@ -181,6 +193,11 @@ async function processDownloadQueue() {
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
+    // Check again if track was deleted while download was running
+    if (!getTrack(trackId)) {
+      return;
+    }
+
     // Find actual downloaded file in ./data/cache/audio/
     const possibleExtensions = ["m4a", "webm", "opus", "mp4"];
     let finalPath = "";
@@ -193,7 +210,7 @@ async function processDownloadQueue() {
     }
 
     if (!finalPath) {
-      updateTrack(trackId, { status: "error", error_message: "Download failed or output file not found" });
+      updateTrack(trackId, { status: "error", error_message: "Tải thất bại, file vượt quá 30m/150MB hoặc không tìm thấy" });
     } else {
       // Re-verify actual audio duration using music-metadata
       let actualDuration = 0;
@@ -204,12 +221,14 @@ async function processDownloadQueue() {
         console.warn(`[Ingest] Could not parse downloaded metadata: ${e}`);
       }
 
-      if (actualDuration > MAX_DURATION_SECONDS) {
+      if (actualDuration <= 0 || actualDuration > MAX_DURATION_SECONDS) {
         const { unlinkSync } = await import("node:fs");
         try { unlinkSync(finalPath); } catch {}
         updateTrack(trackId, {
           status: "error",
-          error_message: `Thời lượng thực tế (${actualDuration.toFixed(0)}s) vượt quá giới hạn 30 phút!`,
+          error_message: actualDuration <= 0 
+            ? "Không thể xác định thời lượng audio hoặc file rỗng"
+            : `Thời lượng thực tế (${actualDuration.toFixed(0)}s) vượt quá giới hạn 30 phút!`,
         });
         return;
       }
@@ -218,7 +237,7 @@ async function processDownloadQueue() {
       const peaks = await generatePeaks(finalPath, 1000);
       updateTrack(trackId, {
         file_path: finalPath,
-        duration: actualDuration > 0 ? Number(actualDuration.toFixed(2)) : undefined,
+        duration: Number(actualDuration.toFixed(2)),
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });
@@ -239,18 +258,21 @@ async function processDownloadQueue() {
 export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
   try {
     const fullPath = resolve(rawPath);
-    if (!existsSync(fullPath)) {
-      return { success: false, message: `File không tồn tại: ${fullPath}` };
+    const { statSync } = await import("node:fs");
+    if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+      return { success: false, message: `File không tồn tại hoặc không phải là file hợp lệ: ${fullPath}` };
     }
 
     const metadata = await parseFile(fullPath);
     const duration = Number(metadata.format.duration) || 0;
 
-    // 30 minute check
-    if (duration > MAX_DURATION_SECONDS) {
+    // 30 minute check & strictly positive check
+    if (duration <= 0 || duration > MAX_DURATION_SECONDS) {
       return {
         success: false,
-        message: `File vượt quá thời lượng tối đa 30 phút (${duration.toFixed(0)}s > ${MAX_DURATION_SECONDS}s)!`,
+        message: duration <= 0
+          ? "File không có thời lượng hợp lệ hoặc bị lỗi!"
+          : `File vượt quá thời lượng tối đa 30 phút (${duration.toFixed(0)}s > ${MAX_DURATION_SECONDS}s)!`,
       };
     }
 

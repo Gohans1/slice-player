@@ -64,25 +64,49 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   playSegment: async (segment: Segment, track: Track) => {
     const streamUrl = `/api/tracks/${track.id}/stream`;
+    const { queue } = get();
+    const existingIndex = queue.findIndex((item) => item.segment.id === segment.id);
+    let newIndex = existingIndex;
+    let newQueue = queue;
+
+    if (existingIndex !== -1) {
+      newIndex = existingIndex;
+    } else if (queue.length > 0) {
+      newQueue = [...queue, { segment, track }];
+      newIndex = newQueue.length - 1;
+    }
+
     set({
       activeTrack: track,
       activeSegment: segment,
       isPlaying: true,
       currentTime: segment.start_time,
+      queue: newQueue,
+      queueIndex: newIndex >= 0 ? newIndex : 0,
     });
 
-    await audioEngine.playSegment(
-      streamUrl,
-      segment.start_time,
-      segment.end_time,
-      () => {
-        // Callback on segment end -> auto advance
-        get().nextSegment();
-      },
-      (time) => {
-        set({ currentTime: time });
-      }
-    );
+    try {
+      await audioEngine.playSegment(
+        streamUrl,
+        segment.start_time,
+        segment.end_time,
+        () => {
+          // Callback on segment end -> auto advance
+          get().nextSegment();
+        },
+        (time) => {
+          set({ currentTime: time });
+        }
+      );
+    } catch (e) {
+      console.warn("[Store] Failed to play segment, advancing:", e);
+      get().nextSegment();
+    }
+  },
+
+  pause: () => {
+    audioEngine.pause();
+    set({ isPlaying: false });
   },
 
   togglePlay: async () => {

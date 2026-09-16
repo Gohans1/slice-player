@@ -20,7 +20,11 @@ interface TrackCardProps {
 }
 
 export function TrackCard({ track, onDelete }: TrackCardProps) {
-  const { openSliceStudio, playSegment, activeTrack, isPlaying } = usePlayerStore();
+  const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
+  const playSegment = usePlayerStore((s) => s.playSegment);
+  const isCurrentActive = usePlayerStore((s) => s.activeTrack?.id === track.id);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const [isLoadingSegments, setIsLoadingSegments] = React.useState(false);
 
@@ -45,8 +49,6 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
       isMounted = false;
     };
   }, [track.id]);
-
-  const isCurrentActive = activeTrack?.id === track.id;
 
   const handlePlayFirst = () => {
     if (segments.length > 0) {

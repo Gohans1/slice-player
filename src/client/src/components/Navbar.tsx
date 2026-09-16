@@ -19,7 +19,10 @@ interface NavbarProps {
 }
 
 export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
-  const { tracks, fetchTracks, buildShuffleQueue, playSegment } = usePlayerStore();
+  const tracks = usePlayerStore((s) => s.tracks);
+  const fetchTracks = usePlayerStore((s) => s.fetchTracks);
+  const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
+  const playSegment = usePlayerStore((s) => s.playSegment);
 
   const [isYtModalOpen, setIsYtModalOpen] = React.useState(false);
   const [ytUrl, setYtUrl] = React.useState("");
@@ -31,7 +34,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
   const [isLocalLoading, setIsLocalLoading] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
 
-  const handleAddYouTube = async (e: React.FormEvent) => {
+  const handleIngestYoutube = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ytUrl.trim()) return;
 
@@ -46,8 +49,8 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        setYtError(data.message || data.error || "Không thể nạp link YouTube");
+      if (!res.ok || !data.success) {
+        setYtError(data.message || data.error || "Lỗi khi nạp link YouTube");
       } else {
         setYtUrl("");
         setIsYtModalOpen(false);
@@ -61,7 +64,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
     }
   };
 
-  const handleAddLocal = async (e: React.FormEvent) => {
+  const handleIngestLocal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!localPath.trim()) return;
 
@@ -76,8 +79,8 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        setLocalError(data.message || data.error || "Không thể nạp file local");
+      if (!res.ok || !data.success) {
+        setLocalError(data.message || data.error || "Lỗi khi nạp file local");
       } else {
         setLocalPath("");
         setIsLocalModalOpen(false);
@@ -102,6 +105,25 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
           const trk = tracks.find((t) => t.id === first.track_id);
           if (trk) {
             playSegment(first, trk);
+          }
+        } else if (tracks.length > 0) {
+          // Fallback: create default full-track virtual segments
+          const fallbackSegments = tracks
+            .filter((t) => t.status === "ready" && t.duration > 0)
+            .map((t) => ({
+              id: `fallback_${t.id}`,
+              track_id: t.id,
+              name: "Toàn bài",
+              start_time: 0,
+              end_time: t.duration,
+              color: "#4385BE",
+              sort_order: 0,
+            }));
+          if (fallbackSegments.length > 0) {
+            buildShuffleQueue(fallbackSegments, tracks);
+            const first = fallbackSegments[Math.floor(Math.random() * fallbackSegments.length)];
+            const trk = tracks.find((t) => t.id === first.track_id);
+            if (trk) playSegment(first, trk);
           }
         }
       }
