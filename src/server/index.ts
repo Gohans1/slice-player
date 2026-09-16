@@ -45,6 +45,9 @@ const mimeTypes: Record<string, string> = {
   ".webm": "audio/webm",
   ".flac": "audio/flac",
   ".opus": "audio/ogg",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
 };
 
 const server = serve({
@@ -61,7 +64,7 @@ const server = serve({
 
     // Host header validation to prevent DNS rebinding attacks
     const host = req.headers.get("host");
-    const isDev = process.env.NODE_ENV === "development";
+    const isDev = process.env.NODE_ENV !== "production";
     const allowedHosts = [
       `127.0.0.1:${PORT}`,
       `localhost:${PORT}`,

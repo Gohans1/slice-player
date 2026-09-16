@@ -352,6 +352,11 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
       return { success: false, message: "Đường dẫn mạng UNC không được hỗ trợ vì lý do bảo mật." };
     }
 
+    // Reject Windows DOS device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i.test(basename(cleanedPath))) {
+      return { success: false, message: "Tên file thiết bị đặc biệt của hệ thống không được hỗ trợ." };
+    }
+
     const ext = extname(cleanedPath).toLowerCase();
     const ALLOWED_EXTS = [".flac", ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".webm"];
     if (!ALLOWED_EXTS.includes(ext)) {

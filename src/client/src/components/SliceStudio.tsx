@@ -43,6 +43,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const isInternalUpdateRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
+  const previewEndRef = React.useRef<number | null>(null);
+  const activeSegmentIdRef = React.useRef<string | null>(null);
 
   // Fetch full track detail for precomputed peaks if not loaded in listTracks
   React.useEffect(() => {
@@ -185,10 +187,21 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       pause(); // Pause global player so both don't play simultaneously
       setIsPlayingWave(true);
     });
-    ws.on("pause", () => setIsPlayingWave(false));
+    ws.on("pause", () => {
+      setIsPlayingWave(false);
+      previewEndRef.current = null;
+      activeSegmentIdRef.current = null;
+      setActiveSegmentId(null);
+    });
 
     let lastTimeUpdate = 0;
     ws.on("timeupdate", (time) => {
+      if (previewEndRef.current !== null && time >= previewEndRef.current) {
+        previewEndRef.current = null;
+        activeSegmentIdRef.current = null;
+        setActiveSegmentId(null);
+        ws.pause();
+      }
       const now = performance.now();
       if (now - lastTimeUpdate >= 100) {
         lastTimeUpdate = now;
@@ -206,6 +219,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       const segId = region.id;
       const start = Number(region.start.toFixed(2));
       const end = Number(region.end.toFixed(2));
+
+      if (activeSegmentIdRef.current === segId) {
+        previewEndRef.current = end;
+      }
 
       isInternalUpdateRef.current = true;
       setSegments((prev) =>
@@ -328,6 +345,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   // Preview segment in studio
   const handlePreviewSegment = (seg: Segment) => {
     setActiveSegmentId(seg.id);
+    activeSegmentIdRef.current = seg.id;
+    previewEndRef.current = seg.end_time;
     pause(); // pause global queue playback
     const ws = wavesurferRef.current;
     if (ws) {
@@ -389,7 +408,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => wavesurferRef.current?.playPause()}
+                onClick={() => {
+                  previewEndRef.current = null;
+                  activeSegmentIdRef.current = null;
+                  setActiveSegmentId(null);
+                  wavesurferRef.current?.playPause();
+                }}
                 className="gap-1.5"
               >
                 {isPlayingWave ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}

@@ -61,7 +61,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res.ok) {
         const tracks: Track[] = await res.json();
         const trackMap = new Map(tracks.map((t) => [t.id, t]));
-        const { activeTrack, sliceStudioTrack, queue } = get();
+        const { activeTrack, sliceStudioTrack, queue, queueIndex } = get();
 
         // Purge queue items whose parent track no longer exists in DB
         const validQueue = queue.filter((item) => trackMap.has(item.track.id));
@@ -155,26 +155,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       audioEngine.pause();
       set({ isPlaying: false });
     } else {
-      await audioEngine.resume();
-      set({ isPlaying: true });
+      const ok = await audioEngine.resume();
+      if (ok) {
+        set({ isPlaying: true });
+      }
     }
   },
 
   nextSegment: () => {
-    const { queue, queueIndex, isShuffle } = get();
+    const { queue, queueIndex } = get();
     if (queue.length === 0) return;
 
-    let nextIdx = queueIndex + 1;
-    if (isShuffle && queue.length > 1) {
-      let randIdx = Math.floor(Math.random() * queue.length);
-      if (randIdx === queueIndex) {
-        randIdx = (queueIndex + 1) % queue.length;
-      }
-      nextIdx = randIdx;
-    } else if (nextIdx >= queue.length) {
-      nextIdx = 0; // loop queue
-    }
-
+    const nextIdx = (queueIndex + 1) % queue.length;
     const nextItem = queue[nextIdx];
     if (!nextItem) return;
     set({ queueIndex: nextIdx });
@@ -231,7 +223,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (activeTrack?.id === trackId) {
       const wasPlaying = get().isPlaying;
-      audioEngine.pause();
+      audioEngine.unload();
       if (newQueue.length === 0) {
         set({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null, isPlaying: false });
         return;
@@ -350,6 +342,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (foundIdx >= 0) currentIndex = foundIdx;
     }
 
-    set({ queue: items, queueIndex: currentIndex });
+    set({ queue: items, queueIndex: items.length > 0 ? currentIndex : -1 });
   },
 }));

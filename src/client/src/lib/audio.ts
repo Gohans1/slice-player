@@ -164,6 +164,7 @@ class AudioEngine {
     try {
       await this.audioEl.play();
       if (this.currentPlayRequestId !== requestId) return;
+      this.startRafLoop();
 
       // Arm boundary monitor ONLY AFTER playback successfully starts at the target seek point
       this.currentSegmentStart = startTime;
@@ -185,6 +186,7 @@ class AudioEngine {
   }
 
   public pause() {
+    this.stopRafLoop();
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -215,7 +217,7 @@ class AudioEngine {
     this.currentSegmentEnd = endTime;
   }
 
-  public async resume() {
+  public async resume(): Promise<boolean> {
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -225,14 +227,17 @@ class AudioEngine {
     await this.resumeContext();
     try {
       await this.audioEl.play();
+      this.startRafLoop();
       if (this.gainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
         this.gainNode.gain.cancelScheduledValues(now);
         this.gainNode.gain.setValueAtTime(0.0001, now);
         this.gainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
       }
+      return true;
     } catch (err) {
       console.warn("[AudioEngine] Resume prevented:", err);
+      return false;
     }
   }
 
@@ -242,6 +247,7 @@ class AudioEngine {
   }
 
   public seek(seconds: number) {
+    this.isFadingOut = false;
     if (this.audioEl.paused) {
       this.audioEl.currentTime = seconds;
       if (this.gainNode) this.gainNode.gain.value = 1.0;
@@ -270,6 +276,16 @@ class AudioEngine {
     } else {
       this.audioEl.currentTime = seconds;
     }
+  }
+
+  public unload() {
+    this.pause();
+    this.currentSegmentStart = null;
+    this.currentSegmentEnd = null;
+    this.onSegmentEndCallback = null;
+    this.isFadingOut = false;
+    this.audioEl.removeAttribute("src");
+    this.audioEl.load();
   }
 
   public getCurrentTime(): number {
@@ -330,9 +346,30 @@ class AudioEngine {
         this.currentSegmentEnd = null;
         this.onSegmentEndCallback = null;
 
+        this.stopRafLoop();
         this.audioEl.pause();
         if (cb) cb();
       }
+    }
+  };
+
+  private startRafLoop = () => {
+    if (this.animationFrameId !== null) return;
+    const loop = () => {
+      if (!this.audioEl.paused) {
+        this.checkBoundary();
+        this.animationFrameId = requestAnimationFrame(loop);
+      } else {
+        this.animationFrameId = null;
+      }
+    };
+    this.animationFrameId = requestAnimationFrame(loop);
+  };
+
+  private stopRafLoop = () => {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
   };
 
@@ -355,18 +392,6 @@ class AudioEngine {
       worker.onmessage = () => this.checkBoundary();
     } catch {
       setInterval(this.checkBoundary, 30);
-    }
-
-    // rAF loop for high-frequency UI updates when visible
-    const loop = () => {
-      if (!this.audioEl.paused) {
-        this.checkBoundary();
-      }
-      this.animationFrameId = requestAnimationFrame(loop);
-    };
-
-    if (!this.animationFrameId) {
-      this.animationFrameId = requestAnimationFrame(loop);
     }
   };
 }

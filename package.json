@@ -7,6 +7,7 @@
     "build": "vite build",
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
+    "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {

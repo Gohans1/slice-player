@@ -107,7 +107,7 @@ export function App() {
       fetch("/api/segments")
         .then((r) => r.json())
         .then((segments) => {
-          if (Array.isArray(segments) && segments.length > 0) {
+          if (Array.isArray(segments)) {
             buildShuffleQueue(segments, tracks);
           }
         })

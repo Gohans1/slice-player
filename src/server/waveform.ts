@@ -51,13 +51,18 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
     const MAX_BYTES = 50 * 1024 * 1024; // 50MB cap to prevent OOM
 
     try {
-      for await (const chunk of proc.stdout) {
-        totalBytes += chunk.length;
-        if (totalBytes > MAX_BYTES) {
-          killFfmpeg(proc);
-          break;
+      const reader = proc.stdout.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalBytes += value.length;
+          if (totalBytes > MAX_BYTES) {
+            killFfmpeg(proc);
+            break;
+          }
+          chunks.push(value);
         }
-        chunks.push(chunk);
       }
     } finally {
       clearTimeout(killTimer);
