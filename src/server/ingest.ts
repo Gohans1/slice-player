@@ -159,9 +159,11 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         // Trigger background audio download for this track
         triggerDownloadWorker(trackId, watchUrl);
       } else if (existing.status !== "ready" && existing.status !== "downloading") {
-        updateTrack(trackId, { status: "queued", error_message: null as any });
-        serverEvents.emit("track_updated", { trackId });
-        triggerDownloadWorker(trackId, watchUrl);
+        if (existing.status !== "queued") {
+          updateTrack(trackId, { status: "queued", error_message: null as any });
+          serverEvents.emit("track_updated", { trackId });
+          triggerDownloadWorker(trackId, watchUrl);
+        }
         existing = getTrack(trackId) || { ...existing, status: "queued", error_message: null };
       }
 
@@ -399,6 +401,24 @@ async function processDownloadQueue() {
       // If container duration is missing (e.g. DASH WebM/Opus wrapper), fallback to stage 1 validated duration
       if (actualDuration <= 0 && existingTrack?.duration && existingTrack.duration > 0 && existingTrack.duration <= MAX_DURATION_SECONDS) {
         actualDuration = existingTrack.duration;
+      }
+
+      // If duration is still undetermined, attempt fallback duration probe via ffprobe
+      if (actualDuration <= 0) {
+        try {
+          const probeProc = Bun.spawn(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", finalPath], {
+            stdout: "pipe",
+            stderr: "ignore",
+          });
+          const probeTimer = setTimeout(() => { try { probeProc.kill(); } catch {} }, 5000);
+          const probeOut = await new Response(probeProc.stdout).text();
+          clearTimeout(probeTimer);
+          await probeProc.exited;
+          const probed = parseFloat(probeOut.trim());
+          if (Number.isFinite(probed) && probed > 0) {
+            actualDuration = probed;
+          }
+        } catch {}
       }
 
       if (actualDuration < 0.5 || actualDuration > MAX_DURATION_SECONDS) {

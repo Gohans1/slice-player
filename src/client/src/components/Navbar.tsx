@@ -232,7 +232,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
           setLocalError(null);
         }}
         title="Thêm bài hát từ máy (.flac)"
-        description="Nhập đường dẫn tuyệt đối của file .flac trên máy m."
+        description="Nhập đường dẫn tuyệt đối của file .flac trên máy của bạn."
       >
         <form onSubmit={handleIngestLocal} className="space-y-4">
           <div className="space-y-2">

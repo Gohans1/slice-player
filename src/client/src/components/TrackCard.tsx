@@ -38,6 +38,16 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
       return;
     }
 
+    // Check if player store queue already has custom slices for this track
+    const queue = usePlayerStore.getState().queue;
+    const queuedTrackSlices = queue
+      .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
+      .map((it) => it.segment);
+    if (queuedTrackSlices.length > 0) {
+      playSegment(queuedTrackSlices[0], track);
+      return;
+    }
+
     let segList = segments;
     if (!segList) {
       try {

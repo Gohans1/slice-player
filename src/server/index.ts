@@ -1,5 +1,5 @@
 import { serve, file as bunFile } from "bun";
-import { existsSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry } from "./ingest";
@@ -15,12 +15,8 @@ initDatabase("./data/music.db");
 console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 
 const activeSockets = new Set<any>();
-let shutdownTimer: Timer | null = process.env.NODE_ENV === "production" ? setTimeout(() => {
-  if (activeSockets.size === 0) {
-    console.log("[Server] No client connected within 60s of startup. Exiting.");
-    gracefulShutdown();
-  }
-}, 60000) : null;
+let shutdownTimer: Timer | null = null;
+checkIdleShutdown();
 
 async function gracefulShutdown() {
   console.log("[Server] Shutting down cleanly: closing DB and stopping workers.");
@@ -139,9 +135,15 @@ const server = serve({
           );
         }
         const contentLength = Number(rawLen);
-        if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > 65536) {
+        if (!Number.isFinite(contentLength) || contentLength <= 0) {
           return Response.json(
-            { error: "Payload too large or invalid length (max 64KB)" },
+            { error: "Empty or invalid request body" },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        if (contentLength > 65536) {
+          return Response.json(
+            { error: "Payload too large (max 64KB)" },
             { status: 413, headers: corsHeaders }
           );
         }

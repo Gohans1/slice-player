@@ -11,6 +11,7 @@ export interface QueueItem {
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
 
 let consecutivePlaybackFailures = 0;
+const dismissedSegmentIds = new Set<string>();
 
 interface PlayerState {
   tracks: Track[];
@@ -136,21 +137,28 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               const trackSlices = validSegments.filter((s) => s.track_id === item.track.id);
               if (trackSlices.length > 0) {
                 for (const s of trackSlices) {
-                  if (!seenSegmentIds.has(s.id)) {
+                  if (!seenSegmentIds.has(s.id) && !dismissedSegmentIds.has(s.id)) {
                     seenSegmentIds.add(s.id);
                     validQueue.push({ segment: s, track: freshTrack });
                   }
                 }
                 continue;
               }
+              // If other tracks have custom slices, exclude fallback tracks without slices in slices_only mode
+              const hasAnyCustomSlices = validSegments.some((s) => !s.id.startsWith("fallback_"));
+              if (hasAnyCustomSlices) {
+                continue;
+              }
             }
-            // Preserve fallback item in original_only or mixed (or if no slices exist)
-            seenSegmentIds.add(item.segment.id);
-            validQueue.push({ ...item, track: freshTrack });
+            // Preserve fallback item in original_only or mixed (or if no custom slices exist in library)
+            if (!dismissedSegmentIds.has(item.segment.id)) {
+              seenSegmentIds.add(item.segment.id);
+              validQueue.push({ ...item, track: freshTrack });
+            }
           } else {
             // Slices should not be in original_only mode unless actively playing
             if (currentMode === "original_only" && item.segment.id !== activeSegment?.id) continue;
-            if (!segmentMap.has(item.segment.id)) continue;
+            if (!segmentMap.has(item.segment.id) || dismissedSegmentIds.has(item.segment.id)) continue;
             const freshSeg = segmentObjMap.get(item.segment.id) || item.segment;
             if (!seenSegmentIds.has(freshSeg.id)) {
               seenSegmentIds.add(freshSeg.id);
@@ -169,7 +177,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             } else if (currentMode === "slices_only") {
               if (trackSlices.length > 0) {
                 for (const s of trackSlices) {
-                  if (!seenSegmentIds.has(s.id)) {
+                  if (!seenSegmentIds.has(s.id) && !dismissedSegmentIds.has(s.id)) {
                     seenSegmentIds.add(s.id);
                     validQueue.push({ segment: s, track: newTrack });
                   }
@@ -181,7 +189,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
               // mixed
               if (trackSlices.length > 0) {
                 for (const s of trackSlices) {
-                  if (!seenSegmentIds.has(s.id)) {
+                  if (!seenSegmentIds.has(s.id) && !dismissedSegmentIds.has(s.id)) {
                     seenSegmentIds.add(s.id);
                     validQueue.push({ segment: s, track: newTrack });
                   }
@@ -195,7 +203,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         // Slices addition starvation fix: append newly cut slices for existing tracks
         if (currentMode !== "original_only") {
           for (const seg of validSegments) {
-            if (!seg.id.startsWith("fallback_") && !seenSegmentIds.has(seg.id)) {
+            if (!seg.id.startsWith("fallback_") && !seenSegmentIds.has(seg.id) && !dismissedSegmentIds.has(seg.id)) {
               const parentTrack = trackMap.get(seg.track_id);
               if (parentTrack && parentTrack.status === "ready") {
                 seenSegmentIds.add(seg.id);
@@ -205,11 +213,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
 
-        // Initial queue shuffle if app launched with isShuffle: true and empty queue
-        if (wasQueueEmpty && validQueue.length > 0 && get().isShuffle) {
-          for (let i = validQueue.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [validQueue[i], validQueue[j]] = [validQueue[j], validQueue[i]];
+        // Initial queue shuffle / sort if app launched with empty queue
+        if (wasQueueEmpty && validQueue.length > 0) {
+          if (get().isShuffle) {
+            for (let i = validQueue.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [validQueue[i], validQueue[j]] = [validQueue[j], validQueue[i]];
+            }
+          } else {
+            validQueue.sort((a, b) => {
+              const titleCmp = (a.track.title || "").localeCompare(b.track.title || "");
+              if (titleCmp !== 0) return titleCmp;
+              return a.segment.start_time - b.segment.start_time;
+            });
           }
         }
 
@@ -228,6 +244,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const fallbackIdx = Math.max(0, Math.min(queueIndex, validQueue.length - 1));
         const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
         set({ tracks: stabilizedTracks, queue: validQueue, queueIndex: settledIdx });
+
+        // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server
+        if (activeSegment && segmentObjMap.has(activeSegment.id)) {
+          const freshActive = segmentObjMap.get(activeSegment.id)!;
+          if (
+            freshActive.start_time !== activeSegment.start_time ||
+            freshActive.end_time !== activeSegment.end_time ||
+            freshActive.name !== activeSegment.name ||
+            freshActive.color !== activeSegment.color
+          ) {
+            set({ activeSegment: freshActive });
+            audioEngine.updateCurrentSegmentBounds(freshActive.start_time, freshActive.end_time);
+            const curTime = audioEngine.getCurrentTime();
+            if (curTime < freshActive.start_time || curTime > freshActive.end_time) {
+              audioEngine.seek(freshActive.start_time);
+              set({ currentTime: freshActive.start_time });
+            }
+          }
+        }
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
@@ -425,6 +460,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeTrackFromQueue: (trackId: string) => {
     const { queue, queueIndex, activeTrack } = get();
+    for (const item of queue) {
+      if (item.track.id === trackId) {
+        dismissedSegmentIds.add(item.segment.id);
+      }
+    }
     const removedBeforeCurrent = queueIndex > 0
       ? queue.slice(0, queueIndex).filter((item) => item.track.id === trackId).length
       : 0;
@@ -462,6 +502,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   removeSegmentFromQueue: (segmentId: string) => {
+    dismissedSegmentIds.add(segmentId);
     const { queue, queueIndex, activeSegment } = get();
     const removedBeforeCurrent = queueIndex > 0
       ? queue.slice(0, queueIndex).filter((item) => item.segment.id === segmentId).length
@@ -502,6 +543,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   removeQueueItemAtIndex: (index: number) => {
     const { queue, queueIndex } = get();
     if (index < 0 || index >= queue.length) return;
+    const itemToRemove = queue[index];
+    if (itemToRemove) {
+      dismissedSegmentIds.add(itemToRemove.segment.id);
+    }
     const isCurrent = index === queueIndex;
     const newQueue = queue.filter((_, idx) => idx !== index);
 
@@ -547,6 +592,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (activeSegment?.id === seg.id) {
       updates.activeSegment = seg;
       audioEngine.updateCurrentSegmentBounds(seg.start_time, seg.end_time);
+      const curTime = audioEngine.getCurrentTime();
+      if (curTime < seg.start_time || curTime > seg.end_time) {
+        audioEngine.seek(seg.start_time);
+        updates.currentTime = seg.start_time;
+      }
     }
     set(updates);
   },
@@ -573,6 +623,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode) => {
+    dismissedSegmentIds.clear();
     const mode = modeOverride || get().playbackMode;
     const trackMap = new Map<string, Track>();
     for (const t of allTracks) {

@@ -148,7 +148,6 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-            keepalive: true,
           }).catch(() => {});
         } catch {
           // ignore unmount flush network errors

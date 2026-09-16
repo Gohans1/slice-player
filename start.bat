@@ -14,6 +14,16 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+where ffmpeg >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARNING] Khong tim thay ffmpeg trong PATH! Song am se dung peaks mac dinh.
+)
+
+where yt-dlp >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARNING] Khong tim thay yt-dlp trong PATH! Chuc nang tai YouTube se khong hoat dong.
+)
+
 if "%~1"=="--no-build" (
     echo [1/2] Bo qua build frontend theo yeu cau.
 ) else (
@@ -27,23 +37,27 @@ if "%~1"=="--no-build" (
 )
 
 curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [2/2] Dang khoi dong server Bun...
-    start "SlicePlayerServer" /min bun run src/server/index.ts
-    set /a ATTEMPTS=0
-    :wait_loop
-    ping -n 2 127.0.0.1 >nul
-    curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
-    if %ERRORLEVEL% EQU 0 goto server_ready
-    set /a ATTEMPTS+=1
-    if %ATTEMPTS% GEQ 15 goto server_timeout
-    goto wait_loop
-    :server_timeout
-    echo [WARNING] Server chua phan hoi sau 15 giay, tiep tuc mo trinh duyet...
-    :server_ready
-) else (
+if %ERRORLEVEL% EQU 0 (
     echo [2/2] Server Slice Player dang hoat dong san tren port 3000.
+    goto launch_client
 )
+
+echo [2/2] Dang khoi dong server Bun...
+start "SlicePlayerServer" /min bun run src/server/index.ts
+set /a ATTEMPTS=0
+
+:wait_loop
+ping -n 2 127.0.0.1 >nul
+curl -s -f -m 1 http://127.0.0.1:3000/api/tracks >nul 2>&1
+if %ERRORLEVEL% EQU 0 goto launch_client
+set /a ATTEMPTS+=1
+if %ATTEMPTS% GEQ 15 (
+    echo [WARNING] Server chua phan hoi sau 15 giay, tiep tuc mo trinh duyet...
+    goto launch_client
+)
+goto wait_loop
+
+:launch_client
 
 set "EDGE_PATH="
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (

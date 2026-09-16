@@ -63,7 +63,7 @@ class AudioEngine {
   }
 
   public async resumeContext() {
-    if (this.audioCtx && this.audioCtx.state === "suspended") {
+    if (this.audioCtx && this.audioCtx.state !== "running") {
       try {
         await this.audioCtx.resume();
       } catch (e) {

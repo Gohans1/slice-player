@@ -57,8 +57,8 @@ export async function generatePeaks(filePath: string, targetPoints: number = 100
   const ffmpegCmd = [
     "ffmpeg",
     "-v", "error",
-    "-t", "1800",
     "-i", filePath,
+    "-t", "1800",
     "-ac", "1",
     "-filter:a", "aresample=200",
     "-f", "s8",
