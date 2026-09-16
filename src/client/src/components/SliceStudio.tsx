@@ -414,7 +414,11 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       start = Math.max(0, trackDur - 20);
     }
     const end = Math.min(trackDur, Number((start + 20).toFixed(2)));
-    if (end - start < 0.5) return;
+    if (end - start < 0.5) {
+      safeSetSaveStatus("Không thể tạo đoạn: Thời lượng còn lại quá ngắn (<0.5s)");
+      setTimeout(() => safeSetSaveStatus(null), 2000);
+      return;
+    }
 
     const existingNums = segments.map((s) => {
       const m = s.name.match(/\d+/);

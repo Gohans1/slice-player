@@ -3,7 +3,7 @@ import { existsSync, writeFileSync, unlinkSync, readdirSync, mkdirSync } from "n
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack, getDb } from "./db";
-import { generatePeaks } from "./waveform";
+import { generatePeaks, isWaveformBusy } from "./waveform";
 import { serverEvents } from "./events";
 import type { Track } from "./types";
 
@@ -41,6 +41,45 @@ export interface IngestResult {
 const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)\/.+/i;
 
 const activeMetadataProcs = new Set<ReturnType<typeof Bun.spawn>>();
+const MAX_CONCURRENT_METADATA = 2;
+let activeMetadataCount = 0;
+const metadataWaitQueue: Array<() => void> = [];
+let activeLocalIngests = 0;
+
+function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null) {
+  if (!proc) return;
+  try {
+    if (process.platform === "win32") {
+      Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    } else {
+      proc.kill();
+    }
+  } catch {}
+}
+
+async function acquireMetadataSlot(): Promise<void> {
+  if (activeMetadataCount < MAX_CONCURRENT_METADATA) {
+    activeMetadataCount++;
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    metadataWaitQueue.push(() => {
+      activeMetadataCount++;
+      resolve();
+    });
+  });
+}
+
+function releaseMetadataSlot(): void {
+  activeMetadataCount--;
+  const next = metadataWaitQueue.shift();
+  if (next) {
+    next();
+  }
+}
 
 /**
  * Handle YouTube URL (single video or playlist)
@@ -66,42 +105,38 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       url
     ];
 
-    const proc = Bun.spawn(metaCmd, {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    activeMetadataProcs.add(proc);
-
-    const killTimer = setTimeout(() => {
-      try {
-        if (process.platform === "win32") {
-          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
-            stdout: "ignore",
-            stderr: "ignore",
-          });
-        } else {
-          proc.kill();
-        }
-      } catch {}
-    }, 45000);
-
+    await acquireMetadataSlot();
     let outputText = "";
     let errText = "";
     try {
-      const res = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-      ]);
-      outputText = res[0];
-      errText = res[1];
-      await proc.exited;
-    } finally {
-      clearTimeout(killTimer);
-      activeMetadataProcs.delete(proc);
-    }
+      const proc = Bun.spawn(metaCmd, {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      activeMetadataProcs.add(proc);
 
-    if (!outputText || outputText.trim() === "") {
-      return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };
+      const killTimer = setTimeout(() => {
+        killProcessSafely(proc);
+      }, 45000);
+
+      try {
+        const res = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]);
+        outputText = res[0];
+        errText = (res[1] || "").slice(0, 150);
+        await proc.exited;
+      } finally {
+        clearTimeout(killTimer);
+        activeMetadataProcs.delete(proc);
+      }
+
+      if (!outputText || outputText.trim() === "") {
+        return { success: false, message: `yt-dlp error: ${errText || "No metadata returned"}` };
+      }
+    } finally {
+      releaseMetadataSlot();
     }
 
     const data = JSON.parse(outputText);
@@ -195,11 +230,20 @@ let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
 export function isIngestBusy(): boolean {
-  return isDownloading || activeDownloadProc !== null || downloadQueue.length > 0 || activeMetadataProcs.size > 0;
+  return (
+    isDownloading ||
+    activeDownloadProc !== null ||
+    downloadQueue.length > 0 ||
+    activeMetadataProcs.size > 0 ||
+    activeLocalIngests > 0 ||
+    isWaveformBusy()
+  );
 }
 
 export async function abortIngestProcesses(): Promise<void> {
   downloadQueue.length = 0;
+  metadataWaitQueue.length = 0;
+  activeMetadataCount = 0;
   for (const proc of activeMetadataProcs) {
     try {
       if (process.platform === "win32") {
@@ -426,7 +470,7 @@ async function processDownloadQueue() {
             stdout: "pipe",
             stderr: "ignore",
           });
-          const probeTimer = setTimeout(() => { try { probeProc.kill(); } catch {} }, 5000);
+          const probeTimer = setTimeout(() => { killProcessSafely(probeProc); }, 5000);
           const probeOut = await new Response(probeProc.stdout).text();
           clearTimeout(probeTimer);
           await probeProc.exited;
@@ -485,6 +529,7 @@ async function processDownloadQueue() {
  * Handle Local FLAC or Audio File
  */
 export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
+  activeLocalIngests++;
   try {
     const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
 
@@ -528,7 +573,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
           stdout: "pipe",
           stderr: "ignore",
         });
-        const probeTimer = setTimeout(() => { try { probeProc.kill(); } catch {} }, 5000);
+        const probeTimer = setTimeout(() => { killProcessSafely(probeProc); }, 5000);
         const probeOut = await new Response(probeProc.stdout).text();
         clearTimeout(probeTimer);
         await probeProc.exited;
@@ -661,5 +706,7 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Lỗi đọc file local: ${msg}` };
+  } finally {
+    activeLocalIngests--;
   }
 }

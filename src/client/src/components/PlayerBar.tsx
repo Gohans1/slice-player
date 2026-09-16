@@ -38,8 +38,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const [previousVolume, setPreviousVolume] = React.useState(volume);
 
   const handleToggleMute = () => {
-    if (isMuted) {
-      setVolume(previousVolume || 0.8);
+    if (volume === 0 || isMuted) {
+      setVolume(previousVolume > 0 ? previousVolume : 0.8);
       setIsMuted(false);
     } else {
       setPreviousVolume(volume);
@@ -216,7 +216,10 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               onChange={(e) => {
                 const val = Number(e.target.value);
                 setVolume(val);
-                if (val > 0) setIsMuted(false);
+                if (val > 0) {
+                  setPreviousVolume(val);
+                  setIsMuted(false);
+                }
               }}
               className="w-20 h-1 accent-primary cursor-pointer"
             />

@@ -43,6 +43,10 @@ export async function abortWaveformProcesses(): Promise<void> {
   activeWaveformByPath.clear();
 }
 
+export function isWaveformBusy(): boolean {
+  return activeWaveformProcs.size > 0;
+}
+
 /**
  * Generate 1000 normalized peak points for WaveSurfer from an audio file using ffmpeg.
  * Bypasses browser decodeAudioData, saving gigabytes of RAM.

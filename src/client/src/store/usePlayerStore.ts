@@ -707,26 +707,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     let currentIndex = -1;
     const { activeSegment } = get();
-    let updatedActiveSegment = activeSegment;
+    const updatedActiveSegment = activeSegment;
     if (activeSegment) {
-      let foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
-      if (foundIdx < 0) {
-        foundIdx = items.findIndex((item) => item.track.id === activeSegment.track_id);
-      }
+      const foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
       if (foundIdx >= 0) {
         currentIndex = foundIdx;
-        if (activeSegment.id !== items[foundIdx].segment.id) {
-          updatedActiveSegment = items[foundIdx].segment;
-          audioEngine.updateCurrentSegmentBounds(
-            updatedActiveSegment.start_time,
-            updatedActiveSegment.end_time
-          );
-          const curTime = audioEngine.getCurrentTime();
-          if (curTime < updatedActiveSegment.start_time || curTime > updatedActiveSegment.end_time) {
-            audioEngine.seek(updatedActiveSegment.start_time);
-            set({ currentTime: updatedActiveSegment.start_time });
-          }
-        }
       }
     }
 

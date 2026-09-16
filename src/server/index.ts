@@ -1,4 +1,4 @@
-import { serve, file as bunFile } from "bun";
+import { serve, file as bunFile, type ServerWebSocket } from "bun";
 import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, sep } from "node:path";
 import { initDatabase, closeDatabase, getTrack, listTracks, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments } from "./db";
@@ -14,7 +14,7 @@ initDatabase("./data/music.db");
 
 console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
 
-const activeSockets = new Set<any>();
+const activeSockets = new Set<ServerWebSocket>();
 let shutdownTimer: Timer | null = null;
 let isShuttingDown = false;
 let hasHadInitialConnection = false;
@@ -36,6 +36,20 @@ async function gracefulShutdown() {
 
 process.on("SIGINT", () => { gracefulShutdown(); });
 process.on("SIGTERM", () => { gracefulShutdown(); });
+if (process.platform === "win32") {
+  process.on("SIGBREAK", () => { gracefulShutdown(); });
+}
+
+if (process.env.NODE_ENV === "production") {
+  // Watchdog: If no browser connects within 180s of startup, terminate headless orphan
+  const initialConnectionWatchdog = setTimeout(() => {
+    if (!hasHadInitialConnection && activeSockets.size === 0) {
+      console.log("[Server] No client connection established within 180s. Shutting down.");
+      gracefulShutdown();
+    }
+  }, 180000);
+  initialConnectionWatchdog.unref?.();
+}
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -122,6 +136,9 @@ const server = serve({
 
     // WebSocket upgrade (origin verified)
     if (url.pathname === "/ws") {
+      if (origin && !allowedOrigins.includes(origin)) {
+        return new Response("Forbidden: Cross-origin WebSocket request not allowed", { status: 403 });
+      }
       const upgraded = server.upgrade(req);
       if (upgraded) return undefined;
       return new Response("WebSocket upgrade failed", { status: 400 });

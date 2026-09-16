@@ -11,6 +11,9 @@ class EventBus {
   off(event: string, fn: Listener) {
     if (!this.listeners[event]) return;
     this.listeners[event] = this.listeners[event].filter((l) => l !== fn);
+    if (this.listeners[event].length === 0) {
+      delete this.listeners[event];
+    }
   }
 
   emit(event: string, payload: any) {

@@ -6,7 +6,9 @@
 class AudioEngine {
   private audioEl: HTMLAudioElement;
   private audioCtx: AudioContext | null = null;
-  private gainNode: GainNode | null = null;
+  private fadeGainNode: GainNode | null = null;
+  private volumeGainNode: GainNode | null = null;
+  private currentVolume = 0.8;
   private isInitialized = false;
 
   private currentSegmentStart: number | null = null;
@@ -43,11 +45,18 @@ class AudioEngine {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new AudioContextClass();
       const source = this.audioCtx.createMediaElementSource(this.audioEl);
-      this.gainNode = this.audioCtx.createGain();
-      this.gainNode.gain.value = 1.0;
 
-      source.connect(this.gainNode);
-      this.gainNode.connect(this.audioCtx.destination);
+      // Two-stage gain graph:
+      // [source] -> [fadeGainNode] (0.0001 <-> 1.0 micro-fades) -> [volumeGainNode] (user volume) -> [destination]
+      this.fadeGainNode = this.audioCtx.createGain();
+      this.fadeGainNode.gain.value = 1.0;
+
+      this.volumeGainNode = this.audioCtx.createGain();
+      this.volumeGainNode.gain.value = this.currentVolume;
+
+      source.connect(this.fadeGainNode);
+      this.fadeGainNode.connect(this.volumeGainNode);
+      this.volumeGainNode.connect(this.audioCtx.destination);
     } catch (e) {
       console.warn("[AudioEngine] Web Audio graph init fallback to direct audio element", e);
     }
@@ -120,21 +129,23 @@ class AudioEngine {
     this.onSegmentEndCallback = null;
     this.onTimeUpdateCallback = onTimeUpdate || null;
 
-    // Soft fade-out current audio before loading new track
-    if (this.gainNode && this.audioCtx) {
+    // Soft fade-out current audio before loading new track or seeking
+    if (this.fadeGainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.gainNode.gain.cancelScheduledValues(now);
-      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+      this.fadeGainNode.gain.cancelScheduledValues(now);
+      this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, now);
+      this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+    }
+
+    // Await micro-fade completion if playing before changing source or seeking
+    if (!this.audioEl.paused && this.fadeGainNode && this.audioCtx) {
+      await new Promise((r) => setTimeout(r, 16));
     }
 
     // Check if same track is already loaded
     const isSameSource = this.audioEl.src === new URL(streamUrl, window.location.href).href;
 
     if (!isSameSource) {
-      if (!this.audioEl.paused && this.gainNode && this.audioCtx) {
-        await new Promise((r) => setTimeout(r, 16));
-      }
       if (this.currentPlayRequestId !== requestId) return;
       this.audioEl.src = streamUrl;
       await new Promise<void>((resolve, reject) => {
@@ -176,15 +187,18 @@ class AudioEngine {
     if (Math.abs(this.audioEl.currentTime - startTime) > 0.05) {
       this.isSeekingSettled = false;
       await new Promise<void>((resolve) => {
+        let timer: any = null;
         const onSeeked = () => {
           this.audioEl.removeEventListener("seeked", onSeeked);
-          clearTimeout(fallback);
+          if (timer) clearTimeout(timer);
           this.isSeekingSettled = true;
           resolve();
         };
-        const fallback = setTimeout(() => {
+        timer = setTimeout(() => {
           this.audioEl.removeEventListener("seeked", onSeeked);
-          this.isSeekingSettled = true;
+          if (Math.abs(this.audioEl.currentTime - startTime) <= 0.5) {
+            this.isSeekingSettled = true;
+          }
           resolve();
         }, 1500);
         this.audioEl.addEventListener("seeked", onSeeked);
@@ -196,7 +210,19 @@ class AudioEngine {
 
     if (Math.abs(this.audioEl.currentTime - startTime) > 0.5) {
       this.audioEl.currentTime = startTime;
+      await new Promise<void>((resolve) => {
+        const onSeeked2 = () => {
+          this.audioEl.removeEventListener("seeked", onSeeked2);
+          resolve();
+        };
+        const t2 = setTimeout(() => {
+          this.audioEl.removeEventListener("seeked", onSeeked2);
+          resolve();
+        }, 500);
+        this.audioEl.addEventListener("seeked", onSeeked2, { once: true });
+      });
     }
+    if (this.currentPlayRequestId !== requestId) return;
     this.isSeekingSettled = true;
 
     try {
@@ -211,11 +237,11 @@ class AudioEngine {
       this.onSegmentEndCallback = onEnd;
 
       // Ramp gain up to 1.0 in 15ms after playback successfully starts
-      if (this.gainNode && this.audioCtx) {
+      if (this.fadeGainNode && this.audioCtx) {
         const playNow = this.audioCtx.currentTime;
-        this.gainNode.gain.cancelScheduledValues(playNow);
-        this.gainNode.gain.setValueAtTime(0.0001, playNow);
-        this.gainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
+        this.fadeGainNode.gain.cancelScheduledValues(playNow);
+        this.fadeGainNode.gain.setValueAtTime(0.0001, playNow);
+        this.fadeGainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
       }
     } catch (err) {
       if (this.currentPlayRequestId === requestId) {
@@ -234,11 +260,11 @@ class AudioEngine {
     }
     this.isFadingOut = false;
 
-    if (this.gainNode && this.audioCtx) {
+    if (this.fadeGainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.gainNode.gain.cancelScheduledValues(now);
-      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
+      this.fadeGainNode.gain.cancelScheduledValues(now);
+      this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, now);
+      this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.012);
 
       // Trigger pause after 15ms micro-fade via Web Worker (immune to Chromium background tab 1000ms throttling)
       if (this.tickerWorker) {
@@ -284,11 +310,11 @@ class AudioEngine {
       await this.audioEl.play();
       this.startRafLoop();
       this.startTicker();
-      if (this.gainNode && this.audioCtx) {
+      if (this.fadeGainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
-        this.gainNode.gain.cancelScheduledValues(now);
-        this.gainNode.gain.setValueAtTime(0.0001, now);
-        this.gainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
+        this.fadeGainNode.gain.cancelScheduledValues(now);
+        this.fadeGainNode.gain.setValueAtTime(0.0001, now);
+        this.fadeGainNode.gain.linearRampToValueAtTime(1.0, now + 0.015);
       }
       return true;
     } catch (err) {
@@ -299,7 +325,18 @@ class AudioEngine {
 
   public setVolume(volume: number) {
     // volume between 0 and 1
-    this.audioEl.volume = Math.max(0, Math.min(1, volume));
+    const vol = Math.max(0, Math.min(1, volume));
+    this.currentVolume = vol;
+    this.audioEl.volume = vol;
+    if (this.volumeGainNode && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      this.volumeGainNode.gain.cancelScheduledValues(now);
+      this.volumeGainNode.gain.setValueAtTime(vol, now);
+    }
+  }
+
+  public getVolume(): number {
+    return this.currentVolume;
   }
 
   public seek(seconds: number) {
@@ -343,19 +380,19 @@ class AudioEngine {
         this.audioEl.currentTime = seconds;
         this.isSeekingSettled = true;
       }
-      if (this.gainNode && this.audioCtx) {
+      if (this.fadeGainNode && this.audioCtx) {
         const now = this.audioCtx.currentTime;
-        this.gainNode.gain.cancelScheduledValues(now);
-        this.gainNode.gain.setValueAtTime(1.0, now);
+        this.fadeGainNode.gain.cancelScheduledValues(now);
+        this.fadeGainNode.gain.setValueAtTime(1.0, now);
       }
       return;
     }
 
-    if (this.gainNode && this.audioCtx) {
+    if (this.fadeGainNode && this.audioCtx) {
       const now = this.audioCtx.currentTime;
-      this.gainNode.gain.cancelScheduledValues(now);
-      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
-      this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
+      this.fadeGainNode.gain.cancelScheduledValues(now);
+      this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, now);
+      this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.008);
 
       let seekTimer: any = null;
       const onSeeked = () => {
@@ -366,11 +403,11 @@ class AudioEngine {
         this.audioEl.removeEventListener("seeked", onSeeked);
         clearTimeout(fallback);
         if (seekTimer) clearTimeout(seekTimer);
-        if (this.gainNode && this.audioCtx && !this.audioEl.paused) {
+        if (this.fadeGainNode && this.audioCtx && !this.audioEl.paused) {
           const unpauseNow = this.audioCtx.currentTime;
-          this.gainNode.gain.cancelScheduledValues(unpauseNow);
-          this.gainNode.gain.setValueAtTime(0.0001, unpauseNow);
-          this.gainNode.gain.linearRampToValueAtTime(1.0, unpauseNow + 0.015);
+          this.fadeGainNode.gain.cancelScheduledValues(unpauseNow);
+          this.fadeGainNode.gain.setValueAtTime(0.0001, unpauseNow);
+          this.fadeGainNode.gain.linearRampToValueAtTime(1.0, unpauseNow + 0.015);
         }
       };
       const fallback = setTimeout(onSeeked, 2000);
@@ -448,6 +485,11 @@ class AudioEngine {
     if (this.currentSegmentStart !== null && curTime < this.currentSegmentStart - 0.2) {
       return;
     }
+    if (this.currentSegmentStart !== null && this.currentSegmentEnd !== null) {
+      if (curTime > this.currentSegmentEnd + 1.0 && Math.abs(curTime - this.currentSegmentStart) > 1.0) {
+        return;
+      }
+    }
 
     if (this.currentSegmentEnd !== null) {
       // Step 1: Pre-fade 60ms before boundary to eliminate DC-offset clicks without bleeding
@@ -455,12 +497,12 @@ class AudioEngine {
       const leadTime = 0.060;
       if (curTime >= this.currentSegmentEnd - leadTime && !this.isFadingOut) {
         this.isFadingOut = true;
-        if (this.gainNode && this.audioCtx) {
+        if (this.fadeGainNode && this.audioCtx) {
           const fadeNow = this.audioCtx.currentTime;
           const remaining = Math.max(0.012, this.currentSegmentEnd - curTime);
-          this.gainNode.gain.cancelScheduledValues(fadeNow);
-          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, fadeNow);
-          this.gainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + remaining);
+          this.fadeGainNode.gain.cancelScheduledValues(fadeNow);
+          this.fadeGainNode.gain.setValueAtTime(this.fadeGainNode.gain.value, fadeNow);
+          this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, fadeNow + remaining);
         }
       }
 
