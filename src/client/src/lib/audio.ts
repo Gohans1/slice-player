@@ -39,6 +39,15 @@ class AudioEngine {
       console.warn("[AudioEngine] Web Audio graph init fallback to direct audio element", e);
     }
 
+    this.audioEl.addEventListener("ended", () => {
+      if (this.onSegmentEndCallback) {
+        const cb = this.onSegmentEndCallback;
+        this.onSegmentEndCallback = null;
+        this.currentSegmentEnd = null;
+        cb();
+      }
+    });
+
     this.startBoundaryMonitor();
   }
 
@@ -66,8 +75,9 @@ class AudioEngine {
 
     const requestId = ++this.currentPlayRequestId;
 
-    this.currentSegmentEnd = endTime;
-    this.onSegmentEndCallback = onEnd;
+    // Disarm boundary checks during load and seek transition
+    this.currentSegmentEnd = null;
+    this.onSegmentEndCallback = null;
     this.onTimeUpdateCallback = onTimeUpdate || null;
 
     // Soft fade-out current audio before loading new track
@@ -104,25 +114,33 @@ class AudioEngine {
 
     if (this.currentPlayRequestId !== requestId) return;
 
-    // Seek to startTime while muted
-    await new Promise<void>((resolve) => {
-      const onSeeked = () => {
-        this.audioEl.removeEventListener("seeked", onSeeked);
-        clearTimeout(fallback);
-        resolve();
-      };
-      const fallback = setTimeout(() => {
-        this.audioEl.removeEventListener("seeked", onSeeked);
-        resolve();
-      }, 100);
-      this.audioEl.addEventListener("seeked", onSeeked);
-      this.audioEl.currentTime = startTime;
-    });
+    // Seek to startTime if not already there
+    if (Math.abs(this.audioEl.currentTime - startTime) > 0.05) {
+      await new Promise<void>((resolve) => {
+        const onSeeked = () => {
+          this.audioEl.removeEventListener("seeked", onSeeked);
+          clearTimeout(fallback);
+          resolve();
+        };
+        const fallback = setTimeout(() => {
+          this.audioEl.removeEventListener("seeked", onSeeked);
+          resolve();
+        }, 150);
+        this.audioEl.addEventListener("seeked", onSeeked);
+        this.audioEl.currentTime = startTime;
+      });
+    }
 
     if (this.currentPlayRequestId !== requestId) return;
 
     try {
       await this.audioEl.play();
+      if (this.currentPlayRequestId !== requestId) return;
+
+      // Arm boundary monitor ONLY AFTER playback successfully starts at the target seek point
+      this.currentSegmentEnd = endTime;
+      this.onSegmentEndCallback = onEnd;
+
       // Ramp gain up to 1.0 in 15ms after playback successfully starts
       if (this.gainNode && this.audioCtx) {
         const playNow = this.audioCtx.currentTime;
@@ -199,6 +217,13 @@ class AudioEngine {
 
     if (this.currentSegmentEnd !== null) {
       if (curTime >= this.currentSegmentEnd) {
+        // Micro fade-out to prevent speaker DC offset pop
+        if (this.gainNode && this.audioCtx) {
+          const now = this.audioCtx.currentTime;
+          this.gainNode.gain.cancelScheduledValues(now);
+          this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, now);
+          this.gainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+        }
         // Stop audio immediately so it doesn't leak into subsequent music
         this.audioEl.pause();
         this.currentSegmentEnd = null;

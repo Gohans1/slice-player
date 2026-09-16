@@ -6,6 +6,13 @@ import type { Track, Segment } from "./types";
 let dbInstance: Database | null = null;
 
 export function initDatabase(dbPath: string = "./data/music.db"): Database {
+  if (dbInstance) {
+    try {
+      dbInstance.close(true);
+    } catch {}
+    dbInstance = null;
+  }
+
   const dir = dirname(dbPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -148,9 +155,15 @@ export function getTrack(id: string): Track | null {
   return db.query("SELECT * FROM tracks WHERE id = $id").get({ $id: id }) as Track | null;
 }
 
-export function listTracks(): Track[] {
+export function listTracks(): (Track & { segment_count: number })[] {
   const db = getDb();
-  return db.query("SELECT * FROM tracks ORDER BY created_at DESC").all() as Track[];
+  return db.query(`
+    SELECT tracks.*, COUNT(segments.id) AS segment_count
+    FROM tracks
+    LEFT JOIN segments ON tracks.id = segments.track_id
+    GROUP BY tracks.id
+    ORDER BY tracks.created_at DESC
+  `).all() as (Track & { segment_count: number })[];
 }
 
 export function deleteTrack(id: string): boolean {

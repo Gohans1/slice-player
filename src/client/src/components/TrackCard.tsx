@@ -25,34 +25,24 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
   const isCurrentActive = usePlayerStore((s) => s.activeTrack?.id === track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
 
-  const [segments, setSegments] = React.useState<Segment[]>([]);
-  const [isLoadingSegments, setIsLoadingSegments] = React.useState(false);
+  const [segments, setSegments] = React.useState<Segment[] | null>(null);
 
-  React.useEffect(() => {
-    let isMounted = true;
-    async function loadSegments() {
-      setIsLoadingSegments(true);
+  const handlePlayFirst = async () => {
+    let segList = segments;
+    if (!segList) {
       try {
         const res = await fetch(`/api/tracks/${track.id}/segments`);
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          setSegments(data);
+        if (res.ok) {
+          segList = await res.json();
+          setSegments(segList);
         }
       } catch (e) {
         console.error(e);
-      } finally {
-        if (isMounted) setIsLoadingSegments(false);
       }
     }
-    loadSegments();
-    return () => {
-      isMounted = false;
-    };
-  }, [track.id]);
 
-  const handlePlayFirst = () => {
-    if (segments.length > 0) {
-      playSegment(segments[0], track);
+    if (segList && segList.length > 0) {
+      playSegment(segList[0], track);
     } else {
       // Create a default full-length segment if none exists
       const fullSegment: Segment = {
@@ -148,7 +138,7 @@ export function TrackCard({ track, onDelete }: TrackCardProps) {
         {/* Segment badge & actions */}
         <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
           <Badge variant="secondary" className="font-mono text-[11px] font-normal">
-            {isLoadingSegments ? "..." : `${segments.length} đoạn`}
+            {`${track.segment_count ?? (segments ? segments.length : 0)} đoạn`}
           </Badge>
 
           <div className="flex items-center gap-1.5">

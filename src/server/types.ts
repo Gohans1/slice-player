@@ -14,6 +14,7 @@ export interface Track {
   status: TrackStatus;
   error_message?: string;
   created_at?: number;
+  segment_count?: number;
 }
 
 export interface Segment {

@@ -23,12 +23,16 @@ interface PlayerState {
   // Actions
   fetchTracks: () => Promise<void>;
   playSegment: (segment: Segment, track: Track) => Promise<void>;
+  pause: () => void;
   togglePlay: () => Promise<void>;
   nextSegment: () => void;
   prevSegment: () => void;
   toggleShuffle: () => void;
   setVolume: (vol: number) => void;
   setCurrentTime: (t: number) => void;
+  seek: (seconds: number) => void;
+  removeTrackFromQueue: (trackId: string) => void;
+  removeSegmentFromQueue: (segmentId: string) => void;
   openSliceStudio: (track: Track) => void;
   closeSliceStudio: () => void;
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[]) => void;
@@ -71,7 +75,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (existingIndex !== -1) {
       newIndex = existingIndex;
-    } else if (queue.length > 0) {
+    } else {
       newQueue = [...queue, { segment, track }];
       newIndex = newQueue.length - 1;
     }
@@ -99,8 +103,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       );
     } catch (e) {
-      console.warn("[Store] Failed to play segment, advancing:", e);
-      get().nextSegment();
+      console.warn("[Store] Failed to play segment:", e);
+      const currentQ = get().queue;
+      if (currentQ.length > 1) {
+        set({ queue: currentQ.filter((q) => q.segment.id !== segment.id) });
+        get().nextSegment();
+      } else {
+        set({ isPlaying: false });
+      }
     }
   },
 
@@ -179,6 +189,43 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setCurrentTime: (t: number) => {
     set({ currentTime: t });
+  },
+
+  seek: (seconds: number) => {
+    audioEngine.seek(seconds);
+    set({ currentTime: seconds });
+  },
+
+  removeTrackFromQueue: (trackId: string) => {
+    const { queue, queueIndex, activeTrack } = get();
+    const newQueue = queue.filter((item) => item.track.id !== trackId);
+    let newIndex = queueIndex;
+    if (newQueue.length === 0) {
+      newIndex = -1;
+      if (activeTrack?.id === trackId) {
+        audioEngine.pause();
+        set({ activeTrack: null, activeSegment: null, isPlaying: false });
+      }
+    } else if (newIndex >= newQueue.length) {
+      newIndex = 0;
+    }
+    set({ queue: newQueue, queueIndex: newIndex });
+  },
+
+  removeSegmentFromQueue: (segmentId: string) => {
+    const { queue, queueIndex, activeSegment } = get();
+    const newQueue = queue.filter((item) => item.segment.id !== segmentId);
+    let newIndex = queueIndex;
+    if (newQueue.length === 0) {
+      newIndex = -1;
+      if (activeSegment?.id === segmentId) {
+        audioEngine.pause();
+        set({ activeTrack: null, activeSegment: null, isPlaying: false });
+      }
+    } else if (newIndex >= newQueue.length) {
+      newIndex = 0;
+    }
+    set({ queue: newQueue, queueIndex: newIndex });
   },
 
   openSliceStudio: (track: Track) => {

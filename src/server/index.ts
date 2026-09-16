@@ -50,13 +50,6 @@ const server = serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
-    // WebSocket upgrade
-    if (url.pathname === "/ws") {
-      const upgraded = server.upgrade(req);
-      if (upgraded) return undefined;
-      return new Response("WebSocket upgrade failed", { status: 400 });
-    }
-
     // CORS & Origin validation (strict loopback only)
     const origin = req.headers.get("origin");
     const allowedOrigins = [
@@ -68,6 +61,13 @@ const server = serve({
 
     if (origin && !allowedOrigins.includes(origin)) {
       return new Response("Forbidden: Cross-origin request not allowed", { status: 403 });
+    }
+
+    // WebSocket upgrade (origin verified)
+    if (url.pathname === "/ws") {
+      const upgraded = server.upgrade(req);
+      if (upgraded) return undefined;
+      return new Response("WebSocket upgrade failed", { status: 400 });
     }
 
     const corsHeaders = {
@@ -161,15 +161,30 @@ const server = serve({
         const ext = extname(track.file_path).toLowerCase();
         const contentType = mimeTypes[ext] || "application/octet-stream";
 
-        // Returning Bun.file() automatically parses the Range header and serves HTTP 206 Partial Content
-        const response = new Response(audioFile, {
+        // HTTP 206 Partial Content support for byte-range seeking
+        const range = req.headers.get("range");
+        if (range) {
+          const parts = range.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : audioFile.size - 1;
+          return new Response(audioFile.slice(start, end + 1), {
+            status: 206,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": contentType,
+              "Content-Range": `bytes ${start}-${end}/${audioFile.size}`,
+              "Accept-Ranges": "bytes",
+            },
+          });
+        }
+
+        return new Response(audioFile, {
           headers: {
             ...corsHeaders,
             "Content-Type": contentType,
             "Accept-Ranges": "bytes",
           },
         });
-        return response;
       }
 
       // 3. Local Thumbnail API (Sanitized against directory traversal)
@@ -237,8 +252,16 @@ const server = serve({
             const newStart = body.start_time !== undefined ? Number(body.start_time) : existingSeg.start_time;
             const newEnd = body.end_time !== undefined ? Number(body.end_time) : existingSeg.end_time;
 
-            if (Number.isNaN(newStart) || Number.isNaN(newEnd) || newStart < 0 || newStart >= newEnd) {
+            if (!Number.isFinite(newStart) || !Number.isFinite(newEnd) || newStart < 0 || newStart >= newEnd) {
               return Response.json({ error: "start_time must be >= 0 and < end_time" }, { status: 400, headers: corsHeaders });
+            }
+
+            const track = getTrack(existingSeg.track_id);
+            if (track && track.duration > 0 && newEnd > track.duration + 0.1) {
+              return Response.json(
+                { error: `end_time (${newEnd}s) vượt quá thời lượng bài hát (${track.duration}s)` },
+                { status: 400, headers: corsHeaders }
+              );
             }
 
             const updated = updateSegment(segId, {
@@ -296,6 +319,7 @@ const server = serve({
 
   websocket: {
     open(ws) {
+      activeSockets.add(ws);
       connectedClients++;
       if (shutdownTimer) {
         clearTimeout(shutdownTimer);
@@ -309,7 +333,8 @@ const server = serve({
         ws.send("pong");
       }
     },
-    close() {
+    close(ws) {
+      activeSockets.delete(ws);
       connectedClients--;
       if (connectedClients <= 0) {
         // Shutdown after 10s of no active clients
@@ -319,6 +344,26 @@ const server = serve({
       }
     },
   },
+});
+
+import { serverEvents } from "./events";
+
+const activeSockets = new Set<any>();
+
+export function broadcastWs(msg: object) {
+  const payload = JSON.stringify(msg);
+  for (const ws of activeSockets) {
+    try {
+      ws.send(payload);
+    } catch {}
+  }
+}
+
+serverEvents.on("track_updated", (payload) => {
+  broadcastWs({ type: "track_updated", ...payload });
+});
+serverEvents.on("track_created", (payload) => {
+  broadcastWs({ type: "track_created", ...payload });
 });
 
 export { server };

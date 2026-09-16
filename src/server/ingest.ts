@@ -1,9 +1,10 @@
 import { parseFile } from "music-metadata";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
 import { createTrack, updateTrack, getTrack } from "./db";
 import { generatePeaks } from "./waveform";
+import { serverEvents } from "./events";
 import type { Track } from "./types";
 
 const MAX_DURATION_SECONDS = 1800; // 30 minutes cap
@@ -14,7 +15,7 @@ export interface IngestResult {
   tracks?: Track[];
 }
 
-const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?(?:youtube\.com|youtu\.be)\/.+/i;
+const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)\/.+/i;
 
 /**
  * Handle YouTube URL (single video or playlist)
@@ -99,6 +100,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
           thumbnail_url: thumb,
           status: "queued",
         });
+        serverEvents.emit("track_created", { trackId });
         // Trigger background audio download for this track
         triggerDownloadWorker(trackId, watchUrl);
       } else if (existing.status !== "ready" && existing.status !== "downloading") {
@@ -139,6 +141,7 @@ export function abortIngestProcesses() {
 }
 
 function triggerDownloadWorker(trackId: string, url: string) {
+  if (downloadQueue.some((q) => q.trackId === trackId)) return;
   downloadQueue.push({ trackId, url });
   processDownloadQueue();
 }
@@ -155,8 +158,9 @@ async function processDownloadQueue() {
 
   const { trackId, url } = item;
 
-  // Check if track was deleted while sitting in queue
-  if (!getTrack(trackId)) {
+  // Check if track was deleted or is already ready
+  const existingTrack = getTrack(trackId);
+  if (!existingTrack || existingTrack.status === "ready") {
     isDownloading = false;
     processDownloadQueue();
     return;
@@ -193,11 +197,6 @@ async function processDownloadQueue() {
     clearTimeout(dlTimeout);
     activeDownloadProc = null;
 
-    // Check again if track was deleted while download was running
-    if (!getTrack(trackId)) {
-      return;
-    }
-
     // Find actual downloaded file in ./data/cache/audio/
     const possibleExtensions = ["m4a", "webm", "opus", "mp4"];
     let finalPath = "";
@@ -209,8 +208,17 @@ async function processDownloadQueue() {
       }
     }
 
+    // Check again if track was deleted while download was running
+    if (!getTrack(trackId)) {
+      if (finalPath && existsSync(finalPath)) {
+        try { unlinkSync(finalPath); } catch {}
+      }
+      return;
+    }
+
     if (!finalPath) {
       updateTrack(trackId, { status: "error", error_message: "Tải thất bại, file vượt quá 30m/150MB hoặc không tìm thấy" });
+      serverEvents.emit("track_updated", { trackId });
     } else {
       // Re-verify actual audio duration using music-metadata
       let actualDuration = 0;
@@ -222,7 +230,6 @@ async function processDownloadQueue() {
       }
 
       if (actualDuration <= 0 || actualDuration > MAX_DURATION_SECONDS) {
-        const { unlinkSync } = await import("node:fs");
         try { unlinkSync(finalPath); } catch {}
         updateTrack(trackId, {
           status: "error",
@@ -230,6 +237,7 @@ async function processDownloadQueue() {
             ? "Không thể xác định thời lượng audio hoặc file rỗng"
             : `Thời lượng thực tế (${actualDuration.toFixed(0)}s) vượt quá giới hạn 30 phút!`,
         });
+        serverEvents.emit("track_updated", { trackId });
         return;
       }
 
@@ -241,10 +249,12 @@ async function processDownloadQueue() {
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });
+      serverEvents.emit("track_updated", { trackId });
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     updateTrack(trackId, { status: "error", error_message: msg });
+    serverEvents.emit("track_updated", { trackId });
   } finally {
     isDownloading = false;
     // Process next item after small delay to be polite
@@ -257,6 +267,11 @@ async function processDownloadQueue() {
  */
 export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
   try {
+    // Reject Windows UNC paths to prevent NetNTLM exfiltration
+    if (rawPath.startsWith("\\\\") || rawPath.startsWith("//")) {
+      return { success: false, message: "Đường dẫn mạng UNC không được hỗ trợ vì lý do bảo mật." };
+    }
+
     const fullPath = resolve(rawPath);
     const { statSync } = await import("node:fs");
     if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
@@ -319,6 +334,8 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
         status: "ready",
       });
     }
+
+    serverEvents.emit("track_created", { trackId });
 
     return {
       success: true,

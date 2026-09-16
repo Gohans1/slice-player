@@ -36,9 +36,19 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
 
   const pause = usePlayerStore((s) => s.pause);
+  const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
   const isInternalUpdateRef = React.useRef(false);
   const saveDebounceTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingUpdatesRef = React.useRef<Record<string, Partial<Segment>>>({});
+
+  // Cleanup pending debounce timers on unmount
+  React.useEffect(() => {
+    return () => {
+      for (const t of Object.values(saveDebounceTimersRef.current)) {
+        clearTimeout(t);
+      }
+    };
+  }, []);
 
   const debouncedSaveSegment = React.useCallback((id: string, updates: Partial<Segment>, statusMsg: string = "Đã lưu") => {
     pendingUpdatesRef.current[id] = { ...pendingUpdatesRef.current[id], ...updates };
@@ -155,6 +165,17 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       return;
     }
 
+    // Only rebuild regions if region count, start_times, end_times or colors changed
+    const currentRegions = wsRegions.getRegions();
+    const isMismatch =
+      currentRegions.length !== segments.length ||
+      segments.some((seg) => {
+        const r = currentRegions.find((reg) => reg.id === seg.id);
+        return !r || Math.abs(r.start - seg.start_time) > 0.05 || Math.abs(r.end - seg.end_time) > 0.05;
+      });
+
+    if (!isMismatch) return;
+
     wsRegions.clearRegions();
 
     for (const seg of segments) {
@@ -206,6 +227,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     try {
       const res = await fetch(`/api/segments/${id}`, { method: "DELETE" });
       if (res.ok) {
+        removeSegmentFromQueue(id);
         setSegments((prev) => prev.filter((s) => s.id !== id));
       }
     } catch (e) {

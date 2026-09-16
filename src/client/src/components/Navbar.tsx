@@ -207,7 +207,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
         title="Thêm nhạc từ YouTube"
         description="Dán đường link Video hoặc Playlist YouTube để tải và cắt đoạn."
       >
-        <form onSubmit={handleAddYouTube} className="space-y-4">
+        <form onSubmit={handleIngestYoutube} className="space-y-4">
           <div className="space-y-2">
             <Input
               value={ytUrl}
@@ -255,7 +255,7 @@ export function Navbar({ searchQuery, onSearchChange }: NavbarProps) {
         title="Thêm bài hát từ máy (.flac)"
         description="Nhập đường dẫn tuyệt đối của file .flac trên máy m."
       >
-        <form onSubmit={handleAddLocal} className="space-y-4">
+        <form onSubmit={handleIngestLocal} className="space-y-4">
           <div className="space-y-2">
             <Input
               value={localPath}

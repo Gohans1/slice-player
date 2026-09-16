@@ -17,6 +17,7 @@ export function App() {
   const queue = usePlayerStore((s) => s.queue);
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const pause = usePlayerStore((s) => s.pause);
+  const removeTrackFromQueue = usePlayerStore((s) => s.removeTrackFromQueue);
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const [isQueueOpen, setIsQueueOpen] = React.useState(false);
@@ -28,8 +29,8 @@ export function App() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     let ws: WebSocket | null = null;
-    let heartbeatInterval: Timer | null = null;
-    let reconnectTimeout: Timer | null = null;
+    let heartbeatInterval: any = null;
+    let reconnectTimeout: any = null;
     let isUnmounted = false;
 
     function connectWs() {
@@ -42,6 +43,14 @@ export function App() {
               ws.send("ping");
             }
           }, 5000);
+        };
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "track_updated" || data.type === "track_created") {
+              fetchTracks();
+            }
+          } catch {}
         };
         ws.onclose = () => {
           if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -69,6 +78,20 @@ export function App() {
     };
   }, [fetchTracks]);
 
+  // Polling interval if any track is downloading or queued to ensure UI updates
+  React.useEffect(() => {
+    const hasPendingDownloads = tracks.some(
+      (t) => t.status === "downloading" || t.status === "queued"
+    );
+    if (!hasPendingDownloads) return;
+
+    const interval = setInterval(() => {
+      fetchTracks();
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [tracks, fetchTracks]);
+
   // Initial queue build on first track load only if queue is empty
   React.useEffect(() => {
     if (tracks.length > 0 && queue.length === 0) {
@@ -89,6 +112,7 @@ export function App() {
         if (activeTrack?.id === id) {
           pause();
         }
+        removeTrackFromQueue(id);
         const res = await fetch(`/api/tracks/${id}`, { method: "DELETE" });
         if (res.ok) {
           await fetchTracks();
