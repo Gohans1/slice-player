@@ -14,7 +14,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-if "%1"=="--no-build" (
+if "%~1"=="--no-build" (
     echo [1/2] Bo qua build frontend theo yeu cau.
 ) else (
     echo [1/2] Dang kiem tra va build frontend moi nhat...

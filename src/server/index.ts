@@ -115,6 +115,11 @@ const server = serve({
 
     // --- API ROUTES ---
     if (url.pathname.startsWith("/api/")) {
+      const contentLength = Number(req.headers.get("content-length")) || 0;
+      if (contentLength > 65536) {
+        return Response.json({ error: "Payload too large (max 64KB)" }, { status: 413, headers: corsHeaders });
+      }
+
       // 1. Tracks API
       if (url.pathname === "/api/tracks" && req.method === "GET") {
         const tracks = listTracks();
@@ -167,7 +172,18 @@ const server = serve({
             const cacheAudioDir = resolve("./data/cache/audio");
             const resolvedAudio = resolve(track.file_path);
             if (resolvedAudio.startsWith(cacheAudioDir + sep) && existsSync(resolvedAudio)) {
-              try { unlinkSync(resolvedAudio); } catch {}
+              for (let i = 0; i < 5; i++) {
+                try {
+                  unlinkSync(resolvedAudio);
+                  break;
+                } catch (err: any) {
+                  if ((err.code === "EBUSY" || err.code === "EPERM") && i < 4) {
+                    await Bun.sleep(100 * (i + 1));
+                  } else {
+                    break;
+                  }
+                }
+              }
             }
           }
           // Unlink thumbnail if local cache
@@ -175,7 +191,18 @@ const server = serve({
           for (const ext of [".jpg", ".png", ".webp"]) {
             const thumbPath = resolve(cacheThumbsDir, `${track.id}${ext}`);
             if (thumbPath.startsWith(cacheThumbsDir + sep) && existsSync(thumbPath)) {
-              try { unlinkSync(thumbPath); } catch {}
+              for (let i = 0; i < 5; i++) {
+                try {
+                  unlinkSync(thumbPath);
+                  break;
+                } catch (err: any) {
+                  if ((err.code === "EBUSY" || err.code === "EPERM") && i < 4) {
+                    await Bun.sleep(100 * (i + 1));
+                  } else {
+                    break;
+                  }
+                }
+              }
             }
           }
           const ok = deleteTrack(trackId);
@@ -412,19 +439,23 @@ const server = serve({
     }
 
     // --- STATIC FRONTEND ASSETS ---
-    // Protected against path traversal with separator verification
+    // Protected against path traversal with separator verification and case normalization on Windows
     const distDir = resolve("./dist");
     let relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
     const safePath = resolve(distDir, relativePath);
-    const isInside = safePath === distDir || safePath.startsWith(distDir + sep);
+    const isInside = process.platform === "win32"
+      ? safePath.toLowerCase() === distDir.toLowerCase() || safePath.toLowerCase().startsWith(distDir.toLowerCase() + sep)
+      : safePath === distDir || safePath.startsWith(distDir + sep);
 
-    if (isInside && existsSync(safePath) && statSync(safePath).isFile()) {
-      const ext = extname(safePath).toLowerCase();
-      const ct = mimeTypes[ext] || "application/octet-stream";
-      return new Response(bunFile(safePath), {
-        headers: { "Content-Type": ct },
-      });
-    }
+    try {
+      if (isInside && existsSync(safePath) && statSync(safePath).isFile()) {
+        const ext = extname(safePath).toLowerCase();
+        const ct = mimeTypes[ext] || "application/octet-stream";
+        return new Response(bunFile(safePath), {
+          headers: { "Content-Type": ct },
+        });
+      }
+    } catch {}
 
     // Fallback to dist/index.html ONLY for navigation requests (HTML/routes)
     const isNavRequest = !extname(url.pathname) || req.headers.get("accept")?.includes("text/html");

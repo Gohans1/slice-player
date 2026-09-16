@@ -2,7 +2,7 @@ import { parseFile } from "music-metadata";
 import { existsSync, writeFileSync, unlinkSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
-import { createTrack, updateTrack, getTrack } from "./db";
+import { createTrack, updateTrack, getTrack, getDb } from "./db";
 import { generatePeaks } from "./waveform";
 import { serverEvents } from "./events";
 import type { Track } from "./types";
@@ -36,7 +36,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       "--playlist-end",
       "50",
       "--match-filter",
-      "duration <= 1800",
+      "duration <=? 1800",
       "-J",
       "--skip-download",
       "--",
@@ -485,7 +485,6 @@ export async function ingestLocalFile(rawPath: string): Promise<IngestResult> {
     if (existing) {
       // Clean up zombie segments if file duration changed
       try {
-        const { getDb } = await import("./db");
         const db = getDb();
         db.query("DELETE FROM segments WHERE track_id = $track_id AND ($duration - start_time < 0.5);").run({
           $track_id: trackId,

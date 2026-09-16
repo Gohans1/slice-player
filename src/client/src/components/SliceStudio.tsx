@@ -47,6 +47,11 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const previewEndRef = React.useRef<number | null>(null);
   const activeSegmentIdRef = React.useRef<string | null>(null);
 
+  // Pause global player bar audio when opening Slice Studio
+  React.useEffect(() => {
+    pause();
+  }, [pause]);
+
   // Fetch full track detail for precomputed peaks if not loaded in listTracks
   React.useEffect(() => {
     setTrackDetail(track);

@@ -89,7 +89,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                 ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
                 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
             updates.queue = validQueue;
-            updates.queueIndex = newIdx >= 0 ? newIdx : 0;
+            updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
           }
           set(updates);
           return;
@@ -130,8 +130,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             // Preserve fallback item in original_only or mixed (or if no slices exist)
             validQueue.push({ ...item, track: freshTrack });
           } else {
-            // Slices should not be in original_only mode
-            if (currentMode === "original_only") continue;
+            // Slices should not be in original_only mode unless actively playing
+            if (currentMode === "original_only" && item.segment.id !== activeSegment?.id) continue;
             if (!segmentMap.has(item.segment.id)) continue;
             const freshSeg = segmentObjMap.get(item.segment.id) || item.segment;
             if (!seenSegmentIds.has(freshSeg.id)) {
@@ -174,12 +174,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
 
+        // Slices addition starvation fix: append newly cut slices for existing tracks
+        if (currentMode !== "original_only" && validQueue.length > 0) {
+          for (const seg of validSegments) {
+            if (!seg.id.startsWith("fallback_") && !seenSegmentIds.has(seg.id)) {
+              const parentTrack = trackMap.get(seg.track_id);
+              if (parentTrack && parentTrack.status === "ready") {
+                seenSegmentIds.add(seg.id);
+                validQueue.push({ segment: seg, track: parentTrack });
+              }
+            }
+          }
+        }
+
         const newIdx = validQueue.length === 0
           ? -1
           : currentItem
             ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
             : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
-        set({ queue: validQueue, queueIndex: newIdx >= 0 ? newIdx : 0 });
+        const settledIdx = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : 0);
+        set({ queue: validQueue, queueIndex: settledIdx });
 
         if (activeTrack && !trackMap.has(activeTrack.id)) {
           get().removeTrackFromQueue(activeTrack.id);
@@ -187,8 +201,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (activeSegment && !activeSegment.id.startsWith("fallback_") && !segmentMap.has(activeSegment.id)) {
           get().removeSegmentFromQueue(activeSegment.id);
         }
-        if (sliceStudioTrack && !trackMap.has(sliceStudioTrack.id)) {
-          set({ sliceStudioTrack: null });
+        if (sliceStudioTrack) {
+          if (!trackMap.has(sliceStudioTrack.id)) {
+            set({ sliceStudioTrack: null });
+          } else {
+            set({ sliceStudioTrack: trackMap.get(sliceStudioTrack.id)! });
+          }
         }
         set({ tracks });
       }
@@ -571,10 +589,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let currentIndex = -1;
     const { activeSegment } = get();
     if (activeSegment) {
-      const foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
+      let foundIdx = items.findIndex((item) => item.segment.id === activeSegment.id);
+      if (foundIdx < 0) {
+        foundIdx = items.findIndex((item) => item.track.id === activeSegment.track_id);
+      }
       if (foundIdx >= 0) currentIndex = foundIdx;
     }
 
-    set({ queue: items, queueIndex: items.length > 0 ? currentIndex : -1 });
+    set({ queue: items, queueIndex: items.length > 0 ? (currentIndex >= 0 ? currentIndex : 0) : -1 });
   },
 }));
