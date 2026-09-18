@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-17T14:52:00Z",
+  "title": "Design System: Slice Player",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Flexoki Blue",
+        "canonical": "#4385BE",
+        "tonalRamp": ["#101A24", "#133051", "#1A4F8C", "#205EA6", "#4385BE", "#92BFDB", "#C6DDE8", "#E1ECEB"]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Flexoki 900 Charcoal",
+        "canonical": "#282726",
+        "tonalRamp": ["#100F0F", "#1C1B1A", "#282726", "#343331", "#575653", "#878580", "#CECDC3", "#FFFCF0"]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Inky Black",
+        "canonical": "#100F0F",
+        "tonalRamp": ["#100F0F", "#1C1B1A", "#282726", "#343331", "#575653", "#878580", "#CECDC3", "#FFFCF0"]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Flexoki 950 Card",
+        "canonical": "#1C1B1A",
+        "tonalRamp": ["#100F0F", "#1C1B1A", "#282726", "#343331", "#575653", "#878580", "#CECDC3", "#FFFCF0"]
+      },
+      "destructive": {
+        "role": "destructive",
+        "displayName": "Flexoki Red",
+        "canonical": "#D14D41",
+        "tonalRamp": ["#261312", "#551B18", "#942822", "#AF3029", "#D14D41", "#F89A8A", "#FFCABB", "#FFE1D5"]
+      },
+      "flexoki-orange": {
+        "role": "accent",
+        "displayName": "Flexoki Orange",
+        "canonical": "#DA702C",
+        "tonalRamp": ["#27180E", "#59290D", "#9D4310", "#BC5215", "#DA702C", "#F9AE77", "#FED3AF", "#FFE7CE"]
+      },
+      "flexoki-yellow": {
+        "role": "accent",
+        "displayName": "Flexoki Yellow",
+        "canonical": "#D0A215",
+        "tonalRamp": ["#241E08", "#503D02", "#8E6B01", "#AD8301", "#D0A215", "#ECCB60", "#F6E2A0", "#FAEEC6"]
+      },
+      "flexoki-green": {
+        "role": "accent",
+        "displayName": "Flexoki Green",
+        "canonical": "#879A39",
+        "tonalRamp": ["#1A1E0C", "#313D07", "#536907", "#66800B", "#879A39", "#BEC97E", "#DDE2B2", "#EDEECF"]
+      },
+      "flexoki-cyan": {
+        "role": "accent",
+        "displayName": "Flexoki Cyan",
+        "canonical": "#3AA99F",
+        "tonalRamp": ["#101F1D", "#143F3C", "#1C6C66", "#24837B", "#3AA99F", "#87D3C3", "#BFE8D9", "#DDF1E4"]
+      },
+      "flexoki-blue": {
+        "role": "accent",
+        "displayName": "Flexoki Blue",
+        "canonical": "#4385BE",
+        "tonalRamp": ["#101A24", "#133051", "#1A4F8C", "#205EA6", "#4385BE", "#92BFDB", "#C6DDE8", "#E1ECEB"]
+      },
+      "flexoki-purple": {
+        "role": "accent",
+        "displayName": "Flexoki Purple",
+        "canonical": "#8B7EC8",
+        "tonalRamp": ["#1A1623", "#31234E", "#4F3685", "#5E409D", "#8B7EC8", "#C4B9E0", "#E2D9E9", "#F0EAEC"]
+      },
+      "flexoki-magenta": {
+        "role": "accent",
+        "displayName": "Flexoki Magenta",
+        "canonical": "#CE5D97",
+        "tonalRamp": ["#24131D", "#4F1B39", "#87285E", "#A02F6F", "#CE5D97", "#F4A4C2", "#FCCFDA", "#FEE4E5"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Title",
+        "purpose": "Hero library titles and major studio headers."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Modal dialog captions and drawer headers."
+      },
+      "title": {
+        "displayName": "Track Title",
+        "purpose": "Track cards, slice row titles, and bold labels."
+      },
+      "body": {
+        "displayName": "Body Text",
+        "purpose": "Artist names, explanations, and instructions."
+      },
+      "label": {
+        "displayName": "Monospace Data Label",
+        "purpose": "Timestamps, segment time markers, and tabular data."
+      }
+    },
+    "shadows": [
+      {
+        "name": "dock-ambient",
+        "value": "0 -4px 24px rgba(0, 0, 0, 0.45)",
+        "purpose": "Separates fixed bottom PlayerBar from main scroll canvas"
+      },
+      {
+        "name": "modal-elevation",
+        "value": "0 20px 40px rgba(0, 0, 0, 0.6)",
+        "purpose": "High elevation backdrop shadow for dialogs"
+      },
+      {
+        "name": "card-hover",
+        "value": "0 10px 25px -5px rgba(67, 133, 190, 0.15)",
+        "purpose": "Subtle blue tint on active track card hover"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-swift",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Quick interactive feedback for buttons and sliders"
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "Standard responsive hover speed"
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Nút hành động chính (Phát nhạc, Tạo đoạn) với nền xanh mực Flexoki Blue.",
+      "html": "<button class=\"ds-btn-primary\">Phát tất cả</button>",
+      "css": ".ds-btn-primary { background: #4385BE; color: #FFFCF0; padding: 8px 16px; border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; font-weight: 500; border: none; cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.3); } .ds-btn-primary:hover { background: #3171B2; transform: scale(1.02); }"
+    },
+    {
+      "name": "Outline Action Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Nút hành động viền mỏng (Shuffle, Thêm file FLAC) với hiệu ứng đổi màu hover.",
+      "html": "<button class=\"ds-btn-outline\">Shuffle Đoạn</button>",
+      "css": ".ds-btn-outline { background: #1C1B1A; color: #879A39; border: 1px solid #343331; padding: 8px 14px; border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; } .ds-btn-outline:hover { border-color: rgba(135, 154, 57, 0.5); background: rgba(135, 154, 57, 0.1); }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Nút hành động nguy hiểm hoặc YouTube ingest (Đỏ mực Flexoki Red).",
+      "html": "<button class=\"ds-btn-destructive\">+ Link YouTube</button>",
+      "css": ".ds-btn-destructive { background: #AF3029; color: #FFFCF0; border: none; padding: 8px 14px; border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; } .ds-btn-destructive:hover { background: #942822; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Ô nhập liệu tìm kiếm và đường link với nền xám Flexoki 900.",
+      "html": "<input type=\"text\" class=\"ds-input\" placeholder=\"Tìm kiếm bài hát hoặc ca sĩ...\" />",
+      "css": ".ds-input { background: #282726; color: #CECDC3; border: 1px solid #343331; padding: 8px 12px; border-radius: 6px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.15s; } .ds-input:focus { border-color: #4385BE; box-shadow: 0 0 0 1px #4385BE; }"
+    },
+    {
+      "name": "Audio Badge Tag",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Thẻ nhãn định danh nguồn nhạc hoặc số lượng lát cắt.",
+      "html": "<span class=\"ds-badge\">FLAC Local</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; background: rgba(58, 169, 159, 0.15); color: #3AA99F; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; border: 1px solid rgba(58, 169, 159, 0.3); }"
+    },
+    {
+      "name": "Track Thumbnail with Slice Stripe",
+      "kind": "card",
+      "refersTo": "track-thumbnail",
+      "description": "Khối thumbnail bài hát với vạch màu Flexoki nhận diện lát cắt bên dưới.",
+      "html": "<div class=\"ds-thumb\"><div class=\"ds-stripe\"></div></div>",
+      "css": ".ds-thumb { position: relative; width: 44px; height: 44px; border-radius: 6px; background: #282726; border: 1px solid #343331; overflow: hidden; } .ds-stripe { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: #4385BE; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Inky Soundboard",
+    "overview": "Slice Player mang linh hồn của một bàn điều khiển âm thanh mực in analog ấm áp: trầm tĩnh, đầm chắc, tôn trọng sự tập trung cao độ của người nghe nhạc. Toàn bộ giao diện được bao bọc bởi sắc đen mực in Flexoki Black kết hợp với các bề mặt phân tầng xám ấm (Warm Charcoal Grayscale từ Flexoki 950 đến 850) và tái hiện 100% đặc tả Flexoki chính chủ của Steph Ango (Kepano). Trải nghiệm thị giác được thiết kế theo tư duy Tactile & Precision - vừa có sự ấm áp của chất liệu giấy in cổ điển, vừa có độ chuẩn xác của phần mềm desktop chuyên dụng.",
+    "keyCharacteristics": [
+      "Inky Analog Warmth: Tông nền đen mực in Flexoki Black, dịu mắt tuyệt đối khi nghe nhạc ban đêm.",
+      "Tonal Layering: Phân biệt chiều sâu bằng các sắc độ tối (#100F0F -> #1C1B1A -> #282726 -> #343331) kèm viền 1px tinh tế.",
+      "Full 8-Hue Flexoki Ink Palette: 8 màu mực in Flexoki với chuẩn 400 (sáng trong tối) và 600 (đậm trong sáng).",
+      "Dual Light/Dark Architecture: Hỗ trợ chuẩn mực cả Dark Mode (nền #100F0F) và Light Mode (nền #FFFCF0).",
+      "Compact Desktop Density: Bố cục chặt chẽ, tối ưu diện tích cho thao tác chuột và bàn phím."
+    ],
+    "rules": [
+      {
+        "name": "The Ink and Paper Rule",
+        "body": "Màu nền và màu chữ phải luôn tuân thủ nguyên lý mực đen trên giấy ngà của Flexoki. Tuyệt đối không dùng màu trắng tinh khiết (#FFFFFF) cho các đoạn văn bản dài.",
+        "section": "colors"
+      },
+      {
+        "name": "The Signal Color Rule",
+        "body": "Các màu nhấn chỉ chiếm dưới 5% diện tích màn hình, đóng vai trò là mực đánh dấu cho lát cắt âm thanh.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dual 400/600 Contrast Rule",
+        "body": "Ở Dark theme, luôn dùng màu accent 400 (như Red #D14D41, Blue #4385BE). Ở Light theme, luôn dùng màu accent 600 (như Red #AF3029, Blue #205EA6).",
+        "section": "colors"
+      },
+      {
+        "name": "The Monospace Time Rule",
+        "body": "Toàn bộ thông số thời gian bắt buộc phải hiển thị bằng JetBrains Mono có độ rộng ký tự cố định để không bị nhảy giật khi chạy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Crisp Border Rule",
+        "body": "Mọi thành phần phân tầng đều sử dụng viền 1px màu border (#343331) thay cho việc đổ bóng lớn.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do sử dụng mã màu Flexoki đã được định nghĩa trong index.css khi viết component mới.",
+      "Do sử dụng font JetBrains Mono cho mọi hiển thị liên quan đến thời gian âm thanh (00:00), số thứ tự hàng đợi và nhãn kỹ thuật.",
+      "Do giữ thanh điều khiển PlayerBar ở vị trí fixed bottom-0 để người dùng có thể thao tác nhạc từ bất kỳ đâu.",
+      "Do áp dụng pointer-events-none và user-select: none cho các thành phần kéo thả thumbnail.",
+      "Do gán màu lát cắt (activeSegment.color) trực tiếp vào vạch màu thumbnail và thanh tiến trình."
+    ],
+    "donts": [
+      "Don't sử dụng nền trắng tinh (#FFFFFF) hoặc xám lạnh thông thường; toàn bộ bề mặt phải thuộc 14 nấc màu Base Flexoki ấm.",
+      "Don't sử dụng gradient màu bóng bẩy hoặc chữ gradient rườm rà.",
+      "Don't dùng các thư viện kéo thả hay modal nặng nề; ưu tiên các API DOM nguyên bản.",
+      "Don't làm mất đi tính xúc giác của thanh tiến trình: khi kéo tua, phải dừng phát tạm thời và cập nhật mượt mà theo từng pixel."
+    ]
+  }
+}

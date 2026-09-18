@@ -6,9 +6,8 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Flexoki Colors */
+  /* Flexoki Base / Neutral Palette (15 values: paper to black) */
   --color-flexoki-black: #100F0F;
-  --color-flexoki-paper: #FFFCF0;
   --color-flexoki-950: #1C1B1A;
   --color-flexoki-900: #282726;
   --color-flexoki-850: #343331;
@@ -19,17 +18,152 @@
   --color-flexoki-400: #9F9D96;
   --color-flexoki-300: #B7B5AC;
   --color-flexoki-200: #CECDC3;
+  --color-flexoki-150: #DAD8CE;
   --color-flexoki-100: #E6E4D9;
   --color-flexoki-50: #F2F0E5;
+  --color-flexoki-paper: #FFFCF0;
 
-  --color-flexoki-red: #D14D41;
-  --color-flexoki-orange: #DA702C;
-  --color-flexoki-yellow: #D0A215;
-  --color-flexoki-green: #879A39;
-  --color-flexoki-cyan: #3AA99F;
-  --color-flexoki-blue: #4385BE;
-  --color-flexoki-purple: #8B7EC8;
-  --color-flexoki-magenta: #CE5D97;
+  /* Flexoki Adaptive Accent Colors (Maps to dynamic :root / .dark variables) */
+  --color-flexoki-red: var(--flexoki-re);
+  --color-flexoki-orange: var(--flexoki-or);
+  --color-flexoki-yellow: var(--flexoki-ye);
+  --color-flexoki-green: var(--flexoki-gr);
+  --color-flexoki-cyan: var(--flexoki-cy);
+  --color-flexoki-blue: var(--flexoki-bl);
+  --color-flexoki-purple: var(--flexoki-pu);
+  --color-flexoki-magenta: var(--flexoki-ma);
+
+  /* Flexoki Adaptive Base UI Colors */
+  --color-flexoki-bg: var(--flexoki-bg);
+  --color-flexoki-bg-2: var(--flexoki-bg-2);
+  --color-flexoki-ui: var(--flexoki-ui);
+  --color-flexoki-ui-2: var(--flexoki-ui-2);
+  --color-flexoki-ui-3: var(--flexoki-ui-3);
+  --color-flexoki-tx: var(--flexoki-tx);
+  --color-flexoki-tx-2: var(--flexoki-tx-2);
+  --color-flexoki-tx-3: var(--flexoki-tx-3);
+
+  /* Static 400 (Dark Accent) & 600 (Light Accent) */
+  --color-flexoki-red-400: #D14D41;
+  --color-flexoki-red-600: #AF3029;
+  --color-flexoki-orange-400: #DA702C;
+  --color-flexoki-orange-600: #BC5215;
+  --color-flexoki-yellow-400: #D0A215;
+  --color-flexoki-yellow-600: #AD8301;
+  --color-flexoki-green-400: #879A39;
+  --color-flexoki-green-600: #66800B;
+  --color-flexoki-cyan-400: #3AA99F;
+  --color-flexoki-cyan-600: #24837B;
+  --color-flexoki-blue-400: #4385BE;
+  --color-flexoki-blue-600: #205EA6;
+  --color-flexoki-purple-400: #8B7EC8;
+  --color-flexoki-purple-600: #5E409D;
+  --color-flexoki-magenta-400: #CE5D97;
+  --color-flexoki-magenta-600: #A02F6F;
+
+  /* Flexoki Extended Palette: Red */
+  --color-flexoki-red-50: #FFE1D5;
+  --color-flexoki-red-100: #FFCABB;
+  --color-flexoki-red-150: #FDB2A2;
+  --color-flexoki-red-200: #F89A8A;
+  --color-flexoki-red-300: #E8705F;
+  --color-flexoki-red-500: #C03E35;
+  --color-flexoki-red-700: #942822;
+  --color-flexoki-red-800: #6C201C;
+  --color-flexoki-red-850: #551B18;
+  --color-flexoki-red-900: #3E1715;
+  --color-flexoki-red-950: #261312;
+
+  /* Flexoki Extended Palette: Orange */
+  --color-flexoki-orange-50: #FFE7CE;
+  --color-flexoki-orange-100: #FED3AF;
+  --color-flexoki-orange-150: #FCC192;
+  --color-flexoki-orange-200: #F9AE77;
+  --color-flexoki-orange-300: #EC8B49;
+  --color-flexoki-orange-500: #CB6120;
+  --color-flexoki-orange-700: #9D4310;
+  --color-flexoki-orange-800: #71320D;
+  --color-flexoki-orange-850: #59290D;
+  --color-flexoki-orange-900: #40200D;
+  --color-flexoki-orange-950: #27180E;
+
+  /* Flexoki Extended Palette: Yellow */
+  --color-flexoki-yellow-50: #FAEEC6;
+  --color-flexoki-yellow-100: #F6E2A0;
+  --color-flexoki-yellow-150: #F1D67E;
+  --color-flexoki-yellow-200: #ECCB60;
+  --color-flexoki-yellow-300: #DFB431;
+  --color-flexoki-yellow-500: #BE9207;
+  --color-flexoki-yellow-700: #8E6B01;
+  --color-flexoki-yellow-800: #664D01;
+  --color-flexoki-yellow-850: #503D02;
+  --color-flexoki-yellow-900: #3A2D04;
+  --color-flexoki-yellow-950: #241E08;
+
+  /* Flexoki Extended Palette: Green */
+  --color-flexoki-green-50: #EDEECF;
+  --color-flexoki-green-100: #DDE2B2;
+  --color-flexoki-green-150: #CDD597;
+  --color-flexoki-green-200: #BEC97E;
+  --color-flexoki-green-300: #A0AF54;
+  --color-flexoki-green-500: #768D21;
+  --color-flexoki-green-700: #536907;
+  --color-flexoki-green-800: #3D4C07;
+  --color-flexoki-green-850: #313D07;
+  --color-flexoki-green-900: #252D09;
+  --color-flexoki-green-950: #1A1E0C;
+
+  /* Flexoki Extended Palette: Cyan */
+  --color-flexoki-cyan-50: #DDF1E4;
+  --color-flexoki-cyan-100: #BFE8D9;
+  --color-flexoki-cyan-150: #A2DECE;
+  --color-flexoki-cyan-200: #87D3C3;
+  --color-flexoki-cyan-300: #5ABDAC;
+  --color-flexoki-cyan-500: #2F968D;
+  --color-flexoki-cyan-700: #1C6C66;
+  --color-flexoki-cyan-800: #164F4A;
+  --color-flexoki-cyan-850: #143F3C;
+  --color-flexoki-cyan-900: #122F2C;
+  --color-flexoki-cyan-950: #101F1D;
+
+  /* Flexoki Extended Palette: Blue */
+  --color-flexoki-blue-50: #E1ECEB;
+  --color-flexoki-blue-100: #C6DDE8;
+  --color-flexoki-blue-150: #ABCFE2;
+  --color-flexoki-blue-200: #92BFDB;
+  --color-flexoki-blue-300: #66A0C8;
+  --color-flexoki-blue-500: #3171B2;
+  --color-flexoki-blue-700: #1A4F8C;
+  --color-flexoki-blue-800: #163B66;
+  --color-flexoki-blue-850: #133051;
+  --color-flexoki-blue-900: #12253B;
+  --color-flexoki-blue-950: #101A24;
+
+  /* Flexoki Extended Palette: Purple */
+  --color-flexoki-purple-50: #F0EAEC;
+  --color-flexoki-purple-100: #E2D9E9;
+  --color-flexoki-purple-150: #D3CAE6;
+  --color-flexoki-purple-200: #C4B9E0;
+  --color-flexoki-purple-300: #A699D0;
+  --color-flexoki-purple-500: #735EB5;
+  --color-flexoki-purple-700: #4F3685;
+  --color-flexoki-purple-800: #3C2A62;
+  --color-flexoki-purple-850: #31234E;
+  --color-flexoki-purple-900: #261C39;
+  --color-flexoki-purple-950: #1A1623;
+
+  /* Flexoki Extended Palette: Magenta */
+  --color-flexoki-magenta-50: #FEE4E5;
+  --color-flexoki-magenta-100: #FCCFDA;
+  --color-flexoki-magenta-150: #F9B9CF;
+  --color-flexoki-magenta-200: #F4A4C2;
+  --color-flexoki-magenta-300: #E47DA8;
+  --color-flexoki-magenta-500: #B74583;
+  --color-flexoki-magenta-700: #87285E;
+  --color-flexoki-magenta-800: #641F46;
+  --color-flexoki-magenta-850: #4F1B39;
+  --color-flexoki-magenta-900: #39172B;
+  --color-flexoki-magenta-950: #24131D;
 
   /* Shadcn Semantic Mapping to Flexoki */
   --color-background: var(--background);
@@ -58,9 +192,68 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root,
+:root {
+  /* Flexoki Official Light Theme */
+  --flexoki-bg: #FFFCF0;      /* paper */
+  --flexoki-bg-2: #F2F0E5;    /* base-50 */
+  --flexoki-ui: #E6E4D9;      /* base-100 */
+  --flexoki-ui-2: #DAD8CE;    /* base-150 */
+  --flexoki-ui-3: #CECDC3;    /* base-200 */
+  --flexoki-tx-3: #B7B5AC;    /* base-300 */
+  --flexoki-tx-2: #6F6E69;    /* base-600 */
+  --flexoki-tx: #100F0F;      /* black */
+
+  --flexoki-re: #AF3029;      /* red-600 */
+  --flexoki-or: #BC5215;      /* orange-600 */
+  --flexoki-ye: #AD8301;      /* yellow-600 */
+  --flexoki-gr: #66800B;      /* green-600 */
+  --flexoki-cy: #24837B;      /* cyan-600 */
+  --flexoki-bl: #205EA6;      /* blue-600 */
+  --flexoki-pu: #5E409D;      /* purple-600 */
+  --flexoki-ma: #A02F6F;      /* magenta-600 */
+
+  --background: #FFFCF0;
+  --foreground: #100F0F;
+  --card: #F2F0E5;
+  --card-foreground: #100F0F;
+  --popover: #FFFCF0;
+  --popover-foreground: #100F0F;
+  --primary: #205EA6;
+  --primary-foreground: #FFFCF0;
+  --secondary: #E6E4D9;
+  --secondary-foreground: #6F6E69;
+  --muted: #F2F0E5;
+  --muted-foreground: #6F6E69;
+  --accent: #DAD8CE;
+  --accent-foreground: #100F0F;
+  --destructive: #AF3029;
+  --destructive-foreground: #FFFCF0;
+  --border: #E6E4D9;
+  --input: #DAD8CE;
+  --ring: #205EA6;
+  --radius: 0.625rem;
+}
+
 .dark {
-  /* Default to Inky Flexoki Dark Mode */
+  /* Flexoki Official Dark Theme (Inky) */
+  --flexoki-bg: #100F0F;      /* black */
+  --flexoki-bg-2: #1C1B1A;    /* base-950 */
+  --flexoki-ui: #282726;      /* base-900 */
+  --flexoki-ui-2: #343331;    /* base-850 */
+  --flexoki-ui-3: #403E3C;    /* base-800 */
+  --flexoki-tx-3: #575653;    /* base-700 */
+  --flexoki-tx-2: #878580;    /* base-500 */
+  --flexoki-tx: #CECDC3;      /* base-200 */
+
+  --flexoki-re: #D14D41;      /* red-400 */
+  --flexoki-or: #DA702C;      /* orange-400 */
+  --flexoki-ye: #D0A215;      /* yellow-400 */
+  --flexoki-gr: #879A39;      /* green-400 */
+  --flexoki-cy: #3AA99F;      /* cyan-400 */
+  --flexoki-bl: #4385BE;      /* blue-400 */
+  --flexoki-pu: #8B7EC8;      /* purple-400 */
+  --flexoki-ma: #CE5D97;      /* magenta-400 */
+
   --background: #100F0F;
   --foreground: #CECDC3;
   --card: #1C1B1A;
@@ -75,7 +268,7 @@
   --muted-foreground: #878580;
   --accent: #343331;
   --accent-foreground: #F2F0E5;
-  --destructive: #AF3029;
+  --destructive: #D14D41;
   --destructive-foreground: #FFFCF0;
   --border: #343331;
   --input: #282726;
@@ -86,6 +279,8 @@
 @layer base {
   * {
     @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--background);
   }
   body {
     @apply bg-background text-foreground font-sans;
@@ -100,12 +295,12 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #100F0F;
+  background: var(--background);
 }
 ::-webkit-scrollbar-thumb {
-  background: #343331;
+  background: var(--border);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #575653;
+  background: var(--muted-foreground);
 }

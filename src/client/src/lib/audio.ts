@@ -3,12 +3,21 @@
  * Eliminates all DC-offset clicks and pops when seeking or transitioning segments.
  */
 
+import { logClientError } from "../store/useLogStore";
+
+export function volumeToGain(volume: number): number {
+  const safe = typeof volume === "number" && Number.isFinite(volume)
+    ? Math.max(0, Math.min(1, volume))
+    : 0.5;
+  return Math.pow(safe, 2);
+}
+
 class AudioEngine {
   private audioEl: HTMLAudioElement;
   private audioCtx: AudioContext | null = null;
   private fadeGainNode: GainNode | null = null;
   private volumeGainNode: GainNode | null = null;
-  private currentVolume = 0.8;
+  private currentVolume = 0.5;
   private isInitialized = false;
 
   private currentSegmentStart: number | null = null;
@@ -27,9 +36,15 @@ class AudioEngine {
   private tickerWorker: Worker | null = null;
   private fallbackTickerInterval: ReturnType<typeof setInterval> | null = null;
   private onErrorCallback: ((err: MediaError | null) => void) | null = null;
+  private onBufferingCallback: ((isBuffering: boolean) => void) | null = null;
+  private isUnloading = false;
 
   public setOnErrorCallback(cb: ((err: MediaError | null) => void) | null) {
     this.onErrorCallback = cb;
+  }
+
+  public setOnBufferingCallback(cb: ((isBuffering: boolean) => void) | null) {
+    this.onBufferingCallback = cb;
   }
 
   public getContextState(): AudioContextState | null {
@@ -37,9 +52,69 @@ class AudioEngine {
   }
 
   constructor() {
-    this.audioEl = new Audio();
-    this.audioEl.crossOrigin = "anonymous";
-    this.audioEl.preload = "auto";
+    if (typeof Audio !== "undefined") {
+      this.audioEl = new Audio();
+      this.audioEl.crossOrigin = "anonymous";
+      this.audioEl.preload = "auto";
+      this.audioEl.addEventListener("waiting", () => {
+        this.onBufferingCallback?.(true);
+      });
+      this.audioEl.addEventListener("playing", () => {
+        this.onBufferingCallback?.(false);
+      });
+      this.audioEl.addEventListener("pause", () => {
+        this.onBufferingCallback?.(false);
+      });
+      this.audioEl.addEventListener("error", () => {
+        this.stopTicker();
+        this.stopRafLoop();
+        this.isFadingOut = false;
+
+        // Ignore error events fired during intentional unload or when src is empty
+        if (this.isUnloading || !this.audioEl.src || (typeof window !== "undefined" && this.audioEl.src === window.location.href)) {
+          return;
+        }
+
+        const err = this.audioEl.error;
+        // Code 1 is MEDIA_ERR_ABORTED - triggered during normal track switching or pauses
+        if (err?.code === 1) {
+          return;
+        }
+
+        let msg = "Browser audio playback error";
+        if (err) {
+          switch (err.code) {
+            case 2: msg = "Network error while streaming audio (MEDIA_ERR_NETWORK)"; break;
+            case 3: msg = "Audio decoding error (MEDIA_ERR_DECODE)"; break;
+            case 4: msg = "Format not supported or 404 (MEDIA_ERR_SRC_NOT_SUPPORTED)"; break;
+          }
+        }
+        if (this.onErrorCallback) {
+          this.onErrorCallback(err);
+        } else {
+          logClientError("playback", msg, { code: err?.code, message: err?.message, src: this.audioEl.src });
+        }
+      });
+    } else {
+      this.audioEl = {
+        crossOrigin: "",
+        preload: "",
+        paused: true,
+        currentTime: 0,
+        src: "",
+        addEventListener() {},
+        removeEventListener() {},
+        pause() {},
+        play() {
+          if (!this.src) return Promise.reject(new Error("No src"));
+          return Promise.resolve();
+        },
+        load() {},
+        removeAttribute(attr: string) {
+          if (attr === "src") this.src = "";
+        },
+      } as any;
+    }
 
     if (typeof window !== "undefined") {
       const resumeOnGesture = () => {
@@ -56,7 +131,7 @@ class AudioEngine {
   }
 
   public init() {
-    if (this.isInitialized) return;
+    if (typeof window === "undefined" || this.isInitialized) return;
     this.isInitialized = true;
 
     try {
@@ -70,11 +145,12 @@ class AudioEngine {
       this.fadeGainNode.gain.value = 1.0;
 
       this.volumeGainNode = this.audioCtx.createGain();
-      this.volumeGainNode.gain.value = Math.pow(this.currentVolume, 2);
+      this.volumeGainNode.gain.value = volumeToGain(this.currentVolume);
 
       source.connect(this.fadeGainNode);
       this.fadeGainNode.connect(this.volumeGainNode);
       this.volumeGainNode.connect(this.audioCtx.destination);
+      this.audioEl.volume = 1.0;
     } catch (e) {
       console.warn("[AudioEngine] Web Audio graph init fallback to direct audio element", e);
     }
@@ -88,15 +164,6 @@ class AudioEngine {
         this.currentSegmentStart = null;
         this.currentSegmentEnd = null;
         cb();
-      }
-    });
-
-    this.audioEl.addEventListener("error", () => {
-      this.stopTicker();
-      this.stopRafLoop();
-      this.isFadingOut = false;
-      if (this.onErrorCallback) {
-        this.onErrorCallback(this.audioEl.error);
       }
     });
 
@@ -134,7 +201,8 @@ class AudioEngine {
     startTime: number,
     endTime: number,
     onEnd: () => void,
-    onTimeUpdate?: (t: number) => void
+    onTimeUpdate?: (t: number) => void,
+    segmentStartTime?: number
   ) {
     this.init();
     await this.resumeContext();
@@ -170,7 +238,8 @@ class AudioEngine {
     }
 
     // Check if same track is already loaded
-    const isSameSource = this.audioEl.src === new URL(streamUrl, window.location.href).href;
+    const baseUrl = typeof window !== "undefined" && window.location ? window.location.href : "http://localhost";
+    const isSameSource = this.audioEl.src === new URL(streamUrl, baseUrl).href;
 
     if (!isSameSource) {
       if (this.currentPlayRequestId !== requestId) return;
@@ -189,7 +258,15 @@ class AudioEngine {
         const onError = () => {
           cleanup();
           if (this.currentPlayRequestId === requestId) {
-            reject(new Error("Audio load failed or 404"));
+            const err = this.audioEl.error;
+            let detailMsg = "Audio load failed or 404";
+            if (err?.code === 2) detailMsg = "Network error while streaming audio (MEDIA_ERR_NETWORK)";
+            else if (err?.code === 3) detailMsg = "Audio decoding error (MEDIA_ERR_DECODE)";
+            else if (err?.code === 4) detailMsg = "Format not supported or 404 (MEDIA_ERR_SRC_NOT_SUPPORTED)";
+            const customErr: any = new Error(detailMsg);
+            customErr.code = err?.code;
+            customErr.src = this.audioEl.src;
+            reject(customErr);
           } else {
             resolve();
           }
@@ -262,7 +339,9 @@ class AudioEngine {
       this.startTicker();
 
       // Arm boundary monitor ONLY AFTER playback successfully starts at the target seek point
-      this.currentSegmentStart = startTime;
+      this.currentSegmentStart = typeof segmentStartTime === "number" && Number.isFinite(segmentStartTime)
+        ? segmentStartTime
+        : startTime;
       this.currentSegmentEnd = endTime;
       this.onSegmentEndCallback = onEnd;
 
@@ -354,14 +433,16 @@ class AudioEngine {
 
   public setVolume(volume: number) {
     // volume between 0 and 1
-    const vol = Math.max(0, Math.min(1, volume));
+    const vol = typeof volume === "number" && Number.isFinite(volume)
+      ? Math.max(0, Math.min(1, volume))
+      : 0.5;
     this.currentVolume = vol;
-    const gainVal = Math.pow(vol, 2);
+    const gainVal = volumeToGain(vol);
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
       const now = this.audioCtx.currentTime;
-      this.volumeGainNode.gain.cancelScheduledValues(now);
-      this.volumeGainNode.gain.setValueAtTime(gainVal, now);
+      this.volumeGainNode.gain.cancelScheduledValues?.(now);
+      this.volumeGainNode.gain.setValueAtTime?.(gainVal, now);
     } else {
       this.audioEl.volume = gainVal;
     }
@@ -473,24 +554,29 @@ class AudioEngine {
   }
 
   public unload() {
-    this.currentPlayRequestId++;
-    this.pauseRequestId++;
-    if (this.pauseTimer) {
-      clearTimeout(this.pauseTimer);
-      this.pauseTimer = null;
+    this.isUnloading = true;
+    try {
+      this.currentPlayRequestId++;
+      this.pauseRequestId++;
+      if (this.pauseTimer) {
+        clearTimeout(this.pauseTimer);
+        this.pauseTimer = null;
+      }
+      if (this.activeSeekCleanup) {
+        this.activeSeekCleanup();
+      }
+      this.audioEl.pause();
+      this.stopTicker();
+      this.stopRafLoop();
+      this.currentSegmentStart = null;
+      this.currentSegmentEnd = null;
+      this.onSegmentEndCallback = null;
+      this.isFadingOut = false;
+      this.audioEl.removeAttribute("src");
+      this.audioEl.load();
+    } finally {
+      this.isUnloading = false;
     }
-    if (this.activeSeekCleanup) {
-      this.activeSeekCleanup();
-    }
-    this.audioEl.pause();
-    this.stopTicker();
-    this.stopRafLoop();
-    this.currentSegmentStart = null;
-    this.currentSegmentEnd = null;
-    this.onSegmentEndCallback = null;
-    this.isFadingOut = false;
-    this.audioEl.removeAttribute("src");
-    this.audioEl.load();
   }
 
   public getCurrentTime(): number {
@@ -603,20 +689,29 @@ class AudioEngine {
 
   private startRafLoop = () => {
     if (this.animationFrameId !== null) return;
+    const scheduleNext = (cb: () => void) => {
+      return typeof requestAnimationFrame !== "undefined"
+        ? requestAnimationFrame(cb)
+        : (setTimeout(cb, 16) as any);
+    };
     const loop = () => {
       if (!this.audioEl.paused) {
         this.checkBoundary();
-        this.animationFrameId = requestAnimationFrame(loop);
+        this.animationFrameId = scheduleNext(loop);
       } else {
         this.animationFrameId = null;
       }
     };
-    this.animationFrameId = requestAnimationFrame(loop);
+    this.animationFrameId = scheduleNext(loop);
   };
 
   private stopRafLoop = () => {
     if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
+      if (typeof cancelAnimationFrame !== "undefined") {
+        cancelAnimationFrame(this.animationFrameId);
+      } else {
+        clearTimeout(this.animationFrameId);
+      }
       this.animationFrameId = null;
     }
   };

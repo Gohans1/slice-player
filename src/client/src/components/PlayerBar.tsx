@@ -9,44 +9,327 @@ import {
   VolumeX,
   ListMusic,
   Disc,
+  Loader2,
+  Repeat1,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { VolumeSlider } from "./ui/VolumeSlider";
 import { formatTime } from "../lib/utils";
-import { usePlayerStore } from "../store/usePlayerStore";
+import { TrackThumbnail } from "./TrackThumbnail";
+import { usePlayerStore, normalizeTrackVolume, type Segment } from "../store/usePlayerStore";
+import { useTranslation } from "react-i18next";
 
 interface PlayerBarProps {
   onToggleQueue: () => void;
   isQueueOpen: boolean;
 }
 
+interface TrackProgressBarProps {
+  activeSegment: Segment;
+}
+
+function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
+  const { t } = useTranslation();
+  const currentTime = usePlayerStore((s) => s.currentTime);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const seek = usePlayerStore((s) => s.seek);
+  const pause = usePlayerStore((s) => s.pause);
+  const resume = usePlayerStore((s) => s.resume);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [dragRatio, setDragRatio] = React.useState<number | null>(null);
+  const progressBarRef = React.useRef<HTMLDivElement>(null);
+  const wasPlayingRef = React.useRef(false);
+  const activePointerIdRef = React.useRef<number | null>(null);
+  const rectCacheRef = React.useRef<DOMRect | null>(null);
+  const rafIdRef = React.useRef<number | null>(null);
+  const pendingRatioRef = React.useRef<number | null>(null);
+
+  const resetDragState = React.useCallback(() => {
+    const pointerId = activePointerIdRef.current;
+    activePointerIdRef.current = null;
+    rectCacheRef.current = null;
+    wasPlayingRef.current = false;
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    pendingRatioRef.current = null;
+    setIsDragging(false);
+    setDragRatio(null);
+
+    if (pointerId !== null && progressBarRef.current) {
+      try {
+        if (progressBarRef.current.hasPointerCapture(pointerId)) {
+          progressBarRef.current.releasePointerCapture(pointerId);
+        }
+      } catch {}
+    }
+  }, []);
+
+  const activeSegmentId = activeSegment?.id;
+  React.useEffect(() => {
+    if (activeSegmentId !== undefined) {
+      resetDragState();
+    }
+    return () => {
+      resetDragState();
+    };
+  }, [activeSegmentId, resetDragState]);
+
+  const segmentDuration = activeSegment.end_time - activeSegment.start_time;
+  const elapsedInSegment = Math.max(0, currentTime - activeSegment.start_time);
+  const currentRatio = isDragging && dragRatio !== null
+    ? dragRatio
+    : (segmentDuration > 0 ? Math.max(0, Math.min(1, elapsedInSegment / segmentDuration)) : 0);
+  const displayedElapsed = currentRatio * segmentDuration;
+  const effectiveProgressPercent = currentRatio * 100;
+
+  const getSafeSeekTarget = (rawTarget: number) => {
+    if (!activeSegment || segmentDuration <= 0) return 0;
+    const clampMargin = Math.min(0.05, segmentDuration * 0.02);
+    return Math.max(
+      activeSegment.start_time,
+      Math.min(activeSegment.end_time - clampMargin, rawTarget)
+    );
+  };
+
+  const calculateRatio = (clientX: number) => {
+    const rect = rectCacheRef.current || progressBarRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return 0;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!activeSegment || segmentDuration <= 0) return;
+    if (e.button !== 0) return;
+    if (activePointerIdRef.current !== null) return;
+
+    activePointerIdRef.current = e.pointerId;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
+    if (progressBarRef.current) {
+      rectCacheRef.current = progressBarRef.current.getBoundingClientRect();
+    }
+
+    wasPlayingRef.current = isPlaying;
+    if (isPlaying) {
+      pause();
+    }
+
+    const ratio = calculateRatio(e.clientX);
+    pendingRatioRef.current = ratio;
+    setIsDragging(true);
+    setDragRatio(ratio);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current === null || e.pointerId !== activePointerIdRef.current) return;
+    const ratio = calculateRatio(e.clientX);
+    pendingRatioRef.current = ratio;
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        if (pendingRatioRef.current !== null) {
+          setDragRatio(pendingRatioRef.current);
+        }
+      });
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current === null || e.pointerId !== activePointerIdRef.current) return;
+
+    const ratio = typeof e.clientX === "number"
+      ? calculateRatio(e.clientX)
+      : (pendingRatioRef.current ?? dragRatio ?? 0);
+    const shouldResume = wasPlayingRef.current;
+
+    resetDragState();
+
+    if (activeSegment && segmentDuration > 0) {
+      const rawTarget = activeSegment.start_time + ratio * segmentDuration;
+      const safeTarget = getSafeSeekTarget(rawTarget);
+      seek(safeTarget);
+      if (shouldResume) {
+        resume();
+      }
+    }
+  };
+
+  const handlePointerCancel = (e?: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current === null) return;
+    if (e && e.pointerId !== activePointerIdRef.current) {
+      return;
+    }
+
+    const shouldResume = wasPlayingRef.current;
+    resetDragState();
+
+    if (shouldResume) {
+      resume();
+    }
+  };
+
+  const handleLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activePointerIdRef.current !== null && e.pointerId === activePointerIdRef.current) {
+      handlePointerCancel();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!activeSegment || segmentDuration <= 0) return;
+    if (activePointerIdRef.current !== null) return;
+
+    const cur = usePlayerStore.getState().currentTime;
+    const step = Math.min(5, Math.max(0.1, segmentDuration * 0.05));
+    const pageStep = Math.min(15, Math.max(1, segmentDuration * 0.2));
+
+    if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+      e.preventDefault();
+      seek(getSafeSeekTarget(cur - step));
+    } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+      e.preventDefault();
+      seek(getSafeSeekTarget(cur + step));
+    } else if (e.key === "PageDown") {
+      e.preventDefault();
+      seek(getSafeSeekTarget(cur - pageStep));
+    } else if (e.key === "PageUp") {
+      e.preventDefault();
+      seek(getSafeSeekTarget(cur + pageStep));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seek(activeSegment.start_time);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seek(getSafeSeekTarget(activeSegment.end_time));
+    } else if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      togglePlay();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 w-full max-w-xl text-[10px] font-mono text-muted-foreground">
+      <span className="w-12 text-right">{formatTime(displayedElapsed)}</span>
+      <div
+        ref={progressBarRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handleLostPointerCapture}
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={0}
+        aria-label={t("player.seekAria", "Seek slice")}
+        aria-orientation="horizontal"
+        aria-valuemin={0}
+        aria-valuemax={Number(segmentDuration.toFixed(1))}
+        aria-valuenow={Number.isFinite(displayedElapsed) ? Number(displayedElapsed.toFixed(1)) : 0}
+        aria-valuetext={`${formatTime(displayedElapsed)} / ${formatTime(segmentDuration)}`}
+        className="group relative flex-1 py-2.5 cursor-pointer select-none touch-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+        title={t("player.seekTitle", "Drag or click to seek in slice")}
+      >
+        <div className="relative h-2 w-full rounded-full bg-secondary group-hover:h-2.5 transition-all">
+          <div
+            className={`absolute top-0 bottom-0 left-0 rounded-full ${
+              isDragging ? "transition-none" : "transition-all duration-100"
+            }`}
+            style={{
+              width: `${effectiveProgressPercent}%`,
+              backgroundColor: activeSegment.color || "#4385BE",
+            }}
+          />
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md pointer-events-none ${
+              isDragging
+                ? "scale-100 opacity-100 transition-none"
+                : "scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100 transition-transform"
+            }`}
+            style={{
+              left: `${effectiveProgressPercent}%`,
+            }}
+          />
+        </div>
+      </div>
+      <span className="w-12 text-left">{formatTime(segmentDuration)}</span>
+    </div>
+  );
+}
+
 export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
+  const { t } = useTranslation();
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isBuffering = usePlayerStore((s) => s.isBuffering);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const volume = usePlayerStore((s) => s.volume);
-  const queue = usePlayerStore((s) => s.queue);
+  const isLoopQueue = usePlayerStore((s) => s.isLoopQueue);
+  const isLoopTrack = usePlayerStore((s) => s.isLoopTrack);
+  const toggleLoopTrack = usePlayerStore((s) => s.toggleLoopTrack);
+  const queueIndex = usePlayerStore((s) => s.queueIndex);
+  const queueLength = usePlayerStore((s) => s.queue.length);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const nextSegment = usePlayerStore((s) => s.nextSegment);
   const prevSegment = usePlayerStore((s) => s.prevSegment);
-  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
-  const setVolume = usePlayerStore((s) => s.setVolume);
-  const seek = usePlayerStore((s) => s.seek);
+  const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
+  const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
+  const activePlaylistPlayingName = usePlayerStore((s) => {
+    if (!s.activePlaylistPlayingId) return null;
+    return s.playlists.find((p) => p.id === s.activePlaylistPlayingId)?.name ?? null;
+  });
+  const isTransitional = usePlayerStore((s) => {
+    if (!s.activeSegment || s.queue.length === 0) return false;
+    const item = s.queueIndex >= 0 ? s.queue[s.queueIndex] : null;
+    return Boolean(!item || item.segment.id !== s.activeSegment.id);
+  });
 
-  const [isMuted, setIsMuted] = React.useState(false);
-  const [previousVolume, setPreviousVolume] = React.useState(volume);
-
-  const handleToggleMute = () => {
-    if (volume === 0 || isMuted) {
-      setVolume(previousVolume > 0 ? previousVolume : 0.8);
-      setIsMuted(false);
-    } else {
-      setPreviousVolume(volume);
-      setVolume(0);
-      setIsMuted(true);
+  const playingPlaylistName = React.useMemo(() => {
+    if (activePlaylistPlayingId) {
+      return activePlaylistPlayingName || t("playlist.customHeader", "Playlists");
     }
-  };
+    return playbackMode === "slices_only"
+      ? t("categories.slices", "Slices")
+      : playbackMode === "original_only"
+      ? t("categories.tracks", "Tracks")
+      : t("categories.mixed", "Mix");
+  }, [activePlaylistPlayingId, activePlaylistPlayingName, playbackMode, t]);
+
+  const activeTrackVolume = activeTrack ? normalizeTrackVolume(activeTrack.volume, 0.5) : 0.5;
+  const isMuted = activeTrackVolume === 0;
+  const previousVolumeByTrackRef = React.useRef<Map<string, number>>(new Map());
+
+  React.useEffect(() => {
+    if (activeTrack && activeTrackVolume > 0) {
+      previousVolumeByTrackRef.current.set(activeTrack.id, activeTrackVolume);
+    }
+  }, [activeTrack?.id, activeTrackVolume]);
+
+  const handleToggleMute = React.useCallback(() => {
+    if (!activeTrack) return;
+    if (activeTrackVolume === 0) {
+      const lastVol = previousVolumeByTrackRef.current.get(activeTrack.id);
+      const restore = typeof lastVol === "number" && lastVol > 0 ? lastVol : 0.5;
+      setTrackVolume(activeTrack.id, restore);
+    } else {
+      previousVolumeByTrackRef.current.set(activeTrack.id, activeTrackVolume);
+      setTrackVolume(activeTrack.id, 0);
+    }
+  }, [activeTrack, activeTrackVolume, setTrackVolume]);
+
+  const handleVolumeChange = React.useCallback((val: number) => {
+    if (!activeTrack) return;
+    const safe = normalizeTrackVolume(val, 0.5);
+    if (safe > 0) {
+      previousVolumeByTrackRef.current.set(activeTrack.id, safe);
+    }
+    setTrackVolume(activeTrack.id, safe);
+  }, [activeTrack, setTrackVolume]);
 
   if (!activeTrack || !activeSegment) {
     return (
@@ -54,42 +337,51 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 text-muted-foreground text-xs">
             <Disc className="h-5 w-5 opacity-40" />
-            <span>Chưa chọn bài hát. Bấm vào bài hát hoặc nút "Shuffle Đoạn" để nghe.</span>
+            <span>{t("player.noTrack", "No track selected. Click any track or slice to play.")}</span>
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleQueue}
-            className="text-xs gap-1.5 text-muted-foreground"
-          >
-            <ListMusic className="h-4 w-4" />
-            <span>Hàng đợi ({queue.length})</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={isQueueOpen ? "secondary" : "ghost"}
+              size="sm"
+              onClick={onToggleQueue}
+              aria-haspopup="dialog"
+              aria-expanded={isQueueOpen}
+              aria-controls="queue-drawer"
+              aria-label={
+                isQueueOpen
+                  ? t("player.closeQueue", "Close queue")
+                  : t("player.openQueue", { count: queueLength, defaultValue: `Open queue (${queueLength} items)` })
+              }
+              title={t("player.queue", "Queue")}
+              className="text-xs gap-1.5 text-muted-foreground"
+            >
+              <ListMusic className="h-4 w-4" />
+              <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
+              <span className="font-mono text-[10px] px-1 rounded bg-accent text-accent-foreground">
+                {queueLength}
+              </span>
+            </Button>
+          </div>
         </div>
       </footer>
     );
   }
 
-  const segmentDuration = activeSegment.end_time - activeSegment.start_time;
-  const elapsedInSegment = Math.max(0, currentTime - activeSegment.start_time);
-  const progressPercent = segmentDuration > 0 ? Math.min(100, (elapsedInSegment / segmentDuration) * 100) : 0;
-
   return (
     <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 py-2.5 shadow-2xl">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Track & Segment Info */}
-        <div className="flex items-center gap-3 w-full sm:w-1/3 min-w-0">
+        <div className="flex items-center gap-3 w-full sm:flex-1 min-w-0">
           <div className="relative h-11 w-11 rounded-md overflow-hidden bg-muted shrink-0 border border-border">
-            {activeTrack.thumbnail_url ? (
-              <img
-                src={activeTrack.thumbnail_url}
-                alt={activeTrack.title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <Disc className="h-full w-full p-2 text-muted-foreground opacity-60" />
-            )}
+            <TrackThumbnail
+              key={activeTrack.id}
+              src={activeTrack.thumbnail_url}
+              alt={activeTrack.title}
+              className="h-full w-full object-cover"
+              loading="eager"
+              fallback={<Disc className="h-full w-full p-2 text-muted-foreground opacity-60" />}
+            />
             <div
               className="absolute bottom-0 left-0 right-0 h-1"
               style={{ backgroundColor: activeSegment.color || "#4385BE" }}
@@ -97,9 +389,27 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-xs text-foreground truncate">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px]">
                 {activeTrack.title}
+              </span>
+              <span
+                role="status"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0 max-w-[140px] truncate"
+                title={
+                  isShuffle
+                    ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
+                    : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` })
+                }
+                aria-label={
+                  isShuffle
+                    ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
+                    : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` })
+                }
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${isPlaying ? "bg-flexoki-green animate-pulse" : "bg-muted-foreground/60"} shrink-0`} aria-hidden="true" />
+                {isShuffle && <Shuffle className="h-2.5 w-2.5 text-flexoki-green shrink-0" aria-hidden="true" />}
+                <span className="truncate">{playingPlaylistName}</span>
               </span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
@@ -114,28 +424,16 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
         </div>
 
         {/* Center Controls & Progress */}
-        <div className="flex flex-col items-center gap-1.5 w-full sm:w-2/5">
+        <div className="flex flex-col items-center gap-1.5 w-full sm:flex-1 sm:max-w-xl min-w-0">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              onClick={toggleShuffle}
-              className={`h-8 w-8 rounded-full ${
-                isShuffle
-                  ? "text-flexoki-green hover:text-flexoki-green hover:bg-flexoki-green/10"
-                  : "text-muted-foreground"
-              }`}
-              title={isShuffle ? "Chế độ Shuffle các đoạn: BẬT" : "Chế độ Shuffle: TẮT"}
-            >
-              <Shuffle className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
               onClick={prevSegment}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent"
-              title="Đoạn trước"
+              disabled={queueLength === 0}
+              aria-label={t("player.previous", "Previous slice")}
+              className="h-8 w-8 rounded-full text-foreground hover:bg-accent disabled:opacity-40"
+              title={t("player.previous", "Previous slice")}
             >
               <SkipBack className="h-4 w-4" />
             </Button>
@@ -144,10 +442,13 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               variant="default"
               size="icon"
               onClick={togglePlay}
+              aria-label={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
               className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 transition-transform"
-              title={isPlaying ? "Tạm dừng" : "Tiếp tục phát"}
+              title={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
             >
-              {isPlaying ? (
+              {isBuffering && isPlaying ? (
+                <Loader2 className="h-4 w-4 animate-spin text-primary-foreground" />
+              ) : isPlaying ? (
                 <Pause className="h-4 w-4 fill-current" />
               ) : (
                 <Play className="h-4 w-4 fill-current translate-x-0.5" />
@@ -157,71 +458,67 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={nextSegment}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent"
-              title="Đoạn kế tiếp"
+              onClick={() => nextSegment(false)}
+              disabled={!(queueLength > 0 && (isTransitional || (queueLength > 1 && (isLoopQueue || queueIndex < queueLength - 1))))}
+              aria-label={t("player.next", "Next slice")}
+              className="h-8 w-8 rounded-full text-foreground hover:bg-accent disabled:opacity-40"
+              title={t("player.next", "Next slice")}
             >
               <SkipForward className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant={isLoopTrack ? "secondary" : "ghost"}
+              size="icon"
+              onClick={toggleLoopTrack}
+              disabled={queueLength === 0}
+              aria-label={t("player.loopTrack", "Loop track")}
+              aria-pressed={isLoopTrack}
+              aria-description={
+                isLoopTrack
+                  ? t("player.loopTrackActiveDesc", "Track loop is active. The current track will repeat continuously.")
+                  : undefined
+              }
+              className={`h-8 w-8 rounded-full ${
+                isLoopTrack ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              } disabled:opacity-40`}
+              title={
+                isLoopTrack
+                  ? t("player.loopTrackActive", "Loop track enabled")
+                  : t("player.loopTrackTitle", "Repeat current track")
+              }
+            >
+              <Repeat1 className="h-4 w-4" />
             </Button>
           </div>
 
           {/* Segment Progress Bar */}
-          <div className="flex items-center gap-2 w-full max-w-md text-[10px] font-mono text-muted-foreground">
-            <span className="w-10 text-right">{formatTime(elapsedInSegment)}</span>
-            <div
-              onClick={(e) => {
-                if (!activeSegment || segmentDuration <= 0) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                if (rect.width <= 0) return;
-                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                const targetSeconds = activeSegment.start_time + ratio * segmentDuration;
-                seek(targetSeconds);
-              }}
-              className="relative flex-1 h-2 rounded-full bg-secondary overflow-hidden cursor-pointer hover:h-2.5 transition-all"
-              title="Nhấn để tua trong đoạn"
-            >
-              <div
-                className="absolute top-0 bottom-0 left-0 rounded-full transition-all duration-100"
-                style={{
-                  width: `${progressPercent}%`,
-                  backgroundColor: activeSegment.color || "#4385BE",
-                }}
-              />
-            </div>
-            <span className="w-10 text-left">{formatTime(segmentDuration)}</span>
-          </div>
+          <TrackProgressBar activeSegment={activeSegment} />
         </div>
 
         {/* Volume & Queue Button */}
-        <div className="flex items-center justify-end gap-3 w-full sm:w-1/3">
+        <div className="flex items-center justify-end gap-3 w-full sm:flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
               onClick={handleToggleMute}
+              aria-label={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              title={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
             >
-              {isMuted || volume === 0 ? (
-                <VolumeX className="h-4 w-4" />
+              {isMuted ? (
+                <VolumeX className="h-4 w-4 text-destructive" />
               ) : (
                 <Volume2 className="h-4 w-4" />
               )}
             </Button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={isMuted ? 0 : volume}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                setVolume(val);
-                if (val > 0) {
-                  setPreviousVolume(val);
-                  setIsMuted(false);
-                }
-              }}
-              className="w-20 h-1 accent-primary cursor-pointer"
+            <VolumeSlider
+              value={activeTrackVolume}
+              onChange={handleVolumeChange}
+              aria-label={t("player.trackVolume", "Track volume")}
+              title={t("player.trackVolumeTooltip", { percent: Math.round(activeTrackVolume * 100), defaultValue: `Track volume: ${Math.round(activeTrackVolume * 100)}%` })}
+              className="w-20"
             />
           </div>
 
@@ -229,12 +526,21 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
             variant={isQueueOpen ? "secondary" : "ghost"}
             size="sm"
             onClick={onToggleQueue}
+            aria-haspopup="dialog"
+            aria-expanded={isQueueOpen}
+            aria-controls="queue-drawer"
+            aria-label={
+              isQueueOpen
+                ? t("player.closeQueue", "Close queue")
+                : t("player.openQueue", { count: queueLength, defaultValue: `Open queue (${queueLength} items)` })
+            }
+            title={t("player.queue", "Queue")}
             className="text-xs gap-1.5"
           >
             <ListMusic className="h-4 w-4" />
-            <span className="hidden md:inline">Hàng đợi</span>
+            <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
             <span className="font-mono text-[10px] px-1 rounded bg-accent text-accent-foreground">
-              {queue.length}
+              {queueLength}
             </span>
           </Button>
         </div>

@@ -1,18 +1,29 @@
 import { serve, file as bunFile, type ServerWebSocket } from "bun";
-import { existsSync, statSync } from "node:fs";
-import { resolve, join, extname, sep } from "node:path";
-import { initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, getSegment, createSegment, updateSegment, deleteSegment, listSegmentsByTrack, listAllSegments, validateVolume } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy } from "./ingest";
+import { existsSync, statSync, mkdirSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { resolve, join, extname, basename, sep } from "node:path";
+import {
+  initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, deleteTracksBatch,
+  getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listAllSegments, validateVolume,
+  createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist,
+  getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
+  getPlaylistMemberships, getCrossPlatformBasename
+} from "./db";
+import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
-import type { Segment, Track } from "./types";
+import { getRecentLogs, clearServerLogs, logEvent } from "./logger";
+import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring } from "./backup";
+import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
 
 // Initialize SQLite database
 initDatabase("./data/music.db");
+await recoverIncompleteIngests();
 
-console.log(`[Server] Starting Slice Player on http://127.0.0.1:${PORT}`);
+logEvent("info", "system", `Máy chủ Slice Player đang chạy tại http://127.0.0.1:${PORT}`);
+
 
 const activeSockets = new Set<ServerWebSocket>();
 let shutdownTimer: Timer | null = null;
@@ -97,8 +108,18 @@ async function parseJsonBody<T = Record<string, any>>(req: Request): Promise<T> 
 const server = serve({
   hostname: "127.0.0.1",
   port: PORT,
+  idleTimeout: 120,
+  maxRequestBodySize: 2048 * 1024 * 1024, // 2GB max upload limit for library backup restore
   async fetch(req, server) {
     const url = new URL(req.url);
+
+    // If a library restore operation is actively in progress, prevent race conditions
+    if (isLibraryRestoring() && !url.pathname.startsWith("/api/library")) {
+      return Response.json(
+        { error: "Thư viện đang được khôi phục, vui lòng thử lại sau giây lát." },
+        { status: 503, headers: { "Retry-After": "5", "Content-Type": "application/json" } }
+      );
+    }
 
     // Prevent cross-site subresource leakage while permitting top-level navigation
     const secFetchSite = req.headers.get("sec-fetch-site");
@@ -170,31 +191,50 @@ const server = serve({
             { status: 400, headers: corsHeaders }
           );
         }
-        if (!rawLen) {
-          return Response.json(
-            { error: "Content-Length header is required for mutating requests" },
-            { status: 411, headers: corsHeaders }
-          );
-        }
-        const contentLength = Number(rawLen);
-        if (!Number.isFinite(contentLength) || contentLength <= 0) {
-          return Response.json(
-            { error: "Empty or invalid request body" },
-            { status: 400, headers: corsHeaders }
-          );
-        }
-        if (contentLength > 65536) {
-          return Response.json(
-            { error: "Payload too large (max 64KB)" },
-            { status: 413, headers: corsHeaders }
-          );
+        const isBodyOptional = url.pathname.endsWith("/retry");
+        if (!isBodyOptional) {
+          if (!rawLen) {
+            return Response.json(
+              { error: "Content-Length header is required for mutating requests" },
+              { status: 411, headers: corsHeaders }
+            );
+          }
+          const contentLength = Number(rawLen);
+          if (!Number.isFinite(contentLength) || contentLength <= 0) {
+            return Response.json(
+              { error: "Empty or invalid request body" },
+              { status: 400, headers: corsHeaders }
+            );
+          }
+          const isTrackUpload = url.pathname === "/api/tracks/upload";
+          const isLibraryImport = url.pathname === "/api/library/import";
+          const maxLimit = isLibraryImport ? 2048 * 1024 * 1024 : (isTrackUpload ? 305 * 1024 * 1024 : 65536);
+          if (contentLength > maxLimit) {
+            return Response.json(
+              { error: isLibraryImport ? "Payload too large (max 2GB)" : (isTrackUpload ? "Payload too large (max 300MB)" : "Payload too large (max 64KB)") },
+              { status: 413, headers: corsHeaders }
+            );
+          }
         }
       }
 
       // 1. Tracks API
       if (url.pathname === "/api/tracks" && req.method === "GET") {
         const tracks = listTracks();
-        return Response.json(tracks, { headers: corsHeaders });
+        const queueOrder = getDownloadQueueOrder();
+        const UNINDEXED_QUEUE_FALLBACK = 999_999;
+        const queueMap = new Map<string, number>(queueOrder.map((id, idx) => [id, idx]));
+        const enrichedTracks = tracks.map((track) => {
+          if (track.status === "downloading" || track.status === "queued") {
+            const idx = queueMap.get(track.id);
+            return {
+              ...track,
+              download_index: idx !== undefined ? idx : (track.status === "downloading" ? 0 : UNINDEXED_QUEUE_FALLBACK),
+            };
+          }
+          return track;
+        });
+        return Response.json(enrichedTracks, { headers: corsHeaders });
       }
 
       if (url.pathname === "/api/tracks/ingest-youtube" && req.method === "POST") {
@@ -212,10 +252,86 @@ const server = serve({
 
       if (url.pathname === "/api/tracks/ingest-local" && req.method === "POST") {
         try {
-          const body = await parseJsonBody<{ path?: string }>(req);
-          if (!body.path) return Response.json({ error: "Missing file path" }, { status: 400, headers: corsHeaders });
-          const res = await ingestLocalFile(body.path);
-          return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
+          const body = await parseJsonBody<{ path?: string; paths?: string[] }>(req);
+          const rawItems = Array.from(
+            new Set(
+              (Array.isArray(body.paths) ? body.paths : (body.path ? [body.path] : []))
+                .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
+                .map((p) => p.trim().replace(/^["']|["']$/g, ""))
+            )
+          );
+
+          if (rawItems.length === 0) {
+            return Response.json({ error: "Missing file path" }, { status: 400, headers: corsHeaders });
+          }
+
+          if (rawItems.length > 50) {
+            return Response.json({ error: "Chỉ được nạp tối đa 50 đường dẫn mỗi lần" }, { status: 400, headers: corsHeaders });
+          }
+
+          // Security: Validate UNC, DOS devices, and NTFS ADS BEFORE filesystem access to prevent NetNTLM hash exfiltration on Windows
+          for (const item of rawItems) {
+            const check = validateSafeLocalAudioPath(item);
+            if (!check.ok) {
+              return Response.json(
+                { success: false, message: check.message || "Đường dẫn không hợp lệ." },
+                { status: 400, headers: corsHeaders }
+              );
+            }
+          }
+
+          const tracks: Track[] = [];
+          const errors: string[] = [];
+          const MAX_BATCH_TRACKS = 50;
+
+          for (const cleaned of rawItems) {
+            if (tracks.length >= MAX_BATCH_TRACKS) {
+              errors.push(`Đã đạt giới hạn tối đa ${MAX_BATCH_TRACKS} bài nạp trong một lượt.`);
+              break;
+            }
+            try {
+              const resolved = resolve(cleaned);
+              if (!existsSync(resolved)) {
+                errors.push(`${basename(cleaned)}: File hoặc thư mục không tồn tại`);
+                continue;
+              }
+              if (statSync(resolved).isDirectory()) {
+                const dirRes = await ingestLocalDirectory(resolved);
+                if (dirRes.success && dirRes.tracks) {
+                  const remaining = MAX_BATCH_TRACKS - tracks.length;
+                  tracks.push(...dirRes.tracks.slice(0, remaining));
+                  if (dirRes.tracks.length > remaining) {
+                    errors.push(`Thư mục "${basename(cleaned)}" có nhiều file hơn số lượng cho phép trong lượt này.`);
+                  }
+                } else if (dirRes.message) {
+                  errors.push(dirRes.message);
+                }
+              } else {
+                const fileRes = await ingestLocalFile(resolved);
+                if (fileRes.success && fileRes.tracks) {
+                  tracks.push(...fileRes.tracks);
+                } else if (fileRes.message) {
+                  errors.push(fileRes.message);
+                }
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              errors.push(`${basename(cleaned)}: ${msg}`);
+            }
+          }
+
+          if (tracks.length === 0) {
+            return Response.json(
+              { success: false, message: `Không thể nạp bài hát nào: ${errors.join("; ")}` },
+              { status: 400, headers: corsHeaders }
+            );
+          }
+
+          return Response.json({
+            success: true,
+            tracks,
+            message: `Đã nạp thành công ${tracks.length} bài hát.${errors.length > 0 ? ` (${errors.length} bài lỗi)` : ""}`,
+          }, { status: 200, headers: corsHeaders });
         } catch (err: unknown) {
           const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
           const msg = err instanceof Error ? err.message : String(err);
@@ -223,10 +339,123 @@ const server = serve({
         }
       }
 
+      if (url.pathname === "/api/tracks/upload" && req.method === "POST") {
+        try {
+          const formData = await req.formData();
+          const allEntries = [...formData.getAll("files"), ...formData.getAll("file")];
+          const allFiles = allEntries.filter((f): f is File => f instanceof Blob);
+
+          if (allFiles.length === 0) {
+            return Response.json({ error: "Không tìm thấy file tải lên" }, { status: 400, headers: corsHeaders });
+          }
+
+          if (allFiles.length > 20) {
+            return Response.json({ error: "Chỉ được tải lên tối đa 20 file mỗi lần" }, { status: 400, headers: corsHeaders });
+          }
+
+          const tracks: Track[] = [];
+          const errors: string[] = [];
+
+          for (const file of allFiles) {
+            const originalName = typeof file.name === "string" ? file.name : "audio.flac";
+            const res = await ingestUploadedFile(file, originalName);
+            if (res.success && res.tracks) {
+              tracks.push(...res.tracks);
+            } else {
+              errors.push(`${originalName}: ${res.message || "Lỗi nạp file"}`);
+            }
+          }
+
+          if (tracks.length === 0) {
+            return Response.json(
+              { success: false, message: `Không thể nạp file: ${errors.join("; ")}` },
+              { status: 400, headers: corsHeaders }
+            );
+          }
+
+          return Response.json({
+            success: true,
+            tracks,
+            message: `Đã nạp thành công ${tracks.length}/${allFiles.length} bài hát.${errors.length > 0 ? ` (${errors.length} bài lỗi)` : ""}`,
+          }, { status: 200, headers: corsHeaders });
+        } catch (err: unknown) {
+          const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+        }
+      }
+
+      // Track batch delete
+      if (url.pathname === "/api/tracks/batch-delete" && req.method === "POST") {
+        try {
+          const body = await parseJsonBody<{ ids: string[] }>(req);
+          if (!body || !Array.isArray(body.ids)) {
+            return Response.json({ error: "Invalid request: ids must be an array of strings" }, { status: 400, headers: corsHeaders });
+          }
+          const ids = Array.from(new Set(body.ids.filter((id) => typeof id === "string" && id.trim().length > 0)));
+          if (ids.length > 500) {
+            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          }
+          if (ids.length === 0) {
+            return Response.json({ success: true, count: 0 }, { headers: corsHeaders });
+          }
+
+          const cacheAudioDir = resolve("./data/cache/audio");
+          const cacheThumbsDir = resolve("./data/cache/thumbs");
+          const pendingSegmentDeletions: { segmentId: string; trackId: string }[] = [];
+          const pendingTrackDeletions: string[] = [];
+
+          for (const trackId of ids) {
+            await cancelDownloadIfActive(trackId);
+            const track = getTrack(trackId);
+            if (track) {
+              if (track.file_path) {
+                await cancelWaveformForFile(track.file_path);
+                const resolvedAudio = resolve(track.file_path);
+                if (isSubdirectoryOf(cacheAudioDir, resolvedAudio) && existsSync(resolvedAudio)) {
+                  await unlinkWithRetry(resolvedAudio);
+                }
+              }
+              for (const ext of [".jpg", ".png", ".webp"]) {
+                const thumbPath = resolve(cacheThumbsDir, `${track.id}${ext}`);
+                if (isSubdirectoryOf(cacheThumbsDir, thumbPath) && existsSync(thumbPath)) {
+                  await unlinkWithRetry(thumbPath);
+                }
+              }
+              const segmentsToDelete = listSegmentsByTrack(trackId);
+              for (const seg of segmentsToDelete) {
+                pendingSegmentDeletions.push({ segmentId: seg.id, trackId });
+              }
+              pendingTrackDeletions.push(trackId);
+            }
+          }
+
+          const deletedCount = deleteTracksBatch(ids);
+
+          for (const item of pendingSegmentDeletions) {
+            serverEvents.emit("segment_deleted", item);
+          }
+          for (const trackId of pendingTrackDeletions) {
+            serverEvents.emit("track_deleted", { trackId });
+          }
+          serverEvents.emit("playlist_items_changed", {});
+
+          return Response.json({ success: true, count: deletedCount }, { headers: corsHeaders });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: 500, headers: corsHeaders });
+        }
+      }
+
       // Track detail & delete
       const trackMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)$/);
       if (trackMatch) {
-        const trackId = trackMatch[1];
+        let trackId = trackMatch[1];
+        try {
+          trackId = decodeURIComponent(trackId);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
         if (req.method === "GET") {
           const track = getTrack(trackId);
           if (!track) return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
@@ -278,15 +507,10 @@ const server = serve({
           }
           if (track.file_path) {
             await cancelWaveformForFile(track.file_path);
-          } else if (track.source_type === "youtube") {
-            const AUDIO_EXTS = [".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac"];
-            for (const ext of AUDIO_EXTS) {
-              await cancelWaveformForFile(resolve(`./data/cache/audio/${track.id}${ext}`));
-            }
           }
 
-          // ONLY unlink audio file if it is a cached YouTube download strictly within ./data/cache/audio/
-          if (track.source_type === "youtube" && track.file_path) {
+          // ONLY unlink audio file if it is cached strictly within ./data/cache/audio/ (e.g. YouTube download or uploaded local file)
+          if (track.file_path) {
             const cacheAudioDir = resolve("./data/cache/audio");
             const resolvedAudio = resolve(track.file_path);
             if (isSubdirectoryOf(cacheAudioDir, resolvedAudio) && existsSync(resolvedAudio)) {
@@ -311,6 +535,7 @@ const server = serve({
           for (const seg of segmentsToDelete) {
             serverEvents.emit("segment_deleted", { segmentId: seg.id, trackId });
           }
+          serverEvents.emit("playlist_items_changed", {});
 
           return Response.json({ success: true }, { headers: corsHeaders });
         }
@@ -319,16 +544,30 @@ const server = serve({
       // Track retry
       const retryMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/retry$/);
       if (retryMatch && req.method === "POST") {
-        const trackId = retryMatch[1];
+        let trackId: string;
+        try {
+          trackId = decodeURIComponent(retryMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
         const track = getTrack(trackId);
         if (!track) {
           return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
         }
         if (track.source_type === "youtube") {
+          resetCookiesStatus();
           const res = await ingestYouTubeUrl(track.source_uri);
+          if (!res.success) {
+            updateTrack(trackId, { status: "error", error_message: res.message || "Tải lại thất bại" });
+            serverEvents.emit("track_updated", { trackId });
+          }
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } else if (track.source_type === "local") {
           const res = await ingestLocalFile(track.source_uri);
+          if (!res.success) {
+            updateTrack(trackId, { status: "error", error_message: res.message || "Tải lại thất bại" });
+            serverEvents.emit("track_updated", { trackId });
+          }
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } else {
           return Response.json({ error: "Unsupported source type" }, { status: 400, headers: corsHeaders });
@@ -338,18 +577,31 @@ const server = serve({
       // 2. Audio Stream API (HTTP 206 Partial Content handled natively by Bun)
       const streamMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/stream$/);
       if (streamMatch && (req.method === "GET" || req.method === "HEAD")) {
-        const trackId = streamMatch[1];
+        let trackId: string;
+        try {
+          trackId = decodeURIComponent(streamMatch[1]);
+        } catch {
+          return new Response("Malformed URI component", { status: 400, headers: corsHeaders });
+        }
         const track = getTrack(trackId);
         if (!track || !track.file_path) {
           return new Response("Audio file not available or not downloaded yet", { status: 404, headers: corsHeaders });
         }
 
-        const audioFile = bunFile(track.file_path);
+        let targetFilePath = track.file_path;
+        let audioFile = bunFile(targetFilePath);
         if (!(await audioFile.exists())) {
-          return new Response("Audio file missing on disk", { status: 404, headers: corsHeaders });
+          const localCandidate = resolve(join("./data/cache/audio", getCrossPlatformBasename(targetFilePath)));
+          if (existsSync(localCandidate)) {
+            updateTrack(track.id, { file_path: localCandidate });
+            targetFilePath = localCandidate;
+            audioFile = bunFile(targetFilePath);
+          } else {
+            return new Response("Audio file missing on disk", { status: 404, headers: corsHeaders });
+          }
         }
 
-        const ext = extname(track.file_path).toLowerCase();
+        const ext = extname(targetFilePath).toLowerCase();
         const contentType = mimeTypes[ext] || "application/octet-stream";
 
         if (req.method === "HEAD") {
@@ -461,7 +713,12 @@ const server = serve({
       // 4. Segments API
       const trackSegmentsMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/segments$/);
       if (trackSegmentsMatch) {
-        const trackId = trackSegmentsMatch[1];
+        let trackId: string;
+        try {
+          trackId = decodeURIComponent(trackSegmentsMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
         if (req.method === "GET") {
           const segments = listSegmentsByTrack(trackId);
           return Response.json(segments, { headers: corsHeaders });
@@ -586,7 +843,50 @@ const server = serve({
           }
           serverEvents.emit("segment_deleted", { segmentId: segId, trackId: existingSeg.track_id });
           serverEvents.emit("track_updated", { trackId: existingSeg.track_id });
+          serverEvents.emit("playlist_items_changed", {});
           return Response.json({ success: true }, { headers: corsHeaders });
+        }
+      }
+
+      // Batch delete segments: /api/segments/batch-delete
+      if (url.pathname === "/api/segments/batch-delete" && req.method === "POST") {
+        try {
+          const body = await parseJsonBody<{ ids?: string[] }>(req);
+          if (!body || !Array.isArray(body.ids)) {
+            return Response.json({ error: "ids array is required" }, { status: 400, headers: corsHeaders });
+          }
+          const validIds = Array.from(new Set(body.ids.filter((id) => typeof id === "string" && id.trim().length > 0)));
+          if (validIds.length > 500) {
+            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          }
+          if (validIds.length === 0) {
+            return Response.json({ success: true, deletedCount: 0 }, { headers: corsHeaders });
+          }
+
+          const affectedTrackIds = new Set<string>();
+          const segmentTrackMap = new Map<string, string>();
+          for (const sid of validIds) {
+            const seg = getSegment(sid);
+            if (seg) {
+              affectedTrackIds.add(seg.track_id);
+              segmentTrackMap.set(sid, seg.track_id);
+            }
+          }
+
+          const deletedCount = deleteSegmentsBatch(validIds);
+
+          for (const sid of validIds) {
+            serverEvents.emit("segment_deleted", { segmentId: sid, trackId: segmentTrackMap.get(sid) });
+          }
+          for (const tid of affectedTrackIds) {
+            serverEvents.emit("track_updated", { trackId: tid });
+          }
+          serverEvents.emit("playlist_items_changed", {});
+
+          return Response.json({ success: true, deletedCount }, { headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          return Response.json({ error: e.message || "Failed to batch delete segments" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
         }
       }
 
@@ -594,6 +894,334 @@ const server = serve({
       if (url.pathname === "/api/segments" && req.method === "GET") {
         const segments = listAllSegments();
         return Response.json(segments, { headers: corsHeaders });
+      }
+
+      // --- PLAYLIST API ROUTES ---
+
+      // 0. Get playlist memberships for track/segment: /api/playlist-memberships?track_id=...&segment_id=...
+      if (url.pathname === "/api/playlist-memberships" && req.method === "GET") {
+        const trackId = url.searchParams.get("track_id");
+        if (!trackId) {
+          return Response.json({ error: "track_id là bắt buộc" }, { status: 400, headers: corsHeaders });
+        }
+        const segmentId = url.searchParams.get("segment_id");
+        try {
+          const memberships = getPlaylistMemberships(trackId, segmentId);
+          return Response.json(memberships, { headers: corsHeaders });
+        } catch (e: any) {
+          return Response.json({ error: e.message || "Không thể tải danh sách phát của bài hát" }, { status: 500, headers: corsHeaders });
+        }
+      }
+
+      // 1. List all playlists
+      if (url.pathname === "/api/playlists" && req.method === "GET") {
+        try {
+          const playlists = listPlaylists();
+          return Response.json(playlists, { headers: corsHeaders });
+        } catch (e: any) {
+          return Response.json({ error: e.message || "Không thể tải danh sách phát" }, { status: 500, headers: corsHeaders });
+        }
+      }
+
+      // 2. Create playlist
+      if (url.pathname === "/api/playlists" && req.method === "POST") {
+        try {
+          const body = await parseJsonBody<{ name: string }>(req);
+          if (typeof body.name !== "string") {
+            return Response.json({ error: "Tên danh sách phát phải là chuỗi" }, { status: 400, headers: corsHeaders });
+          }
+          const rawName = body.name.replace(/[\r\n\t\x00-\x1F\x7F]/g, " ").trim().slice(0, 100);
+          if (!rawName) {
+            return Response.json({ error: "Tên danh sách phát không được để trống" }, { status: 400, headers: corsHeaders });
+          }
+          const playlist = createPlaylist(rawName);
+          serverEvents.emit("playlist_created", { playlist });
+          return Response.json(playlist, { status: 201, headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          return Response.json({ error: e.message || "Không thể tạo danh sách phát" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+        }
+      }
+
+      // 3. Reorder items in playlist: /api/playlists/:id/reorder
+      const playlistReorderMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/reorder$/);
+      if (playlistReorderMatch && req.method === "PUT") {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistReorderMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        try {
+          const pl = getPlaylist(plId);
+          if (!pl) {
+            return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+          }
+          const body = await parseJsonBody<{ itemIds: string[] }>(req);
+          if (!Array.isArray(body.itemIds) || !body.itemIds.every((id) => typeof id === "string")) {
+            return Response.json({ error: "itemIds phải là mảng string" }, { status: 400, headers: corsHeaders });
+          }
+          if (new Set(body.itemIds).size !== body.itemIds.length) {
+            return Response.json({ error: "itemIds không được chứa ID trùng lặp" }, { status: 400, headers: corsHeaders });
+          }
+          const ok = reorderPlaylistItems(plId, body.itemIds);
+          if (!ok) {
+            return Response.json({ error: "Không thể cập nhật thứ tự mục hoặc danh sách ID không hợp lệ" }, { status: 400, headers: corsHeaders });
+          }
+          serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          return Response.json({ success: true }, { headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          return Response.json({ error: e.message || "Không thể sắp xếp lại mục" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+        }
+      }
+
+      // 4. Delete item from playlist: /api/playlists/:id/items/:itemId
+      const playlistItemDeleteMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/items\/([^/]+)$/);
+      if (playlistItemDeleteMatch && req.method === "DELETE") {
+        let plId: string;
+        let itemId: string;
+        try {
+          plId = decodeURIComponent(playlistItemDeleteMatch[1]);
+          itemId = decodeURIComponent(playlistItemDeleteMatch[2]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        const ok = removePlaylistItem(plId, itemId);
+        if (!ok) {
+          return Response.json({ error: "Mục không tồn tại trong playlist" }, { status: 404, headers: corsHeaders });
+        }
+        serverEvents.emit("playlist_items_changed", { playlistId: plId });
+        return Response.json({ success: true }, { headers: corsHeaders });
+      }
+
+      // 5b. Batch add items to playlist: /api/playlists/:id/items/batch
+      const playlistBatchItemsMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/items\/batch$/);
+      if (playlistBatchItemsMatch && req.method === "POST") {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistBatchItemsMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        try {
+          const body = await parseJsonBody<{ trackIds?: string[]; items?: { track_id: string; segment_id?: string | null }[] }>(req);
+          const pl = getPlaylist(plId);
+          if (!pl) {
+            return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+          }
+
+          let itemsToAdd: { trackId: string; segmentId?: string | null }[] = [];
+          if (Array.isArray(body.trackIds)) {
+            itemsToAdd = body.trackIds
+              .filter((id) => typeof id === "string" && id.trim().length > 0)
+              .map((id) => ({ trackId: id.trim(), segmentId: null }));
+          } else if (Array.isArray(body.items)) {
+            itemsToAdd = body.items
+              .filter((item) => item && typeof item.track_id === "string" && item.track_id.trim().length > 0)
+              .map((item) => ({ trackId: item.track_id.trim(), segmentId: item.segment_id || null }));
+          } else {
+            return Response.json({ error: "trackIds hoặc items là bắt buộc" }, { status: 400, headers: corsHeaders });
+          }
+
+          if (itemsToAdd.length > 500) {
+            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          }
+
+          const added = addPlaylistItemsBatch(plId, itemsToAdd);
+          serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          return Response.json({ success: true, count: added.length, items: added }, { status: 200, headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          const status = isClientErr ? 400 : 500;
+          return Response.json({ error: e.message || "Không thể thêm các mục vào playlist" }, { status, headers: corsHeaders });
+        }
+      }
+
+      // 5c. Batch remove items from playlist: /api/playlists/:id/items/batch-delete
+      const playlistBatchDeleteMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/items\/batch-delete$/);
+      if (playlistBatchDeleteMatch && req.method === "POST") {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistBatchDeleteMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        try {
+          const pl = getPlaylist(plId);
+          if (!pl) {
+            return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+          }
+          const body = await parseJsonBody<{ itemIds?: string[] }>(req);
+          if (!body || !Array.isArray(body.itemIds)) {
+            return Response.json({ error: "itemIds array is required" }, { status: 400, headers: corsHeaders });
+          }
+          const validIds = Array.from(new Set(body.itemIds.filter((id) => typeof id === "string" && id.trim().length > 0)));
+          if (validIds.length > 500) {
+            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          }
+          const deletedCount = removePlaylistItemsBatch(plId, validIds);
+          serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          return Response.json({ success: true, deletedCount }, { headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          return Response.json({ error: e.message || "Không thể xóa các mục khỏi playlist" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+        }
+      }
+
+      // 5. Add item to playlist: /api/playlists/:id/items
+      const playlistItemsMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/items$/);
+      if (playlistItemsMatch && req.method === "POST") {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistItemsMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        try {
+          const body = await parseJsonBody<{ track_id: string; segment_id?: string | null }>(req);
+          if (!body.track_id || typeof body.track_id !== "string" || !body.track_id.trim()) {
+            return Response.json({ error: "track_id là bắt buộc" }, { status: 400, headers: corsHeaders });
+          }
+          const cleanTrackId = body.track_id.trim();
+          const pl = getPlaylist(plId);
+          if (!pl) {
+            return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+          }
+          const track = getTrack(cleanTrackId);
+          if (!track) {
+            return Response.json({ error: "Bài hát không tồn tại" }, { status: 404, headers: corsHeaders });
+          }
+          if (body.segment_id !== undefined && body.segment_id !== null && typeof body.segment_id !== "string") {
+            return Response.json({ error: "segment_id phải là chuỗi hoặc null" }, { status: 400, headers: corsHeaders });
+          }
+          const cleanSegId = typeof body.segment_id === "string" && body.segment_id.trim() ? body.segment_id.trim() : null;
+          if (cleanSegId) {
+            const seg = getSegment(cleanSegId);
+            if (!seg || seg.track_id !== cleanTrackId) {
+              return Response.json({ error: "Lát cắt không tồn tại hoặc không thuộc bài hát này" }, { status: 400, headers: corsHeaders });
+            }
+          }
+          const item = addPlaylistItem(plId, cleanTrackId, cleanSegId);
+          serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          return Response.json(item, { status: 201, headers: corsHeaders });
+        } catch (e: any) {
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("not found") || e.message.includes("does not belong") || e.message.toLowerCase().includes("constraint")));
+          const status = e.message?.includes("not found") ? 404 : isClientErr ? 400 : 500;
+          return Response.json({ error: e.message || "Không thể thêm mục vào playlist" }, { status, headers: corsHeaders });
+        }
+      }
+
+      // 6. Individual playlist details, update, delete: /api/playlists/:id
+      const playlistDetailMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)$/);
+      if (playlistDetailMatch) {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistDetailMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        if (req.method === "GET") {
+          try {
+            const pl = getPlaylist(plId);
+            if (!pl) return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+            const items = getPlaylistItems(plId);
+            return Response.json({ ...pl, items }, { headers: corsHeaders });
+          } catch (e: any) {
+            return Response.json({ error: e.message || "Lỗi tải playlist" }, { status: 500, headers: corsHeaders });
+          }
+        }
+        if (req.method === "PATCH") {
+          try {
+            const body = await parseJsonBody<{ name: string }>(req);
+            if (typeof body.name !== "string") {
+              return Response.json({ error: "Tên danh sách phát phải là chuỗi" }, { status: 400, headers: corsHeaders });
+            }
+            const rawName = body.name.replace(/[\r\n\t\x00-\x1F\x7F]/g, " ").trim().slice(0, 100);
+            if (!rawName) {
+              return Response.json({ error: "Tên danh sách phát không được để trống" }, { status: 400, headers: corsHeaders });
+            }
+            const updated = updatePlaylist(plId, rawName);
+            if (!updated) return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+            serverEvents.emit("playlist_updated", { playlistId: updated.id, playlist: updated });
+            return Response.json(updated, { headers: corsHeaders });
+          } catch (e: any) {
+            const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && e.message.includes("cannot be empty"));
+            return Response.json({ error: e.message || "Không thể đổi tên danh sách phát" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          }
+        }
+        if (req.method === "DELETE") {
+          try {
+            const ok = deletePlaylist(plId);
+            if (!ok) {
+              return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+            }
+            serverEvents.emit("playlist_deleted", { playlistId: plId });
+            return Response.json({ success: true }, { headers: corsHeaders });
+          } catch (e: any) {
+            return Response.json({ error: e.message || "Lỗi xóa playlist" }, { status: 500, headers: corsHeaders });
+          }
+        }
+      }
+
+      // 7. System Logs API: /api/logs
+      if (url.pathname === "/api/logs") {
+        if (req.method === "GET") {
+          const limit = Number(url.searchParams.get("limit")) || 100;
+          return Response.json(getRecentLogs(limit), { headers: corsHeaders });
+        }
+        if (req.method === "DELETE") {
+          clearServerLogs();
+          serverEvents.emit("logs_cleared");
+          return Response.json({ success: true }, { headers: corsHeaders });
+        }
+      }
+
+      // 8. Library Export & Import API
+      if (url.pathname === "/api/library/export" && req.method === "GET") {
+        try {
+          const archiveBytes = await exportLibraryArchive();
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          return new Response(archiveBytes as unknown as BodyInit, {
+            status: 200,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/gzip",
+              "Content-Disposition": `attachment; filename="slice-player-backup-${timestamp}.tar.gz"`,
+              "Content-Length": String(archiveBytes.length),
+            },
+          });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: `Lỗi xuất dữ liệu thư viện: ${msg}` }, { status: 500, headers: corsHeaders });
+        }
+      }
+
+      if (url.pathname === "/api/library/import" && req.method === "POST") {
+        try {
+          let archiveBytes: Uint8Array | null = null;
+          const contentType = req.headers.get("content-type") || "";
+
+          if (contentType.includes("multipart/form-data")) {
+            const formData = await req.formData();
+            const file = formData.get("file") || formData.get("backup");
+            if (file && file instanceof Blob) {
+              archiveBytes = new Uint8Array(await file.arrayBuffer());
+            }
+          } else {
+            archiveBytes = new Uint8Array(await req.arrayBuffer());
+          }
+
+          if (!archiveBytes || archiveBytes.length < 50) {
+            return Response.json({ error: "File backup không hợp lệ hoặc bị rỗng" }, { status: 400, headers: corsHeaders });
+          }
+
+          const res = await importLibraryArchive(archiveBytes);
+          return Response.json(res, { status: 200, headers: corsHeaders });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return Response.json({ error: msg }, { status: 400, headers: corsHeaders });
+        }
       }
 
       return Response.json({ error: "API endpoint not found" }, { status: 404, headers: corsHeaders });
@@ -714,7 +1342,24 @@ function checkIdleShutdown() {
 }
 
 export function broadcastWs(msg: object) {
-  const payload = JSON.stringify(msg);
+  let payload: string;
+  try {
+    payload = JSON.stringify(msg);
+  } catch {
+    try {
+      const seen = new WeakSet();
+      payload = JSON.stringify(msg, (_k, v) => {
+        if (typeof v === "object" && v !== null) {
+          if (seen.has(v)) return "[Circular]";
+          seen.add(v);
+        }
+        if (typeof v === "bigint") return v.toString();
+        return v;
+      });
+    } catch {
+      return;
+    }
+  }
   for (const ws of [...activeSockets]) {
     try {
       if (ws.readyState === 1) {
@@ -744,5 +1389,27 @@ serverEvents.on("segment_deleted", (payload) => {
 serverEvents.on("segment_updated", (payload) => {
   broadcastWs({ type: "segment_updated", ...payload });
 });
+serverEvents.on("playlist_created", (payload) => {
+  broadcastWs({ type: "playlist_created", ...payload });
+});
+serverEvents.on("playlist_updated", (payload) => {
+  broadcastWs({ type: "playlist_updated", ...payload });
+});
+serverEvents.on("playlist_deleted", (payload) => {
+  broadcastWs({ type: "playlist_deleted", ...payload });
+});
+serverEvents.on("playlist_items_changed", (payload) => {
+  broadcastWs({ type: "playlist_items_changed", ...payload });
+});
+serverEvents.on("app_log", (payload) => {
+  broadcastWs({ type: "app_log", ...payload });
+});
+serverEvents.on("logs_cleared", () => {
+  broadcastWs({ type: "logs_cleared" });
+});
+serverEvents.on("library_restored", (payload) => {
+  broadcastWs({ type: "library_restored", ...payload });
+});
 
 export { server };
+

@@ -1,9 +1,13 @@
 import * as React from "react";
-import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle, RotateCcw } from "lucide-react";
+import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle, RotateCcw, Clock, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration, createDefaultFullSegment } from "../lib/utils";
-import { usePlayerStore } from "../store/usePlayerStore";
+import { TrackThumbnail } from "./TrackThumbnail";
+import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
+import { useIsTrackSelected, useSelectionStore } from "../store/useSelectionStore";
+import { useTranslation } from "react-i18next";
+import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { Track, Segment } from "@/server/types";
 
 function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
@@ -14,38 +18,29 @@ function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
+import type { SelectedItem } from "../store/useSelectionStore";
+
 interface TrackCardProps {
   track: Track;
   onDelete: (id: string) => void;
+  deleteTitle?: string;
+  visibleTrackIds?: (string | SelectedItem)[];
 }
 
-export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
+export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackIds }: TrackCardProps) {
+  const { t } = useTranslation();
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
-  const playSegment = usePlayerStore((s) => s.playSegment);
-  const playbackMode = usePlayerStore((s) => s.playbackMode);
-  const fetchTracks = usePlayerStore((s) => s.fetchTracks);
+  const retryTrack = usePlayerStore((s) => s.retryTrack);
+  const isRetrying = usePlayerStore((s) => Boolean(s.retryingTrackIds?.[track.id]));
+  const isSelected = useIsTrackSelected(track.id);
+  const toggleTrack = useSelectionStore((s) => s.toggleTrack);
+  const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeTrack?.id === track.id);
 
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
-  const [isRetrying, setIsRetrying] = React.useState(false);
 
   const handleRetry = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (isRetrying) return;
-    setIsRetrying(true);
-    try {
-      const res = await fetch(`/api/tracks/${track.id}/retry`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        fetchTracks(true);
-      }
-    } catch (err) {
-      console.error("Retry track error:", err);
-    } finally {
-      setIsRetrying(false);
-    }
+    await retryTrack(track.id);
   };
 
   React.useEffect(() => {
@@ -62,25 +57,29 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
       isPlayBusyRef.current = false;
     }, 400);
 
-    if (playbackMode === "original_only") {
-      playSegment(createDefaultFullSegment(track), track);
+    const { activeSystemCategory, playbackMode, playSegmentInMode } = usePlayerStore.getState();
+    const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
+
+    if (targetMode === "original_only" || targetMode === "mixed") {
+      playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
       return;
     }
 
     // Check if player store queue already has custom slices for this track
-    const queue = usePlayerStore.getState().queue;
+    const state = usePlayerStore.getState();
+    const queue = state.queuesByMode[targetMode] || state.queue;
     const queuedTrackSlices = queue
       .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
       .map((it) => it.segment);
     if (queuedTrackSlices.length > 0) {
-      playSegment(queuedTrackSlices[0], track);
+      playSegmentInMode(targetMode, queuedTrackSlices[0], track);
       return;
     }
 
     let segList = segments;
     if (!segList) {
       try {
-        const res = await fetch(`/api/tracks/${track.id}/segments`);
+        const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
         if (res.ok) {
           segList = await res.json();
           setSegments(segList);
@@ -91,29 +90,39 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
     }
 
     if (segList && segList.length > 0) {
-      playSegment(segList[0], track);
+      playSegmentInMode(targetMode, segList[0], track);
     } else {
       // Create a default full-length segment if none exists
-      playSegment(createDefaultFullSegment(track), track);
+      playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
     }
   };
 
+  const isReady = track.status === "ready" && track.duration > 0;
+
   return (
-    <div className="group relative flex flex-col rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
+    <div
+      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
+        isSelected
+          ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
+          : isCurrentPlaying
+          ? "border-primary ring-1 ring-primary/40 bg-primary/5 shadow-md shadow-primary/10"
+          : !isReady ? "opacity-85 border-border" : "border-border"
+      }`}
+    >
       {/* Thumbnail */}
       <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
-        {track.thumbnail_url ? (
-          <img
-            src={track.thumbnail_url}
-            alt={track.title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            <Disc className="h-10 w-10 opacity-40 animate-pulse" />
-          </div>
-        )}
+        <TrackThumbnail
+          src={track.thumbnail_url}
+          alt={track.title}
+          className={`h-full w-full object-cover transition-transform duration-300 ${
+            !isReady ? "opacity-70 brightness-90" : "group-hover:scale-105"
+          }`}
+          fallback={
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              <Disc className="h-10 w-10 opacity-40" />
+            </div>
+          }
+        />
 
         {/* Source Badge */}
         <div className="absolute top-2 left-2">
@@ -125,21 +134,64 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
           ) : (
             <Badge variant="cyan" className="flex items-center gap-1 text-[10px] py-0.5">
               <Disc className="h-3 w-3" />
-              <span>FLAC Local</span>
+              <span>{t("trackCard.flacLocal", "FLAC Local")}</span>
             </Badge>
           )}
         </div>
+
+        {/* Selection Checkbox */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` })}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTrack(track.id, visibleTrackIds, e.shiftKey, {
+              id: track.id,
+              type: "track",
+              trackId: track.id,
+              title: track.title,
+            });
+          }}
+          className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-all cursor-pointer ${
+            isSelected
+              ? "bg-primary text-primary-foreground shadow-md opacity-100 ring-2 ring-background"
+              : "bg-black/60 text-white/80 hover:bg-black/80 hover:text-white backdrop-blur-xs opacity-40 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+          }`}
+        >
+          {isSelected ? (
+            <Check className="h-3.5 w-3.5 stroke-[3]" />
+          ) : (
+            <div className="h-3.5 w-3.5 rounded-xs border-2 border-white/70" />
+          )}
+        </button>
 
         {/* Duration badge */}
         <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white backdrop-blur-xs">
           {formatDuration(track.duration)}
         </div>
 
+        {/* Active Playing Equalizer Badge */}
+        {isCurrentPlaying && (
+          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-mono font-semibold text-primary-foreground shadow-sm">
+            <span className="flex items-end gap-0.5 h-3">
+              <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
+              <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
+              <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
+            </span>
+            <span className="uppercase text-[10px] tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
+          </div>
+        )}
+
         {/* Quick play overlay */}
-        {track.status === "ready" && (
+        {isReady && (
           <button
+            type="button"
             onClick={handlePlayFirst}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
+            title={t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })}
+            aria-label={t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })}
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
               <Play className="h-6 w-6 fill-current translate-x-0.5" />
@@ -148,19 +200,27 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
         )}
 
         {/* Status Indicator */}
+        {track.status === "queued" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs gap-1.5 p-2 text-center">
+            <Clock className="h-6 w-6 text-primary/90 animate-pulse" />
+            <span className="text-xs font-medium text-primary-foreground/90">{t("trackCard.queued", "Queued...")}</span>
+            <span className="text-[10px] text-muted-foreground">{t("trackCard.inQueue", "In download queue")}</span>
+          </div>
+        )}
+
         {track.status === "downloading" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-xs gap-2">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-xs font-medium text-primary">Đang tải audio...</span>
+            <span className="text-xs font-medium text-primary">{t("trackCard.downloading", "Downloading audio...")}</span>
           </div>
         )}
 
         {track.status === "error" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-3 text-center z-10">
             <AlertCircle className="h-5 w-5 text-destructive mb-1 shrink-0" />
-            <span className="text-xs text-destructive font-semibold">Lỗi tải audio</span>
+            <span className="text-xs text-destructive font-semibold">{t("trackCard.error", "Download failed")}</span>
             <span className="text-[10px] text-muted-foreground mt-0.5 mb-2 line-clamp-2" title={track.error_message || ""}>
-              {track.error_message || "Không xác định"}
+              {track.error_message || t("trackCard.unknownError", "Unknown error")}
             </span>
             <Button
               size="sm"
@@ -170,7 +230,7 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
               className="h-7 text-xs px-3 gap-1.5 shadow-md cursor-pointer hover:bg-destructive/90"
             >
               <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
-              <span>{isRetrying ? "Đang gửi..." : "Thử lại"}</span>
+              <span>{isRetrying ? t("trackCard.retrying", "Retrying...") : t("trackCard.retry", "Retry")}</span>
             </Button>
           </div>
         )}
@@ -178,7 +238,9 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
 
       {/* Info */}
       <div className="mt-3 flex-1 flex flex-col">
-        <h3 className="font-semibold text-sm leading-snug line-clamp-2 text-foreground group-hover:text-primary transition-colors">
+        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 transition-colors ${
+          isCurrentPlaying ? "text-primary" : "text-foreground group-hover:text-primary"
+        }`}>
           {track.title}
         </h3>
         {track.artist && (
@@ -190,43 +252,56 @@ export function TrackCardComponent({ track, onDelete }: TrackCardProps) {
         {/* Segment badge & actions */}
         <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
           <Badge variant="secondary" className="font-mono text-[11px] font-normal">
-            {`${track.segment_count ?? (segments ? segments.length : 0)} đoạn`}
+            {t("trackCard.slicesCount", {
+              count: track.segment_count ?? segments?.length ?? 0,
+              defaultValue: `${track.segment_count ?? segments?.length ?? 0} slices`,
+            })}
           </Badge>
 
           <div className="flex items-center gap-1.5">
             {track.status === "error" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRetry}
-                disabled={isRetrying}
-                className="h-8 text-xs gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
-              >
-                <RotateCcw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
-                <span>{isRetrying ? "Đang gửi..." : "Thử lại"}</span>
-              </Button>
+              <Badge variant="destructive" className="h-8 text-xs gap-1.5 border-destructive/40 font-normal">
+                <AlertCircle className="h-3.5 w-3.5" />
+                <span>{t("table.downloadError", "Error")}</span>
+              </Badge>
+            ) : track.status === "downloading" ? (
+              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 text-primary px-2.5 font-normal">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>{t("table.downloading", "Downloading...")}</span>
+              </Badge>
+            ) : track.status === "queued" ? (
+              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-border text-muted-foreground px-2.5 font-normal">
+                <Clock className="h-3.5 w-3.5 text-primary/80" />
+                <span>{t("table.queued", "Queued...")}</span>
+              </Badge>
             ) : (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => openSliceStudio(track)}
-                disabled={track.status !== "ready"}
-                className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary"
+                disabled={!isReady}
+                className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer"
               >
                 <Scissors className="h-3.5 w-3.5" />
-                <span>Cắt đoạn</span>
+                <span>{t("trackCard.slice", "Slice")}</span>
               </Button>
             )}
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onDelete(track.id)}
-              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              title="Xóa bài hát"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-1 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150">
+              {isReady && <AddToPlaylistPopover trackId={track.id} disabled={!isReady} />}
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => onDelete(track.id)}
+                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer focus-visible:ring-1 focus-visible:ring-destructive focus-visible:opacity-100"
+                title={deleteTitle || t("trackCard.delete", "Delete track")}
+                aria-label={deleteTitle || t("trackCard.delete", "Delete track")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

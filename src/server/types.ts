@@ -13,9 +13,10 @@ export interface Track {
   peaks_json?: string; // 1000-peak JSON array
   status: TrackStatus;
   error_message?: string | null;
-  volume?: number; // 0.0 - 1.0, default 0.8
+  volume?: number; // 0.0 - 1.0, default 0.5
   created_at?: number;
   segment_count?: number;
+  download_index?: number;
 }
 
 export interface Segment {
@@ -30,7 +31,37 @@ export interface Segment {
 }
 
 
-export interface VirtualPlaylistItem {
-  segment: Segment;
-  track: Track;
+export interface Playlist {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  item_count?: number;
 }
+
+export interface PlaylistItem {
+  id: string;
+  playlist_id: string;
+  track_id: string;
+  segment_id: string | null;
+  sort_order: number;
+  added_at: number;
+}
+
+export interface PlaylistItemWithDetails extends PlaylistItem {
+  track: Track;
+  segment?: Segment | null;
+}
+
+export type LogLevel = 'info' | 'warn' | 'error' | 'success';
+export type LogCategory = 'download' | 'playback' | 'system';
+
+export interface LogEntry {
+  id: string;
+  timestamp: number;
+  level: LogLevel;
+  category: LogCategory;
+  message: string;
+  details?: unknown;
+}
+
