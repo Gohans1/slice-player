@@ -8,7 +8,7 @@
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --isolate"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.13",

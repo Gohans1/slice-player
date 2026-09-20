@@ -55,7 +55,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       if (typeof url === "string" && url.includes("/api/segments")) {
         return { ok: true, json: async () => [] };
       }
-      if (typeof url === "string" && url.includes("/api/playlists")) {
+      if (typeof url === "string" && (url === "/api/playlists" || url.startsWith("/api/playlists?"))) {
         return { ok: true, json: async () => usePlayerStore.getState().playlists };
       }
       return { ok: true, json: async () => ({}) };
@@ -306,6 +306,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
 
     const menu = container.querySelector('[role="menu"]');
     expect(menu).not.toBeNull();
+    expect(menu?.classList.contains("fixed")).toBe(true);
     expect(menu?.textContent).toContain("Playlist 4");
     expect(menu?.textContent).toContain("Playlist 5");
 
@@ -321,6 +322,123 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
 
     expect(usePlayerStore.getState().activePlaylistId).toBe("pl_4");
     expect(container.querySelector("#tab-playlist-pl_4")).not.toBeNull();
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("folded custom playlists more button opens fixed menu and closes on Escape", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_1", name: "Playlist 1", created_at: 1000, updated_at: 1000, item_count: 1 },
+        { id: "pl_2", name: "Playlist 2", created_at: 2000, updated_at: 2000, item_count: 2 },
+      ],
+    });
+    happyWindow.localStorage.setItem("slice_player_custom_playlists_folded", "true");
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const moreBtn = container.querySelector('button[aria-haspopup="menu"]') as HTMLButtonElement;
+    expect(moreBtn).not.toBeNull();
+
+    await act(async () => {
+      moreBtn.click();
+    });
+
+    let menu = container.querySelector('[role="menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu?.classList.contains("fixed")).toBe(true);
+    expect(menu?.textContent).toContain("Playlist 1");
+    expect(menu?.textContent).toContain("Playlist 2");
+
+    // Pressing Escape closes the menu
+    await act(async () => {
+      happyWindow.document.dispatchEvent(new happyWindow.KeyboardEvent("keydown", { key: "Escape" } as any));
+    });
+
+    menu = container.querySelector('[role="menu"]');
+    expect(menu).toBeNull();
+  });
+
+  it("does not dismiss more menu when scrolling inside dropdown list, but dismisses on window scroll", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_1", name: "Playlist 1", created_at: 1000, updated_at: 1000, item_count: 1 },
+        { id: "pl_2", name: "Playlist 2", created_at: 2000, updated_at: 2000, item_count: 2 },
+        { id: "pl_3", name: "Playlist 3", created_at: 3000, updated_at: 3000, item_count: 3 },
+        { id: "pl_4", name: "Playlist 4", created_at: 4000, updated_at: 4000, item_count: 4 },
+        { id: "pl_5", name: "Playlist 5", created_at: 5000, updated_at: 5000, item_count: 5 },
+      ],
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const moreBtn = container.querySelector(
+      'button[title*="More playlists"], button[title*="Playlist khác"]'
+    ) as HTMLButtonElement;
+    expect(moreBtn).not.toBeNull();
+
+    await act(async () => {
+      moreBtn.click();
+    });
+
+    let menu = container.querySelector('[role="menu"]');
+    expect(menu).not.toBeNull();
+
+    const scrollableList = menu?.querySelector(".overflow-y-auto");
+    expect(scrollableList).not.toBeNull();
+
+    // Internal scroll inside menu list should NOT dismiss menu
+    await act(async () => {
+      scrollableList!.dispatchEvent(new happyWindow.Event("scroll", { bubbles: false } as any) as any);
+    });
+
+    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+
+    // Outer window/document scroll DOES dismiss menu
+    await act(async () => {
+      happyWindow.dispatchEvent(new happyWindow.Event("scroll") as any);
+    });
+
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("closes more menu when custom fold button is toggled", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_1", name: "Playlist 1", created_at: 1000, updated_at: 1000, item_count: 1 },
+        { id: "pl_2", name: "Playlist 2", created_at: 2000, updated_at: 2000, item_count: 2 },
+        { id: "pl_3", name: "Playlist 3", created_at: 3000, updated_at: 3000, item_count: 3 },
+        { id: "pl_4", name: "Playlist 4", created_at: 4000, updated_at: 4000, item_count: 4 },
+      ],
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const moreBtn = container.querySelector(
+      'button[title*="More playlists"], button[title*="Playlist khác"]'
+    ) as HTMLButtonElement;
+    expect(moreBtn).not.toBeNull();
+
+    await act(async () => {
+      moreBtn.click();
+    });
+
+    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+
+    const foldBtn = container.querySelector(
+      'button[title="Collapse custom playlists"], button[title="Thu gọn playlist cá nhân"]'
+    ) as HTMLButtonElement;
+    expect(foldBtn).not.toBeNull();
+
+    await act(async () => {
+      foldBtn.click();
+    });
+
     expect(container.querySelector('[role="menu"]')).toBeNull();
   });
 

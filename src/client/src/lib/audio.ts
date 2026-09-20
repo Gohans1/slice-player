@@ -572,8 +572,14 @@ class AudioEngine {
       this.currentSegmentEnd = null;
       this.onSegmentEndCallback = null;
       this.isFadingOut = false;
-      this.audioEl.removeAttribute("src");
-      this.audioEl.load();
+      if (typeof this.audioEl.removeAttribute === "function") {
+        this.audioEl.removeAttribute("src");
+      } else {
+        this.audioEl.src = "";
+      }
+      if (typeof this.audioEl.load === "function") {
+        this.audioEl.load();
+      }
     } finally {
       this.isUnloading = false;
     }

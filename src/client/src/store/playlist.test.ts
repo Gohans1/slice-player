@@ -23,7 +23,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
   });
 }
 
-const { usePlayerStore } = await import("./usePlayerStore");
+const { usePlayerStore, clearDismissedSegments } = await import("./usePlayerStore");
 import type { Track, Segment, Playlist, PlaylistItemWithDetails } from "@/server/types";
 
 describe("usePlayerStore playlist management", () => {
@@ -76,6 +76,7 @@ describe("usePlayerStore playlist management", () => {
   };
 
   beforeEach(() => {
+    clearDismissedSegments();
     usePlayerStore.setState({
       playlists: [],
       activePlaylistId: null,
@@ -87,6 +88,7 @@ describe("usePlayerStore playlist management", () => {
   });
 
   afterEach(() => {
+    clearDismissedSegments();
     usePlayerStore.setState({
       activePlaylistId: null,
       activePlaylistPlayingId: null,

@@ -156,6 +156,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
 
   const handleDelete = () => {
     if (isDeleting) return;
+    setIsPlaylistOpen(false);
     setIsConfirmOpen(true);
   };
 
@@ -230,11 +231,12 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   };
 
   return (
-    <aside
-      ref={containerRef}
-      aria-label={t("bulkActions.barLabel", "Bulk actions")}
-      className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 rounded-2xl border border-border/80 bg-card/95 backdrop-blur-md px-3 sm:px-4 py-2 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-[95vw]"
-    >
+    <>
+      <aside
+        ref={containerRef}
+        aria-label={t("bulkActions.barLabel", "Bulk actions")}
+        className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 sm:gap-3 rounded-2xl border border-border/80 bg-card/95 backdrop-blur-md px-3 sm:px-4 py-2 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-[95vw]"
+      >
       {/* Selection count badge */}
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary font-medium shrink-0">
         <span className="font-mono font-bold">{selectedCount}</span>
@@ -307,24 +309,25 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
       >
         <X className="h-3.5 w-3.5" />
       </Button>
-
-      {/* Bulk Delete Confirm Modal */}
-      {isConfirmOpen && (
-        <ConfirmModal
-          isOpen={isConfirmOpen}
-          onClose={() => !isDeleting && setIsConfirmOpen(false)}
-          onConfirm={handleConfirmBulkDelete}
-          isLoading={isDeleting}
-          title={t("bulkActions.deleteTitle", "Delete selected items?")}
-          description={t("bulkActions.confirmDelete", {
-            count: selectedCount,
-            defaultValue: `Are you sure you want to delete ${selectedCount} selected item(s)?`,
-          })}
-          confirmText={t("common.delete", "Delete")}
-          cancelText={t("common.cancel", "Cancel")}
-          variant="destructive"
-        />
-      )}
     </aside>
+
+    {/* Bulk Delete Confirm Modal */}
+    {isConfirmOpen && (
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => !isDeleting && setIsConfirmOpen(false)}
+        onConfirm={handleConfirmBulkDelete}
+        isLoading={isDeleting}
+        title={t("bulkActions.deleteTitle", "Delete selected items?")}
+        description={t("bulkActions.confirmDelete", {
+          count: selectedCount,
+          defaultValue: `Are you sure you want to delete ${selectedCount} selected item(s)?`,
+        })}
+        confirmText={t("common.delete", "Delete")}
+        cancelText={t("common.cancel", "Cancel")}
+        variant="destructive"
+      />
+    )}
+    </>
   );
 }

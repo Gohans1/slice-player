@@ -260,7 +260,9 @@
     "local": "Nhạc cục bộ",
     "flacLocal": "FLAC Local",
     "playTitle": "Phát {{title}}",
+    "pauseTitle": "Tạm dừng {{title}}",
     "playSliceTitle": "Phát đoạn \"{{name}}\"",
+    "pauseSliceTitle": "Tạm dừng đoạn \"{{name}}\"",
     "queued": "Đang chờ tải...",
     "inQueue": "Trong hàng đợi tải",
     "downloading": "Đang tải audio...",
@@ -275,7 +277,10 @@
     "delete": "Xóa bài hát",
     "deleteSlice": "Xóa lát cắt",
     "confirmDelete": "Xóa bài hát này và tất cả các lát cắt liên quan?",
-    "selectTrack": "Chọn {{title}}"
+    "selectTrack": "Chọn {{title}}",
+    "deselectTrack": "Bỏ chọn {{title}}",
+    "play": "Phát",
+    "pause": "Tạm dừng"
   },
   "ytModal": {
     "title": "Thêm nhạc từ YouTube",
@@ -314,6 +319,8 @@
   "bulkActions": {
     "barLabel": "Thao tác hàng loạt",
     "selected": "đã chọn",
+    "select": "Chọn",
+    "deselect": "Bỏ chọn",
     "selectAll": "Chọn view này",
     "deselectAll": "Bỏ chọn view này",
     "selectAllVisible": "Chọn tất cả ({{count}})",

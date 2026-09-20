@@ -260,7 +260,9 @@
     "local": "Local Audio",
     "flacLocal": "FLAC Local",
     "playTitle": "Play {{title}}",
+    "pauseTitle": "Pause {{title}}",
     "playSliceTitle": "Play slice \"{{name}}\"",
+    "pauseSliceTitle": "Pause slice \"{{name}}\"",
     "queued": "Queued...",
     "inQueue": "In download queue",
     "downloading": "Downloading audio...",
@@ -275,7 +277,10 @@
     "delete": "Delete track",
     "deleteSlice": "Delete slice",
     "confirmDelete": "Delete this track and all its associated slices?",
-    "selectTrack": "Select {{title}}"
+    "selectTrack": "Select {{title}}",
+    "deselectTrack": "Deselect {{title}}",
+    "play": "Play",
+    "pause": "Pause"
   },
   "ytModal": {
     "title": "Add YouTube Audio",
@@ -314,6 +319,8 @@
   "bulkActions": {
     "barLabel": "Bulk actions",
     "selected": "selected",
+    "select": "Select",
+    "deselect": "Deselect",
     "selectAll": "Select view",
     "deselectAll": "Deselect view",
     "selectAllVisible": "Select all ({{count}})",

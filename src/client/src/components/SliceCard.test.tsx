@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -135,5 +135,173 @@ describe("SliceCard Component", () => {
       playBtn.click();
     });
     expect(onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders pause button and calls pause when clicked while actively playing", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origPause = usePlayerStore.getState().pause;
+    const pauseSpy = mock(() => {});
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: true,
+        activeTrack: baseTrack,
+        activeSegment: baseSegment,
+        pause: pauseSpy as any,
+      });
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={() => {}}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const pauseBtn = container.querySelector('button[title=\'Pause slice "Chorus Slice"\']');
+    expect(pauseBtn).not.toBeNull();
+
+    act(() => {
+      pauseBtn.click();
+    });
+
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        activeSegment: null,
+        pause: origPause,
+      });
+    });
+  });
+
+  it("calls resume when clicked while active slice is paused", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origResume = usePlayerStore.getState().resume;
+    const resumeSpy = mock(() => Promise.resolve());
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: baseTrack,
+        activeSegment: baseSegment,
+        resume: resumeSpy as any,
+      });
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={() => {}}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const playBtn = container.querySelector('button[title=\'Play slice "Chorus Slice"\']');
+    expect(playBtn).not.toBeNull();
+
+    await act(async () => {
+      playBtn.click();
+    });
+
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        activeSegment: null,
+        resume: origResume,
+      });
+    });
+  });
+
+  it("prevents repeated play initiation when spam clicking thumbnail play button", async () => {
+    const onPlaySpy = mock(() => {});
+
+    act(() => {
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={onPlaySpy}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const playBtn = container.querySelector('button[title=\'Play slice "Chorus Slice"\']');
+    expect(playBtn).not.toBeNull();
+
+    await act(async () => {
+      playBtn.click();
+      playBtn.click();
+      playBtn.click();
+      playBtn.click();
+    });
+
+    expect(onPlaySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles slice selection and does not initiate playback when in selection mode", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const { useSelectionStore } = await import("../store/useSelectionStore");
+
+    const onPlaySpy = mock(() => {});
+    const pauseSpy = mock(() => {});
+    const origPause = usePlayerStore.getState().pause;
+
+    act(() => {
+      useSelectionStore.getState().clearSelection();
+      useSelectionStore.getState().selectTracks(["existing_id"]);
+      usePlayerStore.setState({
+        isPlaying: true,
+        activeTrack: baseTrack,
+        activeSegment: baseSegment,
+        pause: pauseSpy as any,
+      });
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={onPlaySpy}
+          onOpenStudio={() => {}}
+          visibleItemIds={[baseSegment.id, "existing_id"]}
+        />
+      );
+    });
+
+    expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
+    expect(useSelectionStore.getState().selectedTrackIds.has(baseSegment.id)).toBe(false);
+
+    const playOverlayBtn = container.querySelector(`button[title='Select ${baseSegment.name}']`);
+    expect(playOverlayBtn).not.toBeNull();
+
+    await act(async () => {
+      (playOverlayBtn as HTMLElement).click();
+    });
+
+    expect(useSelectionStore.getState().selectedTrackIds.has(baseSegment.id)).toBe(true);
+    expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+    expect(onPlaySpy).toHaveBeenCalledTimes(0);
+    expect(pauseSpy).toHaveBeenCalledTimes(0);
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+
+    act(() => {
+      useSelectionStore.getState().clearSelection();
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        activeSegment: null,
+        pause: origPause,
+      });
+    });
   });
 });

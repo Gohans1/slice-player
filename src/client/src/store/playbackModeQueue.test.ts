@@ -1153,6 +1153,10 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
   });
 
   it("togglePlay recovers and plays staged item if audioEngine.resume returns false after paused deletion", async () => {
+    const { audioEngine } = await import("../lib/audio");
+    const origAudioPlay = (audioEngine as any).audioEl.play;
+    (audioEngine as any).audioEl.play = () => Promise.reject(new Error("No src"));
+
     const item0 = { segment: segment1, track: track1 };
     const item1 = { segment: segment2, track: track2 };
 
@@ -1191,6 +1195,7 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       expect(playedSegId as any).toBe(segment2.id);
       expect(usePlayerStore.getState().isPlaying).toBe(true);
     } finally {
+      (audioEngine as any).audioEl.play = origAudioPlay;
       usePlayerStore.setState({ playSegment: origPlaySegment });
     }
   });

@@ -1,11 +1,11 @@
 import * as React from "react";
-import { Play, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check } from "lucide-react";
+import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { useSelectionStore, useIsTrackSelected, type SelectedItem } from "../store/useSelectionStore";
+import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createPlaylistItemSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { PlaylistItemWithDetails } from "@/server/types";
@@ -35,6 +35,7 @@ export function PlaylistItemCardComponent({
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
   const isSelected = useIsTrackSelected(item.id);
+  const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
 
   const isSlice = Boolean(item.segment);
@@ -45,14 +46,25 @@ export function PlaylistItemCardComponent({
 
   const isThisPlaylistPlaying = activePlaylistPlayingId !== null && activePlaylistPlayingId === activePlaylistId;
   const currentQueueItem = queue[queueIndex];
-  const isCurrentPlaying =
+  const isCurrentActive =
     isThisPlaylistPlaying &&
     (currentQueueItem?.queueItemId
       ? currentQueueItem.queueItemId === item.id
       : (isSlice && item.segment
           ? activeSegment?.id === item.segment.id
-          : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_"))) &&
-    isPlaying;
+          : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")));
+  const isCurrentPlaying = isCurrentActive && isPlaying;
+
+  const isPlayBusyRef = React.useRef(false);
+  const lastPlayInitiatedRef = React.useRef(0);
+
+  const itemTitle = isSlice && item.segment ? item.segment.name : (item.track?.title ?? "");
+  const pauseTooltip = isSlice && item.segment
+    ? t("trackCard.pauseSliceTitle", { name: item.segment.name, defaultValue: `Pause slice "${item.segment.name}"` })
+    : t("trackCard.pauseTitle", { title: itemTitle, defaultValue: `Pause ${itemTitle}` });
+  const playTooltip = isSlice && item.segment
+    ? t("trackCard.playSliceTitle", { name: item.segment.name, defaultValue: `Play slice "${item.segment.name}"` })
+    : t("trackCard.playTitle", { title: itemTitle, defaultValue: `Play ${itemTitle}` });
 
   return (
     <div
@@ -134,12 +146,91 @@ export function PlaylistItemCardComponent({
         {isReady ? (
           <button
             type="button"
-            onClick={() => onPlay(item.id)}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-            title={t("trackCard.playTitle", { title: isSlice && item.segment ? item.segment.name : item.track.title, defaultValue: `Play ${isSlice && item.segment ? item.segment.name : item.track.title}` })}
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                toggleTrack(item.id, visibleItemIds, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                return;
+              }
+
+              const store = usePlayerStore.getState();
+              const isPlayingPlaylist = store.activePlaylistPlayingId !== null && store.activePlaylistPlayingId === activePlaylistId;
+              const currentQItem = store.queue[store.queueIndex];
+              const isActive =
+                isPlayingPlaylist &&
+                (currentQItem?.queueItemId
+                  ? currentQItem.queueItemId === item.id
+                  : (isSlice && item.segment
+                      ? store.activeSegment?.id === item.segment.id
+                      : store.activeSegment?.track_id === item.track?.id && !store.activeSegment?.id.startsWith("seg_")));
+
+              if (isActive) {
+                if (Date.now() - lastPlayInitiatedRef.current < 600) {
+                  return;
+                }
+                if (isPlayBusyRef.current) return;
+                isPlayBusyRef.current = true;
+                setTimeout(() => {
+                  isPlayBusyRef.current = false;
+                }, 300);
+
+                if (store.isPlaying) {
+                  store.pause();
+                } else {
+                  await store.resume();
+                }
+                return;
+              }
+
+              if (isPlayBusyRef.current) return;
+              isPlayBusyRef.current = true;
+              lastPlayInitiatedRef.current = Date.now();
+              try {
+                await onPlay(item.id);
+              } finally {
+                setTimeout(() => {
+                  isPlayBusyRef.current = false;
+                }, 500);
+              }
+            }}
+            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            title={
+              isSelectionActive
+                ? (isSelected
+                    ? t("trackCard.deselectTrack", {
+                        title: itemTitle,
+                        defaultValue: `Deselect ${itemTitle}`,
+                      })
+                    : t("trackCard.selectTrack", {
+                        title: itemTitle,
+                        defaultValue: `Select ${itemTitle}`,
+                      }))
+                : isCurrentPlaying
+                ? pauseTooltip
+                : playTooltip
+            }
+            aria-label={
+              isSelectionActive
+                ? (isSelected
+                    ? t("trackCard.deselectTrack", {
+                        title: itemTitle,
+                        defaultValue: `Deselect ${itemTitle}`,
+                      })
+                    : t("trackCard.selectTrack", {
+                        title: itemTitle,
+                        defaultValue: `Select ${itemTitle}`,
+                      }))
+                : isCurrentPlaying
+                ? pauseTooltip
+                : playTooltip
+            }
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
-              <Play className="h-6 w-6 fill-current translate-x-0.5" />
+              {isCurrentPlaying ? (
+                <Pause className="h-6 w-6 fill-current" />
+              ) : (
+                <Play className="h-6 w-6 fill-current translate-x-0.5" />
+              )}
             </div>
           </button>
         ) : (
@@ -186,21 +277,34 @@ export function PlaylistItemCardComponent({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => isReady && onPlay(item.id)}
-            disabled={!isReady}
+            onClick={(e) => {
+              if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                toggleTrack(item.id, visibleItemIds, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                return;
+              }
+              if (isReady) onPlay(item.id);
+            }}
+            disabled={!isSelectionActive && !isReady}
+            title={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : undefined}
+            aria-label={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : (isCurrentPlaying && isPlaying ? t("trackCard.pause") : t("trackCard.play"))}
             className="h-8 text-xs gap-1.5 px-3 hover:border-primary/40 hover:text-primary cursor-pointer disabled:opacity-60"
           >
-            {item.track.status === "downloading" ? (
+            {isSelectionActive ? (
+              <>
+                <Check className={`h-3.5 w-3.5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                <span>{isSelected ? t("bulkActions.deselect", "Deselect") : t("bulkActions.select", "Select")}</span>
+              </>
+            ) : item.track?.status === "downloading" ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                 <span className="text-primary">{t("table.downloading", "Downloading")}</span>
               </>
-            ) : item.track.status === "queued" ? (
+            ) : item.track?.status === "queued" ? (
               <>
                 <Clock className="h-3.5 w-3.5 text-muted-foreground" />
                 <span>{t("table.queued", "Queued")}</span>
               </>
-            ) : item.track.status === "error" ? (
+            ) : item.track?.status === "error" ? (
               <>
                 <AlertCircle className="h-3.5 w-3.5 text-destructive" />
                 <span className="text-destructive">{t("table.downloadError", "Error")}</span>

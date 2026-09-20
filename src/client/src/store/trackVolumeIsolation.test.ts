@@ -209,14 +209,15 @@ describe("Per-track volume isolation and synchronization", () => {
 
     // Mock fetch returning older volume from server
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (url: string) => {
-      if (url.includes("/api/tracks")) {
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = url.toString();
+      if (urlStr.includes("/api/tracks")) {
         return {
           ok: true,
           json: async () => [{ ...trackA, volume: 0.5 }],
         };
       }
-      return { ok: true, json: async () => [] };
+      return originalFetch(url as any, init);
     }) as any;
 
     try {

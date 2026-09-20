@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeVi, filterTracks } from "./search";
+import { normalizeVi, filterTracks, searchItems } from "./search";
 
 describe("normalizeVi", () => {
   it("normalizes empty or null values", () => {
@@ -98,4 +98,110 @@ describe("filterTracks", () => {
     const results = filterTracks(sampleTracks, "???");
     expect(results.length).toBe(0);
   });
+
+  describe("adversarial edge cases & compact matching", () => {
+    const edgeTracks = [
+      { id: "e1", title: "Cao Ốc 20", artist: "B ray" },
+      { id: "e2", title: "Xin Đừng Nhấc Máy", artist: "B-Ray" },
+      { id: "e3", title: "Do For Love", artist: "BRay" },
+      { id: "e4", title: "Cơn Mưa Ngang Qua", artist: "Sơn Tùng M-TP" },
+      { id: "e5", title: "Don't Côi", artist: "RPT MCK" },
+      { id: "e6", title: "Hồng Nhan", artist: "K-ICM" },
+      { id: "e7", title: "Chilling In Hanoi", artist: "Lo-fi Beats" },
+      { id: "e8", title: "Praise the Lord", artist: "A$AP Rocky" },
+      { id: "e9", title: "Hit Here", artist: "Unknown" },
+      { id: "e10", title: "Don’t Stop", artist: "Various Artists" },
+      { id: "e11", title: "Bài Ca Hy Vọng", artist: "Ｂ Ｒａｙ" },
+      { id: "e12", title: "Ray of Light", artist: "Madonna" },
+    ];
+
+    it("matches 'bray' against 'B ray', 'B-Ray', 'BRay', and full-width 'Ｂ Ｒａｙ'", () => {
+      const results = filterTracks(edgeTracks, "bray");
+      const matchedIds = results.map((t) => t.id);
+      expect(matchedIds).toContain("e1");
+      expect(matchedIds).toContain("e2");
+      expect(matchedIds).toContain("e3");
+      expect(matchedIds).toContain("e11");
+    });
+
+    it("matches 'mtp' or 'son tung mtp' against 'Sơn Tùng M-TP'", () => {
+      const res1 = filterTracks(edgeTracks, "mtp");
+      expect(res1.some((t) => t.id === "e4")).toBe(true);
+
+      const res2 = filterTracks(edgeTracks, "son tung mtp");
+      expect(res2.some((t) => t.id === "e4")).toBe(true);
+    });
+
+    it("matches queries without apostrophe against titles with apostrophes", () => {
+      const res1 = filterTracks(edgeTracks, "dont coi");
+      expect(res1.some((t) => t.id === "e5")).toBe(true);
+
+      const res2 = filterTracks(edgeTracks, "dont stop");
+      expect(res2.some((t) => t.id === "e10")).toBe(true);
+    });
+
+    it("matches hyphens and special symbols like 'kicm', 'lofi', 'asap'", () => {
+      expect(filterTracks(edgeTracks, "kicm").some((t) => t.id === "e6")).toBe(true);
+      expect(filterTracks(edgeTracks, "lofi").some((t) => t.id === "e7")).toBe(true);
+      expect(filterTracks(edgeTracks, "asap").some((t) => t.id === "e8")).toBe(true);
+    });
+
+    it("does NOT produce false positives across word boundaries (e.g. 'the' matching 'Hit Here')", () => {
+      const results = filterTracks(edgeTracks, "the");
+      const matchedIds = results.map((t) => t.id);
+      expect(matchedIds).not.toContain("e9"); // "Hit Here" should not match "the"
+    });
+
+    it("ranks exact and prefix matches higher than loose substring collisions", () => {
+      const results = filterTracks(edgeTracks, "b ray");
+      // "B ray" artists (e1, e2, e3, e11) should rank before random matches
+      expect(["e1", "e2", "e3", "e11"]).toContain(results[0].id);
+    });
+  });
+
+  describe("searchItems generic multi-field search", () => {
+    const mixedSliceItems = [
+      { id: "s1", sliceName: "Intro Drop", trackTitle: "Waiting For You", artist: "MONO", createdAt: 100 },
+      { id: "s2", sliceName: "Chorus Peak", trackTitle: "Em Của Ngày Hôm Qua", artist: "Sơn Tùng M-TP", createdAt: 200 },
+      { id: "s3", sliceName: "Guitar Solo", trackTitle: "Xin Đừng Nhấc Máy", artist: "B Ray", createdAt: 300 },
+    ];
+
+    it("matches slices by sliceName", () => {
+      const res = searchItems(mixedSliceItems, "intro drop", (item) => ({
+        title: item.sliceName,
+        artist: item.artist,
+        segmentName: item.trackTitle,
+        createdAt: item.createdAt,
+      }));
+      expect(res.length).toBe(1);
+      expect(res[0].id).toBe("s1");
+    });
+
+    it("matches slices by parent trackTitle or artist", () => {
+      const res = searchItems(mixedSliceItems, "bray", (item) => ({
+        title: item.sliceName,
+        artist: item.artist,
+        segmentName: item.trackTitle,
+        createdAt: item.createdAt,
+      }));
+      expect(res.length).toBe(1);
+      expect(res[0].id).toBe("s3");
+    });
+
+    it("handles null or undefined fields gracefully", () => {
+      const itemsWithNulls = [
+        { id: "n1", title: null, artist: undefined, seg: "" },
+        { id: "n2", title: "Valid Song", artist: null, seg: null },
+      ];
+      const res = searchItems(itemsWithNulls, "valid", (item) => ({
+        title: item.title,
+        artist: item.artist,
+        segmentName: item.seg,
+      }));
+      expect(res.length).toBe(1);
+      expect(res[0].id).toBe("n2");
+    });
+  });
 });
+
+

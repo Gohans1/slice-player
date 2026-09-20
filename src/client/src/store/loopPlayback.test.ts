@@ -266,6 +266,7 @@ describe("Loop Playback Features", () => {
 
     usePlayerStore.setState({
       queueIndex: 0,
+      activeTrack: dummyTrack,
       activeSegment: dummySegments[0], // start_time: 0, end_time: 30
       currentTime: 30, // at the very end
       isPlaying: false,
@@ -293,6 +294,7 @@ describe("Loop Playback Features", () => {
 
     usePlayerStore.setState({
       queueIndex: 1,
+      activeTrack: dummyTrack,
       activeSegment: dummySegments[1], // start_time: 30, end_time: 60
       currentTime: 60, // at the end
       isPlaying: false,

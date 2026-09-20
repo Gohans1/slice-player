@@ -1,16 +1,20 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { Play, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
+import { Play, Pause, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration, createDefaultFullSegment } from "../lib/utils";
-import { normalizeVi, tokenizeQuery } from "../lib/search";
+import { searchItems } from "../lib/search";
 import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
 import {
   useSelectionStore,
+  useIsSelectionActive,
   isAllVisibleSelected,
   isPartiallyVisibleSelected,
+  createTrackSelectedItem,
+  createSliceSelectedItem,
+  createPlaylistItemSelectedItem,
   type SelectedItem,
 } from "../store/useSelectionStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
@@ -187,12 +191,15 @@ export function PlaylistTableView({
   const retryingTrackIds = usePlayerStore((s) => s.retryingTrackIds);
 
   const selectedTrackIds = useSelectionStore((s) => s.selectedTrackIds);
+  const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const selectAllVisible = useSelectionStore((s) => s.selectAllVisible);
   const deselectAllVisible = useSelectionStore((s) => s.deselectAllVisible);
 
   const [isReordering, setIsReordering] = React.useState(false);
   const isReorderingRef = React.useRef(false);
+  const busyIdRef = React.useRef<string | null>(null);
+  const lastPlayInitiatedRef = React.useRef(0);
   const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
   const draggedIdxRef = React.useRef<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = React.useState<number | null>(null);
@@ -344,12 +351,12 @@ export function PlaylistTableView({
   }, [playlists, activePlaylistId]);
 
   const displayedItems = React.useMemo(() => {
-    if (!searchQuery?.trim()) return activePlaylistItems;
-    const tokens = tokenizeQuery(searchQuery);
-    return activePlaylistItems.filter((item) => {
-      const combined = `${normalizeVi(item.segment?.name)} ${normalizeVi(item.track?.title)} ${normalizeVi(item.track?.artist)}`;
-      return tokens.every((t) => combined.includes(t));
-    });
+    return searchItems(activePlaylistItems, searchQuery || "", (item) => ({
+      title: item.segment?.name || item.track?.title,
+      artist: item.track?.artist,
+      segmentName: item.segment ? item.track?.title : undefined,
+      createdAt: item.added_at,
+    }));
   }, [activePlaylistItems, searchQuery]);
 
   const originalIdxMap = React.useMemo(() => {
@@ -365,34 +372,191 @@ export function PlaylistTableView({
     [commitReorder]
   );
 
+  const handlePlayPlaylistItem = React.useCallback(
+    async (item: PlaylistItemWithDetails) => {
+      const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
+      if (!isReady || !activePlaylistId) return;
+
+      const store = usePlayerStore.getState();
+      const isPlayingPlaylist = store.activePlaylistPlayingId !== null && store.activePlaylistPlayingId === activePlaylistId;
+      const currentQItem = store.queue[store.queueIndex];
+      const isSlice = Boolean(item.segment);
+      const isActive =
+        isPlayingPlaylist &&
+        (currentQItem?.queueItemId
+          ? currentQItem.queueItemId === item.id
+          : (isSlice && item.segment
+              ? store.activeSegment?.id === item.segment.id
+              : store.activeSegment?.track_id === item.track?.id && !store.activeSegment?.id.startsWith("seg_")));
+
+      if (isActive) {
+        if (Date.now() - lastPlayInitiatedRef.current < 600) return;
+        if (busyIdRef.current === item.id) return;
+        busyIdRef.current = item.id;
+        setTimeout(() => {
+          if (busyIdRef.current === item.id) busyIdRef.current = null;
+        }, 300);
+
+        if (store.isPlaying) {
+          store.pause();
+        } else {
+          await store.resume();
+        }
+        return;
+      }
+
+      if (busyIdRef.current === item.id) return;
+      busyIdRef.current = item.id;
+      lastPlayInitiatedRef.current = Date.now();
+      try {
+        await playPlaylistItemAtIndex(activePlaylistId, item.id);
+      } finally {
+        setTimeout(() => {
+          if (busyIdRef.current === item.id) busyIdRef.current = null;
+        }, 500);
+      }
+    },
+    [activePlaylistId, playPlaylistItemAtIndex]
+  );
+
+  const handlePlaySlice = React.useCallback(
+    async (segment: Segment, track: Track) => {
+      if (track.status !== "ready" || (track.duration ?? 0) <= 0) return;
+      const store = usePlayerStore.getState();
+      const isActive = store.activeSegment?.id === segment.id;
+
+      if (isActive) {
+        if (Date.now() - lastPlayInitiatedRef.current < 600) return;
+        if (busyIdRef.current === segment.id) return;
+        busyIdRef.current = segment.id;
+        setTimeout(() => {
+          if (busyIdRef.current === segment.id) busyIdRef.current = null;
+        }, 300);
+
+        if (store.isPlaying) {
+          store.pause();
+        } else {
+          await store.resume();
+        }
+        return;
+      }
+
+      if (busyIdRef.current === segment.id) return;
+      busyIdRef.current = segment.id;
+      lastPlayInitiatedRef.current = Date.now();
+      try {
+        await playSegmentInMode("slices_only", segment, track);
+      } finally {
+        setTimeout(() => {
+          if (busyIdRef.current === segment.id) busyIdRef.current = null;
+        }, 500);
+      }
+    },
+    [playSegmentInMode]
+  );
+
+  const handlePlayMixed = React.useCallback(
+    async (item: MixedItem) => {
+      if (item.track.status !== "ready" || item.track.duration <= 0) return;
+      const isSlice = item.type === "slice";
+      const itemId = isSlice ? item.segment.id : item.track.id;
+      const store = usePlayerStore.getState();
+      const isActive = isSlice
+        ? store.activeSegment?.id === item.segment.id
+        : store.activeTrack?.id === item.track.id && (!store.activeSegment || store.activeSegment.id.startsWith("fallback_"));
+
+      if (isActive) {
+        if (Date.now() - lastPlayInitiatedRef.current < 600) return;
+        if (busyIdRef.current === itemId) return;
+        busyIdRef.current = itemId;
+        setTimeout(() => {
+          if (busyIdRef.current === itemId) busyIdRef.current = null;
+        }, 300);
+
+        if (store.isPlaying) {
+          store.pause();
+        } else {
+          await store.resume();
+        }
+        return;
+      }
+
+      if (busyIdRef.current === itemId) return;
+      busyIdRef.current = itemId;
+      lastPlayInitiatedRef.current = Date.now();
+      try {
+        if (isSlice) {
+          await playSegmentInMode("mixed", item.segment, item.track);
+        } else {
+          await playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track);
+        }
+      } finally {
+        setTimeout(() => {
+          if (busyIdRef.current === itemId) busyIdRef.current = null;
+        }, 500);
+      }
+    },
+    [playSegmentInMode]
+  );
+
   const handlePlayTrack = React.useCallback(
     async (track: Track) => {
       if (track.status !== "ready" || track.duration <= 0) return;
-      const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
-      if (targetMode === "original_only" || targetMode === "mixed") {
-        playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+
+      const store = usePlayerStore.getState();
+      const isActive = store.activeTrack?.id === track.id && (!store.activeSegment || store.activeSegment.id.startsWith("fallback_"));
+
+      if (isActive) {
+        if (Date.now() - lastPlayInitiatedRef.current < 600) return;
+        if (busyIdRef.current === track.id) return;
+        busyIdRef.current = track.id;
+        setTimeout(() => {
+          if (busyIdRef.current === track.id) busyIdRef.current = null;
+        }, 300);
+
+        if (store.isPlaying) {
+          store.pause();
+        } else {
+          await store.resume();
+        }
         return;
       }
-      const modeQueue = usePlayerStore.getState().queuesByMode[targetMode] || [];
-      const modeTrackSlices = modeQueue
-        .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
-        .map((it) => it.segment);
-      if (modeTrackSlices.length > 0) {
-        playSegmentInMode(targetMode, modeTrackSlices[0], track);
-      } else if ((track.segment_count || 0) > 0) {
-        try {
-          const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
-          const segs = res.ok ? await res.json() : [];
-          if (Array.isArray(segs) && segs.length > 0) {
-            playSegmentInMode(targetMode, segs[0], track);
-            return;
-          }
-        } catch (e) {
-          console.error(e);
+
+      if (busyIdRef.current === track.id) return;
+      busyIdRef.current = track.id;
+      lastPlayInitiatedRef.current = Date.now();
+
+      try {
+        const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
+        if (targetMode === "original_only" || targetMode === "mixed") {
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+          return;
         }
-        playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
-      } else {
-        playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+        const modeQueue = store.queuesByMode[targetMode] || [];
+        const modeTrackSlices = modeQueue
+          .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
+          .map((it) => it.segment);
+        if (modeTrackSlices.length > 0) {
+          await playSegmentInMode(targetMode, modeTrackSlices[0], track);
+        } else if ((track.segment_count || 0) > 0) {
+          try {
+            const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
+            const segs = res.ok ? await res.json() : [];
+            if (Array.isArray(segs) && segs.length > 0) {
+              await playSegmentInMode(targetMode, segs[0], track);
+              return;
+            }
+          } catch (e) {
+            console.error(e);
+          }
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+        } else {
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+        }
+      } finally {
+        setTimeout(() => {
+          if (busyIdRef.current === track.id) busyIdRef.current = null;
+        }, 500);
       }
     },
     [activeSystemCategory, playbackMode, playSegmentInMode]
@@ -401,15 +565,7 @@ export function PlaylistTableView({
   const trackList = filteredTracks || [];
 
   const visiblePlaylistSelectedItems = React.useMemo<SelectedItem[]>(
-    () =>
-      displayedItems.map((it) => ({
-        id: it.id,
-        type: "playlist_item",
-        trackId: it.track.id,
-        segmentId: it.segment?.id || null,
-        playlistId: activePlaylistId,
-        title: it.segment ? it.segment.name : it.track.title,
-      })),
+    () => displayedItems.map((it) => createPlaylistItemSelectedItem(it, activePlaylistId)),
     [displayedItems, activePlaylistId]
   );
   const visiblePlaylistItemIds = React.useMemo(
@@ -422,13 +578,7 @@ export function PlaylistTableView({
   const visibleSliceSelectedItems = React.useMemo<SelectedItem[]>(
     () =>
       sliceItems
-        ? sliceItems.map((it) => ({
-            id: it.segment.id,
-            type: "slice",
-            trackId: it.track.id,
-            segmentId: it.segment.id,
-            title: it.segment.name,
-          }))
+        ? sliceItems.map((it) => createSliceSelectedItem(it.segment, it.track.id))
         : [],
     [sliceItems]
   );
@@ -444,19 +594,8 @@ export function PlaylistTableView({
       mixedItems
         ? mixedItems.map((it) =>
             it.type === "slice"
-              ? {
-                  id: it.segment.id,
-                  type: "slice",
-                  trackId: it.track.id,
-                  segmentId: it.segment.id,
-                  title: it.segment.name,
-                }
-              : {
-                  id: it.track.id,
-                  type: "track",
-                  trackId: it.track.id,
-                  title: it.track.title,
-                }
+              ? createSliceSelectedItem(it.segment, it.track.id)
+              : createTrackSelectedItem(it.track)
           )
         : [],
     [mixedItems]
@@ -471,12 +610,7 @@ export function PlaylistTableView({
   const visibleTrackSelectedItems = React.useMemo<SelectedItem[]>(
     () =>
       filteredTracks
-        ? filteredTracks.map((trk) => ({
-            id: trk.id,
-            type: "track",
-            trackId: trk.id,
-            title: trk.title,
-          }))
+        ? filteredTracks.map((trk) => createTrackSelectedItem(trk))
         : [],
     [filteredTracks]
   );
@@ -507,10 +641,10 @@ export function PlaylistTableView({
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4">
           <Music className="h-8 w-8 text-muted-foreground mb-2" />
           <h2 className="text-base font-semibold text-foreground">
-            {t("table.emptyMixed")}
+            {searchQuery?.trim() ? t("library.noResultsTitle") : t("table.emptyMixed")}
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            {t("table.emptyFilterDesc")}
+            {searchQuery?.trim() ? t("library.noResultsDesc") : t("table.emptyFilterDesc")}
           </p>
         </div>
       );
@@ -536,14 +670,7 @@ export function PlaylistTableView({
                   if (allPlaylistItemsSelected) {
                     deselectAllVisible(visiblePlaylistItemIds);
                   } else {
-                    selectAllVisible(displayedItems.map((it) => ({
-                      id: it.id,
-                      type: "playlist_item",
-                      trackId: it.track.id,
-                      segmentId: it.segment?.id || null,
-                      playlistId: activePlaylistId,
-                      title: it.segment ? it.segment.name : it.track.title,
-                    })));
+                    selectAllVisible(displayedItems.map((it) => createPlaylistItemSelectedItem(it, activePlaylistId)));
                   }
                 }}
                 className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
@@ -578,14 +705,14 @@ export function PlaylistTableView({
 
             const currentQueueItem = queueIndex >= 0 ? queue[queueIndex] : null;
             const isThisPlaylistPlaying = activePlaylistPlayingId !== null && activePlaylistPlayingId === activePlaylistId;
-            const isCurrentPlaying =
+            const isCurrentActive =
               isThisPlaylistPlaying &&
               (currentQueueItem?.queueItemId
                 ? currentQueueItem.queueItemId === item.id
                 : (isSlice && item.segment
                     ? activeSegment?.id === item.segment.id
-                    : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_"))) &&
-              isPlaying;
+                    : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")));
+            const isCurrentPlaying = isCurrentActive && isPlaying;
 
             const isSearching = Boolean(searchQuery?.trim());
             const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
@@ -603,8 +730,20 @@ export function PlaylistTableView({
               <div
                 role="row"
                 aria-rowindex={idx + 2}
-                tabIndex={isReady ? 0 : -1}
-                aria-label={t("trackCard.playTitle", { title: isSlice && item.segment ? item.segment.name : (item.track?.title || "") })}
+                tabIndex={isSelectionActive || isReady ? 0 : -1}
+                aria-label={
+                  isSelectionActive
+                    ? (isSelected
+                        ? t("trackCard.deselectTrack", { title: isSlice && item.segment ? item.segment.name : (item.track?.title || "") })
+                        : t("trackCard.selectTrack", { title: isSlice && item.segment ? item.segment.name : (item.track?.title || "") }))
+                    : isCurrentPlaying
+                    ? (isSlice && item.segment
+                        ? t("trackCard.pauseSliceTitle", { name: item.segment.name, defaultValue: `Pause ${item.segment.name}` })
+                        : t("trackCard.pauseTitle", { title: item.track?.title || "", defaultValue: `Pause ${item.track?.title || ""}` }))
+                    : (isSlice && item.segment
+                        ? t("trackCard.playSliceTitle", { name: item.segment.name })
+                        : t("trackCard.playTitle", { title: item.track?.title || "" }))
+                }
                 draggable={canDrag}
                 onDragStart={(e) => {
                   if (!canDrag) {
@@ -628,15 +767,22 @@ export function PlaylistTableView({
                 }}
                 onDragEnd={handleDragEnd}
                 onKeyDown={(e) => {
-                  if ((e.key === "Enter" || e.key === " ") && isReady) {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    playPlaylistItemAtIndex(activePlaylistId, item.id);
+                    if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                      toggleTrack(item.id, visiblePlaylistSelectedItems, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                      return;
+                    }
+                    handlePlayPlaylistItem(item);
                   }
                 }}
-                onClick={() => {
+                onClick={(e) => {
                   if (justDroppedRef.current) return;
-                  if (!isReady) return;
-                  playPlaylistItemAtIndex(activePlaylistId, item.id);
+                  if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                    toggleTrack(item.id, visiblePlaylistSelectedItems, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                    return;
+                  }
+                  handlePlayPlaylistItem(item);
                 }}
                 className={`group grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
                   isSelected
@@ -712,14 +858,7 @@ export function PlaylistTableView({
                     })}
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleTrack(item.id, visiblePlaylistSelectedItems, e.shiftKey, {
-                        id: item.id,
-                        type: "playlist_item",
-                        trackId: item.track?.id ?? item.track_id,
-                        segmentId: item.segment?.id || null,
-                        playlistId: activePlaylistId,
-                        title: isSlice && item.segment ? item.segment.name : (item.track?.title || ""),
-                      });
+                      toggleTrack(item.id, visiblePlaylistSelectedItems, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === " " || e.key === "Enter") {
@@ -735,10 +874,22 @@ export function PlaylistTableView({
                     {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden truncate" : "truncate"}>
-                    {String(idx + 1).padStart(2, "0")}
+                    {isCurrentPlaying ? (
+                      <span className="flex items-end gap-0.5 h-3 text-primary">
+                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
+                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
+                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
+                      </span>
+                    ) : (
+                      String(idx + 1).padStart(2, "0")
+                    )}
                   </span>
                   {isReady && !isSelected && (
-                    <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    isCurrentPlaying ? (
+                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    ) : (
+                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    )
                   )}
                 </div>
 
@@ -917,13 +1068,7 @@ export function PlaylistTableView({
                   if (allSliceItemsSelected) {
                     deselectAllVisible(visibleSliceItemIds);
                   } else {
-                    selectAllVisible(sliceItems.map((it) => ({
-                      id: it.segment.id,
-                      type: "slice",
-                      trackId: it.track.id,
-                      segmentId: it.segment.id,
-                      title: it.segment.name,
-                    })));
+                    selectAllVisible(visibleSliceSelectedItems);
                   }
                 }}
                 className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
@@ -951,7 +1096,8 @@ export function PlaylistTableView({
           items={sliceItems}
           getItemKey={getEntityId}
           renderRow={(item, idx) => {
-            const isCurrentPlaying = isPlaying && activeSegment?.id === item.segment.id;
+            const isCurrentActive = activeSegment?.id === item.segment.id;
+            const isCurrentPlaying = isPlaying && isCurrentActive;
             const duration = Math.max(0, item.segment.end_time - item.segment.start_time);
             const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
             const isSelected = selectedTrackIds.has(item.segment.id);
@@ -960,17 +1106,30 @@ export function PlaylistTableView({
               <div
                 role="row"
                 aria-rowindex={idx + 2}
-                tabIndex={isReady ? 0 : -1}
-                aria-label={t("trackCard.playSliceTitle", { name: item.segment.name })}
+                tabIndex={isSelectionActive || isReady ? 0 : -1}
+                aria-label={
+                  isSelectionActive
+                    ? (isSelected ? t("trackCard.deselectTrack", { title: item.segment.name }) : t("trackCard.selectTrack", { title: item.segment.name }))
+                    : isCurrentPlaying
+                    ? t("trackCard.pauseSliceTitle", { name: item.segment.name, defaultValue: `Pause ${item.segment.name}` })
+                    : t("trackCard.playSliceTitle", { name: item.segment.name })
+                }
                 onKeyDown={(e) => {
-                  if ((e.key === "Enter" || e.key === " ") && isReady) {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    playSegmentInMode("slices_only", item.segment, item.track);
+                    if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                      toggleTrack(item.segment.id, visibleSliceSelectedItems, e.shiftKey, createSliceSelectedItem(item.segment, item.track.id));
+                      return;
+                    }
+                    handlePlaySlice(item.segment, item.track);
                   }
                 }}
-                onClick={() => {
-                  if (!isReady) return;
-                  playSegmentInMode("slices_only", item.segment, item.track);
+                onClick={(e) => {
+                  if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                    toggleTrack(item.segment.id, visibleSliceSelectedItems, e.shiftKey, createSliceSelectedItem(item.segment, item.track.id));
+                    return;
+                  }
+                  handlePlaySlice(item.segment, item.track);
                 }}
                 className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
                   isSelected
@@ -991,13 +1150,7 @@ export function PlaylistTableView({
                     aria-label={t("trackCard.selectTrack", { title: item.segment.name, defaultValue: `Select ${item.segment.name}` })}
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleTrack(item.segment.id, visibleSliceSelectedItems, e.shiftKey, {
-                        id: item.segment.id,
-                        type: "slice",
-                        trackId: item.track.id,
-                        segmentId: item.segment.id,
-                        title: item.segment.name,
-                      });
+                      toggleTrack(item.segment.id, visibleSliceSelectedItems, e.shiftKey, createSliceSelectedItem(item.segment, item.track.id));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === " " || e.key === "Enter") {
@@ -1013,10 +1166,22 @@ export function PlaylistTableView({
                     {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
-                    {String(idx + 1).padStart(2, "0")}
+                    {isCurrentPlaying ? (
+                      <span className="flex items-end gap-0.5 h-3 text-primary">
+                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
+                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
+                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
+                      </span>
+                    ) : (
+                      String(idx + 1).padStart(2, "0")
+                    )}
                   </span>
                   {isReady && !isSelected && (
-                    <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    isCurrentPlaying ? (
+                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    ) : (
+                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    )
                   )}
                 </div>
 
@@ -1120,24 +1285,7 @@ export function PlaylistTableView({
                   if (allMixedItemsSelected) {
                     deselectAllVisible(visibleMixedItemIds);
                   } else {
-                    selectAllVisible(
-                      mixedItems.map((it) =>
-                        it.type === "slice"
-                          ? {
-                              id: it.segment.id,
-                              type: "slice" as const,
-                              trackId: it.track.id,
-                              segmentId: it.segment.id,
-                              title: it.segment.name,
-                            }
-                          : {
-                              id: it.track.id,
-                              type: "track" as const,
-                              trackId: it.track.id,
-                              title: it.track.title,
-                            }
-                      )
-                    );
+                    selectAllVisible(visibleMixedSelectedItems);
                   }
                 }}
                 className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
@@ -1173,34 +1321,60 @@ export function PlaylistTableView({
               : item.track.duration;
 
             const isReady = item.track.status === "ready" && item.track.duration > 0;
-            const isCurrentPlaying =
-              isPlaying &&
-              (isSlice
-                ? activeSegment?.id === item.segment.id
-                : activeTrack?.id === item.track.id && (!activeSegment || activeSegment.id.startsWith("fallback_")));
-
-            const handlePlay = () => {
-              if (!isReady) return;
-              if (isSlice) {
-                playSegmentInMode("mixed", item.segment, item.track);
-              } else {
-                playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track);
-              }
-            };
+            const isCurrentActive = isSlice
+              ? activeSegment?.id === item.segment.id
+              : activeTrack?.id === item.track.id && (!activeSegment || activeSegment.id.startsWith("fallback_"));
+            const isCurrentPlaying = isPlaying && isCurrentActive;
 
             return (
               <div
                 role="row"
                 aria-rowindex={idx + 2}
-                tabIndex={isReady ? 0 : -1}
-                aria-label={t("trackCard.playTitle", { title: isSlice ? item.segment.name : item.track.title })}
+                tabIndex={isSelectionActive || isReady ? 0 : -1}
+                aria-label={
+                  isSelectionActive
+                    ? (isSelected
+                        ? t("trackCard.deselectTrack", { title: isSlice ? item.segment.name : item.track.title })
+                        : t("trackCard.selectTrack", { title: isSlice ? item.segment.name : item.track.title }))
+                    : isCurrentPlaying
+                    ? (isSlice
+                        ? t("trackCard.pauseSliceTitle", { name: item.segment.name, defaultValue: `Pause ${item.segment.name}` })
+                        : t("trackCard.pauseTitle", { title: item.track.title, defaultValue: `Pause ${item.track.title}` }))
+                    : (isSlice
+                        ? t("trackCard.playSliceTitle", { name: item.segment.name })
+                        : t("trackCard.playTitle", { title: item.track.title }))
+                }
                 onKeyDown={(e) => {
-                  if ((e.key === "Enter" || e.key === " ") && isReady) {
+                  if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    handlePlay();
+                    if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                      toggleTrack(
+                        entityId,
+                        visibleMixedSelectedItems,
+                        e.shiftKey,
+                        isSlice
+                          ? createSliceSelectedItem(item.segment, item.track.id)
+                          : createTrackSelectedItem(item.track)
+                      );
+                      return;
+                    }
+                    handlePlayMixed(item);
                   }
                 }}
-                onClick={handlePlay}
+                onClick={(e) => {
+                  if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                    toggleTrack(
+                      entityId,
+                      visibleMixedSelectedItems,
+                      e.shiftKey,
+                      isSlice
+                        ? createSliceSelectedItem(item.segment, item.track.id)
+                        : createTrackSelectedItem(item.track)
+                    );
+                    return;
+                  }
+                  handlePlayMixed(item);
+                }}
                 className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
@@ -1225,19 +1399,8 @@ export function PlaylistTableView({
                         visibleMixedSelectedItems,
                         e.shiftKey,
                         isSlice
-                          ? {
-                              id: item.segment.id,
-                              type: "slice",
-                              trackId: item.track.id,
-                              segmentId: item.segment.id,
-                              title: item.segment.name,
-                            }
-                          : {
-                              id: item.track.id,
-                              type: "track",
-                              trackId: item.track.id,
-                              title: item.track.title,
-                            }
+                          ? createSliceSelectedItem(item.segment, item.track.id)
+                          : createTrackSelectedItem(item.track)
                       );
                     }}
                     onKeyDown={(e) => {
@@ -1254,10 +1417,22 @@ export function PlaylistTableView({
                     {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
-                    {String(idx + 1).padStart(2, "0")}
+                    {isCurrentPlaying ? (
+                      <span className="flex items-end gap-0.5 h-3 text-primary">
+                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
+                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
+                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
+                      </span>
+                    ) : (
+                      String(idx + 1).padStart(2, "0")
+                    )}
                   </span>
                   {isReady && !isSelected && (
-                    <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    isCurrentPlaying ? (
+                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    ) : (
+                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                    )
                   )}
                 </div>
 
@@ -1432,13 +1607,19 @@ export function PlaylistTableView({
         getItemKey={getEntityId}
         renderRow={(track, idx) => {
           const isSelected = selectedTrackIds.has(track.id);
-          const isCurrentPlaying =
+          const isCurrentActive =
             activeTrack?.id === track.id &&
-            (!activeSegment || activeSegment.id.startsWith("fallback_")) &&
-            isPlaying;
+            (!activeSegment || activeSegment.id.startsWith("fallback_"));
+          const isCurrentPlaying = isCurrentActive && isPlaying;
           const isReady = track.status === "ready" && track.duration > 0;
           const isRetrying = Boolean(retryingTrackIds?.[track.id]);
-          const rowAriaLabel = isReady
+          const rowAriaLabel = isSelectionActive
+            ? (isSelected
+                ? t("trackCard.deselectTrack", { title: track.title })
+                : t("trackCard.selectTrack", { title: track.title }))
+            : isCurrentPlaying
+            ? t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })
+            : isReady
             ? t("trackCard.playTitle", { title: track.title })
             : track.status === "downloading"
             ? `${t("trackCard.downloading")}: ${track.title}`
@@ -1450,15 +1631,27 @@ export function PlaylistTableView({
             <div
               role="row"
               aria-rowindex={idx + 2}
-              tabIndex={isReady ? 0 : -1}
+              tabIndex={isSelectionActive || isReady ? 0 : -1}
               aria-label={rowAriaLabel}
               onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && isReady) {
+                if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
+                  if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                    toggleTrack(track.id, visibleTrackSelectedItems, e.shiftKey, createTrackSelectedItem(track));
+                    return;
+                  }
+                  if (!isReady) return;
                   handlePlayTrack(track);
                 }
               }}
-              onClick={() => handlePlayTrack(track)}
+              onClick={(e) => {
+                if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+                  toggleTrack(track.id, visibleTrackSelectedItems, e.shiftKey, createTrackSelectedItem(track));
+                  return;
+                }
+                if (!isReady) return;
+                handlePlayTrack(track);
+              }}
               className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_160px_100px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
                 isSelected
                   ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
@@ -1478,12 +1671,7 @@ export function PlaylistTableView({
                   aria-label={t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` })}
                   onClick={(e) => {
                     e.stopPropagation();
-                    toggleTrack(track.id, visibleTrackSelectedItems, e.shiftKey, {
-                      id: track.id,
-                      type: "track",
-                      trackId: track.id,
-                      title: track.title,
-                    });
+                    toggleTrack(track.id, visibleTrackSelectedItems, e.shiftKey, createTrackSelectedItem(track));
                   }}
                   onKeyDown={(e) => {
                     if (e.key === " " || e.key === "Enter") {
@@ -1499,10 +1687,22 @@ export function PlaylistTableView({
                   {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                 </button>
                 <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
-                  {String(idx + 1).padStart(2, "0")}
+                  {isCurrentPlaying ? (
+                    <span className="flex items-end gap-0.5 h-3 text-primary">
+                      <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
+                      <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
+                      <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
+                    </span>
+                  ) : (
+                    String(idx + 1).padStart(2, "0")
+                  )}
                 </span>
                 {isReady && !isSelected && (
-                  <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                  isCurrentPlaying ? (
+                    <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                  ) : (
+                    <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                  )
                 )}
               </div>
 

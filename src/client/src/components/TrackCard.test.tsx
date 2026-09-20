@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -124,6 +124,176 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       usePlayerStore.setState({
         isPlaying: false,
         activeTrack: null,
+      });
+    });
+  });
+
+  it("renders pause button and calls pause when clicking thumbnail overlay while playing", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origPause = usePlayerStore.getState().pause;
+    const readyTrack: Track = { ...baseTrack, status: "ready" };
+    const pauseSpy = mock(() => {});
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: true,
+        activeTrack: readyTrack,
+        pause: pauseSpy as any,
+      });
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const overlayBtn = container.querySelector(`button[title="Pause ${readyTrack.title}"]`);
+    expect(overlayBtn).not.toBeNull();
+
+    act(() => {
+      overlayBtn.click();
+    });
+
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        pause: origPause,
+      });
+    });
+  });
+
+  it("calls resume when clicking thumbnail overlay while active track is paused", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origResume = usePlayerStore.getState().resume;
+    const readyTrack: Track = { ...baseTrack, status: "ready" };
+    const resumeSpy = mock(() => Promise.resolve());
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: readyTrack,
+        resume: resumeSpy as any,
+      });
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const overlayBtn = container.querySelector(`button[title="Play ${readyTrack.title}"]`);
+    expect(overlayBtn).not.toBeNull();
+
+    await act(async () => {
+      overlayBtn.click();
+    });
+
+    expect(resumeSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        resume: origResume,
+      });
+    });
+  });
+
+  it("prevents repeated play initiation when spam clicking thumbnail play button", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origPlaySegmentInMode = usePlayerStore.getState().playSegmentInMode;
+    const readyTrack: Track = { ...baseTrack, id: "spam_track", status: "ready" };
+    const playSegmentInModeSpy = mock(() => Promise.resolve());
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        activeSystemCategory: "original_only",
+        playbackMode: "original_only",
+        playSegmentInMode: playSegmentInModeSpy as any,
+      });
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const overlayBtn = container.querySelector(`button[title="Play ${readyTrack.title}"]`);
+    expect(overlayBtn).not.toBeNull();
+
+    // Rapid spam clicks
+    await act(async () => {
+      overlayBtn.click();
+      overlayBtn.click();
+      overlayBtn.click();
+      overlayBtn.click();
+    });
+
+    // Should only initiate playback once despite rapid spam clicks
+    expect(playSegmentInModeSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        playSegmentInMode: origPlaySegmentInMode,
+      });
+    });
+  });
+
+  it("toggles track selection and does not initiate playback when in selection mode", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const { useSelectionStore } = await import("../store/useSelectionStore");
+
+    const playSegmentInModeSpy = mock(() => Promise.resolve());
+    const pauseSpy = mock(() => {});
+    const origPlaySegmentInMode = usePlayerStore.getState().playSegmentInMode;
+    const origPause = usePlayerStore.getState().pause;
+
+    const currentlyPlayingTrack: Track = { ...baseTrack, id: "active_playing_trk", status: "ready" };
+    const targetTrack: Track = { ...baseTrack, id: "target_trk", title: "Target Track", status: "ready" };
+
+    // Put store in selection mode (1 track already selected)
+    act(() => {
+      useSelectionStore.getState().clearSelection();
+      useSelectionStore.getState().selectTracks(["other_track_id"]);
+      usePlayerStore.setState({
+        isPlaying: true,
+        activeTrack: currentlyPlayingTrack,
+        playSegmentInMode: playSegmentInModeSpy as any,
+        pause: pauseSpy as any,
+      });
+      root.render(
+        <TrackCard
+          track={targetTrack}
+          onDelete={() => {}}
+          visibleTrackIds={[targetTrack.id, "other_track_id"]}
+        />
+      );
+    });
+
+    expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
+    expect(useSelectionStore.getState().selectedTrackIds.has("target_trk")).toBe(false);
+
+    const overlayBtn = container.querySelector(`button[title="Select Target Track"]`);
+    expect(overlayBtn).not.toBeNull();
+
+    // Click play overlay while in selection mode
+    await act(async () => {
+      overlayBtn.click();
+    });
+
+    // Should be selected now!
+    expect(useSelectionStore.getState().selectedTrackIds.has("target_trk")).toBe(true);
+    expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+
+    // Should NOT have touched playback
+    expect(playSegmentInModeSpy).toHaveBeenCalledTimes(0);
+    expect(pauseSpy).toHaveBeenCalledTimes(0);
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(usePlayerStore.getState().activeTrack?.id).toBe("active_playing_trk");
+
+    // Clean up
+    act(() => {
+      useSelectionStore.getState().clearSelection();
+      usePlayerStore.setState({
+        isPlaying: false,
+        activeTrack: null,
+        playSegmentInMode: origPlaySegmentInMode,
+        pause: origPause,
       });
     });
   });

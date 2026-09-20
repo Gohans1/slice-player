@@ -16,7 +16,7 @@ import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
 import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { audioEngine } from "./lib/audio";
-import { filterTracks, normalizeVi, tokenizeQuery } from "./lib/search";
+import { filterTracks, searchItems } from "./lib/search";
 import { compareDownloadingTracks } from "./lib/utils";
 import { Button } from "./components/ui/button";
 import { BulkActionBar } from "./components/BulkActionBar";
@@ -105,6 +105,8 @@ export function App() {
   const handleToggleCustomFold = React.useCallback(() => {
     const next = !isCustomFolded;
     setIsCustomFolded(next);
+    setIsMorePlaylistsOpen(false);
+    setMorePlaylistsCoords(null);
     try {
       if (typeof window !== "undefined" && window.localStorage) {
         window.localStorage.setItem("slice_player_custom_playlists_folded", JSON.stringify(next));
@@ -113,27 +115,113 @@ export function App() {
   }, [isCustomFolded]);
 
   const [isMorePlaylistsOpen, setIsMorePlaylistsOpen] = React.useState(false);
+  const [morePlaylistsCoords, setMorePlaylistsCoords] = React.useState<{ top: number; left: number } | null>(null);
   const morePlaylistsContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const handleToggleMorePlaylists = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!isMorePlaylistsOpen) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const menuWidth = 224;
+      const maxLeft = (typeof window !== "undefined" ? window.innerWidth : 1024) - menuWidth - 8;
+      const left = Math.max(8, Math.min(rect.left, maxLeft));
+      setMorePlaylistsCoords({
+        top: rect.bottom + 6,
+        left,
+      });
+      setIsMorePlaylistsOpen(true);
+    } else {
+      setIsMorePlaylistsOpen(false);
+      setMorePlaylistsCoords(null);
+    }
+  };
 
   React.useEffect(() => {
     if (!isMorePlaylistsOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (morePlaylistsContainerRef.current && !morePlaylistsContainerRef.current.contains(e.target as Node)) {
         setIsMorePlaylistsOpen(false);
+        setMorePlaylistsCoords(null);
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsMorePlaylistsOpen(false);
+        setMorePlaylistsCoords(null);
       }
+    };
+    const handleCloseOnScroll = (e: Event) => {
+      // Ignore internal scroll events from the dropdown menu list itself
+      if (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setIsMorePlaylistsOpen(false);
+      setMorePlaylistsCoords(null);
     };
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleCloseOnScroll);
+    window.addEventListener("scroll", handleCloseOnScroll, true);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleCloseOnScroll);
+      window.removeEventListener("scroll", handleCloseOnScroll, true);
     };
   }, [isMorePlaylistsOpen]);
+
+  const renderMorePlaylistsMenu = (list: typeof playlists) => {
+    if (!isMorePlaylistsOpen) return null;
+    return (
+      <div
+        role="menu"
+        aria-label={t("library.morePlaylistsTitle", "Other playlists")}
+        style={
+          morePlaylistsCoords
+            ? {
+                top: `${morePlaylistsCoords.top}px`,
+                left: `${morePlaylistsCoords.left}px`,
+              }
+            : undefined
+        }
+        className="fixed w-56 rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+      >
+        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
+          <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
+          <span className="font-mono text-[10px] opacity-70">({list.length})</span>
+        </div>
+        <div className="max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
+          {list.map((pl) => {
+            const isSelected = activePlaylistId === pl.id;
+            return (
+              <button
+                key={pl.id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActivePlaylist(pl.id);
+                  setIsMorePlaylistsOpen(false);
+                  setMorePlaylistsCoords(null);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors cursor-pointer ${
+                  isSelected
+                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
+                    : "hover:bg-accent hover:text-accent-foreground text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-2">
+                  <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="truncate">{pl.name}</span>
+                </div>
+                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                  ({pl.item_count || 0})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   // Maximum custom playlist tabs shown directly in the bar before folding the rest into More menu
   const { visibleCustomPlaylists, overflowCustomPlaylists } = React.useMemo(() => {
@@ -558,16 +646,12 @@ export function App() {
   }, [segments, tracks]);
 
   const filteredSliceItems = React.useMemo(() => {
-    if (!deferredQuery.trim()) return allSliceItems;
-    const tokens = tokenizeQuery(deferredQuery);
-    if (tokens.length === 0) return allSliceItems;
-    return allSliceItems.filter((item) => {
-      const segName = normalizeVi(item.segment?.name);
-      const trackTitle = normalizeVi(item.track?.title);
-      const artist = normalizeVi(item.track?.artist);
-      const combined = `${segName} ${trackTitle} ${artist}`;
-      return tokens.every((token) => combined.includes(token));
-    });
+    return searchItems(allSliceItems, deferredQuery, (item) => ({
+      title: item.segment?.name,
+      artist: item.track?.artist,
+      segmentName: item.track?.title,
+      createdAt: item.segment?.created_at,
+    }));
   }, [allSliceItems, deferredQuery]);
 
   const allMixedItems = React.useMemo<MixedItem[]>(() => {
@@ -612,38 +696,31 @@ export function App() {
   }, [downloadingTracks, tracks, allSliceItems]);
 
   const filteredMixedItems = React.useMemo(() => {
-    if (!deferredQuery.trim()) return allMixedItems;
-    const tokens = tokenizeQuery(deferredQuery);
-    if (tokens.length === 0) return allMixedItems;
-
-    return allMixedItems.filter((item) => {
+    return searchItems(allMixedItems, deferredQuery, (item) => {
       if (item.type === "slice") {
-        const segName = normalizeVi(item.segment.name);
-        const trackTitle = normalizeVi(item.track.title);
-        const artist = item.track.artist ? normalizeVi(item.track.artist) : "";
-        const combined = artist ? `${segName} ${trackTitle} ${artist}` : `${segName} ${trackTitle}`;
-        return tokens.every((token) => combined.includes(token));
-      } else {
-        const trackTitle = normalizeVi(item.track.title);
-        const artist = item.track.artist ? normalizeVi(item.track.artist) : "";
-        const combined = artist ? `${trackTitle} ${artist}` : trackTitle;
-        return tokens.every((token) => combined.includes(token));
+        return {
+          title: item.segment.name,
+          artist: item.track.artist,
+          segmentName: item.track.title,
+          createdAt: item.createdAt,
+        };
       }
+      return {
+        title: item.track.title,
+        artist: item.track.artist,
+        createdAt: item.createdAt,
+      };
     });
   }, [allMixedItems, deferredQuery]);
 
   const displayedPlaylistItems = React.useMemo(() => {
     if (!activePlaylistId) return [];
-    if (!deferredQuery.trim()) return activePlaylistItems;
-    const tokens = tokenizeQuery(deferredQuery);
-    if (tokens.length === 0) return activePlaylistItems;
-    return activePlaylistItems.filter((item) => {
-      const title = normalizeVi(item.track?.title);
-      const artist = normalizeVi(item.track?.artist);
-      const segName = normalizeVi(item.segment?.name);
-      const combined = `${segName} ${title} ${artist}`;
-      return tokens.every((token) => combined.includes(token));
-    });
+    return searchItems(activePlaylistItems, deferredQuery, (item) => ({
+      title: item.segment?.name || item.track?.title,
+      artist: item.track?.artist,
+      segmentName: item.segment ? item.track?.title : undefined,
+      createdAt: item.added_at,
+    }));
   }, [activePlaylistId, activePlaylistItems, deferredQuery]);
 
   const handlePlayPlaylistItem = React.useCallback(
@@ -1100,7 +1177,7 @@ export function App() {
 
                     <button
                       type="button"
-                      onClick={() => setIsMorePlaylistsOpen((prev) => !prev)}
+                      onClick={handleToggleMorePlaylists}
                       aria-expanded={isMorePlaylistsOpen}
                       aria-haspopup="menu"
                       aria-label={t("library.morePlaylistsTitle", "Other playlists")}
@@ -1110,47 +1187,7 @@ export function App() {
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
 
-                    {isMorePlaylistsOpen && (
-                      <div
-                        role="menu"
-                        aria-label={t("library.morePlaylistsTitle", "Other playlists")}
-                        className="absolute top-full left-0 mt-1.5 w-56 rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
-                      >
-                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
-                          <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
-                          <span className="font-mono text-[10px] opacity-70">({playlists.length})</span>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
-                          {playlists.map((pl) => {
-                            const isSelected = activePlaylistId === pl.id;
-                            return (
-                              <button
-                                key={pl.id}
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setActivePlaylist(pl.id);
-                                  setIsMorePlaylistsOpen(false);
-                                }}
-                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors cursor-pointer ${
-                                  isSelected
-                                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                                    : "hover:bg-accent hover:text-accent-foreground text-foreground"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-2">
-                                  <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
-                                  <span className="truncate">{pl.name}</span>
-                                </div>
-                                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                                  ({pl.item_count || 0})
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {renderMorePlaylistsMenu(playlists)}
                   </div>
                 </>
               )}
@@ -1187,7 +1224,7 @@ export function App() {
                     <div className="relative inline-flex items-center shrink-0" ref={morePlaylistsContainerRef}>
                       <button
                         type="button"
-                        onClick={() => setIsMorePlaylistsOpen((prev) => !prev)}
+                        onClick={handleToggleMorePlaylists}
                         aria-expanded={isMorePlaylistsOpen}
                         aria-haspopup="menu"
                         title={t("library.morePlaylists", { count: overflowCustomPlaylists.length })}
@@ -1198,47 +1235,7 @@ export function App() {
                         <span className="font-mono text-[11px] opacity-80">{overflowCustomPlaylists.length}</span>
                       </button>
 
-                      {isMorePlaylistsOpen && (
-                        <div
-                          role="menu"
-                          aria-label={t("library.morePlaylistsTitle", "Other playlists")}
-                          className="absolute top-full left-0 mt-1.5 w-56 rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
-                        >
-                          <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
-                            <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
-                            <span className="font-mono text-[10px] opacity-70">({overflowCustomPlaylists.length})</span>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
-                            {overflowCustomPlaylists.map((pl) => {
-                              const isSelected = activePlaylistId === pl.id;
-                              return (
-                                <button
-                                  key={pl.id}
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => {
-                                    setActivePlaylist(pl.id);
-                                    setIsMorePlaylistsOpen(false);
-                                  }}
-                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors cursor-pointer ${
-                                    isSelected
-                                      ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                                      : "hover:bg-accent hover:text-accent-foreground text-foreground"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-2">
-                                    <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
-                                    <span className="truncate">{pl.name}</span>
-                                  </div>
-                                  <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                                    ({pl.item_count || 0})
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                      {renderMorePlaylistsMenu(overflowCustomPlaylists)}
                     </div>
                   )}
 

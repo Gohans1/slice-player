@@ -25,6 +25,7 @@ import { createRoot } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
 import { PlaylistTableView, type MixedItem } from "./PlaylistTableView";
 import { usePlayerStore } from "../store/usePlayerStore";
+import { useSelectionStore } from "../store/useSelectionStore";
 import type { Track, Segment, Playlist, PlaylistItemWithDetails } from "@/server/types";
 
 const dummyTrack: Track = {
@@ -89,6 +90,10 @@ const dummyPlaylistItem2: PlaylistItemWithDetails = {
 };
 
 describe("PlaylistTableView", () => {
+  const origPlaySegmentInMode = usePlayerStore.getState().playSegmentInMode;
+  const origPlayPlaylistItemAtIndex = usePlayerStore.getState().playPlaylistItemAtIndex;
+  const origPause = usePlayerStore.getState().pause;
+  const origResume = usePlayerStore.getState().resume;
   let window: any;
   let container: any;
   let root: any;
@@ -139,6 +144,10 @@ describe("PlaylistTableView", () => {
       isPlaying: false,
       activeTrack: null,
       activeSegment: null,
+      playSegmentInMode: origPlaySegmentInMode,
+      playPlaylistItemAtIndex: origPlayPlaylistItemAtIndex,
+      pause: origPause,
+      resume: origResume,
       queuesByMode: {
         slices_only: [],
         mixed: [],
@@ -1119,6 +1128,371 @@ describe("PlaylistTableView", () => {
 
     const addButtons = container.querySelectorAll("button[title='Thêm vào danh sách'], button[title='Add to Playlist']");
     expect(addButtons.length).toBe(1);
+  });
+
+  it("toggles track selection when clicking row in selection mode without playing", async () => {
+    let playCalled = false;
+    useSelectionStore.getState().clearSelection();
+    useSelectionStore.getState().selectTracks(["other_track"]);
+    try {
+      usePlayerStore.setState({
+        activeSystemCategory: "mixed",
+        playSegmentInMode: async () => {
+          playCalled = true;
+        },
+      });
+
+      await act(async () => {
+        root.render(
+          <PlaylistTableView
+            filteredTracks={[dummyTrack]}
+            onDeleteTrack={() => {}}
+          />
+        );
+      });
+
+      expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
+      expect(useSelectionStore.getState().selectedTrackIds.has(dummyTrack.id)).toBe(false);
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      await act(async () => {
+        row.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(useSelectionStore.getState().selectedTrackIds.has(dummyTrack.id)).toBe(true);
+      expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+      expect(playCalled).toBe(false);
+    } finally {
+      usePlayerStore.setState({
+        playSegmentInMode: origPlaySegmentInMode,
+      });
+      useSelectionStore.getState().clearSelection();
+    }
+  });
+
+  it("toggles playlist item selection when clicking custom playlist row in selection mode", async () => {
+    let playCalled = false;
+    useSelectionStore.getState().clearSelection();
+    useSelectionStore.getState().selectTracks(["other_item"]);
+    try {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1],
+        playlists: [dummyPlaylist],
+        playPlaylistItemAtIndex: async () => {
+          playCalled = true;
+        },
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
+      expect(useSelectionStore.getState().selectedTrackIds.has(dummyPlaylistItem1.id)).toBe(false);
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      await act(async () => {
+        row.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(useSelectionStore.getState().selectedTrackIds.has(dummyPlaylistItem1.id)).toBe(true);
+      expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+      expect(playCalled).toBe(false);
+    } finally {
+      usePlayerStore.setState({
+        playPlaylistItemAtIndex: origPlayPlaylistItemAtIndex,
+      });
+      useSelectionStore.getState().clearSelection();
+    }
+  });
+
+  describe("Toggle play/pause and rapid spam prevention in Table View", () => {
+    it("in custom playlist view, toggles pause when clicked while active and playing", async () => {
+      const pauseSpy = mock(() => {});
+      const resumeSpy = mock(async () => {});
+      const playAtIndexSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistPlayingId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1],
+        queue: [
+          {
+            queueItemId: dummyPlaylistItem1.id,
+            segment: dummySegment,
+            track: dummyTrack,
+          },
+        ],
+        queueIndex: 0,
+        activeTrack: dummyTrack,
+        activeSegment: dummySegment,
+        isPlaying: true,
+        pause: pauseSpy,
+        resume: resumeSpy,
+        playPlaylistItemAtIndex: playAtIndexSpy,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Click playing active row -> calls pause
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(resumeSpy).not.toHaveBeenCalled();
+      expect(playAtIndexSpy).not.toHaveBeenCalled();
+    });
+
+    it("in custom playlist view, toggles resume when clicked while active and paused", async () => {
+      const pauseSpy = mock(() => {});
+      const resumeSpy = mock(async () => {});
+      const playAtIndexSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistPlayingId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1],
+        queue: [
+          {
+            queueItemId: dummyPlaylistItem1.id,
+            segment: dummySegment,
+            track: dummyTrack,
+          },
+        ],
+        queueIndex: 0,
+        activeTrack: dummyTrack,
+        activeSegment: dummySegment,
+        isPlaying: false,
+        pause: pauseSpy,
+        resume: resumeSpy,
+        playPlaylistItemAtIndex: playAtIndexSpy,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Click paused active row -> calls resume
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(resumeSpy).toHaveBeenCalledTimes(1);
+      expect(pauseSpy).not.toHaveBeenCalled();
+      expect(playAtIndexSpy).not.toHaveBeenCalled();
+    });
+
+    it("in track list view, toggles pause when active track is clicked while playing, and resume when paused", async () => {
+      const pauseSpy = mock(() => {});
+      const resumeSpy = mock(async () => {});
+      const playSegmentInModeSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activeTrack: dummyTrack,
+        activeSegment: null,
+        isPlaying: true,
+        pause: pauseSpy,
+        resume: resumeSpy,
+        playSegmentInMode: playSegmentInModeSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack]} />);
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Click active playing track -> pause
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+
+      // Set to paused and click again
+      await act(async () => {
+        usePlayerStore.setState({ isPlaying: false });
+      });
+      await new Promise((r) => setTimeout(r, 350));
+
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(resumeSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+    });
+
+    it("in slices view, toggles pause when active slice is clicked while playing, and resume when paused", async () => {
+      const pauseSpy = mock(() => {});
+      const resumeSpy = mock(async () => {});
+      const playSegmentInModeSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activeTrack: dummyTrack,
+        activeSegment: dummySegment,
+        isPlaying: true,
+        pause: pauseSpy,
+        resume: resumeSpy,
+        playSegmentInMode: playSegmentInModeSpy as any,
+      });
+
+      await act(async () => {
+        root.render(
+          <PlaylistTableView
+            sliceItems={[
+              {
+                id: dummySegment.id,
+                track: dummyTrack,
+                segment: dummySegment,
+              },
+            ]}
+          />
+        );
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Click active playing slice -> pause
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+
+      // Set to paused and click again
+      await act(async () => {
+        usePlayerStore.setState({ isPlaying: false });
+      });
+      await new Promise((r) => setTimeout(r, 350));
+
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(resumeSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+    });
+
+    it("in mixed view, toggles pause when active item is clicked while playing, and resume when paused", async () => {
+      const pauseSpy = mock(() => {});
+      const resumeSpy = mock(async () => {});
+      const playSegmentInModeSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activeTrack: dummyTrack,
+        activeSegment: dummySegment,
+        isPlaying: true,
+        pause: pauseSpy,
+        resume: resumeSpy,
+        playSegmentInMode: playSegmentInModeSpy as any,
+      });
+
+      await act(async () => {
+        root.render(
+          <PlaylistTableView
+            mixedItems={[
+              {
+                type: "slice",
+                id: "slice_seg_tbl_1",
+                track: dummyTrack,
+                segment: dummySegment,
+              },
+            ]}
+          />
+        );
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Click active playing item -> pause
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+
+      // Set to paused and click again
+      await act(async () => {
+        usePlayerStore.setState({ isPlaying: false });
+      });
+      await new Promise((r) => setTimeout(r, 350));
+
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(resumeSpy).toHaveBeenCalledTimes(1);
+      expect(playSegmentInModeSpy).not.toHaveBeenCalled();
+    });
+
+    it("debounces rapid spam clicks on the same row", async () => {
+      const playSegmentInModeSpy = mock(async () => {});
+
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activeTrack: null,
+        activeSegment: null,
+        isPlaying: false,
+        playSegmentInMode: playSegmentInModeSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack]} />);
+      });
+
+      const row = container.querySelector(".group[role='row']");
+      expect(row).not.toBeNull();
+
+      // Fire 3 rapid clicks with no delay
+      await act(async () => {
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+        row!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      // Only the first click goes through
+      expect(playSegmentInModeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders animated equalizer bars when active row is playing", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activeTrack: dummyTrack,
+        activeSegment: null,
+        isPlaying: true,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack]} />);
+      });
+
+      const equalizerBars = container.querySelectorAll(".motion-safe\\:animate-pulse");
+      expect(equalizerBars.length).toBe(3);
+    });
   });
 });
 

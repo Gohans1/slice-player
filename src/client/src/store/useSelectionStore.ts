@@ -33,6 +33,40 @@ export interface SelectionState {
   pruneSelection: (validIds: Set<string> | string[], currentActivePlaylistId?: string | null) => void;
 }
 
+export function createTrackSelectedItem(track: { id: string; title: string }): SelectedItem {
+  return {
+    id: track.id,
+    type: "track",
+    trackId: track.id,
+    title: track.title,
+  };
+}
+
+export function createSliceSelectedItem(segment: { id: string; name: string }, trackId: string): SelectedItem {
+  return {
+    id: segment.id,
+    type: "slice",
+    trackId,
+    segmentId: segment.id,
+    title: segment.name,
+  };
+}
+
+export function createPlaylistItemSelectedItem(
+  item: { id: string; track?: { id: string; title: string } | null; track_id?: string; segment?: { id: string; name: string } | null },
+  playlistId?: string | null
+): SelectedItem {
+  const isSlice = Boolean(item.segment);
+  return {
+    id: item.id,
+    type: "playlist_item",
+    trackId: item.track?.id ?? item.track_id ?? "",
+    segmentId: item.segment?.id || null,
+    playlistId: playlistId || null,
+    title: isSlice && item.segment ? item.segment.name : (item.track?.title || ""),
+  };
+}
+
 export function createFallbackSelectedItem(id: string): SelectedItem {
   if (id.startsWith("seg_")) {
     return {
@@ -270,6 +304,10 @@ export const useIsTrackSelected = (id: string): boolean => {
 
 export const useSelectedTrackCount = (): number => {
   return useSelectionStore((s) => s.selectedTrackIds.size);
+};
+
+export const useIsSelectionActive = (): boolean => {
+  return useSelectionStore((s) => s.selectedTrackIds.size > 0);
 };
 
 export const isAllVisibleSelected = (selectedIds: Set<string>, visibleIds: string[]): boolean => {

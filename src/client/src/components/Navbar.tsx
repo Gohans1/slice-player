@@ -1,13 +1,13 @@
 import * as React from "react";
 import {
-  Music2, FolderPlus, Shuffle, Search, AlertCircle, Loader2, X, Folder,
+  Music2, FolderPlus, Search, AlertCircle, Loader2, X, Folder,
   UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight, Terminal, Languages, Keyboard, Archive
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
-import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
+import { usePlayerStore } from "../store/usePlayerStore";
 import { useLogStore } from "../store/useLogStore";
 import { BackupModal } from "./BackupModal";
 
@@ -37,24 +37,12 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
     void i18n.changeLanguage(nextLang);
   };
 
-  const tracks = usePlayerStore((s) => s.tracks);
   const fetchTracks = usePlayerStore((s) => s.fetchTracks);
-  const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
-  const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
   const playlists = usePlayerStore((s) => s.playlists);
-  const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
-  const playModeQueue = usePlayerStore((s) => s.playModeQueue);
-  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
 
   const isLogsOpen = useLogStore((s) => s.isDrawerOpen);
   const toggleLogs = useLogStore((s) => s.toggleDrawer);
   const unreadErrorCount = useLogStore((s) => s.unreadErrorCount);
-
-  const activePl = React.useMemo(() => {
-    return playlists.find((p) => p.id === activePlaylistId);
-  }, [playlists, activePlaylistId]);
-
-  const [isShuffling, setIsShuffling] = React.useState(false);
 
   const desktopSearchRef = React.useRef<HTMLInputElement>(null);
   const mobileSearchRef = React.useRef<HTMLInputElement>(null);
@@ -392,46 +380,6 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
     }
   };
 
-  const hasPlayableTracks = React.useMemo(() => {
-    return activePlaylistId
-      ? activePlaylistItems.some((it) => it.track && it.track.status === "ready" && it.track.duration > 0)
-      : activeSystemCategory === "slices_only"
-      ? tracks.some((tr) => tr.status === "ready" && (tr.segment_count || 0) > 0)
-      : activeSystemCategory === "error_only" || activeSystemCategory === "downloading_only"
-      ? false
-      : tracks.some((tr) => tr.status === "ready" && tr.duration > 0);
-  }, [activePlaylistId, activePlaylistItems, activeSystemCategory, tracks]);
-  const isShufflingRef = React.useRef(false);
-
-  const shuffleLabel = activePl
-    ? t("nav.shufflePlaylist", { name: activePl.name })
-    : activeSystemCategory === "slices_only"
-    ? t("nav.shuffleSlices")
-    : activeSystemCategory === "original_only"
-    ? t("nav.shuffleOriginals")
-    : activeSystemCategory === "downloading_only"
-    ? t("nav.cannotPlayDownloading")
-    : activeSystemCategory === "error_only"
-    ? t("nav.cannotPlayError")
-    : t("nav.shuffleMix");
-
-  const handleQuickShuffle = async () => {
-    if (isShufflingRef.current || isShuffling || !hasPlayableTracks) return;
-    isShufflingRef.current = true;
-    setIsShuffling(true);
-    try {
-      if (activePlaylistId) {
-        await buildPlaylistQueue(activePlaylistId, true);
-      } else if (isPlaybackMode(activeSystemCategory)) {
-        await playModeQueue(activeSystemCategory, 0, true);
-      }
-    } catch (e) {
-      console.error("[Navbar] Shuffle error:", e);
-    } finally {
-      isShufflingRef.current = false;
-      setIsShuffling(false);
-    }
-  };
 
   return (
     <>
@@ -544,20 +492,6 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
             )}
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleQuickShuffle}
-            disabled={!hasPlayableTracks || isShuffling}
-            title={shuffleLabel}
-            aria-label={shuffleLabel}
-            className="text-flexoki-green hover:text-flexoki-green hover:border-flexoki-green/40 disabled:opacity-40"
-          >
-            <Shuffle className={`h-4 w-4 ${isShuffling ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline truncate max-w-[140px]">
-              {shuffleLabel}
-            </span>
-          </Button>
 
           <Button
             variant="outline"

@@ -1,11 +1,11 @@
 import * as React from "react";
-import { Play, Scissors, Disc, Check, Trash2 } from "lucide-react";
+import { Play, Pause, Scissors, Disc, Check, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { useSelectionStore, useIsTrackSelected, type SelectedItem } from "../store/useSelectionStore";
+import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createSliceSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { Track, Segment } from "@/server/types";
@@ -32,9 +32,15 @@ export function SliceCardComponent({
   onDelete,
 }: SliceCardProps) {
   const { t } = useTranslation();
-  const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeSegment?.id === segment.id);
+  const isCurrentActive = usePlayerStore((s) => s.activeSegment?.id === segment.id);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isCurrentPlaying = isCurrentActive && isPlaying;
   const isSelected = useIsTrackSelected(segment.id);
+  const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
+
+  const isPlayBusyRef = React.useRef(false);
+  const lastPlayInitiatedRef = React.useRef(0);
 
   const duration = Math.max(0, segment.end_time - segment.start_time);
 
@@ -118,13 +124,71 @@ export function SliceCardComponent({
         {/* Quick play overlay */}
         <button
           type="button"
-          onClick={onPlay}
-          className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-          title={t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })}
-          aria-label={t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })}
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+              toggleTrack(segment.id, visibleItemIds, e.shiftKey, createSliceSelectedItem(segment, track.id));
+              return;
+            }
+
+            const store = usePlayerStore.getState();
+            const isActive = store.activeSegment?.id === segment.id;
+
+            if (isActive) {
+              if (Date.now() - lastPlayInitiatedRef.current < 600) {
+                return;
+              }
+              if (isPlayBusyRef.current) return;
+              isPlayBusyRef.current = true;
+              setTimeout(() => {
+                isPlayBusyRef.current = false;
+              }, 300);
+
+              if (store.isPlaying) {
+                store.pause();
+              } else {
+                await store.resume();
+              }
+              return;
+            }
+
+            if (isPlayBusyRef.current) return;
+            isPlayBusyRef.current = true;
+            lastPlayInitiatedRef.current = Date.now();
+            try {
+              await onPlay();
+            } finally {
+              setTimeout(() => {
+                isPlayBusyRef.current = false;
+              }, 500);
+            }
+          }}
+          className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+          title={
+            isSelectionActive
+              ? (isSelected
+                  ? t("trackCard.deselectTrack", { title: segment.name, defaultValue: `Deselect ${segment.name}` })
+                  : t("trackCard.selectTrack", { title: segment.name, defaultValue: `Select ${segment.name}` }))
+              : isCurrentPlaying
+              ? t("trackCard.pauseSliceTitle", { name: segment.name, defaultValue: `Pause slice "${segment.name}"` })
+              : t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })
+          }
+          aria-label={
+            isSelectionActive
+              ? (isSelected
+                  ? t("trackCard.deselectTrack", { title: segment.name, defaultValue: `Deselect ${segment.name}` })
+                  : t("trackCard.selectTrack", { title: segment.name, defaultValue: `Select ${segment.name}` }))
+              : isCurrentPlaying
+              ? t("trackCard.pauseSliceTitle", { name: segment.name, defaultValue: `Pause slice "${segment.name}"` })
+              : t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })
+          }
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
-            <Play className="h-6 w-6 fill-current translate-x-0.5" />
+            {isCurrentPlaying ? (
+              <Pause className="h-6 w-6 fill-current" />
+            ) : (
+              <Play className="h-6 w-6 fill-current translate-x-0.5" />
+            )}
           </div>
         </button>
       </div>

@@ -1,11 +1,11 @@
 import * as React from "react";
-import { Scissors, Play, Trash2, Disc, Loader2, AlertCircle, RotateCcw, Clock, Check } from "lucide-react";
+import { Scissors, Play, Pause, Trash2, Disc, Loader2, AlertCircle, RotateCcw, Clock, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration, createDefaultFullSegment } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
-import { useIsTrackSelected, useSelectionStore } from "../store/useSelectionStore";
+import { useIsTrackSelected, useSelectionStore, useIsSelectionActive, createTrackSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { Track, Segment } from "@/server/types";
@@ -17,8 +17,6 @@ function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
     </svg>
   );
 }
-
-import type { SelectedItem } from "../store/useSelectionStore";
 
 interface TrackCardProps {
   track: Track;
@@ -33,6 +31,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   const retryTrack = usePlayerStore((s) => s.retryTrack);
   const isRetrying = usePlayerStore((s) => Boolean(s.retryingTrackIds?.[track.id]));
   const isSelected = useIsTrackSelected(track.id);
+  const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeTrack?.id === track.id);
 
@@ -48,52 +47,84 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   }, [track.segment_count]);
 
   const isPlayBusyRef = React.useRef(false);
+  const lastPlayInitiatedRef = React.useRef(0);
 
-  const handlePlayFirst = async () => {
-    if (isPlayBusyRef.current) return;
+  const handlePlayFirst = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (useSelectionStore.getState().selectedTrackIds.size > 0) {
+      toggleTrack(track.id, visibleTrackIds, e?.shiftKey, createTrackSelectedItem(track));
+      return;
+    }
     if (track.status !== "ready" || track.duration <= 0) return;
-    isPlayBusyRef.current = true;
-    setTimeout(() => {
-      isPlayBusyRef.current = false;
-    }, 400);
 
-    const { activeSystemCategory, playbackMode, playSegmentInMode } = usePlayerStore.getState();
-    const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
+    const store = usePlayerStore.getState();
+    const isActive = store.activeTrack?.id === track.id;
 
-    if (targetMode === "original_only" || targetMode === "mixed") {
-      playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
-      return;
-    }
-
-    // Check if player store queue already has custom slices for this track
-    const state = usePlayerStore.getState();
-    const queue = state.queuesByMode[targetMode] || state.queue;
-    const queuedTrackSlices = queue
-      .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
-      .map((it) => it.segment);
-    if (queuedTrackSlices.length > 0) {
-      playSegmentInMode(targetMode, queuedTrackSlices[0], track);
-      return;
-    }
-
-    let segList = segments;
-    if (!segList) {
-      try {
-        const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
-        if (res.ok) {
-          segList = await res.json();
-          setSegments(segList);
-        }
-      } catch (e) {
-        console.error(e);
+    if (isActive) {
+      // Prevent rapid spam clicks immediately after initiating playback
+      if (Date.now() - lastPlayInitiatedRef.current < 600) {
+        return;
       }
+      if (isPlayBusyRef.current) return;
+      isPlayBusyRef.current = true;
+      setTimeout(() => {
+        isPlayBusyRef.current = false;
+      }, 300);
+
+      if (store.isPlaying) {
+        store.pause();
+      } else {
+        await store.resume();
+      }
+      return;
     }
 
-    if (segList && segList.length > 0) {
-      playSegmentInMode(targetMode, segList[0], track);
-    } else {
-      // Create a default full-length segment if none exists
-      playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+    if (isPlayBusyRef.current) return;
+    isPlayBusyRef.current = true;
+    lastPlayInitiatedRef.current = Date.now();
+
+    try {
+      const { activeSystemCategory, playbackMode, playSegmentInMode } = store;
+      const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
+
+      if (targetMode === "original_only" || targetMode === "mixed") {
+        await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+        return;
+      }
+
+      // Check if player store queue already has custom slices for this track
+      const queue = store.queuesByMode[targetMode] || store.queue;
+      const queuedTrackSlices = queue
+        .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
+        .map((it) => it.segment);
+      if (queuedTrackSlices.length > 0) {
+        await playSegmentInMode(targetMode, queuedTrackSlices[0], track);
+        return;
+      }
+
+      let segList = segments;
+      if (!segList) {
+        try {
+          const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
+          if (res.ok) {
+            segList = await res.json();
+            setSegments(segList);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (segList && segList.length > 0) {
+        await playSegmentInMode(targetMode, segList[0], track);
+      } else {
+        // Create a default full-length segment if none exists
+        await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+      }
+    } finally {
+      setTimeout(() => {
+        isPlayBusyRef.current = false;
+      }, 500);
     }
   };
 
@@ -147,12 +178,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
           aria-label={t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` })}
           onClick={(e) => {
             e.stopPropagation();
-            toggleTrack(track.id, visibleTrackIds, e.shiftKey, {
-              id: track.id,
-              type: "track",
-              trackId: track.id,
-              title: track.title,
-            });
+            toggleTrack(track.id, visibleTrackIds, e.shiftKey, createTrackSelectedItem(track));
           }}
           className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-all cursor-pointer ${
             isSelected
@@ -189,12 +215,32 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
           <button
             type="button"
             onClick={handlePlayFirst}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-            title={t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })}
-            aria-label={t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })}
+            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            title={
+              isSelectionActive
+                ? (isSelected
+                    ? t("trackCard.deselectTrack", { title: track.title, defaultValue: `Deselect ${track.title}` })
+                    : t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` }))
+                : isCurrentPlaying
+                ? t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })
+                : t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })
+            }
+            aria-label={
+              isSelectionActive
+                ? (isSelected
+                    ? t("trackCard.deselectTrack", { title: track.title, defaultValue: `Deselect ${track.title}` })
+                    : t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` }))
+                : isCurrentPlaying
+                ? t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })
+                : t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })
+            }
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
-              <Play className="h-6 w-6 fill-current translate-x-0.5" />
+              {isCurrentPlaying ? (
+                <Pause className="h-6 w-6 fill-current" />
+              ) : (
+                <Play className="h-6 w-6 fill-current translate-x-0.5" />
+              )}
             </div>
           </button>
         )}

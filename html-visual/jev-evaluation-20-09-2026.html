@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đánh Giá Khả Năng Bú Jev Cho Slice Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #000000;
+      --surface-1: #0a0a0a;
+      --surface-2: #141414;
+      --surface-3: #1f1f1f;
+      --border: #2e2e2e;
+      --border-focus: #4a4a4a;
+      --text: #ededed;
+      --text-dim: #9ca3af;
+      --accent-blue: #0070f3;
+      --accent-blue-dim: rgba(0, 112, 243, 0.15);
+      --accent-green: #10b981;
+      --accent-green-dim: rgba(16, 185, 129, 0.15);
+      --accent-red: #ef4444;
+      --accent-red-dim: rgba(239, 68, 68, 0.15);
+      --accent-amber: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      font-size: 18px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 6rem;
+    }
+
+    .container {
+      max-width: 80rem;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .header-left h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: #ffffff;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      background: var(--accent-blue-dim);
+      border: 1px solid var(--accent-blue);
+      color: #60a5fa;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .header-subtitle {
+      color: var(--text-dim);
+      font-size: 1rem;
+      margin-top: 0.5rem;
+    }
+
+    /* Tabs Navigation */
+    .tab-nav {
+      display: flex;
+      gap: 0.5rem;
+      background: var(--surface-1);
+      padding: 0.35rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      margin-bottom: 2rem;
+      width: fit-content;
+    }
+
+    .tab-btn {
+      padding: 0.6rem 1.4rem;
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: inherit;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .tab-btn.active {
+      color: #ffffff;
+      background: var(--surface-3);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Tab Content Areas */
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    /* Callout Box (Tóm lược) */
+    .callout-center {
+      max-width: 48rem;
+      margin: 0 auto 2.5rem;
+      padding: 1.5rem;
+      background: linear-gradient(180deg, rgba(20, 20, 20, 0.9) 0%, rgba(10, 10, 10, 0.9) 100%);
+      border: 1px solid var(--border-focus);
+      border-radius: 1rem;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .callout-center::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    }
+
+    .callout-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .callout-body {
+      font-size: 1.05rem;
+      color: var(--text);
+      line-height: 1.6;
+      font-weight: 500;
+    }
+
+    /* Cards Grid */
+    .card-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+
+    .feature-card {
+      min-height: 20rem;
+      padding: 1.5rem 1.75rem 3rem;
+      background: var(--surface-1);
+      border-radius: 1rem;
+      position: relative;
+      overflow: visible;
+    }
+
+    .feature-card.white-border {
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.07);
+    }
+
+    .feature-card.red-border {
+      border: 2px solid var(--accent-red);
+      box-shadow: 0 0 30px rgba(239, 68, 68, 0.15);
+    }
+
+    .feature-card.green-border {
+      border: 2px solid var(--accent-green);
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+    }
+
+    .card-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-badge-title {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+    }
+
+    .tag-pill {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 0.4rem;
+      font-weight: 600;
+    }
+
+    .tag-pill.red {
+      background: var(--accent-red-dim);
+      color: #f87171;
+      border: 1px solid var(--accent-red);
+    }
+
+    .tag-pill.green {
+      background: var(--accent-green-dim);
+      color: #34d399;
+      border: 1px solid var(--accent-green);
+    }
+
+    .tag-pill.white {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    /* Swipe Comparison Slider (Card 1) */
+    .slider-comparison-container {
+      position: relative;
+      width: 100%;
+      height: 28rem;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000000;
+      user-select: none;
+    }
+
+    .slider-side {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .slider-side.before {
+      left: 0;
+      background: #0a0a0a;
+      z-index: 1;
+    }
+
+    .slider-side.after {
+      left: 0;
+      background: #0e0e0e;
+      z-index: 2;
+      clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);
+    }
+
+    .slider-content {
+      width: 100%;
+      height: 100%;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slider-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: #ffffff;
+      z-index: 10;
+      cursor: ew-resize;
+      transform: translateX(-50%);
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+    }
+
+    .slider-button {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 50%;
+      background: #ffffff;
+      color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+      font-size: 1.1rem;
+    }
+
+    /* Mockup Visual Lists */
+    .mockup-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+
+    .mockup-table th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .mockup-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.3rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .status-chip.err {
+      background: var(--accent-red-dim);
+      color: #f87171;
+    }
+
+    .status-chip.success {
+      background: var(--accent-green-dim);
+      color: #34d399;
+    }
+
+    .status-chip.pending {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+    }
+
+    .status-chip.dropped {
+      background: rgba(156, 163, 175, 0.15);
+      color: #9ca3af;
+      text-decoration: line-through;
+    }
+
+    /* Direct Annotations */
+    .annotated {
+      position: relative;
+    }
+
+    .inspector-active .annotated-dashed-red {
+      outline: 2px dashed var(--accent-red) !important;
+      outline-offset: 3px;
+    }
+
+    .inspector-active .annotated-dashed-green {
+      outline: 2px dashed var(--accent-green) !important;
+      outline-offset: 3px;
+    }
+
+    .annotated-tag {
+      display: none;
+      position: absolute;
+      top: -0.75rem;
+      right: 0.5rem;
+      background: #000000;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 0.25rem;
+      z-index: 20;
+      white-space: nowrap;
+    }
+
+    .inspector-active .annotated-tag {
+      display: block;
+    }
+
+    .annotated-tag.red {
+      border: 1px solid var(--accent-red);
+      color: #f87171;
+    }
+
+    .annotated-tag.green {
+      border: 1px solid var(--accent-green);
+      color: #34d399;
+    }
+
+    /* Interactive Demos in Card 2 & 3 */
+    .interactive-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .interactive-ctrls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+
+    .action-btn.red-btn {
+      background: var(--accent-red);
+      color: #ffffff;
+    }
+    .action-btn.red-btn:hover {
+      background: #dc2626;
+    }
+
+    .action-btn.green-btn {
+      background: var(--accent-green);
+      color: #000000;
+      font-weight: 700;
+    }
+    .action-btn.green-btn:hover {
+      background: #059669;
+      color: #ffffff;
+    }
+
+    .stat-pill {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      background: var(--surface-3);
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.4rem;
+      border: 1px solid var(--border);
+    }
+    .stat-pill strong {
+      color: #ffffff;
+    }
+
+    /* Tab Explain: 2 Columns with Zoom-in */
+    .explain-grid {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 3rem;
+      align-items: flex-start;
+    }
+
+    .explain-col-text {
+      width: 30rem;
+      flex-shrink: 0;
+    }
+
+    .explain-col-visual {
+      width: 48rem;
+      flex-grow: 1;
+    }
+
+    .explain-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 3rem 0;
+    }
+
+    .explain-card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .explain-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #ffffff;
+    }
+
+    .explain-desc {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .key-points-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      font-size: 0.9rem;
+    }
+
+    .key-points-list li {
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-start;
+    }
+
+    .key-points-list li span.bullet {
+      color: var(--accent-blue);
+      font-weight: bold;
+    }
+
+    /* Code & Tree Display */
+    pre.code-block {
+      background: #070707;
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      color: #d1d5db;
+    }
+
+    .diff-add {
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.1);
+      display: block;
+      margin: 0 -1rem;
+      padding: 0 1rem;
+    }
+
+    .diff-remove {
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.1);
+      display: block;
+      margin: 0 -1rem;
+      padding: 0 1rem;
+    }
+
+    /* Fixed Inspector Toggle */
+    .inspector-toggle-btn {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 9999;
+      padding: 0.75rem 1.25rem;
+      background: #ffffff;
+      color: #000000;
+      border: 1px solid rgba(0,0,0,0.2);
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .inspector-toggle-btn:hover {
+      transform: scale(1.05);
+      background: #e5e5e5;
+    }
+
+    .inspector-toggle-btn.off {
+      background: #262626;
+      color: #9ca3af;
+      border-color: #404040;
+    }
+  </style>
+</head>
+<body class="inspector-active">
+
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1>
+          <span>⚡</span>
+          Báo Cáo Phân Tích: Bú Jev (classifier.dev) Vào Slice Player
+        </h1>
+        <p class="header-subtitle">
+          Khảo sát kiến trúc local-first player vs model System 1 Decision AI (TypeSafe AI Jev / bulk-classify)
+        </p>
+      </div>
+      <div>
+        <span class="header-badge">🚀 Đánh giá thực chiến 2026</span>
+      </div>
+    </header>
+
+    <!-- Tabs Switcher -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('tab-summarize')">
+        <span>📊</span> Tab Summarize (Mặt Tiền & So Sánh)
+      </button>
+      <button class="tab-btn" onclick="switchTab('tab-explain')">
+        <span>🔍</span> Tab Explain (Mổ Xẻ Chi Tiết Kiến Trúc)
+      </button>
+    </nav>
+
+    <!-- ============================================================== -->
+    <!-- TAB 1: SUMMARIZE (DEFAULT) -->
+    <!-- ============================================================== -->
+    <main id="tab-summarize" class="tab-panel active">
+      
+      <!-- Callout Center -->
+      <div class="callout-center">
+        <div class="callout-title">
+          <span>🗣️</span> TÓM LƯỢC &amp; Ý CHÍNH <span>🗣️</span>
+        </div>
+        <p class="callout-body">
+          Jev là model AI System 1 chuyên phân loại TEXT siêu tốc (đéo nghe dc audio); vào Slice Player chỉ bú dc đúng chỗ tiền lọc playlist YouTube và gắn tag/thể loại tự động, còn lại đéo nên nhét bừa vì phá nát tính năng offline local.
+        </p>
+      </div>
+
+      <div class="card-stack">
+        
+        <!-- CARD 1: COMPARISON SLIDER (BORDER TRẮNG) -->
+        <section class="feature-card white-border">
+          <div class="card-header-bar">
+            <div class="card-badge-title">
+              <span>⚖️</span> So Sánh Trực Tiếp (Swipe Diff): Nạp Playlist 100 Video YouTube
+            </div>
+            <span class="tag-pill white">Kéo thanh trượt qua lại để soi khác biệt</span>
+          </div>
+
+          <!-- Interactive Comparison Slider -->
+          <div class="slider-comparison-container" id="swipeSlider">
+            
+            <!-- BEFORE SIDE (LEFT) -->
+            <div class="slider-side before">
+              <div class="slider-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                  <span class="tag-pill red">🔴 Trước: Không Có Jev (yt-dlp Kéo Mù Quáng)</span>
+                  <span style="font-size: 0.8rem; color: #ef4444; font-weight: 600;">⚠️ 100/100 video bị tống vào hàng chờ tải</span>
+                </div>
+                <div class="annotated annotated-dashed-red" style="padding: 0.5rem; border-radius: 0.5rem;">
+                  <span class="annotated-tag red">Tải mù: ngốn 4.2GB ổ cứng + rác vlog</span>
+                  <table class="mockup-table">
+                    <thead>
+                      <tr><th>Tiêu đề video YouTube</th><th>Thời lượng</th><th>Trạng thái Slice Player</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Sơn Tùng M-TP - Đừng Làm Trái Tim Anh Đau (Official MV)</td><td>03:45</td><td><span class="status-chip success">Ready (Đã tải)</span></td></tr>
+                      <tr><td>[TALKSHOW] Review cuộc đời streamer sau 10 năm làm nghề</td><td>28:10</td><td><span class="status-chip pending">Downloading (Ngốn băng thông)</span></td></tr>
+                      <tr><td>Lofi hip hop radio - beats to relax/study to [LIVE]</td><td>--:--</td><td><span class="status-chip err">Error (Live stream lỗi)</span></td></tr>
+                      <tr><td>Meme 10 tiếng đập bàn không ngừng nghỉ HD</td><td>29:59</td><td><span class="status-chip pending">Queued (Tải rác vô nghĩa)</span></td></tr>
+                      <tr><td>Vũ - Lạ Lùng (Acoustic Version)</td><td>04:20</td><td><span class="status-chip pending">Queued</span></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: #9ca3af;">
+                  ❌ Kết quả: Chờ 45 phút, ngốn hàng GB ổ cứng, lẫn lộn talkshow và meme rác vào thư viện nhạc, đéo phân biệt thể loại.
+                </p>
+              </div>
+            </div>
+
+            <!-- AFTER SIDE (RIGHT) -->
+            <div class="slider-side after" id="afterSide">
+              <div class="slider-content" style="background: #0e0e0e;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                  <span class="tag-pill green">🟢 Sau: Có Jev bulk-classify (Pre-filter Metadata 650ms)</span>
+                  <span style="font-size: 0.8rem; color: #10b981; font-weight: 600;">⚡ 32 bài nhạc xịn dc giữ, 68 rác bị sút</span>
+                </div>
+                <div class="annotated annotated-dashed-green" style="padding: 0.5rem; border-radius: 0.5rem;">
+                  <span class="annotated-tag green">Jev lọc 1000 items/giây: sạch rác</span>
+                  <table class="mockup-table">
+                    <thead>
+                      <tr><th>Tiêu đề video YouTube</th><th>Jev Classifier</th><th>Hành động</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Sơn Tùng M-TP - Đừng Làm Trái Tim Anh Đau (Official MV)</td><td><span class="status-chip success">Music (0.99) • V-Pop</span></td><td>Tải ngay</td></tr>
+                      <tr><td>[TALKSHOW] Review cuộc đời streamer sau 10 năm làm nghề</td><td><span class="status-chip dropped">Talkshow / Podcast (0.97)</span></td><td>Bỏ qua</td></tr>
+                      <tr><td>Lofi hip hop radio - beats to relax/study to [LIVE]</td><td><span class="status-chip dropped">Livestream (0.94)</span></td><td>Bỏ qua</td></tr>
+                      <tr><td>Meme 10 tiếng đập bàn không ngừng nghỉ HD</td><td><span class="status-chip dropped">Noise / Meme (0.98)</span></td><td>Bỏ qua</td></tr>
+                      <tr><td>Vũ - Lạ Lùng (Acoustic Version)</td><td><span class="status-chip success">Music (0.98) • Indie Pop</span></td><td>Tải ngay</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: #34d399;">
+                  ✅ Kết quả: Tải trong 3 phút, tiết kiệm 80% ổ cứng, thư viện sạch bong kèm thể loại tag tự động sẵn sàng cắt slice!
+                </p>
+              </div>
+            </div>
+
+            <!-- Draggable Handle -->
+            <div class="slider-handle" id="sliderHandle">
+              <div class="slider-button">⇹</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CARD 2: BẢN BEFORE ONLY (BORDER ĐỎ) -->
+        <section class="feature-card red-border">
+          <div class="card-header-bar">
+            <div class="card-badge-title" style="color: #f87171;">
+              <span>🛑</span> Bản Before: Giao Diện Nạp Playlist YouTube Hiện Tại
+            </div>
+            <span class="tag-pill red">Không có lọc thông minh</span>
+          </div>
+
+          <p style="font-size: 0.95rem; color: var(--text-dim); margin-bottom: 1rem;">
+            Khi dán link playlist YouTube vào Modal nạp bài của Slice Player hiện nay, server gọi yt-dlp lấy metadata rồi tống thẳng tất cả video vào hàng đợi tải SQLite.
+          </p>
+
+          <div class="interactive-box">
+            <div class="interactive-ctrls">
+              <button class="action-btn red-btn" onclick="simulateOldIngest()">
+                <span>📥</span> Bấm Thử: Giả Lập Nạp 20 Bài Từ YouTube (Không lọc)
+              </button>
+              <div class="stat-pill" id="oldStats">
+                Tổng bài: <strong>0</strong> | Tải lỗi/Rác: <strong>0</strong> | Ổ cứng hao: <strong>0 MB</strong>
+              </div>
+            </div>
+
+            <div class="annotated annotated-dashed-red" style="padding: 0.75rem; border-radius: 0.5rem; min-height: 10rem;">
+              <span class="annotated-tag red">yt-dlp cắm đầu tải mù</span>
+              <ul id="oldTrackList" style="list-style: none; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                <li style="color: #6b7280;">(Chưa có dữ liệu, hãy bấm nút giả lập ở trên để xem luồng chạy hiện tại)</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- CARD 3: BẢN AFTER ONLY (BORDER XANH LỤC) -->
+        <section class="feature-card green-border">
+          <div class="card-header-bar">
+            <div class="card-badge-title" style="color: #34d399;">
+              <span>✨</span> Bản After: Giao Diện Nếu Tích Hợp Jev (bulk-classify)
+            </div>
+            <span class="tag-pill green">Tiền lọc &amp; Tự động phân tag nhạc</span>
+          </div>
+
+          <p style="font-size: 0.95rem; color: var(--text-dim); margin-bottom: 1rem;">
+            Sau khi yt-dlp trả về danh sách tiêu đề metadata, một request duy nhất bay tới <code>classifier.dev</code> (khoảng 300ms - 600ms). Jev phân loại từng tiêu đề thành <code>music</code> vs <code>non-music</code> và gắn nhãn Genre/Mood tự động.
+          </p>
+
+          <div class="interactive-box">
+            <div class="interactive-ctrls">
+              <button class="action-btn green-btn" onclick="simulateJevIngest()">
+                <span>⚡</span> Bấm Thử: Kích Hoạt Jev Pre-filter (classifier.dev)
+              </button>
+              <div class="stat-pill" id="jevStats">
+                Phân tích xong trong: <strong>0ms</strong> | Đã sút: <strong>0 rác</strong> | Giữ lại: <strong>0 bài</strong>
+              </div>
+            </div>
+
+            <div class="annotated annotated-dashed-green" style="padding: 0.75rem; border-radius: 0.5rem; min-height: 10rem;">
+              <span class="annotated-tag green">Jev System 1 Decision Model</span>
+              <ul id="jevTrackList" style="list-style: none; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                <li style="color: #6b7280;">(Chưa kích hoạt Jev, bấm nút xanh ở trên để xem tốc độ lọc và gắn tag)</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- ============================================================== -->
+    <!-- TAB 2: EXPLAIN (MỔ XẺ THEO ZOOM-IN PRINCIPLE) -->
+    <!-- ============================================================== -->
+    <main id="tab-explain" class="tab-panel">
+      
+      <!-- ZOOM-IN 1: FOLDER LEVEL -->
+      <section class="explain-grid">
+        <div class="explain-col-text">
+          <div class="explain-card">
+            <div class="explain-title">
+              <span>📁</span> 1. Cấp Độ Folder &amp; Modules
+            </div>
+            <p class="explain-desc">
+              Slice Player là kiến trúc full-stack nguyên khối nhỏ gọn chạy trên Bun. Server xử lý SQLite, yt-dlp và media stream. Client là React 19 + Zustand + Wavesurfer.
+            </p>
+            <ul class="key-points-list">
+              <li><span class="bullet">▸</span> <strong>Nơi Jev có thể sống:</strong> Một service module con <code>src/server/classifier.ts</code> độc lập gọi HTTP sang <code>classifier.dev</code>.</li>
+              <li><span class="bullet">▸</span> <strong>Tuyệt đối không đụng:</strong> Client audio engine và Wavesurfer.js vì Jev đéo xử lý âm thanh.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="explain-col-visual">
+          <pre class="code-block"><code>slice-player/
+├── src/
+│   ├── server/
+│   │   ├── index.ts              # API router & WebSocket
+│   │   ├── ingest.ts             # yt-dlp & local files importer
+<span class="diff-add">+   │   ├── classifier.ts         # [MODULE MỚI] Giao tiếp Jev / classifier.dev</span>
+│   │   ├── db.ts                 # SQLite (tracks, segments, playlists)
+│   │   └── waveform.ts           # 1000-point peak audio generator
+│   └── client/
+│       ├── src/
+│       │   ├── components/
+│       │   │   ├── YoutubeIngestModal.tsx  # Dialog nhập link YouTube
+<span class="diff-add">+       │   │   ├── IngestTriagePreview.tsx # [UI MỚI] Xem trước kết quả lọc Jev</span>
+│       │   │   └── SliceStudio.tsx         # Waveform slice cutter (Giữ nguyên)
+│       │   └── store/usePlayerStore.ts     # Zustand audio state</code></pre>
+        </div>
+      </section>
+
+      <div class="explain-divider"></div>
+
+      <!-- ZOOM-IN 2: FILE & COMPONENT LEVEL -->
+      <section class="explain-grid">
+        <div class="explain-col-text">
+          <div class="explain-card">
+            <div class="explain-title">
+              <span>📄</span> 2. Cấp Độ File &amp; Components
+            </div>
+            <p class="explain-desc">
+              Sự thay đổi luồng nạp dữ liệu tại <code>YoutubeIngestModal.tsx</code> và <code>ingest.ts</code>.
+            </p>
+            <ul class="key-points-list">
+              <li><span class="bullet">▸</span> <strong>Trước:</strong> Client gửi URL ➔ Server gọi yt-dlp lấy metadata ➔ Tống thẳng vào DB ➔ Tải toàn bộ.</li>
+              <li><span class="bullet">▸</span> <strong>Sau:</strong> Client gửi URL ➔ Server lấy metadata ➔ Jev chấm điểm xác suất <code>music</code> vs <code>noise</code> ➔ Trả danh sách đã phân loại ➔ Client xác nhận ➔ Tải bài xịn.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="explain-col-visual">
+          <pre class="code-block"><code>// Diffs tại src/server/ingest.ts
+ export async function ingestYouTubeUrl(url: string, options?: { filterJev?: boolean }) {
+   const metadata = await fetchYtDlpMetadata(url);
+   
++  // Nếu là playlist nhiều bài, đưa qua Jev tiền lọc tiêu đề trước khi tải
++  if (options?.filterJev && metadata.entries?.length > 3) {
++    const classified = await classifyTrackBatch(metadata.entries.map(e => e.title));
++    const keptTracks = metadata.entries.filter((_, idx) => classified[idx].label === "music");
++    return createTracksAndEnqueue(keptTracks);
++  }
+
+   return createTracksAndEnqueue(metadata.entries);
+ }</code></pre>
+        </div>
+      </section>
+
+      <div class="explain-divider"></div>
+
+      <!-- ZOOM-IN 3: FUNCTION & CALL TREE LEVEL -->
+      <section class="explain-grid">
+        <div class="explain-col-text">
+          <div class="explain-card">
+            <div class="explain-title">
+              <span>🌲</span> 3. Cấp Độ Function &amp; Call Tree
+            </div>
+            <p class="explain-desc">
+              So sánh cây gọi hàm khi import playlist YouTube.
+            </p>
+            <ul class="key-points-list">
+              <li><span class="bullet">▸</span> Tránh được <code>Bun.spawn(yt-dlp download)</code> cho hàng tá video vô ích.</li>
+              <li><span class="bullet">▸</span> Tiết kiệm CPU generate waveform (peaks) cho các video rác.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="explain-col-visual">
+          <pre class="code-block"><code>// TRƯỚC (Không có Jev):
+ingestYouTubeUrl()
+  └── fetchMetadata()
+        └── for each entry:
+              ├── db.createTrack()
+              ├── enqueueDownload()
+              │     └── Bun.spawn(["yt-dlp", download])  <-- CHẬM, TỐN BĂNG THÔNG
+              └── generatePeaks()                        <-- TỐN CPU
+
+// SAU (Có Jev bulk-classify):
+ingestYouTubeUrl()
+  └── fetchMetadata()
+        ├── classifierDev.bulkClassify(titles)           <-- 1 HTTP Call ~600ms
+        │     └── Filter [score >= 0.8 && label == "music"]
+        └── for each KEPT entry only:
+              ├── db.createTrack(withSuggestedGenre)
+              ├── enqueueDownload()                      <-- CHỈ TẢI BÀI ĐÚNG
+              └── generatePeaks()</code></pre>
+        </div>
+      </section>
+
+      <div class="explain-divider"></div>
+
+      <!-- ZOOM-IN 4: ALGORITHM & LOGIC LEVEL -->
+      <section class="explain-grid">
+        <div class="explain-col-text">
+          <div class="explain-card">
+            <div class="explain-title">
+              <span>🧠</span> 4. Cấp Độ Thuật Toán &amp; Logic (Pseudocode)
+            </div>
+            <p class="explain-desc">
+              Thuật toán gọi Jev theo chuẩn TypeSafe AI / classifier.dev với calibrated confidence score.
+            </p>
+            <ul class="key-points-list">
+              <li><span class="bullet">▸</span> Sử dụng native <code>fetch</code> của Bun (không cần SDK cồng kềnh).</li>
+              <li><span class="bullet">▸</span> Fallback an toàn: Khi mất mạng hoặc Jev timeout, tự động giữ nguyên toàn bộ bài (ưu tiên recall).</li>
+            </ul>
+          </div>
+        </div>
+        <div class="explain-col-visual">
+          <pre class="code-block"><code>// Thuật toán tiền lọc bằng Jev (classifier.dev)
+async function filterMusicWithJev(titles: string[]) {
+  try {
+    const res = await fetch("https://classifier.dev", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "slice-player/1.0" },
+      body: JSON.stringify({
+        labels: ["music song", "talkshow podcast vlog", "meme noise joke"],
+        inputs: titles, // Tối đa 1000 tiêu đề trong 1 request duy nhất
+        instructions: "Phân biệt bài hát âm nhạc thực thụ với các video nói chuyện, stream, hài kịch."
+      }),
+      signal: AbortSignal.timeout(4000)
+    });
+
+    const data = await res.json();
+    return titles.map((title, i) => {
+      const decision = data.results[i];
+      // Nếu là music hoặc độ tin cậy thấp (<0.7) -> giữ lại (bias toward keeping)
+      const shouldKeep = decision.label === "music song" || decision.confidence < 0.7;
+      return { title, shouldKeep, label: decision.label, confidence: decision.confidence };
+    });
+  } catch (err) {
+    // Ponytail & Fail-safe: Nếu mất mạng / lỗi API -> giữ toàn bộ, đéo làm rớt bài của user
+    return titles.map(title => ({ title, shouldKeep: true, label: "unknown", confidence: 0 }));
+  }
+}</code></pre>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Fixed Inspector Toggle Button -->
+  <button id="inspectorBtn" class="inspector-toggle-btn" onclick="toggleInspector()">
+    <span>🔍</span> [ Check Diff: ON ]
+  </button>
+
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      
+      document.getElementById(tabId).classList.add('active');
+      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+      if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    // Inspector toggle
+    let inspectorOn = true;
+    function toggleInspector() {
+      inspectorOn = !inspectorOn;
+      const btn = document.getElementById('inspectorBtn');
+      if (inspectorOn) {
+        document.body.classList.add('inspector-active');
+        btn.classList.remove('off');
+        btn.innerHTML = '<span>🔍</span> [ Check Diff: ON ]';
+      } else {
+        document.body.classList.remove('inspector-active');
+        btn.classList.add('off');
+        btn.innerHTML = '<span>🔍</span> [ Check Diff: OFF ]';
+      }
+    }
+
+    // Swipe Slider Logic
+    const slider = document.getElementById('swipeSlider');
+    const handle = document.getElementById('sliderHandle');
+    const afterSide = document.getElementById('afterSide');
+    let isDragging = false;
+
+    function setSliderPosition(x) {
+      const rect = slider.getBoundingClientRect();
+      let percent = ((x - rect.left) / rect.width) * 100;
+      if (percent < 5) percent = 5;
+      if (percent > 95) percent = 95;
+
+      handle.style.left = percent + '%';
+      afterSide.style.clipPath = `polygon(${percent}% 0, 100% 0, 100% 100%, ${percent}% 100%)`;
+    }
+
+    slider.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      setSliderPosition(e.clientX);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      setSliderPosition(e.clientX);
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    // Touch events for mobile
+    slider.addEventListener('touchstart', (e) => {
+      isDragging = true;
+      setSliderPosition(e.touches[0].clientX);
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      setSliderPosition(e.touches[0].clientX);
+    });
+
+    window.addEventListener('touchend', () => {
+      isDragging = false;
+    });
+
+    // Simulated Demos for Card 2 & 3
+    const sampleVideos = [
+      { title: "Đen - Nấu ăn cho em ft. PiaLinh (M/V)", type: "music", dur: "04:12", genre: "Hip-hop / Indie" },
+      { title: "[Vlog 48] Một ngày dọn nhà cùng gia đình tôi", type: "noise", dur: "22:15", genre: "Vlog" },
+      { title: "HIEUTHUHAI - Vệ Tinh (Official Audio)", type: "music", dur: "03:30", genre: "Rap / Pop" },
+      { title: "Hướng dẫn cài Win 11 bằng USB chi tiết nhất 2026", type: "noise", dur: "18:40", genre: "Tutorial" },
+      { title: "Chilling Sunday Morning Playlist [Study Beats]", type: "music", dur: "45:00", genre: "Lo-Fi" },
+      { title: "Top 10 bàn thắng ảo ma nhất lịch sử bóng đá", type: "noise", dur: "12:05", genre: "Sports" }
+    ];
+
+    function simulateOldIngest() {
+      const list = document.getElementById('oldTrackList');
+      list.innerHTML = '';
+      let total = sampleVideos.length;
+      let noiseCount = sampleVideos.filter(v => v.type === 'noise').length;
+      
+      sampleVideos.forEach(v => {
+        const li = document.createElement('li');
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.padding = '0.35rem 0.5rem';
+        li.style.background = 'rgba(255,255,255,0.03)';
+        li.style.borderRadius = '0.3rem';
+        li.innerHTML = `
+          <span>${v.title}</span>
+          <span style="color: ${v.type === 'music' ? '#34d399' : '#f87171'};">
+            ${v.type === 'music' ? 'Queued (Hợp lệ)' : '⚠️ Queued (Rác nhưng vẫn tải)'}
+          </span>
+        `;
+        list.appendChild(li);
+      });
+
+      document.getElementById('oldStats').innerHTML = 
+        `Tổng bài: <strong>${total}</strong> | Tải rác: <strong style="color:#f87171;">${noiseCount}</strong> | Ổ cứng hao: <strong style="color:#f87171;">248 MB</strong>`;
+    }
+
+    function simulateJevIngest() {
+      const list = document.getElementById('jevTrackList');
+      list.innerHTML = '';
+      const kept = sampleVideos.filter(v => v.type === 'music');
+      const dropped = sampleVideos.filter(v => v.type === 'noise');
+
+      sampleVideos.forEach(v => {
+        const li = document.createElement('li');
+        li.style.display = 'flex';
+        li.style.justifyContent = 'space-between';
+        li.style.padding = '0.35rem 0.5rem';
+        li.style.background = v.type === 'music' ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)';
+        li.style.borderRadius = '0.3rem';
+        li.innerHTML = `
+          <span style="${v.type === 'noise' ? 'text-decoration: line-through; color: #6b7280;' : 'color: #ededed;'}">
+            ${v.title}
+          </span>
+          <span>
+            ${v.type === 'music' 
+              ? `<span class="status-chip success">✓ Giữ • ${v.genre} (0.98)</span>` 
+              : `<span class="status-chip err">✗ Đã sút • ${v.genre} (0.96)</span>`}
+          </span>
+        `;
+        list.appendChild(li);
+      });
+
+      document.getElementById('jevStats').innerHTML = 
+        `Phân tích xong trong: <strong style="color:#60a5fa;">340ms</strong> | Đã sút: <strong style="color:#34d399;">${dropped.length} rác</strong> | Giữ lại: <strong style="color:#34d399;">${kept.length} bài</strong>`;
+    }
+  </script>
+</body>
+</html>
