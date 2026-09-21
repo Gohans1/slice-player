@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualizer } from "@tanstack/react-virtual";
 import { Play, Pause, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -38,19 +38,24 @@ export type MixedItem =
     };
 
 const getEntityId = (item: { id: string }) => item.id;
+const PLAYLIST_ROW_HEIGHT = 68;
 
 interface VirtualizedTableBodyProps<T> {
   items: T[];
   getItemKey: (item: T, index: number) => string;
   renderRow: (item: T, index: number) => React.ReactNode;
   estimateRowHeight?: number;
+  draggedIdx?: number | null;
+  virtualizerRef?: React.MutableRefObject<Virtualizer<Window, Element> | null>;
 }
 
 function VirtualizedTableBody<T>({
   items,
   getItemKey,
   renderRow,
-  estimateRowHeight = 68,
+  estimateRowHeight = PLAYLIST_ROW_HEIGHT,
+  draggedIdx,
+  virtualizerRef,
 }: VirtualizedTableBodyProps<T>) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = React.useState(0);
@@ -96,16 +101,47 @@ function VirtualizedTableBody<T>({
     };
   }, [updateMargin]);
 
+  // Keep actively dragged item mounted in DOM to prevent HTML5 Drag & Drop abort on window scroll
+  const rangeExtractor = React.useCallback(
+    (range: Range) => {
+      const active = defaultRangeExtractor(range);
+      if (
+        draggedIdx !== undefined &&
+        draggedIdx !== null &&
+        draggedIdx >= 0 &&
+        draggedIdx < items.length &&
+        !active.includes(draggedIdx)
+      ) {
+        active.push(draggedIdx);
+        active.sort((a, b) => a - b);
+      }
+      return active;
+    },
+    [items.length, draggedIdx]
+  );
+
   const virtualizer = useWindowVirtualizer({
     count: items.length,
     estimateSize: () => estimateRowHeight,
     overscan: 10,
     scrollMargin,
+    rangeExtractor,
     getItemKey: React.useCallback(
       (index: number) => (items[index] ? getItemKeyRef.current(items[index], index) : index),
       [items]
     ),
   });
+
+  React.useEffect(() => {
+    if (virtualizerRef) {
+      virtualizerRef.current = virtualizer;
+    }
+    return () => {
+      if (virtualizerRef) {
+        virtualizerRef.current = null;
+      }
+    };
+  }, [virtualizer, virtualizerRef]);
 
   if (items.length === 0) return <div ref={containerRef} className="pt-1" />;
 
@@ -139,6 +175,14 @@ function VirtualizedTableBody<T>({
                 transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
               }}
               className="pb-1"
+              onDragOver={(e) => {
+                if (draggedIdx !== null && draggedIdx !== undefined) {
+                  e.preventDefault();
+                  if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = "move";
+                  }
+                }
+              }}
             >
               {renderRow(item, virtualRow.index)}
             </div>
@@ -203,9 +247,179 @@ export function PlaylistTableView({
   const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
   const draggedIdxRef = React.useRef<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = React.useState<number | null>(null);
+  const dragOverIdxRef = React.useRef<number | null>(null);
   const isDraggingHandleRef = React.useRef(false);
   const justDroppedRef = React.useRef(false);
   const markJustDroppedTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const virtualizerRef = React.useRef<Virtualizer<Window, Element> | null>(null);
+  const autoScrollRafRef = React.useRef<number | null>(null);
+  const scrollSpeedRef = React.useRef<number>(0);
+  const lastClientYRef = React.useRef<number>(0);
+  const floatingPreviewRef = React.useRef<HTMLDivElement | null>(null);
+
+  const updatePreviewPosition = React.useCallback((clientX: number, clientY: number) => {
+    if (floatingPreviewRef.current && (clientX !== 0 || clientY !== 0)) {
+      floatingPreviewRef.current.style.transform = `translate3d(${clientX + 16}px, ${clientY - 20}px, 0) rotate(1.5deg) scale(1.02)`;
+    }
+  }, []);
+
+  const resolveHoverTargetIndex = React.useCallback(
+    (clientY: number, threshold = 30): number | null => {
+      if (!tableContainerRef.current || activePlaylistItems.length === 0) return null;
+      const rect = tableContainerRef.current.getBoundingClientRect();
+      if (rect.height <= 0) return null;
+      if (clientY <= rect.top + threshold) {
+        return 0;
+      }
+      if (clientY >= rect.bottom - threshold) {
+        return Math.max(0, activePlaylistItems.length - 1);
+      }
+      const offsetInTable = clientY - rect.top;
+      const scrollMargin = virtualizerRef.current?.options?.scrollMargin ?? 0;
+      const vItem = virtualizerRef.current?.getVirtualItemForOffset?.(offsetInTable + scrollMargin);
+      if (
+        vItem &&
+        typeof vItem.index === "number" &&
+        vItem.index >= 0 &&
+        vItem.index < activePlaylistItems.length
+      ) {
+        return vItem.index;
+      }
+      return null;
+    },
+    [activePlaylistItems.length]
+  );
+
+  const setDragOverIdxSafe = React.useCallback(
+    (valOrFn: number | null | ((prev: number | null) => number | null)) => {
+      const next = typeof valOrFn === "function" ? valOrFn(dragOverIdxRef.current) : valOrFn;
+      dragOverIdxRef.current = next;
+      setDragOverIdx(next);
+    },
+    []
+  );
+
+  const stopAutoScroll = React.useCallback(() => {
+    if (autoScrollRafRef.current !== null) {
+      if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(autoScrollRafRef.current);
+      } else {
+        clearTimeout(autoScrollRafRef.current);
+      }
+      autoScrollRafRef.current = null;
+    }
+    scrollSpeedRef.current = 0;
+  }, []);
+
+  const startAutoScroll = React.useCallback(
+    (speed: number) => {
+      scrollSpeedRef.current = speed;
+      if (typeof window === "undefined") return;
+
+      const currentY =
+        window.scrollY ||
+        window.pageYOffset ||
+        document?.documentElement?.scrollTop ||
+        0;
+      const scrollHeight = Math.max(
+        document?.documentElement?.scrollHeight || 0,
+        document?.body?.scrollHeight || 0
+      );
+      const maxScrollY = Math.max(0, scrollHeight - (window.innerHeight || 800));
+
+      if ((speed < 0 && currentY <= 0) || (speed > 0 && currentY >= maxScrollY)) {
+        stopAutoScroll();
+        return;
+      }
+
+      if (autoScrollRafRef.current !== null) return;
+
+      let lastTime = performance.now();
+      const step = (now: number) => {
+        if (scrollSpeedRef.current === 0) {
+          autoScrollRafRef.current = null;
+          return;
+        }
+        const currentNow = typeof now === "number" && !isNaN(now) ? now : performance.now();
+        const dt = Math.min((currentNow - lastTime) / 1000, 0.1);
+        lastTime = currentNow;
+
+        const curY =
+          window.scrollY ||
+          window.pageYOffset ||
+          document?.documentElement?.scrollTop ||
+          0;
+        const curScrollHeight = Math.max(
+          document?.documentElement?.scrollHeight || 0,
+          document?.body?.scrollHeight || 0
+        );
+        const maxY = Math.max(0, curScrollHeight - (window.innerHeight || 800));
+        const delta = scrollSpeedRef.current * dt * 60;
+        const nextY = Math.max(0, Math.min(maxY, curY + delta));
+
+        if (
+          (delta < 0 && curY <= 0) ||
+          (delta > 0 && curY >= maxY) ||
+          (Math.abs(delta) >= 1 && nextY === curY)
+        ) {
+          stopAutoScroll();
+          return;
+        }
+
+        if (typeof window.scrollTo === "function") {
+          window.scrollTo(0, nextY);
+        }
+
+        // Realtime dragOver target update as list scrolls under cursor
+        if (draggedIdxRef.current !== null && tableContainerRef.current) {
+          const clientY = lastClientYRef.current;
+          const target = resolveHoverTargetIndex(clientY, 30);
+          if (target !== null && dragOverIdxRef.current !== target) {
+            setDragOverIdxSafe(target);
+          }
+        }
+
+        autoScrollRafRef.current =
+          typeof window.requestAnimationFrame === "function"
+            ? window.requestAnimationFrame(step)
+            : (setTimeout(step, 16) as unknown as number);
+      };
+
+      autoScrollRafRef.current =
+        typeof window.requestAnimationFrame === "function"
+          ? window.requestAnimationFrame(step)
+          : (setTimeout(step, 16) as unknown as number);
+    },
+    [stopAutoScroll, setDragOverIdxSafe, resolveHoverTargetIndex]
+  );
+
+  const checkAutoScroll = React.useCallback(
+    (clientY: number) => {
+      if (typeof window === "undefined" || draggedIdxRef.current === null) return;
+      lastClientYRef.current = clientY;
+
+      const topZone = 120;
+      const bottomZone = 140;
+      const vh = window.innerHeight || 800;
+
+      if (clientY < topZone) {
+        const depth = Math.max(0, topZone - clientY);
+        const ratio = Math.min(1, depth / topZone);
+        const speed = -(8 + ratio * 20);
+        startAutoScroll(speed);
+      } else if (clientY > vh - bottomZone) {
+        const depth = Math.max(0, clientY - (vh - bottomZone));
+        const ratio = Math.min(1, depth / bottomZone);
+        const speed = 8 + ratio * 20;
+        startAutoScroll(speed);
+      } else {
+        stopAutoScroll();
+      }
+    },
+    [startAutoScroll, stopAutoScroll]
+  );
 
   const markJustDropped = React.useCallback(() => {
     justDroppedRef.current = true;
@@ -220,18 +434,24 @@ export function PlaylistTableView({
 
   React.useEffect(() => {
     return () => {
+      stopAutoScroll();
       if (markJustDroppedTimerRef.current) {
         clearTimeout(markJustDroppedTimerRef.current);
       }
     };
-  }, []);
+  }, [stopAutoScroll]);
 
   const resetDragState = React.useCallback(() => {
     draggedIdxRef.current = null;
+    dragOverIdxRef.current = null;
     isDraggingHandleRef.current = false;
     setDraggedIdx(null);
     setDragOverIdx(null);
-  }, []);
+    if (floatingPreviewRef.current) {
+      floatingPreviewRef.current.style.transform = "translate3d(-9999px, -9999px, 0)";
+    }
+    stopAutoScroll();
+  }, [stopAutoScroll]);
 
   React.useEffect(() => {
     const handleRelease = () => {
@@ -280,6 +500,9 @@ export function PlaylistTableView({
         newItems.splice(toIdx, 0, moved);
         const newIds = newItems.map((it) => it.id);
         await reorderPlaylist(activePlaylistId, newIds);
+        if (virtualizerRef.current?.scrollToIndex && toIdx >= 0 && toIdx < activePlaylistItems.length) {
+          virtualizerRef.current.scrollToIndex(toIdx, { align: "auto" });
+        }
       } finally {
         isReorderingRef.current = false;
         setIsReordering(false);
@@ -297,39 +520,45 @@ export function PlaylistTableView({
       e.dataTransfer.setData("application/x-slice-playlist-index", String(idx));
       e.dataTransfer.setData("text/plain", name);
       e.dataTransfer.effectAllowed = "move";
+      // Suppress native drag ghost so only the custom floating preview is visible
+      try {
+        if (e.dataTransfer.setDragImage) {
+          const emptyImg = new Image();
+          emptyImg.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+          e.dataTransfer.setDragImage(emptyImg, 0, 0);
+        }
+      } catch {
+        // Fallback gracefully if setDragImage fails
+      }
       draggedIdxRef.current = idx;
       setDraggedIdx(idx);
+      updatePreviewPosition(e.clientX, e.clientY);
     },
-    []
+    [updatePreviewPosition]
   );
 
   const handleDragOver = React.useCallback(
     (e: React.DragEvent, idx: number) => {
       const currentDraggedIdx = draggedIdxRef.current;
       if (currentDraggedIdx === null) return;
-      if (currentDraggedIdx === idx) {
-        setDragOverIdx((prev) => (prev !== null ? null : prev));
-        return;
-      }
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      setDragOverIdx((prev) => (prev !== idx ? idx : prev));
+      checkAutoScroll(e.clientY);
+      updatePreviewPosition(e.clientX, e.clientY);
+      setDragOverIdxSafe((prev) => (prev !== idx ? idx : prev));
     },
-    []
+    [checkAutoScroll, setDragOverIdxSafe, updatePreviewPosition]
   );
 
-  const handleDragLeave = React.useCallback(
-    (e: React.DragEvent, idx: number) => {
-      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-      setDragOverIdx((prev) => (prev === idx ? null : prev));
-    },
-    []
-  );
+  const handleDragLeave = React.useCallback((_e: React.DragEvent) => {
+    // Intentionally keep dragOverIdx sticky when crossing gaps between rows
+  }, []);
 
   const handleDrop = React.useCallback(
     (e: React.DragEvent, targetIdx: number) => {
       e.preventDefault();
       e.stopPropagation();
+      stopAutoScroll();
       const rawIdx = e.dataTransfer.getData("application/x-slice-playlist-index");
       const fromIdx = rawIdx ? parseInt(rawIdx, 10) : draggedIdxRef.current;
       if (fromIdx !== null && !isNaN(fromIdx) && fromIdx !== targetIdx) {
@@ -338,13 +567,88 @@ export function PlaylistTableView({
       markJustDropped();
       resetDragState();
     },
-    [commitReorder, markJustDropped, resetDragState]
+    [commitReorder, markJustDropped, resetDragState, stopAutoScroll]
   );
 
   const handleDragEnd = React.useCallback(() => {
+    stopAutoScroll();
     markJustDropped();
     resetDragState();
-  }, [markJustDropped, resetDragState]);
+  }, [markJustDropped, resetDragState, stopAutoScroll]);
+
+  // Window-level dragover and drop listeners to guarantee autoscroll and edge drops work smoothly
+  React.useEffect(() => {
+    if (draggedIdx === null) return;
+
+    const handleGlobalDragOver = (e: DragEvent) => {
+      if (draggedIdxRef.current === null) return;
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = "move";
+      }
+      checkAutoScroll(e.clientY);
+      updatePreviewPosition(e.clientX, e.clientY);
+
+      // If user drags horizontally outside the table (cancel intent), revert target to original dragged index
+      if (tableContainerRef.current && typeof e.clientX === "number") {
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && (e.clientX < rect.left - 40 || e.clientX > rect.right + 40)) {
+          if (dragOverIdxRef.current !== draggedIdxRef.current) {
+            setDragOverIdxSafe(draggedIdxRef.current);
+          }
+          return;
+        }
+      }
+
+      const target = resolveHoverTargetIndex(e.clientY, 30);
+      if (target !== null && dragOverIdxRef.current !== target) {
+        setDragOverIdxSafe(target);
+      }
+    };
+
+    const handleGlobalDrop = (e: DragEvent) => {
+      if (draggedIdxRef.current === null) return;
+      e.preventDefault();
+      if (tableContainerRef.current && typeof e.clientX === "number") {
+        const rect = tableContainerRef.current.getBoundingClientRect();
+        if (rect.width > 0 && (e.clientX < rect.left - 40 || e.clientX > rect.right + 40)) {
+          stopAutoScroll();
+          markJustDropped();
+          resetDragState();
+          return;
+        }
+      }
+      const targetIdx = dragOverIdxRef.current ?? resolveHoverTargetIndex(e.clientY, 50);
+      if (targetIdx !== null) {
+        const rawIdx = e.dataTransfer?.getData("application/x-slice-playlist-index");
+        const fromIdx = rawIdx ? parseInt(rawIdx, 10) : draggedIdxRef.current;
+        if (fromIdx !== null && !isNaN(fromIdx) && fromIdx !== targetIdx) {
+          commitReorder(fromIdx, targetIdx);
+        }
+      }
+      stopAutoScroll();
+      markJustDropped();
+      resetDragState();
+    };
+
+    window.addEventListener("dragover", handleGlobalDragOver, { passive: false });
+    window.addEventListener("drop", handleGlobalDrop);
+    return () => {
+      window.removeEventListener("dragover", handleGlobalDragOver);
+      window.removeEventListener("drop", handleGlobalDrop);
+      stopAutoScroll();
+    };
+  }, [
+    draggedIdx,
+    checkAutoScroll,
+    commitReorder,
+    markJustDropped,
+    resetDragState,
+    stopAutoScroll,
+    setDragOverIdxSafe,
+    updatePreviewPosition,
+    resolveHoverTargetIndex,
+  ]);
 
   const currentPlaylist = React.useMemo(() => {
     return playlists.find((p) => p.id === activePlaylistId);
@@ -652,13 +956,58 @@ export function PlaylistTableView({
 
     return (
       <div
+        ref={tableContainerRef}
         className="w-full space-y-1"
         role="table"
         aria-label={t("nav.playlists")}
         aria-rowcount={displayedItems.length + 1}
+        onDragOver={(e) => {
+          if (draggedIdxRef.current === null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          checkAutoScroll(e.clientY);
+          updatePreviewPosition(e.clientX, e.clientY);
+          const target = resolveHoverTargetIndex(e.clientY, 30);
+          if (target !== null && dragOverIdxRef.current !== target) {
+            setDragOverIdxSafe(target);
+          }
+        }}
+        onDrop={(e) => {
+          if (draggedIdxRef.current === null) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const targetIdx = dragOverIdxRef.current ?? resolveHoverTargetIndex(e.clientY, 50);
+          if (targetIdx !== null) {
+            handleDrop(e, targetIdx);
+          } else {
+            stopAutoScroll();
+            resetDragState();
+          }
+        }}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className="grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+        <div
+          role="row"
+          aria-rowindex={1}
+          onDragOver={(e) => {
+            if (draggedIdxRef.current === null) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            checkAutoScroll(e.clientY);
+            if (dragOverIdxRef.current !== 0) {
+              setDragOverIdxSafe(0);
+            }
+          }}
+          onDrop={(e) => {
+            if (draggedIdxRef.current === null) return;
+            handleDrop(e, 0);
+          }}
+          className={`grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b transition-colors ${
+            dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0
+              ? "border-primary ring-2 ring-primary/60 bg-accent/70 shadow-md text-foreground"
+              : "border-border text-muted-foreground"
+          }`}
+        >
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1">
             {visiblePlaylistItemIds.length > 0 && (
               <button
@@ -697,6 +1046,8 @@ export function PlaylistTableView({
         <VirtualizedTableBody
           items={displayedItems}
           getItemKey={getEntityId}
+          draggedIdx={draggedIdx}
+          virtualizerRef={virtualizerRef}
           renderRow={(item: PlaylistItemWithDetails, idx: number) => {
             const isSlice = Boolean(item.segment);
             const duration = isSlice && item.segment
@@ -724,6 +1075,29 @@ export function PlaylistTableView({
             const isDragging = draggedIdx === originalIdx;
             const isDragTarget = dragOverIdx === originalIdx && draggedIdx !== null && draggedIdx !== originalIdx;
 
+            // FLIP shift animation for rows to smoothly move out of the way
+            let shiftY = 0;
+            if (
+              draggedIdx !== null &&
+              dragOverIdx !== null &&
+              draggedIdx !== dragOverIdx &&
+              originalIdx !== draggedIdx &&
+              originalIdx >= 0
+            ) {
+              const rowShiftPx = PLAYLIST_ROW_HEIGHT;
+              if (draggedIdx > dragOverIdx) {
+                // Dragging UP: items from dragOverIdx to draggedIdx - 1 shift DOWN
+                if (originalIdx >= dragOverIdx && originalIdx < draggedIdx) {
+                  shiftY = rowShiftPx;
+                }
+              } else {
+                // Dragging DOWN: items from draggedIdx + 1 to dragOverIdx shift UP
+                if (originalIdx <= dragOverIdx && originalIdx > draggedIdx) {
+                  shiftY = -rowShiftPx;
+                }
+              }
+            }
+
             const isSelected = selectedTrackIds.has(item.id);
 
             return (
@@ -731,6 +1105,11 @@ export function PlaylistTableView({
                 role="row"
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
+                style={{
+                  transform: shiftY !== 0 ? `translateY(${shiftY}px)` : undefined,
+                  transition: draggedIdx !== null ? "transform 220ms cubic-bezier(0.2, 0, 0, 1), border-color 150ms ease, background-color 150ms ease" : undefined,
+                  willChange: draggedIdx !== null ? "transform" : undefined,
+                }}
                 aria-label={
                   isSelectionActive
                     ? (isSelected
@@ -759,7 +1138,7 @@ export function PlaylistTableView({
                 }}
                 onDragLeave={(e) => {
                   if (!canDrag) return;
-                  handleDragLeave(e, originalIdx);
+                  handleDragLeave(e);
                 }}
                 onDrop={(e) => {
                   if (!canDrag) return;
@@ -784,7 +1163,7 @@ export function PlaylistTableView({
                   }
                   handlePlayPlaylistItem(item);
                 }}
-                className={`group grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
+                className={`group grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : isDragging
@@ -1005,6 +1384,32 @@ export function PlaylistTableView({
             );
           }}
         />
+        {draggedIdx !== null && activePlaylistItems[draggedIdx] && (
+          <div
+            ref={floatingPreviewRef}
+            style={{
+              position: "fixed",
+              left: 0,
+              top: 0,
+              pointerEvents: "none",
+              zIndex: 99999,
+              willChange: "transform",
+              transform: "translate3d(-9999px, -9999px, 0)",
+            }}
+            className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg border border-primary/70 bg-card/95 backdrop-blur-md shadow-2xl text-xs font-medium text-foreground ring-2 ring-primary/40 select-none max-w-sm pointer-events-none transition-none"
+          >
+            <GripVertical className="h-3.5 w-3.5 text-primary shrink-0" />
+            <Music className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="truncate max-w-[200px] font-semibold">
+              {activePlaylistItems[draggedIdx].segment
+                ? activePlaylistItems[draggedIdx].segment?.name
+                : activePlaylistItems[draggedIdx].track?.title || t("table.track", "Bài hát")}
+            </span>
+            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono border-primary/50 text-primary shrink-0">
+              #{draggedIdx + 1}
+            </Badge>
+          </div>
+        )}
         {playlistItemToDelete && (
           <ConfirmModal
             isOpen={!!playlistItemToDelete}

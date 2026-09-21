@@ -1494,5 +1494,671 @@ describe("PlaylistTableView", () => {
       expect(equalizerBars.length).toBe(3);
     });
   });
+
+  describe("Table View Drag and Drop Auto-scroll & Boundary Drops", () => {
+    const originalReorder = usePlayerStore.getState().reorderPlaylist;
+    let scrollToSpy: any;
+    let mockScrollY = 1000;
+
+    beforeEach(() => {
+      mockScrollY = 1000;
+      Object.defineProperty(window, "innerHeight", {
+        value: 800,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window, "scrollY", {
+        get: () => mockScrollY,
+        set: (v) => {
+          mockScrollY = v;
+        },
+        configurable: true,
+      });
+      Object.defineProperty(window, "pageYOffset", {
+        get: () => mockScrollY,
+        set: (v) => {
+          mockScrollY = v;
+        },
+        configurable: true,
+      });
+      if (window.document?.documentElement) {
+        Object.defineProperty(window.document.documentElement, "scrollTop", {
+          get: () => mockScrollY,
+          set: (v) => {
+            mockScrollY = v;
+          },
+          configurable: true,
+        });
+        Object.defineProperty(window.document.documentElement, "scrollHeight", {
+          value: 6000,
+          writable: true,
+          configurable: true,
+        });
+      }
+      scrollToSpy = mock((x: any, y?: any) => {
+        if (typeof x === "object" && x !== null) {
+          mockScrollY = x.top ?? mockScrollY;
+        } else if (typeof y === "number") {
+          mockScrollY = y;
+        }
+      });
+      window.scrollTo = scrollToSpy;
+    });
+
+    afterEach(() => {
+      usePlayerStore.setState({ reorderPlaylist: originalReorder });
+    });
+
+    it("triggers auto-scroll up when dragging near top of viewport", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // 1. Pointerdown on drag handle
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      // 2. DragStart on row
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = {
+        setData: () => {},
+        getData: () => "0",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // 3. DragOver near top of window (clientY = 30px, in topZone 120px)
+      const topDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      topDragOver.clientY = 30;
+      topDragOver.preventDefault = () => {};
+      topDragOver.dataTransfer = { dropEffect: "none" };
+
+      await act(async () => {
+        window.dispatchEvent(topDragOver);
+      });
+
+      // Wait a tick for requestAnimationFrame
+      await new Promise((r) => setTimeout(r, 60));
+
+      expect(scrollToSpy).toHaveBeenCalled();
+      // Y position should have decreased (scrolling up from 1000)
+      const numericCalls = scrollToSpy.mock.calls
+        .map((call: any[]) => (typeof call[0] === "object" ? call[0].top : call[1]))
+        .filter((y: any) => typeof y === "number");
+      const lastCallY = numericCalls[numericCalls.length - 1];
+      expect(typeof lastCallY).toBe("number");
+      expect(lastCallY).toBeLessThan(1000);
+
+      // Clean up drag state
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+    });
+
+    it("triggers auto-scroll down when dragging near bottom of viewport", async () => {
+      mockScrollY = 500;
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // Pointerdown on drag handle
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      // DragStart on row
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = {
+        setData: () => {},
+        getData: () => "0",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // DragOver near bottom of window (clientY = 750px, in bottomZone > 800 - 140 = 660px)
+      const bottomDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      bottomDragOver.clientY = 750;
+      bottomDragOver.preventDefault = () => {};
+      bottomDragOver.dataTransfer = { dropEffect: "none" };
+
+      await act(async () => {
+        window.dispatchEvent(bottomDragOver);
+      });
+
+      // Wait a tick for requestAnimationFrame
+      await new Promise((r) => setTimeout(r, 60));
+
+      expect(scrollToSpy).toHaveBeenCalled();
+      // Y position should have increased (scrolling down from 500)
+      const numericCalls = scrollToSpy.mock.calls
+        .map((call: any[]) => (typeof call[0] === "object" ? call[0].top : call[1]))
+        .filter((y: any) => typeof y === "number");
+      const lastCallY = numericCalls[numericCalls.length - 1];
+      expect(typeof lastCallY).toBe("number");
+      expect(lastCallY).toBeGreaterThan(500);
+
+      // Clean up drag state
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+    });
+
+    it("stops auto-scroll when moving cursor back to center zone", async () => {
+      mockScrollY = 500;
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = { setData: () => {}, getData: () => "0", effectAllowed: "none" };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // Move to top zone
+      const topDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      topDragOver.clientY = 20;
+      topDragOver.preventDefault = () => {};
+      topDragOver.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        window.dispatchEvent(topDragOver);
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      const callsBeforeCenter = scrollToSpy.mock.calls.length;
+
+      // Move to center zone (clientY = 400, outside top and bottom zones)
+      const centerDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      centerDragOver.clientY = 400;
+      centerDragOver.preventDefault = () => {};
+      centerDragOver.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        window.dispatchEvent(centerDragOver);
+      });
+      await new Promise((r) => setTimeout(r, 60));
+
+      // Auto-scroll should have stopped (calls count stays same or +1 before loop ended)
+      const callsAfterCenter = scrollToSpy.mock.calls.length;
+      expect(callsAfterCenter - callsBeforeCenter).toBeLessThanOrEqual(1);
+
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+    });
+
+    it("dropping on the table header reorders dragged item to position 0", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+      const header = container.querySelector("[role='row'][aria-rowindex='1']");
+      expect(header).not.toBeNull();
+
+      // Start drag from row 1 (second item)
+      await act(async () => {
+        dragHandles[1].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      const dataStore: Record<string, string> = {};
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = {
+        setData: (k: string, v: string) => {
+          dataStore[k] = v;
+        },
+        getData: (k: string) => dataStore[k] || "",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[1].dispatchEvent(dragEvent);
+      });
+
+      expect(dataStore["application/x-slice-playlist-index"]).toBe("1");
+
+      // DragOver the header
+      const dragOverHeader = new window.Event("dragover", { bubbles: true }) as any;
+      dragOverHeader.clientY = 50;
+      dragOverHeader.preventDefault = () => {};
+      dragOverHeader.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        header!.dispatchEvent(dragOverHeader);
+      });
+
+      // Drop on the header
+      const dropEvent = new window.Event("drop", { bubbles: true }) as any;
+      dropEvent.preventDefault = () => {};
+      dropEvent.stopPropagation = () => {};
+      dropEvent.dataTransfer = {
+        getData: (k: string) => dataStore[k] || "",
+      };
+      await act(async () => {
+        header!.dispatchEvent(dropEvent);
+      });
+
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      // Item 2 was dragged to index 0 -> ["item_2", "item_1"]
+      expect(reorderSpy).toHaveBeenCalledWith("pl_custom_1", ["item_2", "item_1"]);
+    });
+
+    it("stops auto-scroll immediately when Escape key is pressed", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = { setData: () => {}, getData: () => "0", effectAllowed: "none" };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // Start autoscroll
+      const topDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      topDragOver.clientY = 10;
+      topDragOver.preventDefault = () => {};
+      topDragOver.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        window.dispatchEvent(topDragOver);
+      });
+
+      // Press Escape
+      await act(async () => {
+        window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      });
+      await new Promise((r) => setTimeout(r, 60));
+
+      const callsAfterEscape = scrollToSpy.mock.calls.length;
+      await new Promise((r) => setTimeout(r, 60));
+      expect(scrollToSpy.mock.calls.length).toBe(callsAfterEscape);
+      expect(reorderSpy).not.toHaveBeenCalled();
+    });
+
+    it("maintains auto-scroll loop continuously when dragOverIdx changes between rows", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // Start drag on row 0
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = { setData: () => {}, getData: () => "0", effectAllowed: "none" };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // Trigger autoscroll down
+      const bottomDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      bottomDragOver.clientY = 750;
+      bottomDragOver.preventDefault = () => {};
+      bottomDragOver.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        window.dispatchEvent(bottomDragOver);
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      const callsBefore = scrollToSpy.mock.calls.length;
+      expect(callsBefore).toBeGreaterThan(0);
+
+      // Now fire dragOver on row 1 (this updates dragOverIdx)
+      const rowDragOver = new window.Event("dragover", { bubbles: true }) as any;
+      rowDragOver.clientY = 750;
+      rowDragOver.preventDefault = () => {};
+      rowDragOver.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        rows[1].dispatchEvent(rowDragOver);
+      });
+      await new Promise((r) => setTimeout(r, 60));
+
+      // Auto-scroll loop should NOT have been killed by changing dragOverIdx
+      const callsAfter = scrollToSpy.mock.calls.length;
+      expect(callsAfter).toBeGreaterThan(callsBefore);
+
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+    });
+
+    it("global drop near table bottom boundary drops at the last item index", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+      const table = container.querySelector("[role='table']");
+      expect(table).not.toBeNull();
+
+      // Mock getBoundingClientRect for table
+      table!.getBoundingClientRect = () => ({
+        top: 100,
+        bottom: 500,
+        left: 0,
+        right: 800,
+        width: 800,
+        height: 400,
+        x: 0,
+        y: 100,
+        toJSON: () => {},
+      });
+
+      // Start drag from row 0
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      const dataStore: Record<string, string> = {};
+      const dragEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragEvent.dataTransfer = {
+        setData: (k: string, v: string) => {
+          dataStore[k] = v;
+        },
+        getData: (k: string) => dataStore[k] || "",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragEvent);
+      });
+
+      // Global drop near table bottom (clientY = 490, which is >= rect.bottom - 30)
+      const dropEvent = new window.Event("drop", { bubbles: true }) as any;
+      dropEvent.clientY = 490;
+      dropEvent.preventDefault = () => {};
+      dropEvent.dataTransfer = {
+        getData: (k: string) => dataStore[k] || "0",
+      };
+      await act(async () => {
+        window.dispatchEvent(dropEvent);
+      });
+
+      // Should have dropped to index 1 (last index) -> ["item_2", "item_1"]
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      expect(reorderSpy).toHaveBeenCalledWith("pl_custom_1", ["item_2", "item_1"]);
+    });
+
+    it("renders floating drag preview with track title and index badge during drag", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // Pointer down on handle 0
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      // Dragstart with coordinates
+      const dataStore: Record<string, string> = {};
+      const dragStartEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragStartEvent.clientX = 150;
+      dragStartEvent.clientY = 250;
+      dragStartEvent.dataTransfer = {
+        setData: (k: string, v: string) => {
+          dataStore[k] = v;
+        },
+        getData: (k: string) => dataStore[k] || "",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragStartEvent);
+      });
+
+      // Dragover to update cursorPos
+      const dragOverEvent = new window.Event("dragover", { bubbles: true }) as any;
+      dragOverEvent.clientX = 180;
+      dragOverEvent.clientY = 320;
+      dragOverEvent.preventDefault = () => {};
+      dragOverEvent.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        rows[1].dispatchEvent(dragOverEvent);
+      });
+
+      // Floating preview should be rendered
+      const badge = container.querySelector(".select-none.max-w-sm");
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain("#1");
+      expect(badge?.textContent).toContain(dummyTrack.title);
+      expect((badge as HTMLElement).style.position).toBe("fixed");
+    });
+
+    it("calculates FLIP shift transform when dragging over another item", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: mock(() => Promise.resolve(true)) as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // Pointer down on handle 0 (top item)
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      // Dragstart on item 0
+      const dataStore: Record<string, string> = {};
+      const dragStartEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragStartEvent.clientX = 100;
+      dragStartEvent.clientY = 100;
+      dragStartEvent.dataTransfer = {
+        setData: (k: string, v: string) => {
+          dataStore[k] = v;
+        },
+        getData: (k: string) => dataStore[k] || "",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragStartEvent);
+      });
+
+      // Drag over item 1 (dragging DOWN: item 0 -> 1)
+      const dragOverEvent = new window.Event("dragover", { bubbles: true }) as any;
+      dragOverEvent.clientX = 100;
+      dragOverEvent.clientY = 170;
+      dragOverEvent.preventDefault = () => {};
+      dragOverEvent.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        rows[1].dispatchEvent(dragOverEvent);
+      });
+
+      // Item 1 (target) should shift UP to make room (-68px)
+      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-68px)");
+      expect((rows[1] as HTMLElement).style.transition).toContain("transform 220ms");
+
+      // Now drop item 0 onto item 1
+      const dropEvent = new window.Event("drop", { bubbles: true }) as any;
+      dropEvent.preventDefault = () => {};
+      dropEvent.stopPropagation = () => {};
+      dropEvent.dataTransfer = {
+        getData: (k: string) => dataStore[k] || "0",
+      };
+      await act(async () => {
+        rows[1].dispatchEvent(dropEvent);
+      });
+
+      // Target row should no longer have inline transform or transform transition (preventing bounce)
+      const updatedRows = container.querySelectorAll(".group[role='row']");
+      expect((updatedRows[0] as HTMLElement).style.transform).toBe("");
+      expect((updatedRows[0] as HTMLElement).style.transition).toBe("");
+      expect(updatedRows[0].className).toContain("transition-colors");
+    });
+
+    it("allows dragging back to original position to cancel reorder and restore rows", async () => {
+      const reorderSpy = mock(() => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+      const rows = container.querySelectorAll(".group[role='row']");
+
+      // Pointer down on item 0
+      await act(async () => {
+        dragHandles[0].dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+      });
+
+      // Dragstart on item 0
+      const dataStore: Record<string, string> = {};
+      const dragStartEvent = new window.Event("dragstart", { bubbles: true }) as any;
+      dragStartEvent.clientX = 100;
+      dragStartEvent.clientY = 100;
+      dragStartEvent.dataTransfer = {
+        setData: (k: string, v: string) => {
+          dataStore[k] = v;
+        },
+        getData: (k: string) => dataStore[k] || "",
+        effectAllowed: "none",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dragStartEvent);
+      });
+
+      // Drag over item 1 -> item 1 shifts up
+      const dragOverItem1 = new window.Event("dragover", { bubbles: true }) as any;
+      dragOverItem1.clientX = 100;
+      dragOverItem1.clientY = 170;
+      dragOverItem1.preventDefault = () => {};
+      dragOverItem1.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        rows[1].dispatchEvent(dragOverItem1);
+      });
+      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-68px)");
+
+      // User changes mind and drags back over item 0 (original position)
+      const dragOverItem0 = new window.Event("dragover", { bubbles: true }) as any;
+      dragOverItem0.clientX = 100;
+      dragOverItem0.clientY = 100;
+      dragOverItem0.preventDefault = () => {};
+      dragOverItem0.dataTransfer = { dropEffect: "none" };
+      await act(async () => {
+        rows[0].dispatchEvent(dragOverItem0);
+      });
+
+      // All shifted rows should restore to normal position (transform = "")
+      expect((rows[1] as HTMLElement).style.transform).toBe("");
+
+      // Drop on item 0
+      const dropEvent = new window.Event("drop", { bubbles: true }) as any;
+      dropEvent.preventDefault = () => {};
+      dropEvent.stopPropagation = () => {};
+      dropEvent.dataTransfer = {
+        getData: (k: string) => dataStore[k] || "0",
+      };
+      await act(async () => {
+        rows[0].dispatchEvent(dropEvent);
+      });
+
+      // Reorder must NOT have been called!
+      expect(reorderSpy).not.toHaveBeenCalled();
+    });
+  });
 });
+
 

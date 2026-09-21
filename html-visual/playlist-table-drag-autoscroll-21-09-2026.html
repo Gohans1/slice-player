@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Playlist Table View - Drag & Drop Auto-scroll Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #000000;
+      --card-bg: #0c0c0c;
+      --card-border: #262626;
+      --text: #ededed;
+      --text-bold: #ffffff;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.2);
+      --green: #22c55e;
+      --green-glow: rgba(34, 197, 94, 0.2);
+      --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.2);
+      --yellow: #f59e0b;
+      --purple: #a855f7;
+      font-size: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.5;
+      padding: 2rem 1rem 6rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 80rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    /* Top Callout */
+    .callout-center {
+      max-width: 40rem;
+      margin: 0 auto 1rem;
+      background: linear-gradient(180deg, #161616 0%, #0d0d0d 100%);
+      border: 1px solid #333333;
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+    .callout-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-bold);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .callout-body {
+      font-size: 0.95rem;
+      color: #d1d5db;
+      font-weight: 500;
+    }
+
+    /* Tab Switcher */
+    .tabs-nav {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .tab-btn {
+      background: #171717;
+      border: 1px solid #2e2e2e;
+      color: #9ca3af;
+      padding: 0.6rem 1.4rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tab-btn:hover {
+      color: #fff;
+      border-color: #444;
+    }
+    .tab-btn.active {
+      background: #ededed;
+      color: #000;
+      border-color: #ededed;
+      box-shadow: 0 0 15px rgba(255,255,255,0.25);
+    }
+
+    .tab-pane {
+      display: none;
+      width: 100%;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+    .tab-pane.active {
+      display: flex;
+    }
+
+    /* Cards in Summarize */
+    .card-wrap {
+      border-radius: 0.75rem;
+      min-height: 20rem;
+      padding: 1rem 1.25rem 3rem;
+      overflow: visible;
+      background: var(--card-bg);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .card-white {
+      border: 1px solid #ffffff;
+      box-shadow: 0 0 25px rgba(255,255,255,0.08);
+    }
+    .card-red {
+      border: 1px solid var(--red);
+      box-shadow: 0 0 25px var(--red-glow);
+    }
+    .card-green {
+      border: 1px solid var(--green);
+      box-shadow: 0 0 25px var(--green-glow);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #222;
+      padding-bottom: 0.75rem;
+    }
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    /* Swipe Slider Diff Container */
+    .swipe-container {
+      position: relative;
+      width: 100%;
+      height: 24rem;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: #080808;
+      border: 1px solid #333;
+      user-select: none;
+    }
+    .swipe-side {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    .swipe-side.before {
+      background: #0d0505;
+      z-index: 1;
+    }
+    .swipe-side.after {
+      background: #050d06;
+      z-index: 2;
+      clip-path: inset(0 0 0 50%);
+    }
+
+    /* Content inside swipe side: MUST KEEP FIXED 100% WIDTH - CROP NOT RESIZE */
+    .swipe-inner {
+      width: 80rem;
+      max-width: 100%;
+      height: 100%;
+      padding: 1rem 1.5rem;
+      position: relative;
+    }
+
+    .slider-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: #ffffff;
+      z-index: 10;
+      cursor: ew-resize;
+      transform: translateX(-50%);
+      box-shadow: 0 0 12px rgba(255,255,255,0.8);
+    }
+    .slider-handle::after {
+      content: '◀ ▶';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 0.3rem 0.6rem;
+      border-radius: 9999px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    }
+
+    /* Table Mockup Styles */
+    .mock-table {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+    .mock-header {
+      display: grid;
+      grid-template-columns: 3.5rem 1fr 6rem 5rem;
+      padding: 0.6rem 0.75rem;
+      background: #141414;
+      border-radius: 0.4rem;
+      font-weight: 700;
+      color: #d1d5db;
+      border-bottom: 2px solid #2a2a2a;
+    }
+    .mock-header.highlight-drop {
+      border: 2px dashed var(--green);
+      background: rgba(34, 197, 94, 0.15);
+      color: #ffffff;
+    }
+    .mock-row {
+      display: grid;
+      grid-template-columns: 3.5rem 1fr 6rem 5rem;
+      padding: 0.6rem 0.75rem;
+      background: #111111;
+      border: 1px solid #222222;
+      border-radius: 0.4rem;
+      align-items: center;
+      position: relative;
+    }
+    .mock-row.dragging {
+      opacity: 0.4;
+      border-style: dashed;
+      border-color: var(--accent);
+    }
+    .mock-row.drag-over {
+      border-color: var(--green);
+      background: rgba(34, 197, 94, 0.12);
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
+    }
+
+    /* Annotations */
+    .annotation-box {
+      border: 2px dashed var(--yellow);
+      border-radius: 0.4rem;
+      position: relative;
+    }
+    .annotation-tag {
+      position: absolute;
+      top: -0.75rem;
+      right: 0.5rem;
+      background: var(--yellow);
+      color: #000;
+      font-size: 0.65rem;
+      font-weight: 800;
+      padding: 0.1rem 0.4rem;
+      border-radius: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      z-index: 20;
+    }
+    .tag-red {
+      background: var(--red);
+      color: #fff;
+    }
+    .tag-green {
+      background: var(--green);
+      color: #000;
+    }
+    .tag-blue {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .hide-annotations .annotation-box {
+      border-style: solid;
+      border-color: #222;
+    }
+    .hide-annotations .annotation-tag {
+      display: none !important;
+    }
+
+    /* Fixed Inspector Toggle */
+    .inspector-toggle {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 9999;
+      background: #1c1c1c;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 0.65rem 1.1rem;
+      border-radius: 9999px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.7);
+      transition: all 0.2s ease;
+    }
+    .inspector-toggle:hover {
+      background: #282828;
+      border-color: #666;
+      transform: translateY(-2px);
+    }
+    .toggle-state {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 9999px;
+      background: var(--green);
+      color: #000;
+    }
+
+    /* Interactive Demo Box */
+    .interactive-demo {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      height: 18rem;
+      background: #090909;
+      border: 1px solid #222;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      position: relative;
+      overflow-y: auto;
+    }
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #141414;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.4rem;
+      font-size: 0.85rem;
+      border: 1px solid #2b2b2b;
+    }
+
+    /* Explain Tab Layout */
+    .explain-section {
+      display: flex;
+      gap: 2rem;
+      padding-bottom: 2.5rem;
+      border-bottom: 1px solid #222222;
+    }
+    .col-left {
+      width: 30rem;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .col-right {
+      width: 48rem;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .code-tree {
+      background: #0d0d0d;
+      border: 1px solid #262626;
+      border-radius: 0.5rem;
+      padding: 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #e5e7eb;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .diff-add {
+      color: #4ade80;
+      background: rgba(74, 222, 128, 0.1);
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.2rem;
+      display: inline-block;
+      width: 100%;
+    }
+    .diff-del {
+      color: #f87171;
+      background: rgba(248, 113, 113, 0.1);
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.2rem;
+      display: inline-block;
+      width: 100%;
+    }
+    .diff-info {
+      color: #60a5fa;
+    }
+    .zoom-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 0.3rem;
+      background: #222;
+      border: 1px solid #333;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      width: fit-content;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- Center Callout -->
+    <div class="callout-center">
+      <div class="callout-title">🗣️ TÓM LƯỢC & Ý CHÍNH 🗣️</div>
+      <div class="callout-body">
+        Bố m đã giải quyết trọn vẹn lỗi kẹt auto-scroll khi drag bài hát từ vị trí xa (ví dụ #100 lên #1): ghim chặt DOM node chống huỷ HTML5 drag session, kích hoạt RAF engine mượt mà theo độ sâu mép màn hình, và auto-drop chuẩn xác tại Header / Boundary!
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('tab-summarize')">📋 Tab Summarize (Mục tiêu & So sánh)</button>
+      <button class="tab-btn" onclick="switchTab('tab-explain')">🔬 Tab Explain (Chi tiết Zoom-In)</button>
+    </div>
+
+    <!-- TAB 1: SUMMARIZE -->
+    <div id="tab-summarize" class="tab-pane active">
+
+      <!-- Card 1: Visual Comparison Slider (Swipe Diff) -->
+      <div class="card-wrap card-white">
+        <div class="card-header">
+          <div class="card-title">
+            <span>⚡ So Sánh Trực Quan: Before (Đơ Kẹt) ⟷ After (Mượt Mà)</span>
+          </div>
+          <span style="font-size: 0.8rem; color: #9ca3af; font-family: monospace;">[Kéo Slider qua lại để soi khác biệt]</span>
+        </div>
+
+        <div class="swipe-container" id="swipeContainer">
+          <!-- BEFORE SIDE (LEFT) -->
+          <div class="swipe-side before">
+            <div class="swipe-inner">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="color: var(--red); font-weight: 700; font-size: 0.9rem;">❌ BẢN TRƯỚC: Virtualizer cắt DOM -> HỦY DRAG</span>
+                <span class="tag-red" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 0.2rem; font-weight: bold;">SCROLL: ĐỨNG IM (0 px/s)</span>
+              </div>
+
+              <div class="mock-table">
+                <div class="mock-header">
+                  <span>#</span>
+                  <span>Bài Hát / Đoạn Cắt</span>
+                  <span>Thời Lượng</span>
+                  <span style="text-align: right;">Trạng Thái</span>
+                </div>
+                <div class="mock-row" style="opacity: 0.3;">
+                  <span>01</span>
+                  <span>Bài Hát Mở Đầu (Header xa xôi)</span>
+                  <span>03:45</span>
+                  <span style="text-align: right; color: #666;">Kẹt trên cao</span>
+                </div>
+                <div class="mock-row annotation-box" style="border-color: var(--red); background: rgba(239, 68, 68, 0.1);">
+                  <span class="annotation-tag tag-red">DOM ĐÃ BỊ UNMOUNT</span>
+                  <span>...</span>
+                  <span style="color: var(--red); font-weight: bold;">[Vùng trống 98 bài bị cắt DOM hoàn toàn]</span>
+                  <span>--:--</span>
+                  <span style="text-align: right; color: var(--red);">Kẹt cứng</span>
+                </div>
+                <div class="mock-row" style="border: 2px dashed var(--red);">
+                  <span style="color: var(--red);">100</span>
+                  <span style="color: #fff; font-weight: bold;">Bài hát số 100 (Đang cố kéo lên ngọn)</span>
+                  <span>04:12</span>
+                  <span style="text-align: right; color: var(--red); font-weight: bold;">❌ CANCELLED</span>
+                </div>
+              </div>
+              <div style="margin-top: 1rem; padding: 0.75rem; background: #1a0505; border: 1px solid var(--red); border-radius: 0.4rem; color: #fca5a5; font-size: 0.8rem;">
+                ⚠️ <b>Hậu quả:</b> Chuột kéo lên đỉnh màn hình nhưng viewport đéo chịu cuộn. Khi cố cuộn tay thì hàng số 100 biến mất khỏi DOM, browser phát hiện node nguồn bị xoá nên lập tức huỷ sạch drag session!
+              </div>
+            </div>
+          </div>
+
+          <!-- AFTER SIDE (RIGHT) -->
+          <div class="swipe-side after" id="afterSide">
+            <div class="swipe-inner">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="color: var(--green); font-weight: 700; font-size: 0.9rem;">✅ BẢN MỚI: RAF Auto-scroll + RangeExtractor PIN</span>
+                <span class="tag-green" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 0.2rem; font-weight: bold;">SCROLL: -28 px/s (CUỘN TỰ ĐỘNG)</span>
+              </div>
+
+              <div class="mock-table">
+                <div class="mock-header highlight-drop annotation-box">
+                  <span class="annotation-tag tag-green">DROP TARGET #0</span>
+                  <span>#</span>
+                  <span style="color: var(--green); font-weight: bold;">Thả Vào Header Để Đưa Lên Đầu Playlist!</span>
+                  <span>--:--</span>
+                  <span style="text-align: right; color: var(--green); font-weight: bold;">SẴN SÀNG</span>
+                </div>
+                <div class="mock-row drag-over">
+                  <span style="color: var(--green); font-weight: bold;">01</span>
+                  <span>Bài Hát Đang Tiếp Cận Dưới Con Trỏ</span>
+                  <span>03:45</span>
+                  <span style="text-align: right; color: var(--green);">Mục tiêu</span>
+                </div>
+                <div class="mock-row" style="opacity: 0.4;">
+                  <span>02</span>
+                  <span>Bài Hát Tiếp Theo...</span>
+                  <span>02:18</span>
+                  <span style="text-align: right; color: #aaa;">Đang cuộn</span>
+                </div>
+                <div class="mock-row annotation-box" style="border-color: var(--green); background: rgba(34, 197, 94, 0.15);">
+                  <span class="annotation-tag tag-blue">GHIM RANGE-EXTRACTOR</span>
+                  <span style="color: var(--accent); font-weight: bold;">100</span>
+                  <span style="color: #fff; font-weight: bold;">Bài hát số 100 (Vẫn giữ chặt trong DOM)</span>
+                  <span>04:12</span>
+                  <span style="text-align: right; color: var(--accent); font-weight: bold;">⚡ ACTIVE DRAG</span>
+                </div>
+              </div>
+              <div style="margin-top: 1rem; padding: 0.75rem; background: #051a08; border: 1px solid var(--green); border-radius: 0.4rem; color: #86efac; font-size: 0.8rem;">
+                🚀 <b>Thành quả:</b> Chuột tiến vào vùng top 120px -> view cuộn vù vù lên trên. Bài #100 được ghim vĩnh viễn trong DOM nên drag session sống nhăn. Thả vào Header -> reorder ngay thành bài số 1!
+              </div>
+            </div>
+          </div>
+
+          <!-- Slider Splitter Line -->
+          <div class="slider-handle" id="sliderHandle"></div>
+        </div>
+      </div>
+
+      <!-- Card 2: Before Only (Border Red) -->
+      <div class="card-wrap card-red">
+        <div class="card-header">
+          <div class="card-title">
+            <span style="color: var(--red);">❌ Bản Before Only: Không Auto-Scroll & Rụng Session</span>
+          </div>
+          <span style="color: #f87171; font-size: 0.85rem; font-weight: 600;">[Thử kéo item #100 lên trên]</span>
+        </div>
+
+        <div class="interactive-demo" id="beforeDemo">
+          <div class="status-bar">
+            <span>Trạng thái: <b id="beforeStatus" style="color: var(--red);">Đang ở bài số 100 (Đáy danh sách)</b></span>
+            <span style="color: #9ca3af;">Tốc độ scroll: <b>0 px/s</b></span>
+          </div>
+
+          <div style="height: 400px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="padding: 1rem; background: #161616; border-radius: 0.4rem; border: 1px dashed #444; text-align: center;">
+              <span style="color: #777;">[Khu vực bài 1 - 5: Bị khuất ngoài màn hình]</span>
+            </div>
+
+            <div style="text-align: center; color: #555; font-size: 0.85rem;">
+              ↕️ Khoảng cách 95 bài hát không được render ↕️
+            </div>
+
+            <div id="dragItemBefore" draggable="true" style="padding: 1rem; background: #241111; border: 2px dashed var(--red); border-radius: 0.4rem; cursor: grab; display: flex; justify-content: space-between; align-items: center;">
+              <span>🎵 Bài hát #100: "Lost in Virtualization"</span>
+              <span style="background: var(--red); color: #fff; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem;">Kéo tớ thử xem</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: After Only (Border Green) -->
+      <div class="card-wrap card-green">
+        <div class="card-header">
+          <div class="card-title">
+            <span style="color: var(--green);">✅ Bản After Only: RAF Auto-Scroll Mượt & Header Dropzone</span>
+          </div>
+          <span style="color: #86efac; font-size: 0.85rem; font-weight: 600;">[Thử kéo item #100 lên Header]</span>
+        </div>
+
+        <div class="interactive-demo" id="afterDemo" style="scroll-behavior: smooth;">
+          <div class="status-bar">
+            <span>Trạng thái: <b id="afterStatus" style="color: var(--green);">Sẵn sàng kéo bài #100 lên đầu</b></span>
+            <span style="color: #86efac;">Tốc độ Auto-Scroll: <b id="afterSpeed">0 px/s</b></span>
+          </div>
+
+          <!-- Header Dropzone -->
+          <div id="headerDropzone" style="padding: 1rem; background: #0f1f13; border: 2px dashed var(--green); border-radius: 0.4rem; text-align: center; transition: all 0.2s ease;">
+            <span style="color: var(--green); font-weight: bold;">🎯 HEADER DROPZONE (Index #0) - Thả vào đây để lên đầu!</span>
+          </div>
+
+          <div style="height: 250px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.5rem; color: #666; font-size: 0.85rem;">
+            <span>▲ Kéo bài hát vào vùng trên này để tự động cuộn lên ▲</span>
+            <div style="width: 2px; height: 60px; background: linear-gradient(180deg, var(--green), transparent);"></div>
+          </div>
+
+          <!-- Draggable Item After -->
+          <div id="dragItemAfter" draggable="true" style="padding: 1rem; background: #0f2413; border: 2px solid var(--green); border-radius: 0.4rem; cursor: grab; display: flex; justify-content: space-between; align-items: center;">
+            <span>🎵 Bài hát #100: "Smooth Sailing to Top"</span>
+            <span style="background: var(--green); color: #000; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold;">Ghim DOM OK</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 2: EXPLAIN (ZOOM-IN PRINCIPLE) -->
+    <div id="tab-explain" class="tab-pane">
+
+      <!-- Level 1: Folder Architecture -->
+      <div class="explain-section">
+        <div class="col-left">
+          <div class="zoom-badge">TẦNG 1: FOLDER LEVEL</div>
+          <h3 style="font-size: 1.15rem; color: #fff;">Cấu Trúc Thư Mục & Phân Vùng Ảnh Hưởng</h3>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            Tính năng auto-scroll và drag-and-drop nằm trọn vẹn ở phía client trong component Table View. Các thay đổi tập trung tại component bảng và test suite bảo vệ.
+          </p>
+          <ul style="color: #9ca3af; font-size: 0.85rem; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.35rem;">
+            <li><b style="color: #fff;">PlaylistTableView.tsx</b>: Quản lý virtualizer, RAF loop, event dragover/drop window & header.</li>
+            <li><b style="color: #fff;">PlaylistTableView.test.tsx</b>: 43 unit tests kiểm chứng toàn diện mọi edge-case.</li>
+          </ul>
+        </div>
+        <div class="col-right">
+          <div class="code-tree">
+src/client/src/
+├── components/
+│   ├── PlaylistTableView.tsx        <span class="diff-add"># Cập nhật: RAF Auto-scroll + RangeExtractor Pin</span>
+│   ├── PlaylistTableView.test.tsx   <span class="diff-add"># Bổ sung 7 test case: AutoScroll Up/Down/Cancel/Header</span>
+│   ├── TrackCard.tsx
+│   └── PlayerBar.tsx
+├── store/
+│   ├── usePlayerStore.ts            # reorderPlaylist API
+│   └── useSelectionStore.ts
+└── lib/
+    └── utils.ts
+          </div>
+        </div>
+      </div>
+
+      <!-- Level 2: Component & File Structure -->
+      <div class="explain-section">
+        <div class="col-left">
+          <div class="zoom-badge">TẦNG 2: COMPONENT LEVEL</div>
+          <h3 style="font-size: 1.15rem; color: #fff;">Giao Tiếp Giữa Các Component & Hooks</h3>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            <code>PlaylistTableView</code> làm chủ toàn bộ state kéo thả (<code>draggedIdx</code>, <code>dragOverIdx</code>). Virtualized body nhận <code>virtualizerRef</code> để tra cứu vị trí thả theo thời gian thực khi đang cuộn trang.
+          </p>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            Window listener được kích hoạt riêng biệt khi <code>draggedIdx !== null</code> để đảm bảo con trỏ bay ra rìa viewport vẫn bắt được event.
+          </p>
+        </div>
+        <div class="col-right">
+          <div class="code-tree">
+&lt;PlaylistTableView&gt;
+  ├── State: draggedIdx, dragOverIdx
+  ├── Refs: draggedIdxRef, dragOverIdxRef, virtualizerRef
+  ├── Window Listeners:
+  │     window.on("dragover") -&gt; checkAutoScroll(e.clientY)
+  │     window.on("drop")     -&gt; handleGlobalDrop()
+  ├── &lt;TableContainer role="table"&gt;
+  │     ├── &lt;TableHeader role="row" aria-rowindex={1}&gt;
+  │     │     └── onDrop -&gt; commitReorder(draggedIdx, 0)
+  │     └── &lt;VirtualizedTableBody&gt;
+  │           ├── useWindowVirtualizer({
+  │           │     rangeExtractor: giữ draggedIdx không bị unmount
+  │           │   })
+  │           └── &lt;Row draggable /&gt;
+          </div>
+        </div>
+      </div>
+
+      <!-- Level 3: Function & Call Tree Diff -->
+      <div class="explain-section">
+        <div class="col-left">
+          <div class="zoom-badge">TẦNG 3: FUNCTION & CALL TREE LEVEL</div>
+          <h3 style="font-size: 1.15rem; color: #fff;">Call-Tree Quá Trình Kéo Thả & Auto-Scroll</h3>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            Quy trình được tối ưu hoá triệt để: không re-render React thừa thãi trong lúc cuộn. RAF tự stepping và chỉ sync <code>setDragOverIdxSafe</code> khi con trỏ thực sự bước sang item mới.
+          </p>
+        </div>
+        <div class="col-right">
+          <div class="code-tree">
+handleDragStart(e, idx)
+  set isDraggingHandleRef = true
+  e.dataTransfer.setData("application/x-slice-playlist-index", idx)
+  setDraggedIdx(idx)
+
+handleGlobalDragOver(e)
+  <span class="diff-add">checkAutoScroll(e.clientY)</span>
+<span class="diff-add">    calculate depth & speed = 8 + ratio * 20</span>
+<span class="diff-add">    startAutoScroll(speed)</span>
+<span class="diff-add">      requestAnimationFrame(step)</span>
+<span class="diff-add">        window.scrollTo(0, nextY)</span>
+<span class="diff-add">        getVirtualItemForOffset(offsetInTable + scrollMargin)</span>
+<span class="diff-add">        setDragOverIdxSafe(vItem.index)</span>
+
+handleDrop(e, targetIdx)
+  <span class="diff-add">stopAutoScroll()</span>
+  <span class="diff-add">commitReorder(fromIdx, targetIdx)</span>
+  <span class="diff-add">  reorderPlaylist(activePlaylistId, newIds)</span>
+  resetDragState()
+          </div>
+        </div>
+      </div>
+
+      <!-- Level 4: Algorithm & Logic Pseudocode -->
+      <div class="explain-section">
+        <div class="col-left">
+          <div class="zoom-badge">TẦNG 4: ALGORITHM & PSEUDOCODE</div>
+          <h3 style="font-size: 1.15rem; color: #fff;">Thuật Toán Tính Vận Tốc & Giữ Pin Node</h3>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            <b>Vận tốc động:</b> Càng dí sát mép màn hình (hoặc vượt ra ngoài), tỷ lệ <code>ratio</code> càng lớn, tốc độ cuộn tăng dần từ 8px/frame lên đến 28px/frame giúp cuộn 100 bài hát chỉ trong ~1.5 giây.
+          </p>
+          <p style="color: #d1d5db; font-size: 0.9rem;">
+            <b>Bảo vệ session:</b> <code>rangeExtractor</code> hợp nhất danh sách index mặc định với <code>draggedIdx</code>.
+          </p>
+        </div>
+        <div class="col-right">
+          <div class="code-tree">
+<span class="diff-info">// 1. Ghim index đang kéo trong DOM dù danh sách có cuộn đi đâu:</span>
+function rangeExtractor(range):
+  active = defaultRangeExtractor(range)
+  if draggedIdx is valid and not in active:
+    active.push(draggedIdx)
+    active.sort((a, b) =&gt; a - b)
+  return active
+
+<span class="diff-info">// 2. Tính toán gia tốc cuộn dựa trên vị trí chuột:</span>
+function checkAutoScroll(clientY):
+  topZone = 120px
+  bottomZone = 140px (né PlayerBar)
+  if clientY &lt; topZone:
+    ratio = clamp((topZone - clientY) / topZone, 0, 1)
+    speed = -(8 + ratio * 20)  <span class="diff-add">// Lên: -8px/f đến -28px/f</span>
+    startAutoScroll(speed)
+  else if clientY &gt; vh - bottomZone:
+    ratio = clamp((clientY - (vh - bottomZone)) / bottomZone, 0, 1)
+    speed = 8 + ratio * 20    <span class="diff-add">// Xuống: 8px/f đến 28px/f</span>
+    startAutoScroll(speed)
+  else:
+    stopAutoScroll()
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Inspector Toggle Button -->
+  <button class="inspector-toggle" id="inspectorToggleBtn" onclick="toggleInspector()">
+    <span>🔍 Check Diff</span>
+    <span class="toggle-state" id="toggleStateBadge">ON</span>
+  </button>
+
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+      
+      const activeBtn = event.currentTarget;
+      activeBtn.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    // Inspector annotations toggle
+    let annotationsOn = true;
+    function toggleInspector() {
+      annotationsOn = !annotationsOn;
+      const body = document.body;
+      const badge = document.getElementById('toggleStateBadge');
+      if (annotationsOn) {
+        body.classList.remove('hide-annotations');
+        badge.innerText = 'ON';
+        badge.style.background = 'var(--green)';
+      } else {
+        body.classList.add('hide-annotations');
+        badge.innerText = 'OFF';
+        badge.style.background = '#666';
+      }
+    }
+
+    // Swipe Slider Logic
+    const swipeContainer = document.getElementById('swipeContainer');
+    const afterSide = document.getElementById('afterSide');
+    const sliderHandle = document.getElementById('sliderHandle');
+    let isSliding = false;
+
+    function updateSlider(clientX) {
+      const rect = swipeContainer.getBoundingClientRect();
+      let offsetX = clientX - rect.left;
+      if (offsetX < 0) offsetX = 0;
+      if (offsetX > rect.width) offsetX = rect.width;
+      const pct = (offsetX / rect.width) * 100;
+      afterSide.style.clipPath = `inset(0 0 0 ${pct}%)`;
+      sliderHandle.style.left = `${pct}%`;
+    }
+
+    swipeContainer.addEventListener('mousedown', (e) => {
+      isSliding = true;
+      updateSlider(e.clientX);
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isSliding) return;
+      updateSlider(e.clientX);
+    });
+    window.addEventListener('mouseup', () => {
+      isSliding = false;
+    });
+
+    // Touch support for swipe
+    swipeContainer.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 0) {
+        isSliding = true;
+        updateSlider(e.touches[0].clientX);
+      }
+    });
+    window.addEventListener('touchmove', (e) => {
+      if (isSliding && e.touches.length > 0) {
+        updateSlider(e.touches[0].clientX);
+      }
+    });
+    window.addEventListener('touchend', () => {
+      isSliding = false;
+    });
+
+    // Interactive Demo Simulation - Before
+    const dragItemBefore = document.getElementById('dragItemBefore');
+    const beforeStatus = document.getElementById('beforeStatus');
+    dragItemBefore.addEventListener('dragstart', () => {
+      beforeStatus.innerText = 'Đang kéo... Nhưng list đéo cuộn! Khi scroll tay thì rụng DOM.';
+    });
+    dragItemBefore.addEventListener('dragend', () => {
+      beforeStatus.innerText = '❌ Drag session bị huỷ vì unmounted DOM!';
+    });
+
+    // Interactive Demo Simulation - After
+    const dragItemAfter = document.getElementById('dragItemAfter');
+    const afterDemo = document.getElementById('afterDemo');
+    const afterStatus = document.getElementById('afterStatus');
+    const afterSpeed = document.getElementById('afterSpeed');
+    const headerDropzone = document.getElementById('headerDropzone');
+
+    let autoScrollInterval = null;
+
+    dragItemAfter.addEventListener('dragstart', () => {
+      afterStatus.innerText = '⚡ Đang giữ item #100. Hãy kéo lên Header Dropzone!';
+    });
+
+    afterDemo.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const rect = afterDemo.getBoundingClientRect();
+      const topOffset = e.clientY - rect.top;
+      if (topOffset < 90) {
+        afterSpeed.innerText = '-24 px/s (Cuộn Lên 🚀)';
+        afterDemo.scrollTop -= 6;
+      } else {
+        afterSpeed.innerText = '0 px/s (Vùng Giữa)';
+      }
+    });
+
+    headerDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      headerDropzone.style.background = 'rgba(34, 197, 94, 0.3)';
+      afterStatus.innerText = '🎯 Đang trỏ vào Header! Thả để đưa bài hát lên Index 0.';
+    });
+
+    headerDropzone.addEventListener('dragleave', () => {
+      headerDropzone.style.background = '#0f1f13';
+    });
+
+    headerDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      headerDropzone.style.background = '#0f1f13';
+      afterStatus.innerText = '🎉 THÀNH CÔNG: Bài #100 đã trở thành bài số #1!';
+      afterSpeed.innerText = '0 px/s';
+    });
+
+    dragItemAfter.addEventListener('dragend', () => {
+      afterSpeed.innerText = '0 px/s';
+    });
+  </script>
+</body>
+</html>
