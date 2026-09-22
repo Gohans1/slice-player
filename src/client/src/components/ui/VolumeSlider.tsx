@@ -219,7 +219,7 @@ export const VolumeSlider = React.forwardRef<HTMLInputElement, VolumeSliderProps
             props.onBlur?.(e);
           }}
           className={cn(
-            "w-full h-1 accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed",
+            "w-full h-1 accent-primary cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-sm",
             sliderClassName
           )}
         />

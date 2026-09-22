@@ -10,6 +10,7 @@ import { Modal } from "./ui/modal";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { useLogStore } from "../store/useLogStore";
 import { BackupModal } from "./BackupModal";
+import { cn } from "../lib/utils";
 
 interface UploadQueueItem {
   id: string;
@@ -47,6 +48,56 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
   const desktopSearchRef = React.useRef<HTMLInputElement>(null);
   const mobileSearchRef = React.useRef<HTMLInputElement>(null);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
+  const [isMobileSearchRendered, setIsMobileSearchRendered] = React.useState(false);
+  const [isMobileSearchExiting, setIsMobileSearchExiting] = React.useState(false);
+
+  const isTestOrReducedMotion =
+    (typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST))) ||
+    (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches));
+
+  React.useEffect(() => {
+    if (isMobileSearchOpen) {
+      setIsMobileSearchRendered(true);
+      setIsMobileSearchExiting(false);
+    } else if (isMobileSearchRendered) {
+      if (isTestOrReducedMotion) {
+        setIsMobileSearchRendered(false);
+        setIsMobileSearchExiting(false);
+        return;
+      }
+      setIsMobileSearchExiting(true);
+      const timer = setTimeout(() => {
+        setIsMobileSearchRendered(false);
+        setIsMobileSearchExiting(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isMobileSearchOpen, isMobileSearchRendered, isTestOrReducedMotion]);
+
+  const navbarRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    const el = navbarRef.current;
+    if (!el || typeof window === "undefined") return;
+    const updateHeight = () => {
+      const h = el.offsetHeight;
+      if (h > 0 && typeof document !== "undefined") {
+        document.documentElement.style.setProperty("--navbar-height", `${h}px`);
+      }
+    };
+    updateHeight();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(updateHeight);
+      ro.observe(el);
+    }
+    return () => {
+      ro?.disconnect();
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty("--navbar-height");
+      }
+    };
+  }, []);
 
   const [isYtModalOpen, setIsYtModalOpen] = React.useState(false);
   const [isProcessingYtQueue, setIsProcessingYtQueue] = React.useState(false);
@@ -383,7 +434,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-border bg-card/80 backdrop-blur-md px-6 py-3">
+      <header ref={navbarRef} className="sticky top-0 z-40 w-full border-b border-border bg-card/80 backdrop-blur-md px-6 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         {/* Logo & Brand */}
         <div className="flex items-center gap-3">
@@ -593,8 +644,17 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
       </div>
 
       {/* Mobile search bar */}
-      {isMobileSearchOpen && (
-        <div id="mobile-search-bar" role="search" className="pt-2.5 pb-0.5 max-w-7xl mx-auto md:hidden">
+      {(isMobileSearchOpen || isMobileSearchRendered) && (
+        <div
+          id="mobile-search-bar"
+          role="search"
+          className={cn(
+            "pt-2.5 pb-0.5 max-w-7xl mx-auto md:hidden duration-100 ease-out",
+            isMobileSearchExiting
+              ? "animate-out fade-out slide-out-to-top-2 pointer-events-none"
+              : "animate-in fade-in slide-in-from-top-2"
+          )}
+        >
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
@@ -700,7 +760,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
                 className="w-full bg-secondary rounded-full h-1.5 overflow-hidden"
               >
                 <div
-                  className="bg-primary h-1.5 transition-all duration-300"
+                  className="bg-primary h-1.5 transition-[width] duration-300 ease-out"
                   style={{ width: `${uploadProgressPercent}%` }}
                 />
               </div>

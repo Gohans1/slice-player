@@ -8,6 +8,7 @@ import { usePlayerStore } from "../store/usePlayerStore";
 import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createSliceSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
 
 interface SliceCardProps {
@@ -46,7 +47,7 @@ export function SliceCardComponent({
 
   return (
     <div
-      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
+      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
         isSelected
           ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
           : isCurrentPlaying
@@ -91,14 +92,14 @@ export function SliceCardComponent({
               title: segment.name,
             });
           }}
-          className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-all cursor-pointer ${
+          className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-[background-color,color,opacity,box-shadow,transform] active:scale-90 motion-reduce:transform-none duration-150 cursor-pointer ${
             isSelected
               ? "bg-primary text-primary-foreground shadow-md opacity-100 ring-2 ring-background"
               : "bg-black/60 text-white/80 hover:bg-black/80 hover:text-white backdrop-blur-xs opacity-40 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
           }`}
         >
           {isSelected ? (
-            <Check className="h-3.5 w-3.5 stroke-[3]" />
+            <Check className="h-3.5 w-3.5 stroke-[3] animate-in zoom-in-75 duration-100 ease-out" />
           ) : (
             <div className="h-3.5 w-3.5 rounded-xs border-2 border-white/70" />
           )}
@@ -111,12 +112,8 @@ export function SliceCardComponent({
 
         {/* Active Playing Equalizer Badge */}
         {isCurrentPlaying && (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-mono font-semibold text-primary-foreground shadow-sm">
-            <span className="flex items-end gap-0.5 h-3">
-              <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
-              <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
-              <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
-            </span>
+          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
+            <NowPlayingEqualizer />
             <span className="uppercase text-[10px] tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
           </div>
         )}
@@ -183,7 +180,7 @@ export function SliceCardComponent({
               : t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })
           }
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform duration-100 hover:scale-110 active:scale-95">
             {isCurrentPlaying ? (
               <Pause className="h-6 w-6 fill-current" />
             ) : (

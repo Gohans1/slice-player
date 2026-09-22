@@ -5,7 +5,7 @@ import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, Volu
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { VolumeSlider } from "./ui/VolumeSlider";
-import { formatTime, formatDuration } from "../lib/utils";
+import { formatTime, formatDuration, cn } from "../lib/utils";
 import { volumeToGain } from "../lib/audio";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
@@ -190,10 +190,35 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     await Promise.all(promises);
   }, [track.id, syncUpdatedSegment]);
 
+  const [isExiting, setIsExiting] = React.useState(false);
+  const exitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleCloseStudio = React.useCallback(async () => {
+    if (isExiting) return;
+    setIsExiting(true);
     await flushPendingSaves();
-    onClose();
-  }, [flushPendingSaves, onClose]);
+    const isTest =
+      typeof process !== "undefined" &&
+      (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST));
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (isTest || prefersReducedMotion) {
+      onClose();
+    } else {
+      exitTimerRef.current = setTimeout(() => {
+        onClose();
+      }, 150);
+    }
+  }, [flushPendingSaves, onClose, isExiting]);
 
   const clearSegmentPreview = React.useCallback(() => {
     previewEndRef.current = null;
@@ -789,8 +814,18 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-md p-4 sm:p-6 overflow-y-auto">
-      <div className="max-w-5xl mx-auto w-full flex-1 flex flex-col">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-md p-4 sm:p-6 overflow-y-auto duration-150",
+        isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
+      )}
+    >
+      <div
+        className={cn(
+          "max-w-5xl mx-auto w-full flex-1 flex flex-col duration-150",
+          isExiting ? "animate-out zoom-out-95" : "animate-in zoom-in-95"
+        )}
+      >
         {/* Header */}
         <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
           <div>
@@ -871,7 +906,26 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           </div>
 
           {/* Waveform Canvas Container */}
-          <div ref={containerRef} className="rounded-lg bg-background p-2 border border-border/50 cursor-pointer select-none" />
+          <div className="relative rounded-lg bg-background p-2 border border-border/50 select-none overflow-hidden min-h-[144px]">
+            <div ref={containerRef} className="cursor-pointer" />
+            {!isWaveSurferReady && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xs animate-in fade-in duration-150 pointer-events-none">
+                <div className="flex items-center gap-1.5 h-12 w-48 justify-center mb-2">
+                  {Array.from({ length: 24 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-1 bg-primary/40 rounded-full animate-pulse"
+                      style={{
+                        height: `${20 + Math.sin(i * 0.5) * 60 + 20}%`,
+                        animationDelay: `${(i % 5) * 120}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground animate-pulse">{t("studio.loadingWaveform", "Loading audio waveform...")}</p>
+              </div>
+            )}
+          </div>
 
           {/* Controls below waveform */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
@@ -957,7 +1011,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           </div>
 
           {segments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-border text-center">
+            <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-border text-center animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
               <Scissors className="h-8 w-8 text-muted-foreground/50 mb-2" />
               <p className="text-sm font-medium text-muted-foreground">{t("studio.empty")}</p>
               <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm">
@@ -977,7 +1031,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 return (
                   <div
                     key={seg.id}
-                    className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border transition-all ${
+                    className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border transition-[border-color,background-color,box-shadow] duration-150 ${
                       isActive
                         ? "border-primary bg-primary/5 shadow-sm"
                         : "border-border bg-card hover:border-border/80"
@@ -1018,7 +1072,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "start", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeStartBack", "-0.1s start")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-colors border border-border/40"
+                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
                           </button>
@@ -1028,7 +1082,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "start", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeStartForward", "+0.1s start")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-colors border border-border/40"
+                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
                           </button>
@@ -1040,7 +1094,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "end", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeEndBack", "-0.1s end")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-colors border border-border/40"
+                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
                           </button>
@@ -1050,7 +1104,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "end", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeEndForward", "+0.1s end")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer transition-colors border border-border/40"
+                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
                           </button>

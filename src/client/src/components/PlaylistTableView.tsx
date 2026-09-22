@@ -19,6 +19,7 @@ import {
 } from "../store/useSelectionStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import { ConfirmModal } from "./ui/ConfirmModal";
+import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";
 
 export type MixedItem =
@@ -926,7 +927,7 @@ export function PlaylistTableView({
   if (activePlaylistId) {
     if (activePlaylistItems.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
             <Music className="h-7 w-7" />
           </div>
@@ -942,7 +943,7 @@ export function PlaylistTableView({
 
     if (displayedItems.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
           <Music className="h-8 w-8 text-muted-foreground mb-2" />
           <h2 className="text-base font-semibold text-foreground">
             {searchQuery?.trim() ? t("library.noResultsTitle") : t("table.emptyMixed")}
@@ -1022,15 +1023,15 @@ export function PlaylistTableView({
                     selectAllVisible(displayedItems.map((it) => createPlaylistItemSelectedItem(it, activePlaylistId)));
                   }
                 }}
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-[background-color,border-color,color,transform] active:scale-90 motion-reduce:transform-none duration-100 cursor-pointer ${
                   allPlaylistItemsSelected || partiallyPlaylistItemsSelected
                     ? "bg-primary border-primary text-primary-foreground"
                     : "border-muted-foreground/50 hover:border-foreground"
                 }`}
               >
-                {allPlaylistItemsSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                {allPlaylistItemsSelected && <Check className="h-3 w-3 stroke-[3] animate-in zoom-in-75 duration-100" />}
                 {partiallyPlaylistItemsSelected && !allPlaylistItemsSelected && (
-                  <div className="h-0.5 w-2 bg-primary-foreground rounded-full" />
+                  <div className="h-0.5 w-2 bg-primary-foreground rounded-full animate-in zoom-in-75 duration-100" />
                 )}
               </button>
             )}
@@ -1244,30 +1245,26 @@ export function PlaylistTableView({
                         e.stopPropagation();
                       }
                     }}
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-[background-color,border-color,color,transform,opacity] active:scale-90 motion-reduce:transform-none duration-100 cursor-pointer ${
                       isSelected
                         ? "bg-primary border-primary text-primary-foreground"
                         : "border-muted-foreground/40 hover:border-foreground opacity-0 group-hover:opacity-100 focus:opacity-100"
                     }`}
                   >
-                    {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                    {isSelected && <Check className="h-3 w-3 stroke-[3] animate-in zoom-in-75 duration-100" />}
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden truncate" : "truncate"}>
                     {isCurrentPlaying ? (
-                      <span className="flex items-end gap-0.5 h-3 text-primary">
-                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
-                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
-                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
-                      </span>
+                      <NowPlayingEqualizer className="text-primary" />
                     ) : (
                       String(idx + 1).padStart(2, "0")
                     )}
                   </span>
                   {isReady && !isSelected && (
                     isCurrentPlaying ? (
-                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0 animate-in zoom-in-75 duration-100 motion-reduce:animate-none" />
                     ) : (
-                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0 animate-in zoom-in-75 duration-100 motion-reduce:animate-none" />
                     )
                   )}
                 </div>
@@ -1443,7 +1440,7 @@ export function PlaylistTableView({
   if (sliceItems) {
     if (sliceItems.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 my-4 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
           <Scissors className="h-8 w-8 text-muted-foreground mb-2" />
           <h2 className="text-base font-semibold text-foreground">{t("table.emptySlices")}</h2>
           <p className="text-xs text-muted-foreground mt-1">
@@ -1476,15 +1473,15 @@ export function PlaylistTableView({
                     selectAllVisible(visibleSliceSelectedItems);
                   }
                 }}
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-[background-color,border-color,color,transform] active:scale-90 motion-reduce:transform-none duration-100 cursor-pointer ${
                   allSliceItemsSelected || partiallySliceItemsSelected
                     ? "bg-primary border-primary text-primary-foreground"
                     : "border-muted-foreground/50 hover:border-foreground"
                 }`}
               >
-                {allSliceItemsSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                {allSliceItemsSelected && <Check className="h-3 w-3 stroke-[3] animate-in zoom-in-75 duration-100" />}
                 {partiallySliceItemsSelected && !allSliceItemsSelected && (
-                  <div className="h-0.5 w-2 bg-primary-foreground rounded-full" />
+                  <div className="h-0.5 w-2 bg-primary-foreground rounded-full animate-in zoom-in-75 duration-100" />
                 )}
               </button>
             )}
@@ -1536,7 +1533,7 @@ export function PlaylistTableView({
                   }
                   handlePlaySlice(item.segment, item.track);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
+                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : !isReady
@@ -1562,30 +1559,26 @@ export function PlaylistTableView({
                         e.stopPropagation();
                       }
                     }}
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors cursor-pointer ${
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-[background-color,border-color,color,transform,opacity] active:scale-90 motion-reduce:transform-none duration-100 cursor-pointer ${
                       isSelected
                         ? "bg-primary border-primary text-primary-foreground"
                         : "border-muted-foreground/40 hover:border-foreground opacity-0 group-hover:opacity-100 focus:opacity-100"
                     }`}
                   >
-                    {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                    {isSelected && <Check className="h-3 w-3 stroke-[3] animate-in zoom-in-75 duration-100" />}
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
                     {isCurrentPlaying ? (
-                      <span className="flex items-end gap-0.5 h-3 text-primary">
-                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
-                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
-                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
-                      </span>
+                      <NowPlayingEqualizer className="text-primary" />
                     ) : (
                       String(idx + 1).padStart(2, "0")
                     )}
                   </span>
                   {isReady && !isSelected && (
                     isCurrentPlaying ? (
-                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                      <Pause className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0 animate-in zoom-in-75 duration-100 motion-reduce:animate-none" />
                     ) : (
-                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0" />
+                      <Play className="h-4 w-4 text-primary hidden group-hover:block fill-current shrink-0 animate-in zoom-in-75 duration-100 motion-reduce:animate-none" />
                     )
                   )}
                 </div>
@@ -1780,7 +1773,7 @@ export function PlaylistTableView({
                   }
                   handlePlayMixed(item);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
+                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : !isReady
@@ -1823,11 +1816,7 @@ export function PlaylistTableView({
                   </button>
                   <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
                     {isCurrentPlaying ? (
-                      <span className="flex items-end gap-0.5 h-3 text-primary">
-                        <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
-                        <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
-                        <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
-                      </span>
+                      <NowPlayingEqualizer className="text-primary" />
                     ) : (
                       String(idx + 1).padStart(2, "0")
                     )}
@@ -2057,7 +2046,7 @@ export function PlaylistTableView({
                 if (!isReady) return;
                 handlePlayTrack(track);
               }}
-              className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_160px_100px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-all ${
+              className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_160px_100px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                 isSelected
                   ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                   : !isReady
@@ -2093,11 +2082,7 @@ export function PlaylistTableView({
                 </button>
                 <span className={isSelected ? "hidden" : isReady ? "group-hover:hidden" : ""}>
                   {isCurrentPlaying ? (
-                    <span className="flex items-end gap-0.5 h-3 text-primary">
-                      <span className="w-0.5 h-3 bg-current motion-safe:animate-pulse" />
-                      <span className="w-0.5 h-1.5 bg-current motion-safe:animate-pulse delay-75" />
-                      <span className="w-0.5 h-2.5 bg-current motion-safe:animate-pulse delay-150" />
-                    </span>
+                    <NowPlayingEqualizer className="text-primary" />
                   ) : (
                     String(idx + 1).padStart(2, "0")
                   )}

@@ -19,6 +19,7 @@ import { Input } from "./ui/input";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { ConfirmModal } from "./ui/ConfirmModal";
+import { cn } from "../lib/utils";
 
 interface PlaylistDrawerProps {
   isOpen: boolean;
@@ -26,11 +27,16 @@ interface PlaylistDrawerProps {
   onOpenCreateModal: () => void;
 }
 
-export function PlaylistDrawer({
+interface PlaylistDrawerContentProps extends PlaylistDrawerProps {
+  isExiting?: boolean;
+}
+
+function PlaylistDrawerContent({
   isOpen,
   onClose,
   onOpenCreateModal,
-}: PlaylistDrawerProps) {
+  isExiting = false,
+}: PlaylistDrawerContentProps) {
   const { t } = useTranslation();
   const playlists = usePlayerStore((s) => s.playlists);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
@@ -129,13 +135,14 @@ export function PlaylistDrawer({
     onClose();
   };
 
-  if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className={cn(
+          "fixed inset-0 bg-black/60 backdrop-blur-xs duration-200",
+          isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
+        )}
         onClick={onClose}
       />
 
@@ -144,7 +151,10 @@ export function PlaylistDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={t("playlist.drawerTitle")}
-        className="relative z-10 w-full max-w-sm border-r border-border bg-card/95 backdrop-blur-md p-5 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200"
+        className={cn(
+          "relative z-10 w-full max-w-sm border-r border-border bg-card/95 backdrop-blur-md p-5 shadow-2xl flex flex-col duration-200",
+          isExiting ? "animate-out slide-out-to-left pointer-events-none" : "animate-in slide-in-from-left"
+        )}
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-border">
@@ -240,7 +250,7 @@ export function PlaylistDrawer({
                       setActiveSystemCategory(cat.id);
                       onClose();
                     }}
-                    className={`group relative flex items-center justify-between p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                    className={`group relative flex items-center justify-between p-2.5 rounded-lg border text-left transition-[border-color,background-color,color,box-shadow] duration-150 cursor-pointer ${
                       isSelected
                         ? "bg-primary/10 border-primary text-foreground font-medium shadow-xs"
                         : "border-transparent bg-secondary/30 hover:bg-secondary text-muted-foreground hover:text-foreground"
@@ -298,7 +308,7 @@ export function PlaylistDrawer({
             </div>
 
             {playlists.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-6 text-center rounded-lg border border-dashed border-border bg-card/40 my-2">
+              <div className="flex flex-col items-center justify-center p-6 text-center rounded-lg border border-dashed border-border bg-card/40 my-2 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
                 <FolderPlus className="h-8 w-8 text-muted-foreground/40 mb-2" />
                 <p className="text-xs font-medium text-muted-foreground">
                   {t("playlist.empty")}
@@ -332,7 +342,7 @@ export function PlaylistDrawer({
                           onClose();
                         }
                       }}
-                      className={`group relative flex items-center justify-between p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      className={`group relative flex items-center justify-between p-2.5 rounded-lg border text-left transition-[border-color,background-color,color,box-shadow] duration-150 cursor-pointer ${
                         isActive
                           ? "bg-primary/10 border-primary text-foreground font-medium shadow-xs"
                           : "border-transparent bg-secondary/30 hover:bg-secondary text-muted-foreground hover:text-foreground"
@@ -461,5 +471,39 @@ export function PlaylistDrawer({
         />
       )}
     </div>
+  );
+}
+
+export function PlaylistDrawer({
+  isOpen,
+  onClose,
+  onOpenCreateModal,
+}: PlaylistDrawerProps) {
+  const [isRendered, setIsRendered] = React.useState(isOpen);
+  const [isExiting, setIsExiting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      setIsExiting(false);
+    } else if (isRendered) {
+      setIsExiting(true);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+        setIsExiting(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isRendered]);
+
+  if (!isOpen && !isRendered) return null;
+
+  return (
+    <PlaylistDrawerContent
+      isOpen={isOpen}
+      onClose={onClose}
+      onOpenCreateModal={onOpenCreateModal}
+      isExiting={isExiting}
+    />
   );
 }

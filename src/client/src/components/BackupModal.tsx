@@ -168,7 +168,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
               setActiveTab("export");
               setExportMessage(null);
             }}
-            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,box-shadow] duration-150 cursor-pointer ${
               activeTab === "export"
                 ? "bg-card text-foreground shadow-sm border border-border/80"
                 : "text-muted-foreground hover:text-foreground"
@@ -183,7 +183,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
               setActiveTab("import");
               setImportMessage(null);
             }}
-            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,box-shadow] duration-150 cursor-pointer ${
               activeTab === "import"
                 ? "bg-card text-foreground shadow-sm border border-border/80"
                 : "text-muted-foreground hover:text-foreground"
@@ -196,7 +196,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
 
         {/* Tab 1: Export */}
         {activeTab === "export" && (
-          <div className="space-y-4 pt-1">
+          <div className="space-y-4 pt-1 animate-in fade-in duration-150">
             <div className="rounded-lg border border-border/60 bg-secondary/20 p-3 text-xs space-y-2.5">
               <div className="font-semibold text-foreground flex items-center gap-1.5">
                 <Database className="h-4 w-4 text-primary" />
@@ -262,7 +262,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
 
         {/* Tab 2: Import */}
         {activeTab === "import" && (
-          <div className="space-y-4 pt-1">
+          <div className="space-y-4 pt-1 animate-in fade-in duration-150">
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-start gap-2 leading-relaxed">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
               <span>{t("backupModal.importWarning")}</span>

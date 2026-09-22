@@ -3,13 +3,15 @@ import { X, Play, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, Ch
 import { useVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { formatDuration } from "../lib/utils";
+import { cn, formatDuration } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
+import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore, type QueueItem } from "../store/usePlayerStore";
 
 interface QueueDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  isExiting?: boolean;
 }
 
 export function getBoundaryDropIndex(
@@ -49,6 +51,7 @@ interface QueueItemRowProps {
   idx: number;
   totalItems: number;
   isCurrent: boolean;
+  isPlaying?: boolean;
   isDragging: boolean;
   isDragTarget: boolean;
   onDragStart: (e: React.DragEvent, idx: number, name: string) => void;
@@ -67,6 +70,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
   idx,
   totalItems,
   isCurrent,
+  isPlaying,
   isDragging,
   isDragTarget,
   onDragStart,
@@ -220,6 +224,9 @@ const QueueItemRow = React.memo(function QueueItemRow({
             {isSlice ? (
               <>
                 <div className="flex items-center gap-1.5 min-w-0">
+                  {isCurrent && isPlaying && (
+                    <NowPlayingEqualizer className="text-primary shrink-0" />
+                  )}
                   <span
                     className={`text-xs font-medium truncate ${
                       isCurrent ? "text-primary font-semibold" : "text-foreground"
@@ -244,14 +251,19 @@ const QueueItemRow = React.memo(function QueueItemRow({
               </>
             ) : (
               <>
-                <p
-                  className={`text-xs font-medium truncate ${
-                    isCurrent ? "text-primary font-semibold" : "text-foreground"
-                  }`}
-                  title={item.track.title}
-                >
-                  {item.track.title}
-                </p>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {isCurrent && isPlaying && (
+                    <NowPlayingEqualizer className="text-primary shrink-0" />
+                  )}
+                  <p
+                    className={`text-xs font-medium truncate ${
+                      isCurrent ? "text-primary font-semibold" : "text-foreground"
+                    }`}
+                    title={item.track.title}
+                  >
+                    {item.track.title}
+                  </p>
+                </div>
                 <p
                   className="text-[11px] text-muted-foreground truncate"
                   title={artistText || t("table.unknownArtist", "Unknown Artist")}
@@ -275,7 +287,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
             e.stopPropagation();
             onRemove(idx);
           }}
-          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 focus-visible:ring-1 focus-visible:ring-destructive focus:outline-none p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 focus-visible:ring-1 focus-visible:ring-destructive focus:outline-none p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-[color,background-color,opacity] duration-150"
           title={t("queue.remove", "Remove from queue")}
           aria-label={t("queue.remove", "Remove from queue")}
         >
@@ -312,7 +324,7 @@ const safeCancelRaf = (handle: number | null) => {
   }
 };
 
-function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
+function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
   const { t } = useTranslation();
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
@@ -1026,7 +1038,10 @@ function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
+        className={cn(
+          "fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] duration-200",
+          isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
+        )}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -1038,7 +1053,10 @@ function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
         aria-labelledby="queue-drawer-title"
         tabIndex={-1}
         onKeyDown={handleDialogKeyDown}
-        className="fixed inset-y-0 right-0 z-50 w-full max-w-sm border-l border-border bg-card/95 backdrop-blur-md p-5 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 w-full max-w-sm border-l border-border bg-card/95 backdrop-blur-md p-5 shadow-2xl flex flex-col duration-200",
+          isExiting ? "animate-out slide-out-to-right pointer-events-none" : "animate-in slide-in-from-right"
+        )}
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border">
@@ -1305,7 +1323,7 @@ function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
         }}
       >
         {displayQueue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center text-muted-foreground p-4">
+          <div className="flex flex-col items-center justify-center h-48 text-center text-muted-foreground p-4 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
             <Music className="h-8 w-8 opacity-30 mb-2" />
             <p className="text-sm font-medium text-foreground">{t("queue.empty", "Queue is empty")}</p>
             <p className="text-xs text-muted-foreground/70 mt-1 max-w-[220px]">
@@ -1358,6 +1376,7 @@ function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
                     idx={virtualRow.index}
                     totalItems={displayQueue.length}
                     isCurrent={isCurrent}
+                    isPlaying={isCurrent && isPlaying}
                     isDragging={isDragging}
                     isDragTarget={isDragTarget}
                     onDragStart={handleDragStart}
@@ -1384,6 +1403,23 @@ function QueueDrawerContent({ isOpen, onClose }: QueueDrawerProps) {
 export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   const triggerElementRef = React.useRef<HTMLElement | null>(null);
   const prevIsOpenRef = React.useRef(false);
+
+  const [isRendered, setIsRendered] = React.useState(isOpen);
+  const [isExiting, setIsExiting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      setIsExiting(false);
+    } else if (isRendered) {
+      setIsExiting(true);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+        setIsExiting(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isRendered]);
 
   React.useLayoutEffect(() => {
     if (!prevIsOpenRef.current && isOpen && typeof document !== "undefined") {
@@ -1418,8 +1454,8 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
     };
   }, []);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isRendered) return null;
 
-  return <QueueDrawerContent isOpen={isOpen} onClose={onClose} />;
+  return <QueueDrawerContent isOpen={isOpen} onClose={onClose} isExiting={isExiting} />;
 }
 

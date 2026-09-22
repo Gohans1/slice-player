@@ -14,6 +14,7 @@ interface ConfirmModalProps {
   cancelText?: string;
   variant?: "destructive" | "default";
   isLoading?: boolean;
+  zIndex?: number;
 }
 
 export function ConfirmModal({
@@ -26,6 +27,7 @@ export function ConfirmModal({
   cancelText,
   variant = "destructive",
   isLoading = false,
+  zIndex = 60,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
   const cancelBtnRef = React.useRef<HTMLButtonElement>(null);
@@ -51,6 +53,7 @@ export function ConfirmModal({
       onClose={isLoading ? () => {} : onClose}
       title={title}
       className="max-w-md"
+      zIndex={zIndex}
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-muted-foreground">

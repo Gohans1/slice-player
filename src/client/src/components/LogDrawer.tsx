@@ -19,6 +19,7 @@ import { Input } from "./ui/input";
 import { useTranslation } from "react-i18next";
 import { useLogStore, type LogFilterCategory, type AppLogItem } from "../store/useLogStore";
 import { normalizeVi, tokenizeQuery } from "../lib/search";
+import { cn } from "../lib/utils";
 
 interface LogDrawerProps {
   isOpen: boolean;
@@ -92,7 +93,11 @@ export function safePrettyStringify(value: unknown): string {
   return safeStringify(value, 2);
 }
 
-export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
+interface LogDrawerContentProps extends LogDrawerProps {
+  isExiting?: boolean;
+}
+
+function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerContentProps) {
   const { t } = useTranslation();
   const logs = useLogStore((s) => s.logs);
   const clearLogs = useLogStore((s) => s.clearLogs);
@@ -341,14 +346,15 @@ export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
     });
   };
 
-  if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
         aria-hidden="true"
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className={cn(
+          "fixed inset-0 bg-black/60 backdrop-blur-xs duration-200",
+          isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
+        )}
         onClick={onClose}
       />
 
@@ -359,7 +365,10 @@ export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
         aria-modal="true"
         data-drawer="log-drawer"
         aria-label={t("logs.title")}
-        className="relative z-10 w-full max-w-md sm:max-w-xl md:max-w-2xl border-l border-border bg-card/95 backdrop-blur-md shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-200 text-foreground"
+        className={cn(
+          "relative z-10 w-full max-w-md sm:max-w-xl md:max-w-2xl border-l border-border bg-card/95 backdrop-blur-md shadow-2xl flex flex-col h-full duration-200 text-foreground",
+          isExiting ? "animate-out slide-out-to-right pointer-events-none" : "animate-in slide-in-from-right"
+        )}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border bg-card/80">
@@ -522,7 +531,7 @@ export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
           className="flex-1 overflow-y-auto p-3 space-y-1.5 font-mono text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {filteredLogs.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2">
+            <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
               <Terminal className="h-8 w-8 opacity-30" />
               <p className="text-xs font-sans">
                 {logs.length === 0
@@ -614,18 +623,19 @@ export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
                         className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
                         title={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
                       >
-                        {isExpanded ? (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        )}
+                        <ChevronRight
+                          className={cn(
+                            "h-3.5 w-3.5 transition-transform duration-150",
+                            isExpanded && "rotate-90"
+                          )}
+                        />
                       </button>
                     )}
                   </div>
 
                   {/* Expandable JSON / Details */}
                   {hasDetails && isExpanded && (
-                    <div className="mt-2 pt-2 border-t border-border/50 text-[11px] overflow-x-auto bg-black/30 p-2 rounded">
+                    <div className="mt-2 pt-2 border-t border-border/50 text-[11px] overflow-x-auto bg-black/30 p-2 rounded animate-in fade-in slide-in-from-top-1 duration-150 ease-out motion-reduce:animate-none">
                       <pre className="text-muted-foreground whitespace-pre-wrap break-all">
                         {safePrettyStringify(item.details)}
                       </pre>
@@ -647,4 +657,27 @@ export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
       </div>
     </div>
   );
+}
+
+export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
+  const [isRendered, setIsRendered] = React.useState(isOpen);
+  const [isExiting, setIsExiting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      setIsExiting(false);
+    } else if (isRendered) {
+      setIsExiting(true);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+        setIsExiting(false);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isRendered]);
+
+  if (!isOpen && !isRendered) return null;
+
+  return <LogDrawerContent isOpen={isOpen} onClose={onClose} isExiting={isExiting} />;
 }

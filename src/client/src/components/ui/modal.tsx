@@ -3,6 +3,8 @@ import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 
+const activeModalStack: string[] = [];
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,6 +12,7 @@ interface ModalProps {
   description?: string;
   children: React.ReactNode;
   className?: string;
+  zIndex?: number;
 }
 
 export function Modal({
@@ -19,6 +22,7 @@ export function Modal({
   description,
   children,
   className,
+  zIndex,
 }: ModalProps) {
   const { t } = useTranslation();
   const closeLabel = t("common.close", "Close");
@@ -28,35 +32,64 @@ export function Modal({
   onCloseRef.current = onClose;
   const titleId = React.useId();
   const descId = React.useId();
+  const modalId = React.useId();
+
+  const [isRendered, setIsRendered] = React.useState(isOpen);
+  const [isExiting, setIsExiting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      setIsExiting(false);
+    } else if (isRendered) {
+      setIsExiting(true);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+        setIsExiting(false);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isRendered]);
 
   React.useEffect(() => {
     if (!isOpen) return;
 
-    previousActiveElementRef.current = document.activeElement as HTMLElement | null;
+    activeModalStack.push(modalId);
+    previousActiveElementRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    // Prioritize autofocus element if present, otherwise focus first focusable child
-    const dialogEl = dialogRef.current;
-    if (dialogEl) {
-      const autoFocusEl = dialogEl.querySelector<HTMLElement>("[autofocus], [data-autofocus]");
-      if (autoFocusEl && typeof autoFocusEl.focus === "function") {
-        autoFocusEl.focus();
-      } else {
-        const focusableElements = dialogEl.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const focusTimer = setTimeout(() => {
+      if (dialogRef.current) {
+        const autofocusElement = dialogRef.current.querySelector<HTMLElement>(
+          '[autofocus]:not([disabled]), [data-autofocus]:not([disabled])'
         );
-        if (focusableElements.length > 0) {
-          focusableElements[0].focus();
+        if (autofocusElement && autofocusElement.offsetParent !== null) {
+          autofocusElement.focus();
+          return;
+        }
+
+        const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+          'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (firstFocusable && firstFocusable.offsetParent !== null) {
+          firstFocusable.focus();
         } else {
-          dialogEl.focus();
+          dialogRef.current.focus();
         }
       }
-    }
+    }, 50);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        e.preventDefault();
+        if (
+          activeModalStack.length > 0 &&
+          activeModalStack[activeModalStack.length - 1] !== modalId
+        ) {
+          return;
+        }
+        e.stopPropagation();
         onCloseRef.current();
         return;
       }
@@ -67,9 +100,9 @@ export function Modal({
 
         const focusables = Array.from(
           dialog.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            'button:not([disabled]), [href]:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
           )
-        ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+        ).filter((el) => el.offsetParent !== null);
 
         if (focusables.length === 0) {
           e.preventDefault();
@@ -103,22 +136,31 @@ export function Modal({
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      const idx = activeModalStack.lastIndexOf(modalId);
+      if (idx !== -1) {
+        activeModalStack.splice(idx, 1);
+      }
+      clearTimeout(focusTimer);
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = prevOverflow;
       if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === "function") {
         previousActiveElementRef.current.focus();
       }
     };
-  }, [isOpen]);
+  }, [isOpen, modalId]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isRendered) return null;
 
   return (
     <div
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !isExiting) onCloseRef.current();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      style={zIndex ? { zIndex } : undefined}
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 duration-150",
+        isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
+      )}
     >
       <div
         ref={dialogRef}
@@ -128,7 +170,8 @@ export function Modal({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         className={cn(
-          "relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-150 outline-none",
+          "relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-2xl duration-150 outline-none",
+          isExiting ? "animate-out zoom-out-95 pointer-events-none" : "animate-in zoom-in-95",
           className
         )}
       >

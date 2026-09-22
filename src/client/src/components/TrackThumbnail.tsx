@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Disc } from "lucide-react";
+import { cn } from "../lib/utils";
 
 interface TrackThumbnailProps {
   src?: string | null;
@@ -17,26 +18,45 @@ const isAllowedUrl = (url?: string): boolean =>
 export function TrackThumbnail({
   src,
   alt = "",
-  className = "h-full w-full object-cover",
+  className = "w-full h-full object-cover",
   loading = "lazy",
   fallback,
 }: TrackThumbnailProps) {
-  const cleanSrc = src?.trim() && isAllowedUrl(src.trim()) ? src.trim() : undefined;
+  const cleanSrc = React.useMemo(() => (isAllowedUrl(src?.trim()) ? src!.trim() : undefined), [src]);
   const [prevSrc, setPrevSrc] = React.useState(cleanSrc);
   const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(cleanSrc);
   const [isFailed, setIsFailed] = React.useState(!cleanSrc);
+  const [isLoaded, setIsLoaded] = React.useState(false);
+  const imgRef = React.useRef<HTMLImageElement>(null);
 
   // Synchronously reset state during render when src prop changes to avoid 1-frame stale image flicker
   if (cleanSrc !== prevSrc) {
     setPrevSrc(cleanSrc);
     setCurrentSrc(cleanSrc);
     setIsFailed(!cleanSrc);
+    setIsLoaded(false);
   }
+
+  React.useEffect(() => {
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      if (
+        !(
+          imgRef.current.naturalWidth === 120 &&
+          imgRef.current.naturalHeight === 90 &&
+          currentSrc &&
+          /(?:ytimg|youtube)\.com|googleusercontent\.com\/vi(?:_webp)?\//i.test(currentSrc)
+        )
+      ) {
+        setIsLoaded(true);
+      }
+    }
+  }, [currentSrc]);
 
   const handleError = () => {
     // If high-res thumbnail fails, fall back to reliable hqdefault
     if (currentSrc && HIGH_RES_THUMB_REGEX.test(currentSrc)) {
       setCurrentSrc(currentSrc.replace(HIGH_RES_THUMB_REGEX, "/hqdefault$1"));
+      setIsLoaded(false);
     } else {
       setIsFailed(true);
     }
@@ -54,6 +74,8 @@ export function TrackThumbnail({
       /(?:ytimg|youtube)\.com|googleusercontent\.com\/vi(?:_webp)?\//i.test(currentSrc)
     ) {
       handleError();
+    } else {
+      setIsLoaded(true);
     }
   };
 
@@ -74,9 +96,14 @@ export function TrackThumbnail({
 
   return (
     <img
+      ref={imgRef}
       src={currentSrc}
       alt={alt}
-      className={className}
+      className={cn(
+        className,
+        "transition-opacity duration-200 ease-out",
+        isLoaded ? "opacity-100" : "opacity-0 bg-secondary/40 animate-pulse"
+      )}
       loading={loading}
       draggable={false}
       onLoad={handleLoad}

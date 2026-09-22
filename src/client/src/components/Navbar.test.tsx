@@ -291,6 +291,16 @@ describe("Navbar YouTube Ingestion Queue", () => {
       cancelBtn.click();
     });
 
+    // Confirmation popup opens; confirm cancellation
+    const confirmStopBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Dừng") || b.textContent?.includes("Stop")
+    ) as HTMLButtonElement;
+    if (confirmStopBtn) {
+      await act(async () => {
+        confirmStopBtn.click();
+      });
+    }
+
     expect(abortObserved).toBe(true);
 
     // Queue should reflect cancellation

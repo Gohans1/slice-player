@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Modal } from "./ui/modal";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -55,7 +56,7 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlayli
     }
   };
 
-  return (
+  const modalElement = (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
@@ -95,4 +96,10 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlayli
       </form>
     </Modal>
   );
+
+  if (typeof document !== "undefined" && document.body) {
+    return createPortal(modalElement, document.body);
+  }
+
+  return modalElement;
 }

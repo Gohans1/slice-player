@@ -234,27 +234,27 @@ function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
         className="group relative flex-1 py-2.5 cursor-pointer select-none touch-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
         title={t("player.seekTitle", "Drag or click to seek in slice")}
       >
-        <div className="relative h-2 w-full rounded-full bg-secondary group-hover:h-2.5 transition-all">
+        <div className="relative h-2 w-full rounded-full bg-secondary overflow-hidden group-hover:scale-y-125 transition-transform duration-150 origin-center">
           <div
-            className={`absolute top-0 bottom-0 left-0 rounded-full ${
-              isDragging ? "transition-none" : "transition-all duration-100"
+            className={`absolute inset-0 rounded-full origin-left ${
+              isDragging ? "transition-none" : "transition-transform duration-100 ease-linear"
             }`}
             style={{
-              width: `${effectiveProgressPercent}%`,
+              transform: `scaleX(${Math.max(0, Math.min(100, effectiveProgressPercent)) / 100})`,
               backgroundColor: activeSegment.color || "#4385BE",
             }}
           />
-          <div
-            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md pointer-events-none ${
-              isDragging
-                ? "scale-100 opacity-100 transition-none"
-                : "scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100 transition-transform"
-            }`}
-            style={{
-              left: `${effectiveProgressPercent}%`,
-            }}
-          />
         </div>
+        <div
+          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md pointer-events-none ${
+            isDragging
+              ? "scale-100 opacity-100 transition-none"
+              : "scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100 transition-[transform,opacity] duration-150 ease-out"
+          }`}
+          style={{
+            left: `${effectiveProgressPercent}%`,
+          }}
+        />
       </div>
       <span className="w-12 text-left">{formatTime(segmentDuration)}</span>
     </div>
@@ -333,7 +333,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
 
   if (!activeTrack || !activeSegment) {
     return (
-      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-6 py-3">
+      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-6 py-3 animate-in fade-in duration-150">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 text-muted-foreground text-xs">
             <Disc className="h-5 w-5 opacity-40" />
@@ -369,7 +369,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   }
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 py-2.5 shadow-2xl">
+    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 py-2.5 shadow-2xl animate-in fade-in duration-150">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Track & Segment Info */}
         <div className="flex items-center gap-3 w-full sm:flex-1 min-w-0">
@@ -432,7 +432,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               onClick={prevSegment}
               disabled={queueLength === 0}
               aria-label={t("player.previous", "Previous slice")}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent disabled:opacity-40"
+              className="h-8 w-8 rounded-full text-foreground hover:bg-accent active:-translate-x-0.5 transition-transform duration-100 disabled:opacity-40 disabled:transform-none"
               title={t("player.previous", "Previous slice")}
             >
               <SkipBack className="h-4 w-4" />
@@ -443,15 +443,15 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               size="icon"
               onClick={togglePlay}
               aria-label={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
-              className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 transition-transform"
+              className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 active:scale-95 transition-[transform,background-color] duration-150"
               title={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
             >
               {isBuffering && isPlaying ? (
                 <Loader2 className="h-4 w-4 animate-spin text-primary-foreground" />
               ) : isPlaying ? (
-                <Pause className="h-4 w-4 fill-current" />
+                <Pause className="h-4 w-4 fill-current animate-in zoom-in-75 duration-100" />
               ) : (
-                <Play className="h-4 w-4 fill-current translate-x-0.5" />
+                <Play className="h-4 w-4 fill-current translate-x-0.5 animate-in zoom-in-75 duration-100" />
               )}
             </Button>
 
@@ -461,7 +461,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               onClick={() => nextSegment(false)}
               disabled={!(queueLength > 0 && (isTransitional || (queueLength > 1 && (isLoopQueue || queueIndex < queueLength - 1))))}
               aria-label={t("player.next", "Next slice")}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent disabled:opacity-40"
+              className="h-8 w-8 rounded-full text-foreground hover:bg-accent active:translate-x-0.5 transition-transform duration-100 disabled:opacity-40 disabled:transform-none"
               title={t("player.next", "Next slice")}
             >
               <SkipForward className="h-4 w-4" />
@@ -479,9 +479,9 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
                   ? t("player.loopTrackActiveDesc", "Track loop is active. The current track will repeat continuously.")
                   : undefined
               }
-              className={`h-8 w-8 rounded-full ${
+              className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
                 isLoopTrack ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              } disabled:opacity-40`}
+              } disabled:opacity-40 disabled:transform-none`}
               title={
                 isLoopTrack
                   ? t("player.loopTrackActive", "Loop track enabled")
@@ -504,13 +504,13 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               size="icon"
               onClick={handleToggleMute}
               aria-label={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground active:scale-90 motion-reduce:transform-none transition-transform duration-100"
               title={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
             >
               {isMuted ? (
-                <VolumeX className="h-4 w-4 text-destructive" />
+                <VolumeX className="h-4 w-4 text-destructive animate-in zoom-in-75 duration-100" />
               ) : (
-                <Volume2 className="h-4 w-4" />
+                <Volume2 className="h-4 w-4 animate-in zoom-in-75 duration-100" />
               )}
             </Button>
             <VolumeSlider

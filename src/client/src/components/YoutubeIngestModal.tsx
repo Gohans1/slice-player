@@ -2,6 +2,7 @@ import * as React from "react";
 import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/modal";
+import { ConfirmModal } from "./ui/ConfirmModal";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 
@@ -44,6 +45,13 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
   const [ytError, setYtError] = React.useState<string | null>(null);
   const [ytQueue, setYtQueue] = React.useState<YoutubeQueueItem[]>([]);
   const [isProcessingYtQueue, setIsProcessingYtQueue] = React.useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isProcessingYtQueue && showCancelConfirm) {
+      setShowCancelConfirm(false);
+    }
+  }, [isProcessingYtQueue, showCancelConfirm]);
 
   const ytQueueRef = React.useRef<YoutubeQueueItem[]>([]);
   const isProcessingYtQueueRef = React.useRef(false);
@@ -270,7 +278,8 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={handleClose}
       title={t("ytModal.title")}
@@ -365,7 +374,7 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
               className="w-full bg-secondary rounded-full h-1.5 overflow-hidden"
             >
               <div
-                className="bg-primary h-1.5 transition-all duration-300"
+                className="bg-primary h-1.5 transition-[width] duration-300 ease-out"
                 style={{
                   width: `${ytProgressPercent}%`,
                 }}
@@ -432,9 +441,10 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
             {isProcessingYtQueue && (
               <Button
                 type="button"
-                variant="destructive"
+                variant="outline"
                 size="sm"
-                onClick={handleCancelYtQueue}
+                onClick={() => setShowCancelConfirm(true)}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/60"
               >
                 {t("ytModal.cancel")}
               </Button>
@@ -451,5 +461,25 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
         </div>
       </div>
     </Modal>
+
+    {showCancelConfirm && (
+      <ConfirmModal
+        isOpen={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        onConfirm={() => {
+          setShowCancelConfirm(false);
+          handleCancelYtQueue();
+        }}
+        title={t("ytModal.confirmCancelTitle", "Cancel YouTube Import?")}
+        description={t(
+          "ytModal.confirmCancelDesc",
+          "Are you sure you want to stop fetching YouTube audio? Remaining links in queue will be cancelled."
+        )}
+        confirmText={t("ytModal.confirmCancelAction", "Stop Import")}
+        cancelText={t("ytModal.keepGoing", "Continue Import")}
+        variant="destructive"
+      />
+    )}
+    </>
   );
 });

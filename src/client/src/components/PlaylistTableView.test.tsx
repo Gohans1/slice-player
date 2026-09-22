@@ -1490,7 +1490,7 @@ describe("PlaylistTableView", () => {
         root.render(<PlaylistTableView filteredTracks={[dummyTrack]} />);
       });
 
-      const equalizerBars = container.querySelectorAll(".motion-safe\\:animate-pulse");
+      const equalizerBars = container.querySelectorAll(".animate-eq-1, .animate-eq-2, .animate-eq-3");
       expect(equalizerBars.length).toBe(3);
     });
   });

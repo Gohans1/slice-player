@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+html {
+  scrollbar-gutter: stable;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
@@ -304,3 +308,280 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+/* ==========================================================================
+   Impeccable Motion System (Keyframes & GPU-Accelerated Utilities)
+   ========================================================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zoomIn95 {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes zoomIn75 {
+  from {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInBottom4 {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Authentic multi-frequency audio equalizer bar keyframes (GPU scaleY) */
+@keyframes eqBar1 {
+  0%, 100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes eqBar2 {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.2);
+  }
+}
+
+@keyframes eqBar3 {
+  0%, 100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(0.9);
+  }
+}
+
+@keyframes zoomOut95 {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slideOutBottom4 {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* Dedicated motion classes */
+.animate-fade-in {
+  animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-zoom-in {
+  animation: zoomIn95 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-zoom-out {
+  animation: zoomOut95 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-left {
+  animation: slideInLeft 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-bottom {
+  animation: slideInBottom4 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-out-right {
+  animation: slideOutRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-out-left {
+  animation: slideOutLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-out-bottom {
+  animation: slideOutBottom4 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-eq-1 {
+  animation: eqBar1 0.75s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.animate-eq-2 {
+  animation: eqBar2 0.62s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+.animate-eq-3 {
+  animation: eqBar3 0.88s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+/* Backward-compatible classes for existing codebase markup */
+.animate-in {
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-duration: var(--tw-duration, var(--transition-duration, 0.2s));
+}
+
+.animate-in.fade-in {
+  animation-name: fadeIn;
+}
+
+.animate-in.zoom-in-95,
+.animate-in.fade-in.zoom-in-95 {
+  animation-name: zoomIn95;
+}
+
+.animate-in.zoom-in-75,
+.animate-in.fade-in.zoom-in-75 {
+  animation-name: zoomIn75;
+}
+
+.animate-in.slide-in-from-right {
+  animation-name: slideInRight;
+}
+
+.animate-in.slide-in-from-left {
+  animation-name: slideInLeft;
+}
+
+.animate-in.slide-in-from-bottom-4,
+.animate-in.fade-in.slide-in-from-bottom-4 {
+  animation-name: slideInBottom4;
+}
+
+.animate-out {
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-duration: var(--tw-duration, var(--transition-duration, 0.15s));
+}
+
+.animate-out.fade-out {
+  animation-name: fadeOut;
+}
+
+.animate-out.zoom-out-95,
+.animate-out.fade-out.zoom-out-95 {
+  animation-name: zoomOut95;
+}
+
+.animate-out.slide-out-to-right {
+  animation-name: slideOutRight;
+}
+
+.animate-out.slide-out-to-left {
+  animation-name: slideOutLeft;
+}
+
+.animate-out.slide-out-to-bottom-4,
+.animate-out.fade-out.slide-out-to-bottom-4 {
+  animation-name: slideOutBottom4;
+}
+
+/* Accessibility: respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-eq-1,
+  .animate-eq-2,
+  .animate-eq-3 {
+    animation-play-state: paused !important;
+  }
+}
+

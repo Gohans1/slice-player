@@ -14,6 +14,7 @@ describe("AddToPlaylistPopover Component", () => {
   const originalFetch = globalThis.fetch;
   const originalAddToPlaylist = usePlayerStore.getState().addToPlaylist;
   const originalRemoveFromPlaylist = usePlayerStore.getState().removeFromPlaylist;
+  const originalCreatePlaylist = usePlayerStore.getState().createPlaylist;
 
   beforeEach(async () => {
     await i18n.changeLanguage("en");
@@ -24,6 +25,10 @@ describe("AddToPlaylistPopover Component", () => {
     (globalThis as any).Node = window.Node;
     (globalThis as any).Element = window.Element;
     (globalThis as any).HTMLElement = window.HTMLElement;
+    (globalThis as any).HTMLInputElement = window.HTMLInputElement;
+    (globalThis as any).Event = window.Event;
+    (globalThis as any).KeyboardEvent = window.KeyboardEvent;
+    (globalThis as any).MouseEvent = window.MouseEvent;
 
     container = window.document.createElement("div");
     window.document.body.appendChild(container);
@@ -42,22 +47,19 @@ describe("AddToPlaylistPopover Component", () => {
     usePlayerStore.setState({
       addToPlaylist: originalAddToPlaylist,
       removeFromPlaylist: originalRemoveFromPlaylist,
+      createPlaylist: originalCreatePlaylist,
     });
     act(() => {
       root.unmount();
     });
     container.remove();
-    delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
-    delete (globalThis as any).window;
-    delete (globalThis as any).document;
-    delete (globalThis as any).Node;
-    delete (globalThis as any).Element;
-    delete (globalThis as any).HTMLElement;
   });
 
-  it("fetches memberships on open and marks existing playlist with checkmark", async () => {
+  it("does not fetch memberships while closed, fetches on open, and marks existing playlist with checkmark", async () => {
+    let fetchCalls = 0;
     globalThis.fetch = mock(async (url: any) => {
       if (String(url).includes("/api/playlist-memberships")) {
+        fetchCalls++;
         return new Response(JSON.stringify([{ playlist_id: "pl_1", item_id: "item_1" }]), { status: 200 });
       }
       return new Response("{}", { status: 200 });
@@ -67,6 +69,9 @@ describe("AddToPlaylistPopover Component", () => {
       root.render(<AddToPlaylistPopover trackId="trk_1" />);
     });
 
+    // CRITICAL: Ensure NO network request is fired while popover is closed (prevents N+1 flood on table mount)
+    expect(fetchCalls).toBe(0);
+
     const triggerBtn = container.querySelector('button[title="Add to Playlist"]');
     expect(triggerBtn).not.toBeNull();
 
@@ -75,6 +80,8 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
+    // Network request is only fired when popover is actually opened
+    expect(fetchCalls).toBe(1);
     expect(container.textContent).toContain("Playlist One");
     expect(container.textContent).toContain("Playlist Two");
 
@@ -172,5 +179,104 @@ describe("AddToPlaylistPopover Component", () => {
     expect(capturedUrl).toContain("/api/playlist-memberships");
     expect(capturedUrl).toContain("track_id=trk_xyz");
     expect(capturedUrl).toContain("segment_id=seg_abc");
+  });
+
+  it("renders New Playlist button at top of menu and opens CreatePlaylistModal on click", async () => {
+    globalThis.fetch = mock(async () => new Response(JSON.stringify([]), { status: 200 })) as any;
+
+    act(() => {
+      root.render(<AddToPlaylistPopover trackId="trk_1" />);
+    });
+
+    const triggerBtn = container.querySelector('button[title="Add to Playlist"]');
+    await act(async () => {
+      triggerBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Find the New Playlist button
+    const buttons = container.querySelectorAll("button");
+    const newPlaylistBtn = Array.from(buttons).find((b: any) =>
+      b.textContent.toLowerCase().includes("new playlist")
+    ) as HTMLButtonElement;
+    expect(newPlaylistBtn).not.toBeNull();
+
+    // Click New Playlist button
+    await act(async () => {
+      newPlaylistBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Modal dialog should be rendered into document.body
+    const dialog = window.document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(window.document.body.textContent).toContain("New Playlist");
+  });
+
+  it("automatically adds track to newly created playlist after creation from modal", async () => {
+    const addToPlaylistMock = mock(async () => true);
+    const createPlaylistMock = mock(async (name: string) => ({
+      id: "pl_new_123",
+      name,
+      created_at: 1,
+      updated_at: 1,
+      item_count: 0,
+    }));
+    usePlayerStore.setState({
+      addToPlaylist: addToPlaylistMock,
+      createPlaylist: createPlaylistMock as any,
+    });
+    globalThis.fetch = mock(async () => new Response(JSON.stringify([]), { status: 200 })) as any;
+
+    act(() => {
+      root.render(<AddToPlaylistPopover trackId="trk_focus" segmentId="seg_focus" />);
+    });
+
+    const triggerBtn = container.querySelector('button[title="Add to Playlist"]');
+    await act(async () => {
+      triggerBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const newPlaylistBtn = Array.from(container.querySelectorAll("button")).find((b: any) =>
+      b.textContent.toLowerCase().includes("new playlist")
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      newPlaylistBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const input = window.document.querySelector('input[placeholder*="Focus Chill"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+
+    // Fill in playlist name
+    act(() => {
+      const reactPropsKey = Object.keys(input).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
+      if (reactPropsKey && (input as any)[reactPropsKey]?.onChange) {
+        (input as any)[reactPropsKey].onChange({ target: { value: "My Chill Mix" }, currentTarget: { value: "My Chill Mix" } });
+      } else {
+        input.value = "My Chill Mix";
+        input.dispatchEvent(new window.Event("input", { bubbles: true }));
+        input.dispatchEvent(new window.Event("change", { bubbles: true }));
+      }
+    });
+
+    // Submit form
+    const form = window.document.querySelector("form");
+    expect(form).not.toBeNull();
+
+    await act(async () => {
+      const formPropsKey = Object.keys(form!).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
+      if (formPropsKey && (form as any)[formPropsKey]?.onSubmit) {
+        (form as any)[formPropsKey].onSubmit({ preventDefault: () => {} });
+      } else {
+        form!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(createPlaylistMock).toHaveBeenCalledWith("My Chill Mix");
+    expect(addToPlaylistMock).toHaveBeenCalledWith("pl_new_123", "trk_focus", "seg_focus");
   });
 });

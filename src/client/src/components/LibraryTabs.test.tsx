@@ -55,7 +55,8 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       if (typeof url === "string" && url.includes("/api/segments")) {
         return { ok: true, json: async () => [] };
       }
-      if (typeof url === "string" && (url === "/api/playlists" || url.startsWith("/api/playlists?"))) {
+      if (typeof url === "string" && url.includes("/api/playlists")) {
+        if (url.includes("/items")) return { ok: true, json: async () => [] };
         return { ok: true, json: async () => usePlayerStore.getState().playlists };
       }
       return { ok: true, json: async () => ({}) };
@@ -450,5 +451,32 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
     const tablist = container.querySelector('[role="tablist"]');
     expect(tablist).not.toBeNull();
     expect(tablist?.classList.contains("shrink-0")).toBe(true);
+  });
+
+  it("renders sticky compact header and tabs bar that stays with user on scroll", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const stickyBar = container.querySelector('[data-testid="sticky-library-header"]');
+    expect(stickyBar).not.toBeNull();
+    expect(stickyBar?.classList.contains("z-30")).toBe(true);
+
+    // Header title and View mode switcher are inside the sticky bar
+    const title = stickyBar?.querySelector("h1");
+    expect(title).not.toBeNull();
+    expect(title?.textContent).toContain("Mix");
+
+    const viewGroup = stickyBar?.querySelector('[role="group"][aria-label*="View"], [role="group"][aria-label*="chế độ"]');
+    expect(viewGroup).not.toBeNull();
+
+    // Tablist is also inside the sticky bar
+    const tablist = stickyBar?.querySelector('[role="tablist"]');
+    expect(tablist).not.toBeNull();
+
+    // Content panel is outside and below the sticky bar
+    const panel = container.querySelector("#main-library-panel");
+    expect(panel).not.toBeNull();
+    expect(stickyBar?.contains(panel)).toBe(false);
   });
 });
