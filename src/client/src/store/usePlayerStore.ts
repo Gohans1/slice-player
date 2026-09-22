@@ -176,10 +176,12 @@ interface PlayerState {
   viewMode: "grid" | "list";
   activeSystemCategory: SystemCategory;
   retryingTrackIds: Record<string, boolean>;
+  isRetryingAll: boolean;
 
   // Actions
   fetchTracks: (reconcileSegments?: boolean) => Promise<void>;
   retryTrack: (trackId: string) => Promise<boolean>;
+  retryAllErrors: (trackIds?: string[]) => Promise<boolean>;
   playSegment: (segment: Segment, track: Track, overrideIndex?: number, seekTime?: number) => Promise<void>;
   pause: () => void;
   setBuffering: (isBuffering: boolean) => void;
@@ -566,6 +568,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ activeSystemCategory: cat, activePlaylistId: null });
   },
   retryingTrackIds: {},
+  isRetryingAll: false,
+  retryAllErrors: async (trackIds?: string[]) => {
+    if (get().isRetryingAll) return false;
+    set({ isRetryingAll: true });
+    try {
+      const res = await fetch("/api/tracks/retry-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(trackIds ? { track_ids: trackIds } : {}),
+      });
+      await get().fetchTracks(true);
+      return res.ok;
+    } catch (err) {
+      console.error("[Store] Failed to retry all error tracks:", err);
+      return false;
+    } finally {
+      set({ isRetryingAll: false });
+    }
+  },
   retryTrack: async (trackId: string) => {
     if (get().retryingTrackIds[trackId]) return false;
     set((state) => ({

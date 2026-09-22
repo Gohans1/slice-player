@@ -1,5 +1,5 @@
 import { serve, file as bunFile, type ServerWebSocket } from "bun";
-import { existsSync, statSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, statSync, mkdirSync, unlinkSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve, join, extname, basename, sep } from "node:path";
 import {
@@ -9,7 +9,7 @@ import {
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
   getPlaylistMemberships, getCrossPlatformBasename
 } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder } from "./ingest";
+import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
 import { getRecentLogs, clearServerLogs, logEvent } from "./logger";
@@ -88,10 +88,13 @@ function isSubdirectoryOf(parent: string, child: string): boolean {
   return normChild.startsWith(normParent + sep);
 }
 
-async function parseJsonBody<T = Record<string, any>>(req: Request): Promise<T> {
+const MAX_BATCH_LIMIT = 5000;
+const MAX_BATCH_PAYLOAD_BYTES = 2 * 1024 * 1024; // 2MB for batch operations
+
+async function parseJsonBody<T = Record<string, any>>(req: Request, maxLimit = 65536): Promise<T> {
   const text = await req.text();
-  if (text.length > 65536) {
-    throw new Error("Payload too large (max 64KB)");
+  if (text.length > maxLimit) {
+    throw new Error(`Payload too large (max ${Math.round(maxLimit / 1024)}KB)`);
   }
   let parsed: any;
   try {
@@ -191,16 +194,16 @@ const server = serve({
             { status: 400, headers: corsHeaders }
           );
         }
-        const isBodyOptional = url.pathname.endsWith("/retry");
-        if (!isBodyOptional) {
-          if (!rawLen) {
-            return Response.json(
-              { error: "Content-Length header is required for mutating requests" },
-              { status: 411, headers: corsHeaders }
-            );
-          }
+        const isBodyOptional = url.pathname.endsWith("/retry") || url.pathname === "/api/tracks/retry-all";
+        if (!rawLen && !isBodyOptional) {
+          return Response.json(
+            { error: "Content-Length header is required for mutating requests" },
+            { status: 411, headers: corsHeaders }
+          );
+        }
+        if (rawLen) {
           const contentLength = Number(rawLen);
-          if (!Number.isFinite(contentLength) || contentLength <= 0) {
+          if (!Number.isFinite(contentLength) || contentLength < 0 || (!isBodyOptional && contentLength === 0)) {
             return Response.json(
               { error: "Empty or invalid request body" },
               { status: 400, headers: corsHeaders }
@@ -208,10 +211,30 @@ const server = serve({
           }
           const isTrackUpload = url.pathname === "/api/tracks/upload";
           const isLibraryImport = url.pathname === "/api/library/import";
-          const maxLimit = isLibraryImport ? 2048 * 1024 * 1024 : (isTrackUpload ? 305 * 1024 * 1024 : 65536);
+          const isBatchEndpoint =
+            url.pathname === "/api/tracks/batch-delete" ||
+            url.pathname === "/api/segments/batch-delete" ||
+            url.pathname.endsWith("/items/batch") ||
+            url.pathname.endsWith("/items/batch-delete") ||
+            url.pathname.endsWith("/reorder");
+          const maxLimit = isLibraryImport
+            ? 2048 * 1024 * 1024
+            : isTrackUpload
+            ? 305 * 1024 * 1024
+            : isBatchEndpoint
+            ? MAX_BATCH_PAYLOAD_BYTES
+            : 65536;
           if (contentLength > maxLimit) {
             return Response.json(
-              { error: isLibraryImport ? "Payload too large (max 2GB)" : (isTrackUpload ? "Payload too large (max 300MB)" : "Payload too large (max 64KB)") },
+              {
+                error: isLibraryImport
+                  ? "Payload too large (max 2GB)"
+                  : isTrackUpload
+                  ? "Payload too large (max 300MB)"
+                  : isBatchEndpoint
+                  ? "Payload too large (max 2MB)"
+                  : "Payload too large (max 64KB)",
+              },
               { status: 413, headers: corsHeaders }
             );
           }
@@ -241,7 +264,7 @@ const server = serve({
         try {
           const body = await parseJsonBody<{ url?: string }>(req);
           if (!body.url) return Response.json({ error: "Missing YouTube URL" }, { status: 400, headers: corsHeaders });
-          const res = await ingestYouTubeUrl(body.url);
+          const res = await ingestYouTubeUrl(body.url, req.signal);
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
           const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
@@ -388,13 +411,13 @@ const server = serve({
       // Track batch delete
       if (url.pathname === "/api/tracks/batch-delete" && req.method === "POST") {
         try {
-          const body = await parseJsonBody<{ ids: string[] }>(req);
+          const body = await parseJsonBody<{ ids: string[] }>(req, MAX_BATCH_PAYLOAD_BYTES);
           if (!body || !Array.isArray(body.ids)) {
             return Response.json({ error: "Invalid request: ids must be an array of strings" }, { status: 400, headers: corsHeaders });
           }
           const ids = Array.from(new Set(body.ids.filter((id) => typeof id === "string" && id.trim().length > 0)));
-          if (ids.length > 500) {
-            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          if (ids.length > MAX_BATCH_LIMIT) {
+            return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
           if (ids.length === 0) {
             return Response.json({ success: true, count: 0 }, { headers: corsHeaders });
@@ -402,11 +425,12 @@ const server = serve({
 
           const cacheAudioDir = resolve("./data/cache/audio");
           const cacheThumbsDir = resolve("./data/cache/thumbs");
+          const preReadAudioFiles = existsSync(cacheAudioDir) ? readdirSync(cacheAudioDir) : [];
           const pendingSegmentDeletions: { segmentId: string; trackId: string }[] = [];
           const pendingTrackDeletions: string[] = [];
 
           for (const trackId of ids) {
-            await cancelDownloadIfActive(trackId);
+            await cancelDownloadIfActive(trackId, preReadAudioFiles);
             const track = getTrack(trackId);
             if (track) {
               if (track.file_path) {
@@ -541,6 +565,31 @@ const server = serve({
         }
       }
 
+      // Retry all error tracks or batch retry
+      if (url.pathname === "/api/tracks/retry-all" && req.method === "POST") {
+        let trackIds: string[] | undefined = undefined;
+        const rawLen = req.headers.get("content-length");
+        const hasBody = rawLen && Number(rawLen) > 0;
+        if (hasBody) {
+          try {
+            const body = await parseJsonBody<{ track_ids?: unknown }>(req, 65536);
+            if ("track_ids" in body) {
+              if (Array.isArray(body.track_ids)) {
+                trackIds = body.track_ids.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0);
+              } else {
+                return Response.json({ error: "track_ids must be an array" }, { status: 400, headers: corsHeaders });
+              }
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const status = msg.includes("Payload too large") ? 413 : 400;
+            return Response.json({ error: msg }, { status, headers: corsHeaders });
+          }
+        }
+        const result = requeueErrorTracks(trackIds);
+        return Response.json({ success: true, requeued: result.requeued }, { status: 200, headers: corsHeaders });
+      }
+
       // Track retry
       const retryMatch = url.pathname.match(/^\/api\/tracks\/([^/]+)\/retry$/);
       if (retryMatch && req.method === "POST") {
@@ -556,7 +605,7 @@ const server = serve({
         }
         if (track.source_type === "youtube") {
           resetCookiesStatus();
-          const res = await ingestYouTubeUrl(track.source_uri);
+          const res = await ingestYouTubeUrl(track.source_uri, req.signal);
           if (!res.success) {
             updateTrack(trackId, { status: "error", error_message: res.message || "Tải lại thất bại" });
             serverEvents.emit("track_updated", { trackId });
@@ -851,13 +900,13 @@ const server = serve({
       // Batch delete segments: /api/segments/batch-delete
       if (url.pathname === "/api/segments/batch-delete" && req.method === "POST") {
         try {
-          const body = await parseJsonBody<{ ids?: string[] }>(req);
+          const body = await parseJsonBody<{ ids?: string[] }>(req, MAX_BATCH_PAYLOAD_BYTES);
           if (!body || !Array.isArray(body.ids)) {
             return Response.json({ error: "ids array is required" }, { status: 400, headers: corsHeaders });
           }
           const validIds = Array.from(new Set(body.ids.filter((id) => typeof id === "string" && id.trim().length > 0)));
-          if (validIds.length > 500) {
-            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          if (validIds.length > MAX_BATCH_LIMIT) {
+            return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
           if (validIds.length === 0) {
             return Response.json({ success: true, deletedCount: 0 }, { headers: corsHeaders });
@@ -957,9 +1006,12 @@ const server = serve({
           if (!pl) {
             return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
           }
-          const body = await parseJsonBody<{ itemIds: string[] }>(req);
+          const body = await parseJsonBody<{ itemIds: string[] }>(req, MAX_BATCH_PAYLOAD_BYTES);
           if (!Array.isArray(body.itemIds) || !body.itemIds.every((id) => typeof id === "string")) {
             return Response.json({ error: "itemIds phải là mảng string" }, { status: 400, headers: corsHeaders });
+          }
+          if (body.itemIds.length > MAX_BATCH_LIMIT) {
+            return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
           if (new Set(body.itemIds).size !== body.itemIds.length) {
             return Response.json({ error: "itemIds không được chứa ID trùng lặp" }, { status: 400, headers: corsHeaders });
@@ -1005,7 +1057,7 @@ const server = serve({
           return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
         }
         try {
-          const body = await parseJsonBody<{ trackIds?: string[]; items?: { track_id: string; segment_id?: string | null }[] }>(req);
+          const body = await parseJsonBody<{ trackIds?: string[]; items?: { track_id: string; segment_id?: string | null }[] }>(req, MAX_BATCH_PAYLOAD_BYTES);
           const pl = getPlaylist(plId);
           if (!pl) {
             return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
@@ -1024,8 +1076,8 @@ const server = serve({
             return Response.json({ error: "trackIds hoặc items là bắt buộc" }, { status: 400, headers: corsHeaders });
           }
 
-          if (itemsToAdd.length > 500) {
-            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          if (itemsToAdd.length > MAX_BATCH_LIMIT) {
+            return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
 
           const added = addPlaylistItemsBatch(plId, itemsToAdd);
@@ -1052,13 +1104,13 @@ const server = serve({
           if (!pl) {
             return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
           }
-          const body = await parseJsonBody<{ itemIds?: string[] }>(req);
+          const body = await parseJsonBody<{ itemIds?: string[] }>(req, MAX_BATCH_PAYLOAD_BYTES);
           if (!body || !Array.isArray(body.itemIds)) {
             return Response.json({ error: "itemIds array is required" }, { status: 400, headers: corsHeaders });
           }
           const validIds = Array.from(new Set(body.itemIds.filter((id) => typeof id === "string" && id.trim().length > 0)));
-          if (validIds.length > 500) {
-            return Response.json({ error: "Batch size limit exceeded (max 500)" }, { status: 400, headers: corsHeaders });
+          if (validIds.length > MAX_BATCH_LIMIT) {
+            return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
           const deletedCount = removePlaylistItemsBatch(plId, validIds);
           serverEvents.emit("playlist_items_changed", { playlistId: plId });

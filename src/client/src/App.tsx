@@ -14,10 +14,10 @@ import { PlaylistTableView, type MixedItem } from "./components/PlaylistTableVie
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
-import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
-import { compareDownloadingTracks } from "./lib/utils";
+import { compareDownloadingTracks, cn } from "./lib/utils";
 import { Button } from "./components/ui/button";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -54,6 +54,9 @@ export function App() {
   const playSegmentInMode = usePlayerStore((s) => s.playSegmentInMode);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const deleteSegmentsBatch = usePlayerStore((s) => s.deleteSegmentsBatch);
+  const isRetryingAll = usePlayerStore((s) => s.isRetryingAll);
+  const retryAllErrors = usePlayerStore((s) => s.retryAllErrors);
+  const retryingTrackIds = usePlayerStore((s) => s.retryingTrackIds);
 
   // Built-in tabs fold state (persisted to localStorage)
   const [isBuiltInFolded, setIsBuiltInFolded] = React.useState<boolean>(() => {
@@ -169,8 +172,34 @@ export function App() {
     };
   }, [isMorePlaylistsOpen]);
 
+  const [isMoreMenuRendered, setIsMoreMenuRendered] = React.useState(isMorePlaylistsOpen);
+  const [isMoreMenuExiting, setIsMoreMenuExiting] = React.useState(false);
+
+  const isTestOrReducedMotion =
+    (typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST))) ||
+    (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches));
+
+  React.useEffect(() => {
+    if (isMorePlaylistsOpen) {
+      setIsMoreMenuRendered(true);
+      setIsMoreMenuExiting(false);
+    } else if (isMoreMenuRendered) {
+      if (isTestOrReducedMotion) {
+        setIsMoreMenuRendered(false);
+        setIsMoreMenuExiting(false);
+        return;
+      }
+      setIsMoreMenuExiting(true);
+      const timer = setTimeout(() => {
+        setIsMoreMenuRendered(false);
+        setIsMoreMenuExiting(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isMorePlaylistsOpen, isMoreMenuRendered, isTestOrReducedMotion]);
+
   const renderMorePlaylistsMenu = (list: typeof playlists) => {
-    if (!isMorePlaylistsOpen) return null;
+    if (!isMorePlaylistsOpen && (isTestOrReducedMotion || !isMoreMenuRendered)) return null;
     return (
       <div
         role="menu"
@@ -183,7 +212,10 @@ export function App() {
               }
             : undefined
         }
-        className="fixed w-56 rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100"
+        className={cn(
+          "fixed w-56 origin-top-left rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 duration-100",
+          isMoreMenuExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
+        )}
       >
         <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
           <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
@@ -604,6 +636,19 @@ export function App() {
       .sort(compareDownloadingTracks);
   }, [tracks]);
 
+  const hasActiveDownloads = downloadingTracks.length > 0 || isRetryingAll || Object.keys(retryingTrackIds).length > 0;
+  React.useEffect(() => {
+    if (!hasActiveDownloads) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasActiveDownloads]);
+
   const originalTracks = React.useMemo(() => {
     const ready = tracks
       .filter((t) => t.status === "ready")
@@ -938,59 +983,64 @@ export function App() {
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
       />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 lg:p-8 pb-28 sm:pb-32">
-        {/* Top Banner / Library Header with View Switcher */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <span>{headerMeta.title}</span>
-              <span className="text-sm font-normal text-muted-foreground font-mono" aria-live="polite" aria-atomic="true">
-                {headerMeta.count}
-              </span>
-            </h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              {headerMeta.description}
-            </p>
-          </div>
+      <main className="flex-1 w-full pb-28 sm:pb-32">
+        {/* Sticky Library Header & Navigation Bar (Always follows scroll, pushed up & compact) */}
+        <div data-testid="sticky-library-header" className="sticky top-[var(--navbar-height,61px)] z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+            {/* Top Row: Compact Title & View Mode Switcher */}
+            <div className="flex items-center justify-between gap-3 mb-1.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0">
+                  <span>{headerMeta.title}</span>
+                  <span className="text-xs font-normal text-muted-foreground font-mono" aria-live="polite" aria-atomic="true">
+                    {headerMeta.count}
+                  </span>
+                </h1>
+                {headerMeta.description && (
+                  <span className="text-xs text-muted-foreground truncate hidden md:inline border-l border-border/60 pl-2.5">
+                    {headerMeta.description}
+                  </span>
+                )}
+              </div>
 
-          {/* View Mode Switcher */}
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
-            <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-1">
-              <button
-                type="button"
-                aria-pressed={viewMode === "grid"}
-                onClick={() => setViewMode("grid")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  viewMode === "grid"
-                    ? "bg-secondary text-primary shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                title={t("library.gridTooltip")}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                <span>{t("library.grid")}</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={viewMode === "list"}
-                onClick={() => setViewMode("list")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  viewMode === "list"
-                    ? "bg-secondary text-primary shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                title={t("library.tableTooltip")}
-              >
-                <List className="h-3.5 w-3.5" />
-                <span>{t("library.table")}</span>
-              </button>
+              {/* View Mode Switcher */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
+                <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">
+                  <button
+                    type="button"
+                    aria-pressed={viewMode === "grid"}
+                    onClick={() => setViewMode("grid")}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer ${
+                      viewMode === "grid"
+                        ? "bg-secondary text-primary shadow-xs font-bold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={t("library.gridTooltip")}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                    <span>{t("library.grid")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={viewMode === "list"}
+                    onClick={() => setViewMode("list")}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer ${
+                      viewMode === "list"
+                        ? "bg-secondary text-primary shadow-xs font-bold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={t("library.tableTooltip")}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                    <span>{t("library.table")}</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Horizontal Pill Tabs Bar */}
-        <div className="flex items-center justify-between gap-2 py-2.5 mb-6 border-b border-border/80">
+            {/* Bottom Row: Horizontal Pill Tabs Bar */}
+            <div className="flex items-center justify-between gap-2 pt-0.5">
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0 pr-2">
             <div
               role="tablist"
@@ -1007,7 +1057,7 @@ export function App() {
                 aria-selected={activePlaylistId === null && activeSystemCategory === "mixed"}
                 tabIndex={activePlaylistId === null && activeSystemCategory === "mixed" ? 0 : -1}
                 onClick={() => setActiveSystemCategory("mixed")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all cursor-pointer shrink-0 ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                   activePlaylistId === null && activeSystemCategory === "mixed"
                     ? "bg-primary text-primary-foreground font-bold shadow-xs"
                     : "bg-secondary/70 text-foreground/90 font-medium hover:bg-secondary hover:text-foreground border border-border/70"
@@ -1025,7 +1075,7 @@ export function App() {
                   onClick={handleToggleBuiltInFold}
                   aria-label={t("library.unfoldBuiltIn")}
                   title={t("library.unfoldBuiltIn")}
-                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all cursor-pointer shrink-0"
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
                   <span className="font-mono text-[11px] opacity-80">4</span>
@@ -1042,7 +1092,7 @@ export function App() {
 
               {/* Collapsible System category pills */}
               {!isBuiltInFolded && (
-                <>
+                <div className="flex items-center gap-2 shrink-0 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
                   <button
                     type="button"
                     role="tab"
@@ -1051,7 +1101,7 @@ export function App() {
                     aria-selected={activePlaylistId === null && activeSystemCategory === "slices_only"}
                     tabIndex={activePlaylistId === null && activeSystemCategory === "slices_only" ? 0 : -1}
                     onClick={() => setActiveSystemCategory("slices_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                       activePlaylistId === null && activeSystemCategory === "slices_only"
                         ? "bg-primary text-primary-foreground font-bold shadow-xs"
                         : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
@@ -1070,7 +1120,7 @@ export function App() {
                     aria-selected={activePlaylistId === null && activeSystemCategory === "original_only"}
                     tabIndex={activePlaylistId === null && activeSystemCategory === "original_only" ? 0 : -1}
                     onClick={() => setActiveSystemCategory("original_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                       activePlaylistId === null && activeSystemCategory === "original_only"
                         ? "bg-primary text-primary-foreground font-bold shadow-xs"
                         : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
@@ -1089,7 +1139,7 @@ export function App() {
                     aria-selected={activePlaylistId === null && activeSystemCategory === "downloading_only"}
                     tabIndex={activePlaylistId === null && activeSystemCategory === "downloading_only" ? 0 : -1}
                     onClick={() => setActiveSystemCategory("downloading_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                       activePlaylistId === null && activeSystemCategory === "downloading_only"
                         ? "bg-primary text-primary-foreground font-bold shadow-xs"
                         : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
@@ -1108,7 +1158,7 @@ export function App() {
                     aria-selected={activePlaylistId === null && activeSystemCategory === "error_only"}
                     tabIndex={activePlaylistId === null && activeSystemCategory === "error_only" ? 0 : -1}
                     onClick={() => setActiveSystemCategory("error_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                       activePlaylistId === null && activeSystemCategory === "error_only"
                         ? "bg-primary text-primary-foreground font-bold shadow-xs"
                         : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
@@ -1124,11 +1174,11 @@ export function App() {
                     onClick={handleToggleBuiltInFold}
                     aria-label={t("library.foldBuiltIn")}
                     title={t("library.foldBuiltIn")}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
-                </>
+                </div>
               )}
 
               {/* Vertical separator between Built-in categories and User custom playlists */}
@@ -1154,7 +1204,7 @@ export function App() {
                       aria-selected={true}
                       tabIndex={0}
                       onClick={() => setActivePlaylist(activePl.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 bg-primary text-primary-foreground shadow-xs"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 bg-primary text-primary-foreground shadow-xs"
                     >
                       <Folder className="h-3 w-3 shrink-0 text-primary-foreground" />
                       <span>{activePl.name}</span>
@@ -1168,7 +1218,7 @@ export function App() {
                       onClick={handleToggleCustomFold}
                       aria-label={t("library.unfoldCustomPlaylists", { count: playlists.length })}
                       title={t("library.unfoldCustomPlaylists", { count: playlists.length })}
-                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                       <Folder className="h-3 w-3 text-primary" />
@@ -1182,7 +1232,7 @@ export function App() {
                       aria-haspopup="menu"
                       aria-label={t("library.morePlaylistsTitle", "Other playlists")}
                       title={t("library.morePlaylistsTitle", "Other playlists")}
-                      className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all cursor-pointer shrink-0"
+                      className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                     >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
@@ -1194,7 +1244,7 @@ export function App() {
 
               {/* Unfolded state for custom playlists */}
               {playlists.length > 0 && !isCustomFolded && (
-                <>
+                <div className="flex items-center gap-2 shrink-0 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
                   {visibleCustomPlaylists.map((pl) => {
                     const isSelected = activePlaylistId === pl.id;
                     return (
@@ -1207,7 +1257,7 @@ export function App() {
                         aria-selected={isSelected}
                         tabIndex={isSelected ? 0 : -1}
                         onClick={() => setActivePlaylist(pl.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
                           isSelected
                             ? "bg-primary text-primary-foreground font-bold shadow-xs"
                             : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
@@ -1229,7 +1279,7 @@ export function App() {
                         aria-haspopup="menu"
                         title={t("library.morePlaylists", { count: overflowCustomPlaylists.length })}
                         aria-label={t("library.morePlaylists", { count: overflowCustomPlaylists.length })}
-                        className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all cursor-pointer shrink-0"
+                        className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
                         <span className="font-mono text-[11px] opacity-80">{overflowCustomPlaylists.length}</span>
@@ -1244,11 +1294,11 @@ export function App() {
                     onClick={handleToggleCustomFold}
                     aria-label={t("library.foldCustomPlaylists")}
                     title={t("library.foldCustomPlaylists")}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
-                </>
+                </div>
               )}
             </div>
 
@@ -1271,18 +1321,34 @@ export function App() {
           >
             <span>{t("library.allPlaylists")}</span>
           </button>
+            </div>
+          </div>
         </div>
 
         {/* Content Area */}
-        <div
-          id="main-library-panel"
-          role="tabpanel"
-          aria-labelledby={activePlaylistId ? `tab-playlist-${activePlaylistId}` : `tab-category-${activeSystemCategory || "mixed"}`}
-        >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+          <div
+            id="main-library-panel"
+            role="tabpanel"
+            key={`${activePlaylistId || activeSystemCategory || "mixed"}_${viewMode}`}
+            aria-labelledby={activePlaylistId ? `tab-playlist-${activePlaylistId}` : `tab-category-${activeSystemCategory || "mixed"}`}
+            className="animate-in fade-in duration-150 ease-out motion-reduce:animate-none"
+          >
         {isLoadingTracks && isLibraryEmpty ? (
-          <div className="flex flex-col items-center justify-center p-16">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-            <p className="text-sm text-muted-foreground">{t("library.loading")}</p>
+          <div className="flex flex-col items-center justify-center py-6 px-4 animate-in fade-in duration-200">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border/50 bg-card/40 p-3 space-y-3 animate-pulse">
+                  <div className="aspect-video w-full rounded-lg bg-secondary/60" />
+                  <div className="h-4 w-3/4 rounded bg-secondary/60" />
+                  <div className="h-3 w-1/2 rounded bg-secondary/40" />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <p className="text-sm">{t("library.loading")}</p>
+            </div>
           </div>
         ) : activePlaylistId ? (
           /* Custom Playlist Active */
@@ -1292,7 +1358,7 @@ export function App() {
               onDeletePlaylistItem={handleDeletePlaylistItem}
             />
           ) : activePlaylistItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Music className="h-7 w-7" />
               </div>
@@ -1304,7 +1370,7 @@ export function App() {
               </p>
             </div>
           ) : displayedPlaylistItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
               <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
               <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
@@ -1332,7 +1398,7 @@ export function App() {
         ) : activeSystemCategory === "slices_only" ? (
           /* Slices Only Category */
           allSliceItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Scissors className="h-7 w-7" />
               </div>
@@ -1344,7 +1410,7 @@ export function App() {
               </p>
             </div>
           ) : filteredSliceItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <h2 className="text-lg font-semibold text-foreground">{t("library.noSlicesSearchTitle")}</h2>
               <p className="text-xs text-muted-foreground mt-1">{t("library.noSlicesSearchDesc")}</p>
               <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
@@ -1380,7 +1446,7 @@ export function App() {
         ) : activeSystemCategory === "mixed" ? (
           /* Mixed Category (Trộn Cả 2) */
           isLibraryEmpty || allMixedItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Music className="h-7 w-7" />
               </div>
@@ -1392,7 +1458,7 @@ export function App() {
               </p>
             </div>
           ) : filteredMixedItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
               <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
               <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
@@ -1442,7 +1508,7 @@ export function App() {
         ) : activeSystemCategory === "downloading_only" ? (
           /* Downloading Only Category (Đang Tải) */
           downloadingTracks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Check className="h-7 w-7 text-flexoki-green" />
               </div>
@@ -1454,7 +1520,7 @@ export function App() {
               </p>
             </div>
           ) : filteredDownloadingTracks.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Loader2 className="h-7 w-7 text-muted-foreground" />
               </div>
@@ -1489,7 +1555,7 @@ export function App() {
         ) : activeSystemCategory === "error_only" ? (
           /* Error Only Category (Bài Lỗi) */
           errorTracks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <Check className="h-7 w-7 text-flexoki-green" />
               </div>
@@ -1501,7 +1567,7 @@ export function App() {
               </p>
             </div>
           ) : filteredErrorTracks.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
                 <AlertCircle className="h-7 w-7 text-muted-foreground" />
               </div>
@@ -1511,31 +1577,57 @@ export function App() {
                 {t("library.clearSearch")}
               </Button>
             </div>
-          ) : viewMode === "list" ? (
-            <PlaylistTableView
-              filteredTracks={filteredErrorTracks}
-              searchQuery={deferredQuery}
-              onDeleteTrack={handleDeleteTrack}
-            />
           ) : (
-            <VirtualizedCardGrid
-              key="error_only"
-              items={filteredErrorTracks}
-              getItemKey={getItemEntityId}
-              className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(track) => (
-                <TrackCard
-                  key={track.id}
-                  track={track}
-                  onDelete={handleDeleteTrack}
-                  visibleTrackIds={visibleItems}
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-destructive/10 border border-destructive/25 text-foreground">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                  <span className="text-xs sm:text-sm font-medium">
+                    {t("categories.errorsDesc")}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    ({errorTracks.length})
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={isRetryingAll}
+                  onClick={() => retryAllErrors()}
+                  className="gap-1.5 text-xs font-semibold shadow-xs"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isRetryingAll ? "animate-spin" : ""}`} />
+                  <span>{isRetryingAll ? t("categories.retryingAll") : t("categories.retryAll", { count: errorTracks.length })}</span>
+                </Button>
+              </div>
+
+              {viewMode === "list" ? (
+                <PlaylistTableView
+                  filteredTracks={filteredErrorTracks}
+                  searchQuery={deferredQuery}
+                  onDeleteTrack={handleDeleteTrack}
+                />
+              ) : (
+                <VirtualizedCardGrid
+                  key="error_only"
+                  items={filteredErrorTracks}
+                  getItemKey={getItemEntityId}
+                  className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
+                  renderItem={(track) => (
+                    <TrackCard
+                      key={track.id}
+                      track={track}
+                      onDelete={handleDeleteTrack}
+                      visibleTrackIds={visibleItems}
+                    />
+                  )}
                 />
               )}
-            />
+            </div>
           )
         ) : isLibraryEmpty || originalTracks.length === 0 ? (
           /* Empty Library State (No tracks in DB) */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
               <Music className="h-7 w-7" />
             </div>
@@ -1548,7 +1640,7 @@ export function App() {
           </div>
         ) : filteredTracks.length === 0 ? (
           /* No search results found */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
               <Music className="h-7 w-7" />
             </div>
@@ -1590,6 +1682,7 @@ export function App() {
             )}
           />
         )}
+          </div>
         </div>
       </main>
 
@@ -1669,12 +1762,10 @@ export function App() {
       />
 
       {/* Activity & Error Log Drawer (Slide-over) */}
-      {isLogDrawerOpen && (
-        <LogDrawer
-          isOpen={isLogDrawerOpen}
-          onClose={closeLogDrawer}
-        />
-      )}
+      <LogDrawer
+        isOpen={isLogDrawerOpen}
+        onClose={closeLogDrawer}
+      />
 
       {/* Keyboard Shortcuts Cheatsheet Modal */}
       <ShortcutsModal

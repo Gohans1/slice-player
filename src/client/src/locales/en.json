@@ -93,6 +93,9 @@
     "noDownloadingDesc": "All tracks in the download queue have finished.",
     "noErrorsTitle": "No download errors",
     "noErrorsDesc": "All tracks downloaded successfully.",
+    "retryAll": "Retry All ({{count}})",
+    "retryAllGeneric": "Retry All",
+    "retryingAll": "Retrying...",
     "itemsCount": "({{count}} items)",
     "itemsCount_one": "({{count}} item)",
     "itemsCount_other": "({{count}} items)",
@@ -300,6 +303,10 @@
     "cancelled": "Cancelled",
     "clearList": "Clear list",
     "cancel": "Cancel",
+    "confirmCancelTitle": "Cancel YouTube Import?",
+    "confirmCancelDesc": "Are you sure you want to stop fetching YouTube audio? Remaining links in queue will be cancelled.",
+    "confirmCancelAction": "Stop Import",
+    "keepGoing": "Continue Import",
     "close": "Close",
     "invalidJson": "Invalid server response (JSON error)",
     "serverHttpError": "Server error (HTTP {{status}}: {{text}})",
@@ -314,7 +321,8 @@
   "addToPlaylist": {
     "title": "Add to Playlist",
     "buttonText": "Playlist",
-    "empty": "No playlists yet"
+    "empty": "No playlists yet",
+    "newPlaylist": "New Playlist"
   },
   "bulkActions": {
     "barLabel": "Bulk actions",

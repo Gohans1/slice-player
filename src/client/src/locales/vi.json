@@ -93,6 +93,9 @@
     "noDownloadingDesc": "Tất cả các bài trong hàng đợi tải đã hoàn thành.",
     "noErrorsTitle": "Không có bài lỗi",
     "noErrorsDesc": "Tất cả các bài hát đều được tải thành công.",
+    "retryAll": "Thử lại tất cả ({{count}})",
+    "retryAllGeneric": "Thử lại tất cả",
+    "retryingAll": "Đang thử lại...",
     "itemsCount": "({{count}} mục)",
     "itemsCount_one": "({{count}} mục)",
     "itemsCount_other": "({{count}} mục)",
@@ -300,6 +303,10 @@
     "cancelled": "Đã hủy quét link",
     "clearList": "Xóa danh sách",
     "cancel": "Hủy quét link",
+    "confirmCancelTitle": "Hủy nạp nhạc YouTube?",
+    "confirmCancelDesc": "Bạn có chắc chắn muốn dừng quá trình lấy nhạc YouTube không? Các bài hát còn lại trong hàng đợi sẽ bị hủy.",
+    "confirmCancelAction": "Dừng nạp",
+    "keepGoing": "Tiếp tục nạp",
     "close": "Đóng",
     "invalidJson": "Phản hồi từ máy chủ không hợp lệ (lỗi JSON)",
     "serverHttpError": "Lỗi máy chủ (HTTP {{status}}: {{text}})",
@@ -314,7 +321,8 @@
   "addToPlaylist": {
     "title": "Thêm vào danh sách",
     "buttonText": "Playlist",
-    "empty": "Chưa có playlist nào"
+    "empty": "Chưa có playlist nào",
+    "newPlaylist": "Tạo playlist mới"
   },
   "bulkActions": {
     "barLabel": "Thao tác hàng loạt",

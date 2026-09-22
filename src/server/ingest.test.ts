@@ -328,3 +328,197 @@ describe("getDownloadQueueOrder", () => {
     }
   });
 });
+
+describe("ingestYouTubeUrl validation", () => {
+  it("should reject non-YouTube URLs", async () => {
+    const { ingestYouTubeUrl } = await import("./ingest");
+    const res = await ingestYouTubeUrl("https://example.com/not-youtube");
+    expect(res.success).toBe(false);
+    expect(res.message).toContain("URL không hợp lệ");
+  });
+
+  it("should reject empty or whitespace URLs", async () => {
+    const { ingestYouTubeUrl } = await import("./ingest");
+    const res = await ingestYouTubeUrl("   ");
+    expect(res.success).toBe(false);
+    expect(res.message).toContain("URL không hợp lệ");
+  });
+});
+
+describe("purgeTrackCacheFiles", () => {
+  it("should handle empty or whitespace trackId safely", async () => {
+    const { purgeTrackCacheFiles } = await import("./ingest");
+    expect(await purgeTrackCacheFiles("./data/cache/audio", "")).toBeUndefined();
+    expect(await purgeTrackCacheFiles("./data/cache/audio", "   ")).toBeUndefined();
+  });
+
+  it("should filter and purge cache files when preReadFiles is provided", async () => {
+    const { purgeTrackCacheFiles } = await import("./ingest");
+    // Should run smoothly with pre-read file list without calling readdirSync
+    const preRead = ["track_123.mp3", "track_123.mp3.part", "other_456.mp3"];
+    expect(await purgeTrackCacheFiles("./data/cache/audio", "track_123", preRead)).toBeUndefined();
+  });
+});
+
+describe("MAX_PLAYLIST_ITEMS export & signal handling", () => {
+  it("should export MAX_PLAYLIST_ITEMS as 5000", async () => {
+    const { MAX_PLAYLIST_ITEMS } = await import("./ingest");
+    expect(MAX_PLAYLIST_ITEMS).toBe(5000);
+  });
+
+  it("should respect aborted signal immediately without launching process", async () => {
+    const { ingestYouTubeUrl } = await import("./ingest");
+    const controller = new AbortController();
+    controller.abort();
+    const res = await ingestYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ", controller.signal);
+    expect(res.success).toBe(false);
+    expect(res.message).toContain("hủy");
+  });
+
+  it("should safely cancel download queue for inactive or active track", async () => {
+    const { cancelDownloadIfActive } = await import("./ingest");
+    await cancelDownloadIfActive("yt_dummy_123", ["yt_dummy_123.mp3"]);
+  });
+});
+
+describe("requeueErrorTracks", () => {
+  it("should return 0 when there are no error tracks", async () => {
+    const { initDatabase } = await import("./db");
+    const db = initDatabase("./data/test_requeue_ingest.db");
+    db.run("DELETE FROM tracks WHERE status = 'error'");
+    const { requeueErrorTracks } = await import("./ingest");
+    const res = requeueErrorTracks();
+    expect(res.requeued).toBe(0);
+  });
+
+  it("should requeue error tracks, clear error_message, and return count", async () => {
+    const { initDatabase, createTrack, getTrack, updateTrack } = await import("./db");
+    initDatabase("./data/test_requeue_ingest.db");
+    const { requeueErrorTracks, cancelDownloadIfActive } = await import("./ingest");
+
+    const track1 = createTrack({
+      id: "yt_req_1",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=req1",
+      title: "Error Track 1",
+      artist: "Artist 1",
+      duration: 100,
+      status: "ready",
+    });
+    updateTrack("yt_req_1", { status: "error", error_message: "Network failure" });
+
+    const track2 = createTrack({
+      id: "yt_req_2",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=req2",
+      title: "Error Track 2",
+      artist: "Artist 2",
+      duration: 120,
+      status: "ready",
+    });
+    updateTrack("yt_req_2", { status: "error", error_message: "Connection reset" });
+
+    const res = requeueErrorTracks();
+    expect(res.requeued).toBe(2);
+
+    const updated1 = getTrack("yt_req_1");
+    expect(updated1?.status).toBe("queued");
+    expect(updated1?.error_message).toBeNull();
+
+    const updated2 = getTrack("yt_req_2");
+    expect(updated2?.status).toBe("queued");
+    expect(updated2?.error_message).toBeNull();
+
+    // Clean up queue
+    await cancelDownloadIfActive("yt_req_1");
+    await cancelDownloadIfActive("yt_req_2");
+  });
+
+  it("should requeue only specified track IDs when provided", async () => {
+    const { initDatabase, createTrack, getTrack, updateTrack } = await import("./db");
+    initDatabase("./data/test_requeue_ingest.db");
+    const { requeueErrorTracks, cancelDownloadIfActive } = await import("./ingest");
+
+    createTrack({
+      id: "yt_spec_1",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=spec1",
+      title: "Specific 1",
+      artist: "Artist",
+      duration: 100,
+      status: "ready",
+    });
+    updateTrack("yt_spec_1", { status: "error", error_message: "Fail 1" });
+
+    createTrack({
+      id: "yt_spec_2",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=spec2",
+      title: "Specific 2",
+      artist: "Artist",
+      duration: 100,
+      status: "ready",
+    });
+    updateTrack("yt_spec_2", { status: "error", error_message: "Fail 2" });
+
+    const res = requeueErrorTracks(["yt_spec_1"]);
+    expect(res.requeued).toBe(1);
+
+    expect(getTrack("yt_spec_1")?.status).toBe("queued");
+    expect(getTrack("yt_spec_1")?.error_message).toBeNull();
+    expect(getTrack("yt_spec_2")?.status).toBe("error");
+
+    await cancelDownloadIfActive("yt_spec_1");
+  });
+
+  it("should return 0 and not modify tracks when trackIds is an empty array", async () => {
+    const { initDatabase, createTrack, getTrack, updateTrack } = await import("./db");
+    initDatabase("./data/test_requeue_ingest.db");
+    const { requeueErrorTracks } = await import("./ingest");
+
+    createTrack({
+      id: "yt_empty_arr",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=emptyarr",
+      title: "Empty Arr",
+      artist: "Artist",
+      duration: 100,
+      status: "ready",
+    });
+    updateTrack("yt_empty_arr", { status: "error", error_message: "Old error" });
+
+    const res = requeueErrorTracks([]);
+    expect(res.requeued).toBe(0);
+    expect(getTrack("yt_empty_arr")?.status).toBe("error");
+  });
+
+  it("should handle local track re-ingestion and reset status to error if file is missing", async () => {
+    const { initDatabase, createTrack, getTrack, updateTrack } = await import("./db");
+    initDatabase("./data/test_requeue_ingest.db");
+    const { requeueErrorTracks } = await import("./ingest");
+
+    createTrack({
+      id: "local_missing_1",
+      source_type: "local",
+      source_uri: "./data/non_existent_file.mp3",
+      title: "Missing Local File",
+      artist: "Local Artist",
+      duration: 150,
+      status: "ready",
+    });
+    updateTrack("local_missing_1", { status: "error", error_message: "File missing" });
+
+    const res = requeueErrorTracks(["local_missing_1"]);
+    expect(res.requeued).toBe(1);
+
+    // Wait for the async promise in ingestLocalFile to resolve
+    await Bun.sleep(100);
+
+    const track = getTrack("local_missing_1");
+    expect(track?.status).toBe("error");
+    expect(track?.error_message).toContain("không tồn tại");
+  });
+});
+
+
+

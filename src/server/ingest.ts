@@ -55,6 +55,7 @@ export interface IngestResult {
 }
 
 const YOUTUBE_URL_REGEX = /^https?:\/\/(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)\/.+/i;
+export const MAX_PLAYLIST_ITEMS = 5000;
 
 const activeMetadataProcs = new Set<ReturnType<typeof Bun.spawn>>();
 const MAX_CONCURRENT_METADATA = 2;
@@ -89,8 +90,11 @@ async function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null): Pro
   } catch {}
 }
 
-const MAX_METADATA_QUEUE_DEPTH = 10;
-async function acquireMetadataSlot(): Promise<void> {
+const MAX_METADATA_QUEUE_DEPTH = 20;
+async function acquireMetadataSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error("Yêu cầu đã bị hủy bởi người dùng.");
+  }
   if (activeMetadataCount < MAX_CONCURRENT_METADATA) {
     activeMetadataCount++;
     return;
@@ -100,22 +104,38 @@ async function acquireMetadataSlot(): Promise<void> {
   }
   return new Promise<void>((res, rej) => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const cleanupAbort = () => {
+      if (signal) signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      if (timer) clearTimeout(timer);
+      cleanupAbort();
+      const idx = metadataWaitQueue.indexOf(item);
+      if (idx !== -1) metadataWaitQueue.splice(idx, 1);
+      rej(new Error("Yêu cầu đã bị hủy bởi người dùng."));
+    };
     const item = {
       resolve: () => {
         if (timer) clearTimeout(timer);
+        cleanupAbort();
         activeMetadataCount++;
         res();
       },
       reject: (err: Error) => {
         if (timer) clearTimeout(timer);
+        cleanupAbort();
         rej(err);
       },
     };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
     timer = setTimeout(() => {
+      cleanupAbort();
       const idx = metadataWaitQueue.indexOf(item);
       if (idx !== -1) metadataWaitQueue.splice(idx, 1);
-      rej(new Error("Quá thời gian chờ hàng đợi xử lý YouTube (chờ quá 120s)"));
-    }, 120000);
+      rej(new Error("Quá thời gian chờ hàng đợi xử lý YouTube (chờ quá 10 phút)"));
+    }, 600000);
     metadataWaitQueue.push(item);
   });
 }
@@ -128,11 +148,11 @@ function releaseMetadataSlot(): void {
   }
 }
 
-export async function purgeTrackCacheFiles(audioDir: string, trackId: string): Promise<void> {
+export async function purgeTrackCacheFiles(audioDir: string, trackId: string, preReadFiles?: string[]): Promise<void> {
   if (!trackId || typeof trackId !== "string" || !trackId.trim()) return;
   try {
     if (existsSync(audioDir)) {
-      const files = readdirSync(audioDir);
+      const files = preReadFiles ?? readdirSync(audioDir);
       await Promise.allSettled(
         files
           .filter((f) => f === trackId || f.startsWith(`${trackId}.`))
@@ -236,12 +256,21 @@ export async function recoverIncompleteIngests(): Promise<void> {
     const db = getDb();
     const audioDir = resolve("./data/cache/audio");
     const incompleteTracks = db.query(
-      "SELECT id, source_uri FROM tracks WHERE source_type = 'youtube' AND status IN ('queued', 'downloading')"
+      "SELECT id, source_uri FROM tracks WHERE status IN ('queued', 'downloading')"
     ).all() as { id: string; source_uri: string }[];
+
+    if (incompleteTracks.length === 0) return;
+
+    let preReadFiles: string[] | undefined;
+    try {
+      if (existsSync(audioDir)) {
+        preReadFiles = readdirSync(audioDir);
+      }
+    } catch {}
 
     for (const track of incompleteTracks) {
       try {
-        await purgeTrackCacheFiles(audioDir, track.id);
+        await purgeTrackCacheFiles(audioDir, track.id, preReadFiles);
       } catch {}
       updateTrack(track.id, {
         status: "error",
@@ -324,7 +353,10 @@ export function resolveBestYouTubeThumbnail(
 /**
  * Handle YouTube URL (single video or playlist)
  */
-export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
+export async function ingestYouTubeUrl(rawUrl: string, signal?: AbortSignal): Promise<IngestResult> {
+  if (signal?.aborted) {
+    return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
+  }
   let url = rawUrl.trim().replace(/^["']|["']$/g, "");
   if (!/^https?:\/\//i.test(url)) {
     url = "https://" + url;
@@ -337,7 +369,7 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
   try {
     logEvent("info", "download", `Bắt đầu quét metadata YouTube: ${url}`);
     // Stage 1: Fast metadata extraction via yt-dlp
-    await acquireMetadataSlot();
+    await acquireMetadataSlot(signal);
     let outputText = "";
     let errText = "";
     let rawStderr = "";
@@ -347,12 +379,13 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       const usedCookies = hasValidCookies();
 
       const runMetaExtraction = async (withCookies: boolean, fallbackClient = false): Promise<number> => {
+        if (signal?.aborted) return 1;
         const metaCmd = [
           "yt-dlp",
           ...getYouTubeAuthArgs(withCookies, fallbackClient),
           "--flat-playlist",
           "--playlist-end",
-          "50",
+          String(MAX_PLAYLIST_ITEMS),
           "--match-filter",
           `duration <=? ${MAX_DURATION_SECONDS} & !is_live & live_status != is_upcoming & live_status != post_live`,
           "-J",
@@ -369,10 +402,17 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         });
         activeMetadataProcs.add(proc);
 
+        const onAbort = () => {
+          killProcessSafely(proc);
+        };
+        if (signal) {
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+
         const killTimer = setTimeout(async () => {
           metaTimedOut = true;
           await killProcessSafely(proc);
-        }, 45000);
+        }, 300000);
 
         try {
           const res = await Promise.all([
@@ -387,6 +427,9 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
           return await proc.exited;
         } finally {
           clearTimeout(killTimer);
+          if (signal) {
+            signal.removeEventListener("abort", onAbort);
+          }
           activeMetadataProcs.delete(proc);
           if (proc.exitCode === null) {
             await killProcessSafely(proc);
@@ -395,6 +438,9 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       };
 
       exitCode = await runMetaExtraction(usedCookies);
+      if (signal?.aborted) {
+        return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
+      }
       if (exitCode !== 0 && !metaTimedOut) {
         const isMetaAuthErr = isYouTubeAuthError(rawStderr);
         if (isMetaAuthErr && usedCookies) {
@@ -404,15 +450,25 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
           `[Ingest] Metadata extraction failed with ${isMetaAuthErr ? "auth/bot challenge" : "format/SABR/client restriction"} (exit code ${exitCode}), retrying with fallback client...`
         );
         exitCode = await runMetaExtraction(usedCookies && !isMetaAuthErr, true);
+        if (signal?.aborted) {
+          return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
+        }
         if (exitCode !== 0 && !metaTimedOut && usedCookies && !isMetaAuthErr) {
           exitCode = await runMetaExtraction(false, true);
+          if (signal?.aborted) {
+            return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
+          }
         }
+      }
+
+      if (signal?.aborted) {
+        return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
       }
 
       if (exitCode !== 0 || !outputText || outputText.trim() === "") {
         let userMsg = `yt-dlp error (exit code ${exitCode}): ${errText || "No metadata returned"}`;
         if (metaTimedOut) {
-          userMsg = "Quá thời gian trích xuất thông tin YouTube (timeout 45s)";
+          userMsg = "Quá thời gian trích xuất thông tin YouTube (timeout 5 phút)";
         } else if (exitCode === 101) {
           userMsg = "Lỗi kết nối mạng: Không thể kết nối tới máy chủ YouTube (Network unreachable / Code 101)";
         } else if (exitCode === 0 && (!outputText || outputText.trim() === "")) {
@@ -447,61 +503,121 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
         message: "Không tìm thấy bài hát nào (playlist rỗng hoặc video ở chế độ riêng tư)!",
       };
     }
-    const MAX_PLAYLIST_ITEMS = 50;
     const entries = rawEntries.slice(0, MAX_PLAYLIST_ITEMS);
+    const isPlaylist = Array.isArray(data.entries) || entries.length > 1;
 
-    for (const entry of entries) {
-      if (!entry || !entry.id || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(entry.id))) continue;
-      if (!entry.title || /^\[(private video|deleted video|unavailable video|video riêng tư|video bị xóa)\]$/i.test(String(entry.title).trim())) continue;
+    let newQueuedCount = 0;
+    let skippedDurationCount = 0;
+    let skippedInvalidCount = 0;
 
-      // Skip livestreams and upcoming premieres
-      if (entry.is_live || entry.live_status === "is_live" || entry.live_status === "is_upcoming" || entry.live_status === "post_live") {
-        console.warn(`[Skip] Bỏ qua livestream hoặc lịch phát sóng sắp diễn ra: ${entry.title}`);
-        continue;
-      }
+    const pendingWorkers: Array<{ trackId: string; watchUrl: string }> = [];
+    const pendingTrackEvents: Array<{ type: "created" | "updated"; trackId: string }> = [];
+    const seenTrackIdsInBatch = new Set<string>();
 
-      const duration = Number(entry.duration) || 0;
-      const title = entry.title || "Unknown YouTube Track";
-      const uploader = entry.uploader || entry.channel || "";
-      const videoId = String(entry.id);
-      const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      const thumb = resolveBestYouTubeThumbnail(videoId, entry.thumbnails, entry.thumbnail);
+    const db = getDb();
+    const checkStmt = db.query("SELECT * FROM tracks WHERE id = $id LIMIT 1");
+    const insertStmt = db.query(`
+      INSERT INTO tracks (
+        id, source_type, source_uri, title, artist, duration,
+        thumbnail_url, file_path, peaks_json, status, error_message, volume
+      ) VALUES (
+        $id, $source_type, $source_uri, $title, $artist, $duration,
+        $thumbnail_url, NULL, NULL, 'queued', NULL, 0.5
+      )
+      RETURNING *;
+    `);
+    const updateStmt = db.query(`
+      UPDATE tracks SET status = 'queued', error_message = NULL, thumbnail_url = $thumbnail_url WHERE id = $id RETURNING *;
+    `);
 
-      // Strict 30-minute cap check (if duration is known from metadata)
-      if (duration > MAX_DURATION_SECONDS) {
-        console.warn(`[Skip] Track "${title}" exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
-        continue;
-      }
+    try {
+      db.transaction(() => {
+        for (const entry of entries) {
+          if (signal?.aborted) {
+            throw new Error("ABORTED_BY_USER");
+          }
+          if (!entry || !entry.id || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(entry.id))) {
+            skippedInvalidCount++;
+            continue;
+          }
+          if (!entry.title || /^\[(private video|deleted video|unavailable video|video riêng tư|video bị xóa)\]$/i.test(String(entry.title).trim())) {
+            skippedInvalidCount++;
+            continue;
+          }
 
-      const trackId = `yt_${videoId}`;
-      // Check if already exists in DB
-      let existing = getTrack(trackId);
-      if (!existing) {
-        existing = createTrack({
-          id: trackId,
-          source_type: "youtube",
-          source_uri: watchUrl,
-          title,
-          artist: uploader,
-          duration,
-          thumbnail_url: thumb,
-          status: "queued",
-        });
-        serverEvents.emit("track_created", { trackId });
-        // Trigger background audio download for this track
-        triggerDownloadWorker(trackId, watchUrl);
-      } else {
-        const isCurrentlyActive = currentDownloadingTrackId === trackId || downloadQueue.some((q) => q.trackId === trackId);
-        const fileMissing = !existing.file_path || !existsSync(existing.file_path);
-        if ((existing.status !== "ready" || fileMissing) && !isCurrentlyActive) {
-          const updated = updateTrack(trackId, { status: "queued", error_message: null, thumbnail_url: thumb });
-          serverEvents.emit("track_updated", { trackId });
-          triggerDownloadWorker(trackId, watchUrl);
-          existing = updated || { ...existing, status: "queued", error_message: null, thumbnail_url: thumb };
+          // Skip livestreams and upcoming premieres
+          if (entry.is_live || entry.live_status === "is_live" || entry.live_status === "is_upcoming" || entry.live_status === "post_live") {
+            console.warn(`[Skip] Bỏ qua livestream hoặc lịch phát sóng sắp diễn ra: ${entry.title}`);
+            skippedInvalidCount++;
+            continue;
+          }
+
+          const duration = Number(entry.duration) || 0;
+          const title = entry.title || "Unknown YouTube Track";
+          const uploader = entry.uploader || entry.channel || "";
+          const videoId = String(entry.id);
+          const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const thumb = resolveBestYouTubeThumbnail(videoId, entry.thumbnails, entry.thumbnail);
+
+          // Strict 30-minute cap check (if duration is known from metadata)
+          if (duration > MAX_DURATION_SECONDS) {
+            console.warn(`[Skip] Track "${title}" exceeds 30m limit (${duration}s > ${MAX_DURATION_SECONDS}s)`);
+            skippedDurationCount++;
+            continue;
+          }
+
+          const trackId = `yt_${videoId}`;
+          if (seenTrackIdsInBatch.has(trackId)) {
+            continue;
+          }
+          seenTrackIdsInBatch.add(trackId);
+
+          // Check if already exists in DB
+          let existing = checkStmt.get({ $id: trackId }) as Track | null;
+          if (!existing) {
+            existing = insertStmt.get({
+              $id: trackId,
+              $source_type: "youtube",
+              $source_uri: watchUrl,
+              $title: title,
+              $artist: uploader,
+              $duration: duration,
+              $thumbnail_url: thumb,
+            }) as Track;
+            newQueuedCount++;
+            pendingTrackEvents.push({ type: "created", trackId });
+            pendingWorkers.push({ trackId, watchUrl });
+          } else {
+            const isCurrentlyActive = currentDownloadingTrackId === trackId || queuedTrackIdsSet.has(trackId);
+            const needsRequeue = !isCurrentlyActive && existing.status !== "ready";
+            if (needsRequeue) {
+              const updated = updateStmt.get({ $id: trackId, $thumbnail_url: thumb }) as Track | null;
+              pendingTrackEvents.push({ type: "updated", trackId });
+              pendingWorkers.push({ trackId, watchUrl });
+              existing = updated || { ...existing, status: "queued", error_message: null, thumbnail_url: thumb };
+              newQueuedCount++;
+            }
+          }
+
+          createdTracks.push(existing);
         }
+      })();
+    } catch (err: any) {
+      if (err?.message === "ABORTED_BY_USER" || signal?.aborted) {
+        return { success: false, message: "Yêu cầu đã bị hủy bởi người dùng." };
       }
+      throw err;
+    } finally {
+      try { checkStmt.finalize(); } catch {}
+      try { insertStmt.finalize(); } catch {}
+      try { updateStmt.finalize(); } catch {}
+    }
 
-      createdTracks.push(existing);
+    for (const evt of pendingTrackEvents) {
+      serverEvents.emit(evt.type === "created" ? "track_created" : "track_updated", { trackId: evt.trackId });
+    }
+    for (const worker of pendingWorkers) {
+      triggerDownloadWorker(worker.trackId, worker.watchUrl, !isPlaylist);
     }
 
     if (createdTracks.length === 0 && entries.length > 0) {
@@ -511,11 +627,25 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
       };
     }
 
+    if (isPlaylist && newQueuedCount > 0) {
+      logEvent("info", "download", `Đã nạp ${newQueuedCount} bài hát từ playlist vào hàng đợi tải.`, { count: newQueuedCount });
+    }
+    if (skippedDurationCount > 0) {
+      logEvent("warn", "download", `Bỏ qua ${skippedDurationCount} bài trong playlist do thời lượng vượt quá 30 phút.`, { count: skippedDurationCount });
+    }
+    if (skippedInvalidCount > 0) {
+      logEvent("warn", "download", `Bỏ qua ${skippedInvalidCount} video không hợp lệ, riêng tư hoặc livestream trong playlist.`, { count: skippedInvalidCount });
+    }
+
+    const userMsg = isPlaylist
+      ? `Đã xử lý ${createdTracks.length} bài hát từ playlist (${newQueuedCount} bài được đưa vào hàng đợi tải).`
+      : `Đã nạp thành công bài hát vào hàng đợi tải.`;
+
     logEvent("success", "download", `Đã xử lý YouTube URL: tạo/cập nhật ${createdTracks.length} bài hát`, { count: createdTracks.length });
     return {
       success: true,
+      message: userMsg,
       tracks: createdTracks,
-      message: `Đã nạp thành công ${createdTracks.length} bài hát vào hàng đợi tải.`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -526,17 +656,21 @@ export async function ingestYouTubeUrl(rawUrl: string): Promise<IngestResult> {
 
 // Queue worker for downloads (strictly sequential: concurrency = 1)
 const downloadQueue: Array<{ trackId: string; url: string }> = [];
+const queuedTrackIdsSet = new Set<string>();
 let isDownloading = false;
 let currentDownloadingTrackId: string | null = null;
 let activeDownloadProc: ReturnType<typeof Bun.spawn> | null = null;
 
 export function getDownloadQueueOrder(): string[] {
+  const seen = new Set<string>();
   const list: string[] = [];
   if (currentDownloadingTrackId) {
+    seen.add(currentDownloadingTrackId);
     list.push(currentDownloadingTrackId);
   }
   for (const item of downloadQueue) {
-    if (item.trackId && !list.includes(item.trackId)) {
+    if (item.trackId && !seen.has(item.trackId)) {
+      seen.add(item.trackId);
       list.push(item.trackId);
     }
   }
@@ -558,6 +692,7 @@ export function isIngestBusy(): boolean {
 
 export async function abortIngestProcesses(): Promise<void> {
   downloadQueue.length = 0;
+  queuedTrackIdsSet.clear();
   while (metadataWaitQueue.length > 0) {
     const item = metadataWaitQueue.shift();
     try { item?.reject(new Error("Yêu cầu đã bị hủy")); } catch {}
@@ -578,14 +713,16 @@ export async function abortIngestProcesses(): Promise<void> {
   }
 }
 
-export async function cancelDownloadIfActive(trackId: string): Promise<void> {
+export async function cancelDownloadIfActive(trackId: string, preReadFiles?: string[]): Promise<void> {
   for (let i = downloadQueue.length - 1; i >= 0; i--) {
     if (downloadQueue[i].trackId === trackId) {
       downloadQueue.splice(i, 1);
+      queuedTrackIdsSet.delete(trackId);
     }
   }
 
-  if (currentDownloadingTrackId === trackId) {
+  const wasActivelyDownloading = currentDownloadingTrackId === trackId;
+  if (wasActivelyDownloading) {
     if (currentDownloadToken) {
       cancelledTokens.add(currentDownloadToken);
     }
@@ -604,15 +741,79 @@ export async function cancelDownloadIfActive(trackId: string): Promise<void> {
   } catch {}
 
   // Clean up any residual .part or .ytdl files
-  await purgeTrackCacheFiles(audioDir, trackId);
+  // If track was actively downloading, bypass preReadFiles so fresh directory scan catches latest chunks
+  await purgeTrackCacheFiles(audioDir, trackId, wasActivelyDownloading ? undefined : preReadFiles);
 }
 
-function triggerDownloadWorker(trackId: string, url: string) {
-  if (currentDownloadingTrackId === trackId || downloadQueue.some((q) => q.trackId === trackId)) return;
-  const existing = getTrack(trackId);
-  logEvent("info", "download", `Đã đưa vào hàng đợi tải: [${existing?.title || trackId}]`, { trackId });
+function triggerDownloadWorker(trackId: string, url: string, shouldLog = true) {
+  if (currentDownloadingTrackId === trackId || queuedTrackIdsSet.has(trackId)) return;
+  if (shouldLog) {
+    const existing = getTrack(trackId);
+    logEvent("info", "download", `Đã đưa vào hàng đợi tải: [${existing?.title || trackId}]`, { trackId });
+  }
   downloadQueue.push({ trackId, url });
+  queuedTrackIdsSet.add(trackId);
   processDownloadQueue();
+}
+
+export function requeueErrorTracks(trackIds?: string[]): { requeued: number } {
+  if (trackIds !== undefined && trackIds.length === 0) {
+    return { requeued: 0 };
+  }
+
+  resetCookiesStatus();
+  const db = getDb();
+  let errorTracks: Array<{ id: string; source_type: string; source_uri: string }>;
+
+  if (trackIds === undefined) {
+    errorTracks = db.query(
+      "SELECT id, source_type, source_uri FROM tracks WHERE status = 'error'"
+    ).all() as Array<{ id: string; source_type: string; source_uri: string }>;
+    if (errorTracks.length === 0) return { requeued: 0 };
+    db.run("UPDATE tracks SET status = 'queued', error_message = NULL WHERE status = 'error'");
+  } else {
+    const idSet = new Set(trackIds);
+    errorTracks = (db.query(
+      "SELECT id, source_type, source_uri FROM tracks WHERE status = 'error'"
+    ).all() as Array<{ id: string; source_type: string; source_uri: string }>).filter((t) => idSet.has(t.id));
+    if (errorTracks.length === 0) return { requeued: 0 };
+    const updateStmt = db.prepare("UPDATE tracks SET status = 'queued', error_message = NULL WHERE id = ?");
+    db.transaction(() => {
+      for (const t of errorTracks) {
+        updateStmt.run(t.id);
+      }
+    })();
+  }
+
+  let requeuedCount = 0;
+  for (const t of errorTracks) {
+    if (t.source_type === "youtube") {
+      triggerDownloadWorker(t.id, t.source_uri, false);
+      requeuedCount++;
+    } else if (t.source_type === "local") {
+      ingestLocalFile(t.source_uri)
+        .then((res) => {
+          if (!res.success) {
+            updateTrack(t.id, {
+              status: "error",
+              error_message: res.message || "Tải lại thất bại",
+            });
+            serverEvents.emit("track_updated", { trackId: t.id });
+          }
+        })
+        .catch((err) => {
+          updateTrack(t.id, {
+            status: "error",
+            error_message: err instanceof Error ? err.message : String(err),
+          });
+          serverEvents.emit("track_updated", { trackId: t.id });
+        });
+      requeuedCount++;
+    }
+    serverEvents.emit("track_updated", { trackId: t.id });
+  }
+
+  return { requeued: requeuedCount };
 }
 
 async function processDownloadQueue() {
@@ -627,6 +828,7 @@ async function processDownloadQueue() {
   try {
     const item = downloadQueue.shift();
     if (!item) return;
+    queuedTrackIdsSet.delete(item.trackId);
 
     trackId = item.trackId;
     const { url } = item;

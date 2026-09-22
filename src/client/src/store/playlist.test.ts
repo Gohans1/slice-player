@@ -1181,6 +1181,72 @@ describe("usePlayerStore playlist management", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  it("retryAllErrors sends POST to /api/tracks/retry-all and refreshes tracks", async () => {
+    const origFetch = globalThis.fetch;
+    let retryAllCalled = false;
+    let retryAllPayload: any = null;
+    let fetchTracksCalled = false;
+
+    globalThis.fetch = ((url: any, options?: RequestInit) => {
+      const urlStr = String(url);
+      if (urlStr === "/api/tracks/retry-all" && options?.method === "POST") {
+        retryAllCalled = true;
+        retryAllPayload = options.body ? JSON.parse(String(options.body)) : null;
+        return new Response(JSON.stringify({ success: true, requeued: 5 }), { status: 200 });
+      }
+      if (urlStr === "/api/tracks") {
+        fetchTracksCalled = true;
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }) as any;
+
+    try {
+      usePlayerStore.setState({ isRetryingAll: false });
+      const ok = await usePlayerStore.getState().retryAllErrors();
+      expect(ok).toBe(true);
+      expect(retryAllCalled).toBe(true);
+      expect(retryAllPayload).toEqual({});
+      expect(fetchTracksCalled).toBe(true);
+      expect(usePlayerStore.getState().isRetryingAll).toBe(false);
+
+      // Pass specific track IDs
+      const ok2 = await usePlayerStore.getState().retryAllErrors(["err_1", "err_2"]);
+      expect(ok2).toBe(true);
+      expect(retryAllPayload).toEqual({ track_ids: ["err_1", "err_2"] });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("retryAllErrors guards against concurrent execution", async () => {
+    const origFetch = globalThis.fetch;
+    let callCount = 0;
+
+    globalThis.fetch = ((url: any) => {
+      const urlStr = String(url);
+      if (urlStr === "/api/tracks/retry-all") {
+        callCount++;
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(new Response(JSON.stringify({ success: true, requeued: 1 }), { status: 200 })), 20);
+        });
+      }
+      return new Response("[]", { status: 200 });
+    }) as any;
+
+    try {
+      usePlayerStore.setState({ isRetryingAll: false });
+      const p1 = usePlayerStore.getState().retryAllErrors();
+      const p2 = usePlayerStore.getState().retryAllErrors();
+      const [res1, res2] = await Promise.all([p1, p2]);
+      expect(res1).toBe(true);
+      expect(res2).toBe(false);
+      expect(callCount).toBe(1);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
 
 
