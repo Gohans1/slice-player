@@ -445,6 +445,13 @@ describe("Database layer (bun:sqlite)", () => {
       expect(membershipsSeg1[0].playlist_id).toBe(pl2.id);
       expect(membershipsSeg1[0].item_id).toBe(item2.id);
 
+      // Track 1 with includeAllSegments = true should return both pl1 and pl2
+      const membershipsAll = getPlaylistMemberships(track1.id, null, true);
+      expect(membershipsAll.length).toBe(2);
+      const allPlIds = membershipsAll.map((m) => m.playlist_id);
+      expect(allPlIds).toContain(pl1.id);
+      expect(allPlIds).toContain(pl2.id);
+
       // Track 2 is not in any playlist
       const membershipsTrack2 = getPlaylistMemberships(track2.id);
       expect(membershipsTrack2.length).toBe(0);

@@ -867,8 +867,19 @@ export function reorderPlaylistItems(playlistId: string, itemIds: string[]): boo
   return success;
 }
 
-export function getPlaylistMemberships(trackId: string, segmentId?: string | null): { playlist_id: string; item_id: string }[] {
+export function getPlaylistMemberships(
+  trackId: string,
+  segmentId?: string | null,
+  includeAllSegments = false
+): { playlist_id: string; item_id: string }[] {
   const db = getDb();
+  if (includeAllSegments) {
+    return db.query(`
+      SELECT playlist_id, min(id) as item_id FROM playlist_items
+      WHERE track_id = $track_id
+      GROUP BY playlist_id
+    `).all({ $track_id: trackId }) as { playlist_id: string; item_id: string }[];
+  }
   const cleanSegId = typeof segmentId === "string" && segmentId.trim() ? segmentId.trim() : null;
   if (cleanSegId) {
     return db.query(`
@@ -882,3 +893,4 @@ export function getPlaylistMemberships(trackId: string, segmentId?: string | nul
     `).all({ $track_id: trackId }) as { playlist_id: string; item_id: string }[];
   }
 }
+

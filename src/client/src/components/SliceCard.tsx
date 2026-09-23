@@ -70,7 +70,7 @@ export function SliceCardComponent({
 
         {/* Kind Badge */}
         <div className="absolute top-2 left-2">
-          <Badge variant="yellow" className="flex items-center gap-1 text-[10px] py-0.5 font-mono shadow-xs">
+          <Badge variant="yellow" className="flex items-center gap-1 text-2xs py-0.5 font-mono shadow-xs">
             <Scissors className="h-3 w-3" />
             <span>{badgeLabel || t("table.sliceIndex", { index: index + 1, defaultValue: `Slice #${index + 1}` })}</span>
           </Badge>
@@ -106,15 +106,15 @@ export function SliceCardComponent({
         </button>
 
         {/* Duration badge */}
-        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white backdrop-blur-xs">
+        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-mono font-medium text-white backdrop-blur-xs">
           {formatDuration(duration)}
         </div>
 
         {/* Active Playing Equalizer Badge */}
         {isCurrentPlaying && (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
+          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-2xs font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
             <NowPlayingEqualizer />
-            <span className="uppercase text-[10px] tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
+            <span className="uppercase text-2xs tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
           </div>
         )}
 

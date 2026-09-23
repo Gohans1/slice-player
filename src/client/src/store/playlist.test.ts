@@ -219,6 +219,111 @@ describe("usePlayerStore playlist management", () => {
     }
   });
 
+  it("buildPlaylistQueue preserves current playing track at head when keepCurrentTrack is true", async () => {
+    const origFetch = globalThis.fetch;
+    const origPlaySegment = usePlayerStore.getState().playSegment;
+    let playSegmentCalled = false;
+
+    usePlayerStore.setState({
+      activeTrack: dummyTrack,
+      activeSegment: {
+        id: "seg_1",
+        track_id: "trk_1",
+        name: "Chorus",
+        start_time: 30,
+        end_time: 60,
+      },
+      isPlaying: true,
+      playSegment: async () => {
+        playSegmentCalled = true;
+      },
+    });
+
+    globalThis.fetch = mock(async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes("/api/playlists/pl_1")) {
+        return new Response(
+          JSON.stringify({
+            ...mockPlaylist,
+            items: [mockItem1, mockItem2],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as any;
+
+    try {
+      await usePlayerStore.getState().buildPlaylistQueue("pl_1", true, 0, true);
+      const queue = usePlayerStore.getState().queue;
+      expect(queue.length).toBe(2);
+      // Item matching currently playing segment should be at index 0
+      expect(queue[0].segment.id).toBe("seg_1");
+      expect(usePlayerStore.getState().queueIndex).toBe(0);
+      expect(usePlayerStore.getState().isShuffle).toBe(true);
+      expect(usePlayerStore.getState().activePlaylistPlayingId).toBe("pl_1");
+      // Because it's already playing, playSegment should not be called to avoid interrupting audio
+      expect(playSegmentCalled).toBe(false);
+    } finally {
+      globalThis.fetch = origFetch;
+      usePlayerStore.setState({ playSegment: origPlaySegment });
+    }
+  });
+
+  it("buildPlaylistQueue calls playSegment when active segment differs from playlist slice item even if track matches", async () => {
+    const origFetch = globalThis.fetch;
+    const origPlaySegment = usePlayerStore.getState().playSegment;
+    let playSegmentCalled = false;
+    let playedSegmentId: string | null = null;
+
+    usePlayerStore.setState({
+      activeTrack: dummyTrack,
+      activeSegment: {
+        id: "fallback_trk_1",
+        track_id: "trk_1",
+        name: "Full Track",
+        start_time: 0,
+        end_time: 180,
+      },
+      isPlaying: true,
+      playSegment: async (seg) => {
+        playSegmentCalled = true;
+        playedSegmentId = seg.id;
+      },
+    });
+
+    globalThis.fetch = mock(async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes("/api/playlists/pl_slice")) {
+        return new Response(
+          JSON.stringify({
+            id: "pl_slice",
+            name: "Slice Only Playlist",
+            created_at: 1000,
+            updated_at: 1000,
+            item_count: 1,
+            items: [mockItem2],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as any;
+
+    try {
+      await usePlayerStore.getState().buildPlaylistQueue("pl_slice", true, 0, true);
+      const queue = usePlayerStore.getState().queue;
+      expect(queue.length).toBe(1);
+      expect(queue[0].segment.id).toBe("seg_1");
+      // Because active was full track (fallback) and playlist has slice, playSegment MUST be called!
+      expect(playSegmentCalled).toBe(true);
+      expect(playedSegmentId as string | null).toBe("seg_1");
+    } finally {
+      globalThis.fetch = origFetch;
+      usePlayerStore.setState({ playSegment: origPlaySegment });
+    }
+  });
+
   it("playPlaylistItemAtIndex starts playing at the given index", async () => {
     const origFetch = globalThis.fetch;
     const origPlaySegment = usePlayerStore.getState().playSegment;

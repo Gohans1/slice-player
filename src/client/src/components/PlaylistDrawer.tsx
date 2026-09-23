@@ -194,7 +194,7 @@ function PlaylistDrawerContent({
         <div className="flex-1 overflow-y-auto py-2 space-y-4 pr-1">
           {/* System Default Tab */}
           <div>
-            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5">
+            <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5">
               {t("playlist.systemHeader")}
             </div>
             <div className="space-y-1.5">
@@ -259,11 +259,11 @@ function PlaylistDrawerContent({
                     <div className="flex items-center gap-2.5 truncate flex-1 min-w-0 pr-2">
                       {cat.icon}
                       <span className="truncate text-sm font-medium">{cat.name}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground shrink-0">
+                      <span className="font-mono text-2xs text-muted-foreground shrink-0">
                         {cat.countText}
                       </span>
                       {isPlayingThis && (
-                        <span className="inline-flex items-center gap-1 font-mono text-[10px] text-flexoki-green shrink-0 ml-1">
+                        <span className="inline-flex items-center gap-1 font-mono text-2xs text-flexoki-green shrink-0 ml-1">
                           <span className="h-1.5 w-1.5 rounded-full bg-flexoki-green animate-pulse" />
                           <span>{t("playlist.nowPlayingBadge")}</span>
                         </span>
@@ -300,9 +300,9 @@ function PlaylistDrawerContent({
 
           {/* Custom Playlists Section */}
           <div>
-            <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5 flex items-center justify-between">
+            <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5 flex items-center justify-between">
               <span>{t("playlist.customHeader")}</span>
-              <span className="text-muted-foreground/70 font-mono text-[10px]">
+              <span className="text-muted-foreground/70 font-mono text-2xs">
                 {t("playlist.customCount", { count: playlists.length })}
               </span>
             </div>
@@ -313,7 +313,7 @@ function PlaylistDrawerContent({
                 <p className="text-xs font-medium text-muted-foreground">
                   {t("playlist.empty")}
                 </p>
-                <p className="text-[11px] text-muted-foreground/60 mt-1 max-w-[200px]">
+                <p className="text-2xs text-muted-foreground/60 mt-1 max-w-[200px]">
                   {t("playlist.emptyHint")}
                 </p>
               </div>
@@ -396,11 +396,11 @@ function PlaylistDrawerContent({
                             <span className="truncate text-sm font-medium">
                               {pl.name}
                             </span>
-                            <span className="font-mono text-[11px] text-muted-foreground shrink-0">
+                            <span className="font-mono text-2xs text-muted-foreground shrink-0">
                               ({pl.item_count || 0})
                             </span>
                             {activePlaylistPlayingId === pl.id && Boolean(activeTrack) && (
-                              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-flexoki-green shrink-0 ml-1">
+                              <span className="inline-flex items-center gap-1 font-mono text-2xs text-flexoki-green shrink-0 ml-1">
                                 <span className="h-1.5 w-1.5 rounded-full bg-flexoki-green animate-pulse" />
                                 <span>{t("playlist.nowPlayingBadge")}</span>
                               </span>

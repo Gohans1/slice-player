@@ -170,7 +170,19 @@
     "loopTrack": "Lặp lại bài này",
     "loopTrackActive": "Đang lặp lại bài này",
     "loopTrackTitle": "Lặp lại bài hát đang phát",
-    "loopTrackActiveDesc": "Đang bật lặp lại bài hát. Bài đang phát sẽ phát lại liên tục."
+    "loopTrackActiveDesc": "Đang bật lặp lại bài hát. Bài đang phát sẽ phát lại liên tục.",
+    "shuffle": "Phát ngẫu nhiên",
+    "shuffleTooltip": "Bấm để đổi phát ngẫu nhiên, chuột phải để chọn danh sách phát",
+    "shuffleMenuHeader": "Tùy chọn phát ngẫu nhiên",
+    "shuffleCurrentQueue": "Hàng đợi hiện tại ({{name}})",
+    "playlistsContainingTrack": "Danh sách phát chứa bài này",
+    "noPlaylistsForTrack": "Chưa có trong danh sách phát nào",
+    "playlistsTagLabel": "Danh sách phát",
+    "lastUsed": "Gần nhất",
+    "shuffleQuickTooltip": "Bấm để shuffle danh sách phát \"{{name}}\" (gần nhất), chuột phải để chọn danh sách phát",
+    "viewPlayingPlaylist": "Đang phát: {{name}} - Bấm để xem danh sách phát ở view chính",
+    "viewPlayingPlaylistShuffled": "Đang phát: {{name}} (Ngẫu nhiên) - Bấm để xem danh sách phát ở view chính",
+    "openPlaylist": "Mở danh sách phát: {{name}}"
   },
   "queue": {
     "title": "Hàng Đợi Phát",

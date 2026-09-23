@@ -170,7 +170,19 @@
     "loopTrack": "Loop track",
     "loopTrackActive": "Loop track enabled",
     "loopTrackTitle": "Repeat current track",
-    "loopTrackActiveDesc": "Track loop is active. The current track will repeat continuously."
+    "loopTrackActiveDesc": "Track loop is active. The current track will repeat continuously.",
+    "shuffle": "Shuffle",
+    "shuffleTooltip": "Click to toggle shuffle, right-click to choose playlist",
+    "shuffleMenuHeader": "Shuffle Options",
+    "shuffleCurrentQueue": "Current Queue ({{name}})",
+    "playlistsContainingTrack": "Playlists containing this song",
+    "noPlaylistsForTrack": "Not in any custom playlists",
+    "playlistsTagLabel": "Playlists",
+    "lastUsed": "Recent",
+    "shuffleQuickTooltip": "Click to shuffle playlist \"{{name}}\" (recent), right-click to choose playlist",
+    "viewPlayingPlaylist": "Playing: {{name}} - Click to view in main",
+    "viewPlayingPlaylistShuffled": "Playing: {{name}} (Shuffled) - Click to view in main",
+    "openPlaylist": "Open playlist: {{name}}"
   },
   "queue": {
     "title": "Now Playing Queue",

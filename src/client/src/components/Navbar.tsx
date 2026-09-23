@@ -444,7 +444,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-base tracking-tight text-foreground">{t("app.title")}</span>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
+              <span className="text-2xs uppercase font-mono px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
                 {t("app.flexoki")}
               </span>
             </div>
@@ -463,7 +463,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
             >
               <Folder className="h-3.5 w-3.5 text-primary" />
               <span>{t("nav.playlists")}</span>
-              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground ml-0.5">
+              <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground ml-0.5">
                 {playlists.length}
               </span>
             </Button>
@@ -500,7 +500,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
               <X className="h-3.5 w-3.5" />
             </button>
           ) : (
-            <kbd className="hidden lg:inline-flex absolute right-2.5 top-1/2 -translate-y-1/2 items-center pointer-events-none text-[10px] text-muted-foreground font-mono bg-muted/60 border border-border px-1.5 py-0.5 rounded">
+            <kbd className="hidden lg:inline-flex absolute right-2.5 top-1/2 -translate-y-1/2 items-center pointer-events-none text-2xs text-muted-foreground font-mono bg-muted/60 border border-border px-1.5 py-0.5 rounded">
               /
             </kbd>
           )}
@@ -777,22 +777,22 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
                     </div>
                     <div className="shrink-0">
                       {item.status === "pending" && (
-                        <span className="text-[11px] text-muted-foreground">{t("localModal.statusPending")}</span>
+                        <span className="text-2xs text-muted-foreground">{t("localModal.statusPending")}</span>
                       )}
                       {item.status === "uploading" && (
-                        <div className="flex items-center gap-1 text-[11px] text-primary">
+                        <div className="flex items-center gap-1 text-2xs text-primary">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span>{t("localModal.statusUploading")}</span>
                         </div>
                       )}
                       {item.status === "success" && (
-                        <div className="flex items-center gap-1 text-[11px] text-flexoki-green">
+                        <div className="flex items-center gap-1 text-2xs text-flexoki-green">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           <span>{t("localModal.statusSuccess")}</span>
                         </div>
                       )}
                       {item.status === "error" && (
-                        <div className="flex items-center gap-1 text-[11px] text-destructive" title={item.error}>
+                        <div className="flex items-center gap-1 text-2xs text-destructive" title={item.error}>
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate max-w-[120px]">{item.error || t("localModal.statusError")}</span>
                         </div>
@@ -836,7 +836,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
                     disabled={isLocalLoading}
                     className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono resize-y"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     {t("localModal.pathHint")}
                   </p>
                 </div>

@@ -49,7 +49,7 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
               {item.keys.map((k, kIdx) => (
                 <kbd
                   key={kIdx}
-                  className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded border border-border/80 bg-secondary/80 font-mono text-[11px] font-semibold text-foreground shadow-xs select-none"
+                  className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded border border-border/80 bg-secondary/80 font-mono text-2xs font-semibold text-foreground shadow-xs select-none"
                 >
                   {k}
                 </kbd>

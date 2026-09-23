@@ -11,6 +11,8 @@ import {
   Disc,
   Loader2,
   Repeat1,
+  Info,
+  Folder,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { VolumeSlider } from "./ui/VolumeSlider";
@@ -213,7 +215,7 @@ function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 w-full max-w-xl text-[10px] font-mono text-muted-foreground">
+    <div className="flex items-center gap-2 w-full max-w-xl text-2xs font-mono text-muted-foreground">
       <span className="w-12 text-right">{formatTime(displayedElapsed)}</span>
       <div
         ref={progressBarRef}
@@ -271,6 +273,9 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const isLoopQueue = usePlayerStore((s) => s.isLoopQueue);
   const isLoopTrack = usePlayerStore((s) => s.isLoopTrack);
   const toggleLoopTrack = usePlayerStore((s) => s.toggleLoopTrack);
+  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
+  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const playlists = usePlayerStore((s) => s.playlists);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const queueLength = usePlayerStore((s) => s.queue.length);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
@@ -279,6 +284,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
+  const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
+  const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const activePlaylistPlayingName = usePlayerStore((s) => {
     if (!s.activePlaylistPlayingId) return null;
     return s.playlists.find((p) => p.id === s.activePlaylistPlayingId)?.name ?? null;
@@ -331,6 +338,197 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
     setTrackVolume(activeTrack.id, safe);
   }, [activeTrack, setTrackVolume]);
 
+  const [isShuffleMenuOpen, setIsShuffleMenuOpen] = React.useState(false);
+  const [containingPlaylists, setContainingPlaylists] = React.useState<typeof playlists>([]);
+  const [isLoadingMemberships, setIsLoadingMemberships] = React.useState(false);
+  const [lastShufflePlaylistId, setLastShufflePlaylistId] = React.useState<string | null>(() => {
+    try {
+      return typeof window !== "undefined" ? window.localStorage.getItem("slice_player_last_shuffle_playlist_id") : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const displayPlaylists = React.useMemo(() => {
+    if (!activePlaylistPlayingId) return containingPlaylists;
+    const normalizedPlayingName = playingPlaylistName?.trim().toLowerCase();
+    return containingPlaylists.filter(
+      (pl) =>
+        pl.id !== activePlaylistPlayingId &&
+        (!normalizedPlayingName || pl.name.trim().toLowerCase() !== normalizedPlayingName)
+    );
+  }, [containingPlaylists, activePlaylistPlayingId, playingPlaylistName]);
+
+  const handleActiveTagClick = React.useCallback(() => {
+    if (activePlaylistPlayingId) {
+      setActivePlaylist(activePlaylistPlayingId);
+    } else {
+      setActivePlaylist(null);
+      if (playbackMode) {
+        setActiveSystemCategory(playbackMode);
+      }
+    }
+  }, [activePlaylistPlayingId, playbackMode, setActivePlaylist, setActiveSystemCategory]);
+
+  const shuffleButtonRef = React.useRef<HTMLButtonElement>(null);
+  const shuffleMenuRef = React.useRef<HTMLDivElement>(null);
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressTriggeredRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!activeTrack?.id) {
+      setContainingPlaylists([]);
+      setIsLoadingMemberships(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+    setIsLoadingMemberships(true);
+
+    const fetchMemberships = async () => {
+      try {
+        const url = `/api/playlist-memberships?track_id=${encodeURIComponent(activeTrack.id)}&all=true`;
+        const res = await fetch(url, { signal: abortController.signal });
+        if (res.ok) {
+          const data: unknown = await res.json();
+          if (Array.isArray(data) && !abortController.signal.aborted) {
+            const plIdSet = new Set(
+              data
+                .map((item: unknown) =>
+                  item && typeof item === "object" && "playlist_id" in item && typeof (item as { playlist_id?: unknown }).playlist_id === "string"
+                    ? (item as { playlist_id: string }).playlist_id
+                    : null
+                )
+                .filter(Boolean)
+            );
+            const matched = playlists.filter((pl) => plIdSet.has(pl.id));
+            setContainingPlaylists(matched);
+          }
+        } else if (!abortController.signal.aborted) {
+          setContainingPlaylists([]);
+        }
+      } catch (e: any) {
+        if (e?.name !== "AbortError") {
+          setContainingPlaylists([]);
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setIsLoadingMemberships(false);
+        }
+      }
+    };
+
+    fetchMemberships();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [activeTrack?.id, playlists]);
+
+  React.useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!isShuffleMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
+      if (
+        shuffleMenuRef.current &&
+        !shuffleMenuRef.current.contains(e.target as Node) &&
+        shuffleButtonRef.current &&
+        !shuffleButtonRef.current.contains(e.target as Node)
+      ) {
+        setIsShuffleMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsShuffleMenuOpen(false);
+        shuffleButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("pointerdown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isShuffleMenuOpen]);
+
+  const matchingLastPlaylist = React.useMemo(() => {
+    if (!lastShufflePlaylistId) return null;
+    return containingPlaylists.find((p) => p.id === lastShufflePlaylistId) ?? null;
+  }, [lastShufflePlaylistId, containingPlaylists]);
+
+  const canQuickShuffleLastPlaylist = Boolean(
+    !activePlaylistPlayingId && matchingLastPlaylist
+  );
+
+  const handleShufflePlaylist = React.useCallback(
+    async (playlistId: string) => {
+      setIsShuffleMenuOpen(false);
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("slice_player_last_shuffle_playlist_id", playlistId);
+        }
+      } catch {
+        // ignore localStorage errors
+      }
+      setLastShufflePlaylistId(playlistId);
+      await buildPlaylistQueue(playlistId, true, 0, true);
+    },
+    [buildPlaylistQueue]
+  );
+
+  const handleShuffleClick = React.useCallback(() => {
+    if (isLongPressTriggeredRef.current) {
+      isLongPressTriggeredRef.current = false;
+      return;
+    }
+    if (canQuickShuffleLastPlaylist && matchingLastPlaylist) {
+      handleShufflePlaylist(matchingLastPlaylist.id);
+      return;
+    }
+    toggleShuffle();
+    setIsShuffleMenuOpen(false);
+  }, [canQuickShuffleLastPlaylist, matchingLastPlaylist, handleShufflePlaylist, toggleShuffle]);
+
+  const handleShuffleContextMenu = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isLongPressTriggeredRef.current) {
+      return;
+    }
+    setIsShuffleMenuOpen((prev) => !prev);
+  }, []);
+
+  const handleShufflePointerDown = React.useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    isLongPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      setIsShuffleMenuOpen(true);
+    }, 500);
+  }, []);
+
+  const handleShufflePointerUpOrCancel = React.useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleShuffleCurrentQueue = React.useCallback(() => {
+    toggleShuffle();
+    setIsShuffleMenuOpen(false);
+  }, [toggleShuffle]);
+
   if (!activeTrack || !activeSegment) {
     return (
       <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-6 py-3 animate-in fade-in duration-150">
@@ -358,7 +556,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
             >
               <ListMusic className="h-4 w-4" />
               <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-              <span className="font-mono text-[10px] px-1 rounded bg-accent text-accent-foreground">
+              <span className="font-mono text-2xs px-1 rounded bg-accent text-accent-foreground">
                 {queueLength}
               </span>
             </Button>
@@ -393,30 +591,64 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               <span className="font-semibold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px]">
                 {activeTrack.title}
               </span>
-              <span
-                role="status"
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 shrink-0 max-w-[140px] truncate"
+              <button
+                type="button"
+                onClick={handleActiveTagClick}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/40 shrink-0 max-w-[140px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                 title={
-                  isShuffle
-                    ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
-                    : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` })
+                  activePlaylistPlayingId
+                    ? (isShuffle
+                        ? t("player.viewPlayingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled) - Click to view in main` })
+                        : t("player.viewPlayingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} - Click to view in main` }))
+                    : (isShuffle
+                        ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
+                        : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` }))
                 }
                 aria-label={
-                  isShuffle
-                    ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
-                    : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` })
+                  activePlaylistPlayingId
+                    ? (isShuffle
+                        ? t("player.viewPlayingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled) - Click to view in main` })
+                        : t("player.viewPlayingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} - Click to view in main` }))
+                    : (isShuffle
+                        ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
+                        : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` }))
                 }
               >
                 <span className={`h-1.5 w-1.5 rounded-full ${isPlaying ? "bg-flexoki-green animate-pulse" : "bg-muted-foreground/60"} shrink-0`} aria-hidden="true" />
                 {isShuffle && <Shuffle className="h-2.5 w-2.5 text-flexoki-green shrink-0" aria-hidden="true" />}
                 <span className="truncate">{playingPlaylistName}</span>
-              </span>
+              </button>
+              {displayPlaylists.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap" aria-label={t("player.playlistsTagLabel", "Playlists")}>
+                  {displayPlaylists.slice(0, 2).map((pl) => (
+                    <button
+                      key={pl.id}
+                      type="button"
+                      onClick={() => setActivePlaylist(pl.id)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-normal bg-secondary/80 text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/40 hover:border-border/80 shrink-0 max-w-[100px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                      title={t("player.openPlaylist", { name: pl.name, defaultValue: `Open playlist: ${pl.name}` })}
+                      aria-label={t("player.openPlaylist", { name: pl.name, defaultValue: `Open playlist: ${pl.name}` })}
+                    >
+                      <Folder className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />
+                      <span className="truncate">{pl.name}</span>
+                    </button>
+                  ))}
+                  {displayPlaylists.length > 2 && (
+                    <span
+                      className="inline-flex items-center px-1 py-0.5 rounded text-2xs font-mono text-muted-foreground bg-secondary/50 border border-border/30 select-none shrink-0"
+                      title={displayPlaylists.slice(2).map((p) => p.name).join(", ")}
+                    >
+                      +{displayPlaylists.length - 2}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-xs font-medium text-flexoki-blue truncate">
                 {activeSegment.name}
               </span>
-              <span className="text-[10px] text-muted-foreground font-mono">
+              <span className="text-2xs text-muted-foreground font-mono">
                 [{formatTime(activeSegment.start_time)} → {formatTime(activeSegment.end_time)}]
               </span>
             </div>
@@ -426,6 +658,114 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
         {/* Center Controls & Progress */}
         <div className="flex flex-col items-center gap-1.5 w-full sm:flex-1 sm:max-w-xl min-w-0">
           <div className="flex items-center gap-3">
+            {/* Shuffle Button with Context Menu (Left of Previous) */}
+            <div className="relative">
+              <Button
+                ref={shuffleButtonRef}
+                variant={isShuffle ? "secondary" : "ghost"}
+                size="icon"
+                onClick={handleShuffleClick}
+                onContextMenu={handleShuffleContextMenu}
+                onPointerDown={handleShufflePointerDown}
+                onPointerUp={handleShufflePointerUpOrCancel}
+                onPointerCancel={handleShufflePointerUpOrCancel}
+                onPointerLeave={handleShufflePointerUpOrCancel}
+                disabled={queueLength === 0}
+                aria-label={t("player.shuffle", "Shuffle")}
+                aria-pressed={isShuffle}
+                aria-haspopup="menu"
+                aria-expanded={isShuffleMenuOpen}
+                className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
+                  isShuffle ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                } disabled:opacity-40 disabled:transform-none`}
+                title={
+                  canQuickShuffleLastPlaylist && matchingLastPlaylist
+                    ? t("player.shuffleQuickTooltip", {
+                        name: matchingLastPlaylist.name,
+                        defaultValue: `Click to shuffle playlist "${matchingLastPlaylist.name}" (recent), right-click to choose playlist`,
+                      })
+                    : t("player.shuffleTooltip", "Click to toggle shuffle, right-click to choose playlist")
+                }
+              >
+                <Shuffle className="h-4 w-4" />
+              </Button>
+
+              {isShuffleMenuOpen && (
+                <div
+                  ref={shuffleMenuRef}
+                  role="menu"
+                  aria-label={t("player.shuffleMenuHeader", "Shuffle Options")}
+                  className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 z-50 min-w-[220px] max-w-[280px] rounded-lg border border-border bg-popover/95 p-1.5 text-popover-foreground shadow-xl backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100"
+                >
+                  <div className="px-2 py-1 text-2xs font-semibold text-muted-foreground border-b border-border/50 mb-1 flex items-center justify-between">
+                    <span>{t("player.shuffleMenuHeader", "Shuffle Options")}</span>
+                  </div>
+
+                  {/* Current Queue option */}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleShuffleCurrentQueue}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md text-foreground hover:bg-accent text-left transition-colors group cursor-pointer"
+                  >
+                    <Shuffle className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true" />
+                    <span className="truncate flex-1 font-medium">
+                      {t("player.shuffleCurrentQueue", {
+                        name: playingPlaylistName,
+                        defaultValue: `Current Queue (${playingPlaylistName})`,
+                      })}
+                    </span>
+                    <span className="font-mono text-2xs text-muted-foreground">{queueLength}</span>
+                  </button>
+
+                  <div className="h-px bg-border/50 my-1" />
+
+                  {/* Playlists Containing Current Track */}
+                  <div className="px-2 py-1 text-2xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t("player.playlistsContainingTrack", "Playlists containing this song")}
+                  </div>
+
+                  {isLoadingMemberships ? (
+                    <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>{t("common.loading", "Loading...")}</span>
+                    </div>
+                  ) : containingPlaylists.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground italic flex items-center gap-1.5">
+                      <Info className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                      <span>{t("player.noPlaylistsForTrack", "Not in any custom playlists")}</span>
+                    </div>
+                  ) : (
+                    <div className="max-h-44 overflow-y-auto space-y-0.5">
+                      {containingPlaylists.map((pl) => {
+                        const isRecent = pl.id === lastShufflePlaylistId;
+                        return (
+                          <button
+                            key={pl.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => handleShufflePlaylist(pl.id)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md text-foreground hover:bg-accent text-left transition-colors group cursor-pointer"
+                          >
+                            <Folder className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary shrink-0" aria-hidden="true" />
+                            <span className="truncate flex-1">{pl.name}</span>
+                            {isRecent && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-primary/15 text-primary border border-primary/25 shrink-0">
+                                {t("player.lastUsed", "Recent")}
+                              </span>
+                            )}
+                            {typeof pl.item_count === "number" && (
+                              <span className="font-mono text-2xs text-muted-foreground">{pl.item_count}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <Button
               variant="ghost"
               size="icon"
@@ -539,7 +879,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
           >
             <ListMusic className="h-4 w-4" />
             <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-            <span className="font-mono text-[10px] px-1 rounded bg-accent text-accent-foreground">
+            <span className="font-mono text-2xs px-1 rounded bg-accent text-accent-foreground">
               {queueLength}
             </span>
           </Button>

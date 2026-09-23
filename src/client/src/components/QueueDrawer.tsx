@@ -236,14 +236,14 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     {item.segment.name}
                   </span>
                   <span
-                    className="text-[10px] font-mono text-muted-foreground shrink-0 select-none"
+                    className="text-2xs font-mono text-muted-foreground shrink-0 select-none"
                     title={`${formatDuration(item.segment.start_time)} - ${formatDuration(item.segment.end_time)}`}
                   >
                     [{formatDuration(item.segment.start_time)} - {formatDuration(item.segment.end_time)}]
                   </span>
                 </div>
                 <p
-                  className="text-[11px] text-muted-foreground truncate"
+                  className="text-2xs text-muted-foreground truncate"
                   title={artistText ? `${item.track.title} • ${artistText}` : item.track.title}
                 >
                   {artistText ? `${item.track.title} • ${artistText}` : item.track.title}
@@ -265,7 +265,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
                   </p>
                 </div>
                 <p
-                  className="text-[11px] text-muted-foreground truncate"
+                  className="text-2xs text-muted-foreground truncate"
                   title={artistText || t("table.unknownArtist", "Unknown Artist")}
                 >
                   {artistText || t("table.unknownArtist", "Unknown Artist")}
@@ -277,7 +277,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">
           {formatDuration(segDuration)}
         </span>
         <button
@@ -1190,7 +1190,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
         <div className="py-2.5 border-b border-border/50">
           <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-accent/40 border border-border/40 text-xs">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-muted-foreground text-[11px] shrink-0">{t("queue.playingLabel", "Playing:")}</span>
+              <span className="text-muted-foreground text-2xs shrink-0">{t("queue.playingLabel", "Playing:")}</span>
               <div className="inline-flex items-center gap-1.5 font-semibold text-primary truncate">
                 {activePlaylistPlayingId ? (
                   <Folder className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
@@ -1205,7 +1205,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
               </div>
             </div>
             {Boolean(activeTrack) && (
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-flexoki-green shrink-0 ml-2">
+              <span className="inline-flex items-center gap-1 font-mono text-2xs text-flexoki-green shrink-0 ml-2">
                 {isPlaying ? (
                   <>
                     <span className="h-1.5 w-1.5 rounded-full bg-flexoki-green animate-pulse" />

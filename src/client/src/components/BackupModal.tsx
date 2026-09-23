@@ -212,7 +212,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
                   <span>{t("backupModal.playlistCount", { count: playlists.length })}</span>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+              <p className="text-xs text-muted-foreground leading-relaxed pt-1">
                 {t("backupModal.exportDesc")}
               </p>
             </div>

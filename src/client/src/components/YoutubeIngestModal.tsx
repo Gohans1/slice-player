@@ -319,7 +319,7 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 <span>{t("ytModal.limitHint")}</span>
               </div>
-              <span className="text-[11px] hidden sm:inline text-muted-foreground/80">
+              <span className="text-2xs hidden sm:inline text-muted-foreground/80">
                 {t("ytModal.keyHint")}
               </span>
             </div>
@@ -393,22 +393,22 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
                   </div>
                   <div className="shrink-0">
                     {item.status === "pending" && (
-                      <span className="text-[11px] text-muted-foreground">{t("ytModal.statusPending")}</span>
+                      <span className="text-2xs text-muted-foreground">{t("ytModal.statusPending")}</span>
                     )}
                     {item.status === "scanning" && (
-                      <div className="flex items-center gap-1 text-[11px] text-primary">
+                      <div className="flex items-center gap-1 text-2xs text-primary">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span>{t("ytModal.statusScanning")}</span>
                       </div>
                     )}
                     {item.status === "success" && (
-                      <div className="flex items-center gap-1 text-[11px] text-flexoki-green" title={item.message}>
+                      <div className="flex items-center gap-1 text-2xs text-flexoki-green" title={item.message}>
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         <span>{item.count ? t("ytModal.addedTracks", { count: item.count }) : t("ytModal.statusSuccess")}</span>
                       </div>
                     )}
                     {item.status === "error" && (
-                      <div className="flex items-center gap-1 text-[11px] text-destructive" title={item.error}>
+                      <div className="flex items-center gap-1 text-2xs text-destructive" title={item.error}>
                         <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate max-w-[180px] sm:max-w-[240px]">{item.error || t("ytModal.statusError")}</span>
                       </div>

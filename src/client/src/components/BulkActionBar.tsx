@@ -104,7 +104,7 @@ function BulkAddToPlaylistMenu({
         isExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
       )}
     >
-      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1">
+      <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1">
         {t("addToPlaylist.title", "Add to Playlist")}
       </div>
       <button

@@ -1282,7 +1282,7 @@ export function PlaylistTableView({
                 {/* Kind Badge */}
                 <div role="cell" className="hidden sm:flex items-center">
                   {isSlice && item.segment ? (
-                    <Badge variant="yellow" className="text-[11px] gap-1 font-mono">
+                    <Badge variant="yellow" className="text-2xs gap-1 font-mono">
                       <Scissors className="h-3 w-3" />
                       <span>
                         {t("table.sliceBadge", {
@@ -1292,7 +1292,7 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green" className="text-[11px] gap-1 font-mono">
+                    <Badge variant="green" className="text-2xs gap-1 font-mono">
                       <Disc className="h-3 w-3" />
                       <span>{t("table.fullTrack")}</span>
                     </Badge>
@@ -1303,17 +1303,17 @@ export function PlaylistTableView({
                 <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                   <span>{formatDuration(duration)}</span>
                   {item.track?.status === "downloading" ? (
-                    <Badge variant="outline" className="text-[10px] text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track?.status === "queued" ? (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
                       <Clock className="h-3 w-3 text-primary/80" />
                       <span className="hidden sm:inline">{t("table.queued")}</span>
                     </Badge>
                   ) : item.track?.status === "error" ? (
-                    <Badge variant="destructive" className="text-[10px] gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal">
                       <AlertCircle className="h-3 w-3" />
                       <span className="hidden sm:inline">{t("table.downloadError")}</span>
                     </Badge>
@@ -1402,7 +1402,7 @@ export function PlaylistTableView({
                 ? activePlaylistItems[draggedIdx].segment?.name
                 : activePlaylistItems[draggedIdx].track?.title || t("table.track", "Bài hát")}
             </span>
-            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-mono border-primary/50 text-primary shrink-0">
+            <Badge variant="outline" className="text-2xs py-0 px-1.5 font-mono border-primary/50 text-primary shrink-0">
               #{draggedIdx + 1}
             </Badge>
           </div>
@@ -1844,7 +1844,7 @@ export function PlaylistTableView({
                 {/* Kind Badge */}
                 <div role="cell" className="hidden sm:flex items-center">
                   {isSlice ? (
-                    <Badge variant="yellow" className="text-[11px] gap-1 font-mono">
+                    <Badge variant="yellow" className="text-2xs gap-1 font-mono">
                       <Scissors className="h-3 w-3" />
                       <span>
                         {t("table.sliceBadge", {
@@ -1854,7 +1854,7 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green" className="text-[11px] gap-1 font-mono">
+                    <Badge variant="green" className="text-2xs gap-1 font-mono">
                       <Disc className="h-3 w-3" />
                       <span>{t("table.fullTrack")}</span>
                     </Badge>
@@ -1865,17 +1865,17 @@ export function PlaylistTableView({
                 <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                   <span>{formatDuration(duration)}</span>
                   {item.track.status === "downloading" ? (
-                    <Badge variant="outline" className="text-[10px] text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track.status === "queued" ? (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
                       <Clock className="h-3 w-3 text-primary/80" />
                       <span className="hidden sm:inline">{t("table.queued")}</span>
                     </Badge>
                   ) : item.track.status === "error" ? (
-                    <Badge variant="destructive" className="text-[10px] gap-1 py-0 px-1.5 font-normal">
+                    <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal">
                       <AlertCircle className="h-3 w-3" />
                       <span className="hidden sm:inline">{t("table.downloadError")}</span>
                     </Badge>
@@ -2105,7 +2105,7 @@ export function PlaylistTableView({
                   {track.artist || t("table.unknownArtist")}
                 </div>
                 {track.status === "error" && track.error_message && (
-                  <div className="text-[11px] text-destructive/90 truncate mt-0.5" title={track.error_message}>
+                  <div className="text-2xs text-destructive/90 truncate mt-0.5" title={track.error_message}>
                     {track.error_message}
                   </div>
                 )}
@@ -2113,7 +2113,7 @@ export function PlaylistTableView({
 
               {/* Segment count */}
               <div role="cell" className="hidden sm:flex items-center">
-                <Badge variant="secondary" className="text-[11px] font-mono">
+                <Badge variant="secondary" className="text-2xs font-mono">
                   {t("table.slicesCountBadge", { count: track.segment_count || 0 })}
                 </Badge>
               </div>
@@ -2122,17 +2122,17 @@ export function PlaylistTableView({
               <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                 <span>{formatDuration(track.duration)}</span>
                 {track.status === "downloading" ? (
-                  <Badge variant="outline" className="text-[10px] text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
+                  <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     <span className="hidden sm:inline">{t("table.downloading")}</span>
                   </Badge>
                 ) : track.status === "queued" ? (
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
+                  <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
                     <Clock className="h-3 w-3 text-primary/80" />
                     <span className="hidden sm:inline">{t("table.queued")}</span>
                   </Badge>
                 ) : track.status === "error" ? (
-                  <Badge variant="destructive" className="text-[10px] gap-1 py-0 px-1.5 font-normal" title={track.error_message || t("trackCard.error")}>
+                  <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal" title={track.error_message || t("trackCard.error")}>
                     <AlertCircle className="h-3 w-3" />
                     <span className="hidden sm:inline">{t("table.downloadError")}</span>
                   </Badge>

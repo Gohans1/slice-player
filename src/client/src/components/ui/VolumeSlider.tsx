@@ -185,7 +185,7 @@ export const VolumeSlider = React.forwardRef<HTMLInputElement, VolumeSliderProps
             left: `clamp(10px, calc(${displayPercent}% + ${thumbOffset}px), calc(100% - 10px))`,
           }}
         >
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-primary text-primary-foreground shadow-md leading-none">
+          <span className="px-1.5 py-0.5 rounded text-2xs font-mono font-bold bg-primary text-primary-foreground shadow-md leading-none">
             {displayPercent}
           </span>
           <div className="w-1.5 h-1.5 bg-primary rotate-45 -mt-0.5 shadow-sm" />

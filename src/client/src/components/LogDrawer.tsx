@@ -379,11 +379,11 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-bold text-sm tracking-tight">{t("logs.title")}</h2>
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
+                <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
                   {logs.length}
                 </span>
                 {errorCount > 0 && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-destructive/20 text-destructive border border-destructive/30 font-semibold">
+                  <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-destructive/20 text-destructive border border-destructive/30 font-semibold">
                     {t("logs.errorsCount", { count: errorCount })}
                   </span>
                 )}
@@ -480,7 +480,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`font-mono text-[10px] px-1 py-0.2 rounded ${
+                    className={`font-mono text-2xs px-1 py-0.2 rounded ${
                       isSelected
                         ? "bg-black/20 text-inherit"
                         : tab.isError && tab.count > 0
@@ -555,7 +555,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
               const hasDetails = item.details !== undefined && item.details !== null;
 
               let levelBadge = (
-                <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
+                <span className="px-1 py-0.5 rounded text-2xs font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
                   INFO
                 </span>
               );
@@ -564,7 +564,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
 
               if (item.level === "error") {
                 levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-destructive/20 text-destructive border border-destructive/30 shrink-0">
+                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-destructive/20 text-destructive border border-destructive/30 shrink-0">
                     ERROR
                   </span>
                 );
@@ -572,7 +572,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                 borderColor = "border-destructive/30 bg-destructive/5 hover:border-destructive/50";
               } else if (item.level === "warn") {
                 levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-flexoki-yellow/20 text-flexoki-yellow border border-flexoki-yellow/30 shrink-0">
+                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-yellow/20 text-flexoki-yellow border border-flexoki-yellow/30 shrink-0">
                     WARN
                   </span>
                 );
@@ -580,7 +580,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                 borderColor = "border-flexoki-yellow/30 bg-flexoki-yellow/5 hover:border-flexoki-yellow/50";
               } else if (item.level === "success") {
                 levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-flexoki-green/20 text-flexoki-green border border-flexoki-green/30 shrink-0">
+                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-green/20 text-flexoki-green border border-flexoki-green/30 shrink-0">
                     OK
                   </span>
                 );
@@ -600,12 +600,12 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                   <div className="flex items-start gap-2">
                     {icon}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-muted-foreground mb-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap text-2xs text-muted-foreground mb-0.5">
                         <span className="font-semibold text-foreground/80">
                           {formatLogTimestamp(item.timestamp)}
                         </span>
                         {levelBadge}
-                        <span className="px-1 py-0.2 rounded bg-secondary text-secondary-foreground text-[10px] uppercase tracking-wider">
+                        <span className="px-1 py-0.2 rounded bg-secondary text-secondary-foreground text-2xs uppercase tracking-wider">
                           {categoryTag}
                         </span>
                       </div>
@@ -635,7 +635,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
 
                   {/* Expandable JSON / Details */}
                   {hasDetails && isExpanded && (
-                    <div className="mt-2 pt-2 border-t border-border/50 text-[11px] overflow-x-auto bg-black/30 p-2 rounded animate-in fade-in slide-in-from-top-1 duration-150 ease-out motion-reduce:animate-none">
+                    <div className="mt-2 pt-2 border-t border-border/50 text-2xs overflow-x-auto bg-black/30 p-2 rounded animate-in fade-in slide-in-from-top-1 duration-150 ease-out motion-reduce:animate-none">
                       <pre className="text-muted-foreground whitespace-pre-wrap break-all">
                         {safePrettyStringify(item.details)}
                       </pre>
@@ -648,7 +648,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
         </div>
 
         {/* Footer info bar */}
-        <div className="px-4 py-2 border-t border-border bg-card/60 flex items-center justify-between text-[10px] text-muted-foreground font-sans">
+        <div className="px-4 py-2 border-t border-border bg-card/60 flex items-center justify-between text-2xs text-muted-foreground font-sans">
           <span>{t("logs.shortcutHint")}</span>
           <span className="font-mono">
             {t("logs.linesCount", { current: filteredLogs.length, total: logs.length })}

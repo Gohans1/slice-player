@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Shuffle Playlist Từ PlayerBar & Playlist Tags</title>
+  <link rel="stylesheet" href="./visual-core.css">
+
+  <style>
+    /* CSS Mockup đặc thù cho PlayerBar */
+    .player-mockup-box {
+      background: #0d0d11;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .mock-playerbar-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1.5fr 1fr;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    @media (max-width: 900px) {
+      .mock-playerbar-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+    .track-info-side {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      min-width: 0;
+    }
+    .track-art {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 0.5rem;
+      background: #1e1e24;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      border: 1px solid #33333d;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .track-art::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 0.25rem;
+      background: #4385be;
+    }
+    .track-meta {
+      min-width: 0;
+      flex: 1;
+    }
+    .track-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .track-name {
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.35rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .playlist-pill-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.12rem 0.45rem;
+      border-radius: 0.35rem;
+      font-size: 0.68rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.08);
+      color: #a1a1aa;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      user-select: none;
+    }
+    .center-controls-side {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .btn-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .mock-ctrl-btn {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: transparent;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 0.9rem;
+    }
+    .mock-ctrl-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+    }
+    .mock-ctrl-btn.active-shuffle {
+      color: var(--accent-green);
+      background: rgba(34, 197, 94, 0.12);
+    }
+    .mock-play-btn {
+      width: 2.35rem;
+      height: 2.35rem;
+      background: var(--text-main);
+      color: #000000;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+    }
+    .mock-progressbar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      width: 100%;
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: var(--text-sub);
+    }
+    .mock-track-rail {
+      flex: 1;
+      height: 0.35rem;
+      background: #27272a;
+      border-radius: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .mock-track-fill {
+      width: 42%;
+      height: 100%;
+      background: #4385be;
+      border-radius: 1rem;
+    }
+    .menu-popup-mock {
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      border-radius: 0.65rem;
+      padding: 0.4rem;
+      width: 240px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
+      margin-top: 0.5rem;
+    }
+    .menu-item-mock {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.78rem;
+      border-radius: 0.4rem;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .menu-item-mock:hover {
+      background: #27272a;
+    }
+    .menu-item-mock .name-side {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .menu-item-mock .count-side {
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: #71717a;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- STICKY TOPBAR -->
+  <header class="nav-header">
+    <div class="brand-title"><span>⚡</span> BẢN THIẾT KẾ: SHUFFLE PLAYLIST TỪ PLAYERBAR &amp; PLAYLIST TAGS</div>
+    <nav class="tab-group" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược (3 Cards Thị Giác)</button>
+      <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Giải Thích Chi Tiết (4 Tầng Zoom-in)</button>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- =================================================================
+         TAB 1: TÓM LƯỢC (DEFAULT) - CHUẨN 3 CARDS THỊ GIÁC
+         ================================================================= -->
+    <main id="tab-summarize" class="tab-pane active" role="tabpanel">
+      <section class="callout">
+        <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+        <p>Bổ sung nút Shuffle đặt ngay bên trái nút Previous hỗ trợ click chuột trái toggle shuffle và chuột phải/long-press mở menu shuffle các playlist chứa bài này mượt mà không ngắt nhạc, kèm playlist tags read-only cạnh tên bài hát.</p>
+      </section>
+
+      <!-- CARD 1: COMPARISON SLIDER (SWIPE DIFF) -->
+      <article class="card-wrapper card-slider">
+        <div class="card-header-bar">
+          <span class="card-badge badge-white">CARD 1: COMPARISON SLIDER</span>
+          <span style="font-size: 0.85rem; color: var(--text-main);">Kéo trượt để so sánh Trước / Sau trực quan</span>
+        </div>
+        <div class="slider-viewport">
+          <!-- Layer Before: Cũ -->
+          <div class="slider-layer slider-before">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.75rem;">
+              <span class="mock-annotation red">HIỆN TRẠNG CŨ</span>
+              <div class="player-mockup-box">
+                <div class="mock-playerbar-grid">
+                  <div class="track-info-side">
+                    <div class="track-art">🎵</div>
+                    <div class="track-meta">
+                      <div class="track-title-row">
+                        <span class="track-name">Bài Hát Vui Tươi</span>
+                        <span class="status-badge">Mix (Full)</span>
+                      </div>
+                      <div style="font-size: 0.75rem; color: #60a5fa; margin-top: 0.2rem;">Full Track [00:00 → 04:38]</div>
+                    </div>
+                  </div>
+                  <div class="center-controls-side">
+                    <div class="btn-row">
+                      <button type="button" class="mock-ctrl-btn" title="Previous">⏮</button>
+                      <button type="button" class="mock-play-btn">▶</button>
+                      <button type="button" class="mock-ctrl-btn" title="Next">⏭</button>
+                      <button type="button" class="mock-ctrl-btn" title="Loop Track">🔁</button>
+                    </div>
+                    <div class="mock-progressbar">
+                      <span>01:15</span>
+                      <div class="mock-track-rail"><div class="mock-track-fill"></div></div>
+                      <span>04:38</span>
+                    </div>
+                  </div>
+                  <div style="text-align: right; font-size: 0.75rem; color: var(--accent-red); font-weight: 600;">
+                    ❌ Không có nút Shuffle trên thanh điều khiển.<br>
+                    ❌ Không biết bài này thuộc playlist nào.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Layer After: Mới -->
+          <div class="slider-layer slider-after">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+              <span class="mock-annotation green">GIẢI PHÁP MỚI HOÀN THIỆN</span>
+              <div class="player-mockup-box">
+                <div class="mock-playerbar-grid">
+                  <div class="track-info-side">
+                    <div class="track-art">🎵</div>
+                    <div class="track-meta">
+                      <div class="track-title-row">
+                        <span class="track-name">Bài Hát Vui Tươi</span>
+                        <span class="status-badge">Mix (Full)</span>
+                        <span class="playlist-pill-tag">📁 Nhạc Vui</span>
+                        <span class="playlist-pill-tag">📁 Quẩy Xe</span>
+                      </div>
+                      <div style="font-size: 0.75rem; color: #60a5fa; margin-top: 0.2rem;">Full Track [00:00 → 04:38]</div>
+                    </div>
+                  </div>
+                  <div class="center-controls-side">
+                    <div class="btn-row">
+                      <button type="button" class="mock-ctrl-btn active-shuffle" title="Shuffle bên trái Previous">🔀</button>
+                      <button type="button" class="mock-ctrl-btn" title="Previous">⏮</button>
+                      <button type="button" class="mock-play-btn">▶</button>
+                      <button type="button" class="mock-ctrl-btn" title="Next">⏭</button>
+                      <button type="button" class="mock-ctrl-btn" title="Loop Track">🔁</button>
+                    </div>
+                    <div class="mock-progressbar">
+                      <span>01:15</span>
+                      <div class="mock-track-rail"><div class="mock-track-fill" style="background: var(--accent-green);"></div></div>
+                      <span>04:38</span>
+                    </div>
+                  </div>
+                  <div style="text-align: right; font-size: 0.75rem; color: var(--accent-green); font-weight: 600;">
+                    ✅ Nút Shuffle đặt bên trái Previous.<br>
+                    ✅ Chuột phải chọn Playlist chứa bài này.<br>
+                    ✅ Tags hiển thị rõ ràng, nghe mượt không ngắt nhạc.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="slider-divider">
+            <div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div>
+          </div>
+          <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+        </div>
+      </article>
+
+      <!-- CARD 2: BEFORE ONLY -->
+      <article class="card-wrapper card-before">
+        <div class="card-header-bar">
+          <span class="card-badge badge-red">CARD 2: BEFORE ONLY (BẤT TIỆN &amp; TỤT MOOD)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-red);">Hành vi nghe nhạc cũ rất cồng kềnh</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.75rem; background: rgba(239, 68, 68, 0.04);">
+          <span class="mock-annotation red">PAIN POINT CŨ</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag del">- CŨ</span>
+            <span style="font-size: 1rem; font-weight: 700; color: var(--accent-red);">Cơ chế nhồi toàn bộ list Mix &gt;1000 bài vào Queue</span>
+          </div>
+          <ul style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.7; padding-left: 1.25rem;">
+            <li>Khi lướt danh sách Mix tổng và chọn 1 bài vui để nghe, Queue hiện tại bị biến thành toàn bộ 1000 bài và phát tuần tự.</li>
+            <li>Muốn shuffle thì phải mở Drawer Queue lên rồi mới bấm được icon Shuffle.</li>
+            <li>Nếu bấm shuffle ở Queue thì nó xáo trộn luôn cả 1000 bài hổ lốn (đang nghe nhạc vui tự nhiên nhảy sang nhạc buồn hoặc rock metal).</li>
+            <li>Muốn shuffle đúng playlist chứa bài này thì phải tắt bài, mò vào danh sách playlist, tìm đúng tên, rồi bấm Shuffle trên playlist đó (quá nhiều thao tác não nề).</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- CARD 3: AFTER ONLY (INTERACTIVE DEMO) -->
+      <article class="card-wrapper card-after">
+        <div class="card-header-bar">
+          <span class="card-badge badge-green">CARD 3: AFTER ONLY (TƯƠNG TÁC THẬT)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-green);">Bấm thử các nút điều khiển bên dưới</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.75rem; background: rgba(34, 197, 94, 0.04);">
+          <span class="mock-annotation green">ĐÃ NÂNG CẤP XONG</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag add">+ MỚI</span>
+            <span style="font-size: 1rem; font-weight: 700; color: var(--accent-green);">Smart Shuffle Context Menu &amp; Seamless Queue Replacement</span>
+          </div>
+
+          <!-- DEMO BOX TƯƠNG TÁC -->
+          <div class="player-mockup-box" style="margin-top: 1rem;">
+            <div class="mock-playerbar-grid">
+              <div class="track-info-side">
+                <div class="track-art">🎵</div>
+                <div class="track-meta">
+                  <div class="track-title-row">
+                    <span class="track-name">Em Của Ngày Hôm Qua</span>
+                    <span class="status-badge" id="demo-status-badge">Mix (Full)</span>
+                    <span class="playlist-pill-tag">📁 Nhạc Vui</span>
+                    <span class="playlist-pill-tag">📁 Pop Việt 2014</span>
+                    <span class="playlist-pill-tag" style="background: rgba(255,255,255,0.04); font-family: monospace;">+1</span>
+                  </div>
+                  <div style="font-size: 0.75rem; color: #60a5fa; margin-top: 0.2rem;">Full Track [00:00 → 03:52]</div>
+                </div>
+              </div>
+
+              <div class="center-controls-side">
+                <div class="btn-row" style="position: relative;">
+                  <!-- Nút Shuffle có thể click thử -->
+                  <button type="button" id="demo-shuffle-btn" class="mock-ctrl-btn active-shuffle"
+                          onclick="clickDemoShuffle()"
+                          oncontextmenu="event.preventDefault(); toggleDemoMenu();"
+                          title="Bấm trái: đổi shuffle | Bấm phải: chọn playlist">
+                    🔀
+                  </button>
+                  <button type="button" class="mock-ctrl-btn" onclick="showToast('⏮ Lùi bài (Previous)', 'info')">⏮</button>
+                  <button type="button" class="mock-play-btn" onclick="showToast('▶ Tiếp tục phát / Tạm dừng', 'success')">▶</button>
+                  <button type="button" class="mock-ctrl-btn" onclick="showToast('⏭ Tiến bài tiếp (Next)', 'info')">⏭</button>
+                  <button type="button" class="mock-ctrl-btn" onclick="showToast('🔁 Đổi lặp lại bài', 'info')">🔁</button>
+                </div>
+
+                <!-- Mock Menu Dropdown khi chuột phải -->
+                <div id="demo-popup-menu" class="menu-popup-mock" style="display: none;">
+                  <div style="padding: 0.2rem 0.5rem; font-size: 0.65rem; font-weight: 700; color: #a1a1aa; border-bottom: 1px solid #27272a; margin-bottom: 0.3rem;">
+                    TÙY CHỌN PHÁT NGẪU NHIÊN
+                  </div>
+                  <div class="menu-item-mock" onclick="selectDemoPlaylist('Hàng Đợi Hiện Tại (Mix)', 1250)">
+                    <span class="name-side">🔀 Hàng đợi hiện tại (Mix)</span>
+                    <span class="count-side">1,250</span>
+                  </div>
+                  <div style="height: 1px; background: #27272a; margin: 0.3rem 0;"></div>
+                  <div style="padding: 0.2rem 0.5rem; font-size: 0.65rem; font-weight: 600; color: #71717a; text-transform: uppercase;">
+                    PLAYLIST CHỨA BÀI NÀY
+                  </div>
+                  <div class="menu-item-mock" data-pl="Nhạc Vui Tươi" onclick="selectDemoPlaylist('Nhạc Vui Tươi', 45)">
+                    <span class="name-side">📁 Nhạc Vui Tươi</span>
+                    <span class="count-side">45</span>
+                  </div>
+                  <div class="menu-item-mock" data-pl="Pop Việt 2014" onclick="selectDemoPlaylist('Pop Việt 2014', 30)">
+                    <span class="name-side">📁 Pop Việt 2014</span>
+                    <span class="count-side">30</span>
+                  </div>
+                  <div class="menu-item-mock" data-pl="Road Trip Hè" onclick="selectDemoPlaylist('Road Trip Hè', 68)">
+                    <span class="name-side">📁 Road Trip Hè</span>
+                    <span class="count-side">68</span>
+                  </div>
+                </div>
+
+                <div class="mock-progressbar">
+                  <span>01:15</span>
+                  <div class="mock-track-rail"><div class="mock-track-fill" style="background: var(--accent-green);"></div></div>
+                  <span>03:52</span>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" class="tab-btn active" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; background: var(--accent-green); color: #000; font-weight: 700;" onclick="toggleDemoMenu()">
+                  ⚡ Giả lập Chuột Phải Nút Shuffle
+                </button>
+                <button type="button" class="tab-btn" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; border: 1px solid var(--border);" onclick="clickDemoShuffle()">
+                  🔀 Bấm Trái Nút Shuffle (Quick)
+                </button>
+                <button type="button" class="tab-btn" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; border: 1px dashed var(--border); color: #a1a1aa;" onclick="resetToMixDemo()">
+                  🔄 Về Mix Tổng (Test Quick Shuffle)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <!-- =================================================================
+         TAB 2: GIẢI THÍCH CHI TIẾT (4 TẦNG ZOOM-IN 2 CỘT)
+         ================================================================= -->
+    <section id="tab-explain" class="tab-pane" role="tabpanel" style="display: none;">
+
+      <!-- TẦNG 1: VĨ MÔ & CẤU TRÚC THƯ MỤC -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 1/4 • VĨ MÔ &amp; BỨC TRANH TOÀN CẢNH</div>
+            <h3>📁 1. Cấu Trúc Toàn Bộ Hệ Thống</h3>
+            <p>Thay đổi được phân bổ chuẩn mực từ tầng Database SQLite, Endpoint Server HTTP, Store Zustand Quản Lý Queue đến Component React PlayerBar:</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Fullstack Flow</span>
+              <span class="meta-tag blue">Clean Architecture</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <div class="code-dots">
+                  <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                </div>
+                <div class="file-dropdown-wrapper">
+                  <button class="file-dropdown-trigger" type="button" onclick="toggleFileDropdown(this)">
+                    <span>📁 src/</span><span class="chevron">▼</span>
+                  </button>
+                  <div class="file-dropdown-menu">
+                    <div class="file-dropdown-header"><span>TẬP TIN</span><span>DIR</span></div>
+                    <button class="file-dropdown-item path" type="button" onclick="copyFilePath('src/client/src/components/PlayerBar.tsx')">Sao chép đường dẫn</button>
+                  </div>
+                </div>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot structure"></span> STRUCTURE</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">├── </span>📁 <span class="prop">src</span>/</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">│   ├── </span>📁 <span class="prop">server</span>/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│   │   ├── </span>📄 <span class="prop">db.ts</span>              <span class="c-comment"># getPlaylistMemberships với includeAllSegments</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│   │   └── </span>📄 <span class="prop">index.ts</span>           <span class="c-comment"># GET /api/playlist-memberships?track_id=...&amp;all=true</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">│   └── </span>📁 <span class="prop">client/src</span>/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│       ├── </span>📁 <span class="prop">store</span>/📄 <span class="prop">usePlayerStore.ts</span> <span class="c-comment"># buildPlaylistQueue(..., keepCurrentTrack=true)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│       ├── </span>📁 <span class="prop">components</span>/📄 <span class="prop">PlayerBar.tsx</span> <span class="c-comment"># Nút Shuffle, context menu &amp; read-only tags</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│       └── </span>📁 <span class="prop">locales</span>/📄 <span class="prop">en.json</span> &amp; <span class="prop">vi.json</span> <span class="c-comment"># Các key i18n song ngữ chuẩn</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 2: DATA & SERVER LAYER -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 2/4 • DATA &amp; SERVER API LAYER</div>
+            <h3>🗄️ 2. Truy Vấn Memberships Chuẩn SQL</h3>
+            <p>Hàm `getPlaylistMemberships` cho phép gom tất cả các playlist chứa bài hát (dù bài hát đó nằm dưới dạng bài hát nguyên bản hay dưới dạng một slice đoạn cắt):</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag blue">SQLite</span>
+              <span class="meta-tag green">MIN(id) Aggregation</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/server/db.ts</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot ts"></span> TS / SQL</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">export function</span> <span class="fn">getPlaylistMemberships</span>(</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="prop">trackId</span>: <span class="kwd">string</span>, <span class="prop">segmentId</span>?: <span class="kwd">string</span> | <span class="kwd">null</span>,</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">includeAllSegments</span> = <span class="kwd">false</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">if</span> (<span class="prop">includeAllSegments</span>) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="kwd">return</span> <span class="prop">db</span>.<span class="fn">query</span>(<span class="str">`</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="str">      SELECT playlist_id, min(id) as item_id FROM playlist_items</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="str">      WHERE track_id = $track_id</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="str">      GROUP BY playlist_id</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="str">    `</span>).<span class="fn">all</span>({ <span class="attr">$track_id</span>: <span class="prop">trackId</span> });</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  }</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="c-comment">// Các luồng lọc theo slice đơn lẻ giữ nguyên</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 3: STORE & QUEUE CONTINUITY -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 3/4 • STORE &amp; QUEUE CONTINUATION</div>
+            <h3>⚡ 3. Nghe Tiếp Mượt Mà Không Ngắt Audio</h3>
+            <p>Khi chọn playlist con, app sẽ nạp playlist đó vào queue, đặt bài hiện tại ở index 0, xáo trộn các bài còn lại. Nếu đang phát đúng bài đó thì <strong>không gọi `playSegment`</strong> để tránh reset audio về 0:00:</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Zero Audio Jitter</span>
+              <span class="meta-tag yellow">State Invariant</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/client/src/store/usePlayerStore.ts</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot ts"></span> TS</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">if</span> (<span class="prop">keepCurrentTrack</span> &amp;&amp; <span class="fn">get</span>().<span class="prop">activeTrack</span>) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">matchedItem</span> = <span class="prop">queueItems</span>[<span class="prop">matchIdx</span>];</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">remainingItems</span> = <span class="prop">queueItems</span>.<span class="fn">filter</span>((_, <span class="prop">idx</span>) =&gt; <span class="prop">idx</span> !== <span class="prop">matchIdx</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">finalRest</span> = <span class="prop">forceShuffle</span> ? <span class="fn">shuffleArray</span>(<span class="prop">remainingItems</span>) : <span class="prop">remainingItems</span>;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">queueItems</span> = [<span class="prop">matchedItem</span>, ...<span class="prop">finalRest</span>];</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">set</span>({ <span class="prop">queue</span>: <span class="prop">queueItems</span>, <span class="prop">queueIndex</span>: <span class="num">0</span>, <span class="prop">isShuffle</span>: <span class="kwd">true</span>, <span class="prop">activePlaylistPlayingId</span>: <span class="prop">playlistId</span> });</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">isCurrentlyPlayingThis</span> = <span class="fn">get</span>().<span class="prop">isPlaying</span> &amp;&amp;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="fn">get</span>().<span class="prop">activeTrack</span>?.<span class="prop">id</span> === <span class="prop">matchedItem</span>.<span class="prop">track</span>.<span class="prop">id</span> &amp;&amp;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="fn">get</span>().<span class="prop">activeSegment</span>?.<span class="prop">id</span> === <span class="prop">matchedItem</span>.<span class="prop">segment</span>.<span class="prop">id</span>;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">if</span> (!<span class="prop">isCurrentlyPlayingThis</span>) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="kwd">await</span> <span class="fn">get</span>().<span class="fn">playSegment</span>(<span class="prop">matchedItem</span>.<span class="prop">segment</span>, <span class="prop">matchedItem</span>.<span class="prop">track</span>, <span class="num">0</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  }</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 4: UI & INTERACTION LAYER -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 4/4 • COMPONENT UI &amp; EVENT HANDLING</div>
+            <h3>🎛️ 4. Tương Tác &amp; Chống Xung Đột Touch</h3>
+            <p>Nút Shuffle hỗ trợ chuột trái, chuột phải, và long-press 500ms trên màn hình cảm ứng. Cờ `isLongPressTriggeredRef` ngăn chặn triệt để hiện tượng menu tự đóng khi browser bắn sự kiện `contextmenu`:</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Long-press Safe</span>
+              <span class="meta-tag blue">Escape / Outside Dismiss</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/client/src/components/PlayerBar.tsx</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot tsx"></span> TSX</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">const</span> <span class="fn">handleShuffleContextMenu</span> = <span class="prop">React</span>.<span class="fn">useCallback</span>((<span class="prop">e</span>) =&gt; {</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="prop">e</span>.<span class="fn">preventDefault</span>();</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">if</span> (<span class="prop">isLongPressTriggeredRef</span>.<span class="prop">current</span>) <span class="kwd">return</span>; <span class="c-comment"># Tránh double toggle trên touch</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">setIsShuffleMenuOpen</span>((<span class="prop">prev</span>) =&gt; !<span class="prop">prev</span>);</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}, []);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="kwd">const</span> <span class="fn">handleShufflePointerDown</span> = <span class="prop">React</span>.<span class="fn">useCallback</span>((<span class="prop">e</span>) =&gt; {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">if</span> (<span class="prop">e</span>.<span class="prop">button</span> !== <span class="num">0</span>) <span class="kwd">return</span>;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">isLongPressTriggeredRef</span>.<span class="prop">current</span> = <span class="kwd">false</span>;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">longPressTimerRef</span>.<span class="prop">current</span> = <span class="fn">setTimeout</span>(() =&gt; {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="prop">isLongPressTriggeredRef</span>.<span class="prop">current</span> = <span class="kwd">true</span>;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="fn">setIsShuffleMenuOpen</span>(<span class="kwd">true</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  }, <span class="num">500</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">}, []);</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </div>
+
+  <!-- Nút Inspector Toggle Fixed -->
+  <button id="inspector-toggle" onclick="toggleDiff()">
+    <span>🔍 Check Diff</span>
+    <span id="diffStatusTag">[BẬT]</span>
+  </button>
+
+  <script src="./visual-core.js"></script>
+
+  <script>
+    // Logic tương tác riêng cho bản Demo Card 3
+    let isDemoShuffle = true;
+    let currentDemoPlaylist = "Mix"; // "Mix" | "Nhạc Vui Tươi" | ...
+    let lastChosenPlaylist = "Nhạc Vui Tươi"; // Lựa chọn gần nhất
+
+    function updateDemoMenuBadges() {
+      const items = document.querySelectorAll(".menu-item-mock[data-pl]");
+      items.forEach(el => {
+        const plName = el.getAttribute("data-pl");
+        let badge = el.querySelector(".recent-badge-mock");
+        if (plName === lastChosenPlaylist) {
+          if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "recent-badge-mock";
+            badge.style.cssText = "padding: 1px 6px; border-radius: 4px; font-size: 9px; font-weight: 600; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); margin-left: 6px;";
+            badge.textContent = "Gần nhất";
+            el.querySelector(".name-side")?.appendChild(badge);
+          }
+        } else if (badge) {
+          badge.remove();
+        }
+      });
+      const shuffleBtn = document.getElementById("demo-shuffle-btn");
+      if (shuffleBtn) {
+        if (currentDemoPlaylist === "Mix" && lastChosenPlaylist) {
+          shuffleBtn.title = `Bấm để shuffle playlist "${lastChosenPlaylist}" (gần nhất), chuột phải để chọn playlist`;
+        } else {
+          shuffleBtn.title = `Bấm để đổi shuffle, chuột phải để chọn playlist`;
+        }
+      }
+    }
+
+    function clickDemoShuffle() {
+      // Nếu đang ở Mix và đã có playlist gần nhất -> Quick Shuffle ngay vào playlist đó!
+      if (currentDemoPlaylist === "Mix" && lastChosenPlaylist) {
+        selectDemoPlaylist(lastChosenPlaylist, 45, true);
+        return;
+      }
+      toggleDemoShuffle();
+    }
+
+    function toggleDemoShuffle() {
+      isDemoShuffle = !isDemoShuffle;
+      const btn = document.getElementById("demo-shuffle-btn");
+      if (btn) {
+        if (isDemoShuffle) {
+          btn.classList.add("active-shuffle");
+          showToast("🔀 Đã BẬT phát ngẫu nhiên hàng đợi!", "success");
+        } else {
+          btn.classList.remove("active-shuffle");
+          showToast("⏸ Đã TẮT phát ngẫu nhiên hàng đợi!", "info");
+        }
+      }
+    }
+
+    function toggleDemoMenu() {
+      const menu = document.getElementById("demo-popup-menu");
+      if (menu) {
+        const isHidden = menu.style.display === "none";
+        menu.style.display = isHidden ? "block" : "none";
+        if (isHidden) {
+          updateDemoMenuBadges();
+          showToast("📁 Đã mở danh sách Playlist chứa bài hát này!", "info");
+        }
+      }
+    }
+
+    function selectDemoPlaylist(name, count, isQuick = false) {
+      const menu = document.getElementById("demo-popup-menu");
+      if (menu) menu.style.display = "none";
+      currentDemoPlaylist = name;
+      if (name !== "Hàng Đợi Hiện Tại (Mix)") {
+        lastChosenPlaylist = name;
+      }
+      const badge = document.getElementById("demo-status-badge");
+      if (badge) {
+        badge.textContent = name + " (Shuffle)";
+      }
+      isDemoShuffle = true;
+      const btn = document.getElementById("demo-shuffle-btn");
+      if (btn) btn.classList.add("active-shuffle");
+      updateDemoMenuBadges();
+      if (isQuick) {
+        showToast("⚡ [Quick Shuffle] Đã tự nhận diện playlist gần nhất: [" + name + "] (" + count + " bài)!", "success");
+      } else {
+        showToast("✅ Đã ghi nhớ [" + name + "] là lựa chọn gần nhất & thay Queue!", "success");
+      }
+    }
+
+    function resetToMixDemo() {
+      currentDemoPlaylist = "Mix";
+      const badge = document.getElementById("demo-status-badge");
+      if (badge) {
+        badge.textContent = "Mix (Full)";
+      }
+      updateDemoMenuBadges();
+      showToast("🔄 Đã chuyển về Mix tổng. Bây giờ hãy bấm trái nút Shuffle để xem nó tự kích hoạt playlist gần nhất!", "info");
+    }
+
+    // Init badges on load
+    window.addEventListener("DOMContentLoaded", updateDemoMenuBadges);
+  </script>
+</body>
+</html>

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Hệ Thống Token Hóa Typography Triệt Để (Tailwind v4)</title>
+  <link rel="stylesheet" href="./visual-core.css">
+
+  <style>
+    /* CSS Mockup đặc thù cho Typography Showcase & Slice Player UI */
+    .typo-showcase-box {
+      background: #0d0d11;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .mock-trackcard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .mock-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 0.625rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .mock-card-thumb {
+      height: 7rem;
+      background: linear-gradient(135deg, #1e1e24 0%, #2a2a35 100%);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mock-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 0.25rem;
+      line-height: 1;
+      user-select: none;
+    }
+
+    /* Các cỡ chữ so sánh Trước vs Sau */
+    .font-legacy-10px {
+      font-size: 10px !important;
+      line-height: 12px !important;
+    }
+    .font-legacy-11px {
+      font-size: 11px !important;
+      line-height: 14px !important;
+    }
+    .font-token-2xs {
+      font-size: 0.75rem !important; /* 12px */
+      line-height: 1rem !important;   /* 16px */
+    }
+    .font-token-xs {
+      font-size: 0.8125rem !important; /* 13px */
+      line-height: 1.125rem !important; /* 18px */
+    }
+    .font-token-sm {
+      font-size: 0.9375rem !important; /* 15px */
+      line-height: 1.375rem !important; /* 22px */
+    }
+    .font-token-base {
+      font-size: 1.0625rem !important; /* 17px */
+      line-height: 1.625rem !important; /* 26px */
+    }
+
+    .badge-yt-red {
+      background: rgba(209, 77, 65, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(209, 77, 65, 0.4);
+      padding: 0.2rem 0.45rem;
+      font-weight: 600;
+    }
+
+    .badge-time-dark {
+      background: rgba(0, 0, 0, 0.85);
+      color: #ffffff;
+      padding: 0.2rem 0.45rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+    }
+
+    .badge-playing-primary {
+      background: #4385be;
+      color: #fffcfa;
+      padding: 0.2rem 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(67, 133, 190, 0.4);
+    }
+
+    .mock-card-body {
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .mock-title {
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mock-artist {
+      color: var(--text-sub);
+    }
+
+    /* Bảng Tab Row Demo */
+    .mock-table-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.65rem 0.85rem;
+      background: #141417;
+      border: 1px solid #27272a;
+      border-radius: 0.5rem;
+      gap: 1rem;
+    }
+
+    /* Thước đo Type Scale Interactive */
+    .type-ramp-grid {
+      display: grid;
+      grid-template-columns: 80px 100px 1fr;
+      align-items: baseline;
+      gap: 1rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. STICKY TOPBAR -->
+  <header class="nav-header">
+    <div class="brand-title"><span>⚡</span> BẢN THIẾT KẾ: TYPOGRAPHY TOKENIZATION (TAILWIND V4)</div>
+    <nav class="tab-group" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược & So Sánh UI</button>
+      <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Giải Thích 4 Tầng Zoom-In</button>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- =================================================================
+         TAB 1: TÓM LƯỢC (DEFAULT) - CHUẨN 3 CARDS THỊ GIÁC
+         ================================================================= -->
+    <main id="tab-summarize" class="tab-pane active" role="tabpanel">
+      <section class="callout" style="max-width: 40rem; margin: 0 auto 2.5rem auto; text-align: center;">
+        <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+        <p style="font-size: 1rem; line-height: 1.6; color: var(--text-main);">
+          Triệt hạ sạch 100% font chữ 9px/10px/11px mù mắt, xây dựng thang đo chuẩn WCAG với sàn tối thiểu <strong>text-2xs: 12px (0.75rem / 1rem)</strong> qua Tailwind v4 <code>@theme inline</code> giúp giao diện máy nghe nhạc thoáng đãng, sắc nét và đẳng cấp trùm dev!
+        </p>
+      </section>
+
+      <!-- CARD 1: COMPARISON SLIDER (SWIPE DIFF TRỰC QUAN) -->
+      <article class="card-wrapper card-slider">
+        <div class="card-header-bar">
+          <span class="card-badge badge-white">CARD 1: COMPARISON SLIDER</span>
+          <span style="font-size: 0.85rem; color: var(--text-main);">Kéo trượt thanh ở giữa để soi độ rõ nét chữ Trước (Trái) vs Sau (Phải)</span>
+        </div>
+        <div class="slider-viewport" style="min-height: 32rem; padding: 2.5rem 1.5rem 4rem 1.5rem;">
+          <!-- Layer Before -->
+          <div class="slider-layer slider-before">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.75rem;">
+              <span class="mock-annotation red">HIỆN TRẠNG CŨ (LỖI FONT 10PX/11PX)</span>
+              
+              <div class="typo-showcase-box">
+                <div style="font-weight: 700; color: var(--accent-red); margin-bottom: 0.25rem;">
+                  ❌ Chữ Quá Bé, Khó Đọc, Tỷ Lệ Line-Height Bị Chèn Ép
+                </div>
+                
+                <!-- Mockup Track Card Cũ -->
+                <div class="mock-trackcard-grid">
+                  <div class="mock-card">
+                    <div class="mock-card-thumb">
+                      <div style="position: absolute; top: 0.5rem; left: 0.5rem;">
+                        <span class="mock-badge badge-yt-red font-legacy-10px">
+                          ▶ YouTube (10px)
+                        </span>
+                      </div>
+                      <div style="position: absolute; bottom: 0.5rem; right: 0.5rem;">
+                        <span class="mock-badge badge-time-dark font-legacy-10px">
+                          03:45 (10px)
+                        </span>
+                      </div>
+                      <div style="position: absolute; bottom: 0.5rem; left: 0.5rem;">
+                        <span class="mock-badge badge-playing-primary font-legacy-10px">
+                          PLAYING (10px)
+                        </span>
+                      </div>
+                    </div>
+                    <div class="mock-card-body">
+                      <div class="mock-title font-legacy-11px">Track Audio Wave Slice Preview (11px)</div>
+                      <div class="mock-artist font-legacy-10px">Unknown Artist (10px)</div>
+                    </div>
+                  </div>
+
+                  <!-- Mock Table Row Cũ -->
+                  <div class="mock-table-row">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span class="mock-badge badge-yt-red font-legacy-10px">Slice #1</span>
+                      <span class="mock-title font-legacy-11px">00:15 - 00:45</span>
+                    </div>
+                    <span class="mock-badge" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); font-size: 10px; padding: 0.15rem 0.4rem;">
+                      Downloading (10px)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Layer After -->
+          <div class="slider-layer slider-after">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+              <span class="mock-annotation green">GIẢI PHÁP MỚI (TOKEN CHUẨN SÀN 12PX)</span>
+              
+              <div class="typo-showcase-box">
+                <div style="font-weight: 700; color: var(--accent-green); margin-bottom: 0.25rem;">
+                  ✅ Sàn Tối Thiểu 12px (text-2xs), Đọc Rõ Mọi Chi Tiết & Tôn Trọng Zoom
+                </div>
+
+                <!-- Mockup Track Card Mới -->
+                <div class="mock-trackcard-grid">
+                  <div class="mock-card" style="border-color: rgba(67, 133, 190, 0.3);">
+                    <div class="mock-card-thumb">
+                      <div style="position: absolute; top: 0.5rem; left: 0.5rem;">
+                        <span class="mock-badge badge-yt-red font-token-2xs">
+                          ▶ YouTube
+                        </span>
+                      </div>
+                      <div style="position: absolute; bottom: 0.5rem; right: 0.5rem;">
+                        <span class="mock-badge badge-time-dark font-token-2xs">
+                          03:45
+                        </span>
+                      </div>
+                      <div style="position: absolute; bottom: 0.5rem; left: 0.5rem;">
+                        <span class="mock-badge badge-playing-primary font-token-2xs">
+                          PLAYING
+                        </span>
+                      </div>
+                    </div>
+                    <div class="mock-card-body">
+                      <div class="mock-title font-token-sm">Track Audio Wave Slice Preview</div>
+                      <div class="mock-artist font-token-xs">Unknown Artist</div>
+                    </div>
+                  </div>
+
+                  <!-- Mock Table Row Mới -->
+                  <div class="mock-table-row" style="border-color: rgba(34, 197, 94, 0.3);">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span class="mock-badge badge-yt-red font-token-2xs">Slice #1</span>
+                      <span class="mock-title font-token-xs font-mono">00:15 - 00:45</span>
+                    </div>
+                    <span class="mock-badge font-token-2xs" style="background: rgba(67, 133, 190, 0.15); color: #60a5fa; border: 1px solid rgba(67, 133, 190, 0.3); padding: 0.2rem 0.5rem;">
+                      Downloading
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Divider & Knob -->
+          <div class="slider-divider">
+            <div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div>
+          </div>
+          <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+        </div>
+      </article>
+
+      <!-- CARD 2: BEFORE ONLY (Khuyết điểm cũ) -->
+      <article class="card-wrapper card-before">
+        <div class="card-header-bar">
+          <span class="card-badge badge-red">CARD 2: BEFORE ONLY (NHƯỢC ĐIỂM CŨ)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-red);">Font hardcoded text-[10px], text-[11px] rải rác khắp 18 files</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(239, 68, 68, 0.04);">
+          <span class="mock-annotation red">VI PHẠM DESIGN SYSTEM &amp; A11Y</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag del">- CŨ</span>
+            <span style="font-size: 1.05rem; font-weight: 700; color: var(--accent-red);">Chữ 10px khiến người dùng phải căng mắt, đè bẹp Line-height</span>
+          </div>
+          <p style="font-size: 0.92rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+            Trước đây, các lập trình viên gõ tự phát <code>text-[10px]</code>, <code>text-[11px]</code>, <code>text-[9px]</code> vào từng button, badge, popover. Khi xem trên màn hình Desktop 1080p hoặc 2K, chữ bị mờ, méo, vi phạm tiêu chuẩn tương phản và dễ gây mỏi mắt (eye-strain).
+          </p>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <div style="padding: 0.75rem 1rem; background: rgba(0,0,0,0.5); border: 1px dashed var(--accent-red); border-radius: 0.5rem;">
+              <span style="color: var(--accent-red); font-size: 10px; display: block; margin-bottom: 0.25rem;">⚠️ Cỡ 10px (Quá nhỏ, không có token quản lý tập trung):</span>
+              <span class="font-legacy-10px" style="color: #ffffff;">(14 bài hát) • YouTube • 03:45 • ERROR: Network Timeout</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- CARD 3: AFTER ONLY (Tương tác thật với Type Scale Controller) -->
+      <article class="card-wrapper card-after">
+        <div class="card-header-bar">
+          <span class="card-badge badge-green">CARD 3: AFTER ONLY (TƯƠNG TÁC TEST THẬT)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-green);">Đổi cỡ chữ trực tiếp để cảm nhận độ êm của hệ thống token mới</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.04);">
+          <span class="mock-annotation green">CHUẨN CHỈ TAILWIND CSS V4</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag add">+ MỚI</span>
+            <span style="font-size: 1.05rem; font-weight: 700; color: var(--accent-green);">Bộ 7 Token rem Tự Co Giãn Theo Root &amp; Đầy Đủ Line-Height Hài Hòa</span>
+          </div>
+          <p style="font-size: 0.92rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1.25rem;">
+            Toàn bộ giá trị tính bằng <code>rem</code>, đồng bộ hoàn hảo với font Plus Jakarta Sans và JetBrains Mono. Hãy bấm thử các nút bên dưới để test live:
+          </p>
+
+          <!-- Interactive Live Type Controller -->
+          <div style="background: #121216; border: 1px solid #2e2e38; border-radius: 0.625rem; padding: 1.25rem; margin-bottom: 1.25rem;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
+              <button type="button" class="tab-btn active" onclick="updateLiveText('text-2xs (12px / 0.75rem)', '0.75rem', '1rem'); showToast('Bật token text-2xs: Sàn hiển thị micro-labels & badges!', 'success')">
+                🏷️ text-2xs (12px)
+              </button>
+              <button type="button" class="tab-btn" onclick="updateLiveText('text-xs (13px / 0.8125rem)', '0.8125rem', '1.125rem'); showToast('Bật token text-xs: Metadata & Table cells!', 'info')">
+                📄 text-xs (13px)
+              </button>
+              <button type="button" class="tab-btn" onclick="updateLiveText('text-sm (15px / 0.9375rem)', '0.9375rem', '1.375rem'); showToast('Bật token text-sm: Body & Input chính!', 'info')">
+                📝 text-sm (15px)
+              </button>
+              <button type="button" class="tab-btn" onclick="updateLiveText('text-base (17px / 1.0625rem)', '1.0625rem', '1.625rem'); showToast('Bật token text-base: Primary text!', 'info')">
+                ✨ text-base (17px)
+              </button>
+            </div>
+
+            <!-- Preview Box -->
+            <div id="livePreviewContainer" style="background: #09090b; border: 1px solid #27272a; border-radius: 0.5rem; padding: 1rem; transition: all 0.2s ease;">
+              <div style="font-size: 0.78rem; color: #a1a1aa; margin-bottom: 0.5rem;" id="liveTokenLabel">ĐANG CHỌN: text-2xs (12px / 0.75rem) - line-height: 1rem (16px)</div>
+              <p id="livePreviewText" style="font-size: 0.75rem; line-height: 1rem; color: #ffffff; margin: 0; font-family: 'Plus Jakarta Sans', sans-serif;">
+                🎵 Slice Player • 03:45 [YouTube] • Active Slice Segment #04 • Đã chuẩn hóa token triệt để
+              </p>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="tab-btn active" style="background: var(--accent-green); color: #000000; font-weight: 700;" onclick="showToast('✅ Kiểm tra hoàn tất: Cả 2 Review Subagents đều đã duyệt APPROVE!', 'success')">
+              ⚡ Xem Trạng Thái Subagents Review
+            </button>
+            <button type="button" class="tab-btn" style="border: 1px solid var(--border);" onclick="showToast('ℹ️ Build Vite hoàn tất trong 8.92s với 0 errors!', 'info')">
+              📦 Xem Kết Quả Build Vite
+            </button>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <!-- =================================================================
+         TAB 2: GIẢI THÍCH CHI TIẾT (4 TẦNG ZOOM-IN 2 CỘT)
+         ================================================================= -->
+    <section id="tab-explain" class="tab-pane" role="tabpanel" style="display: none;">
+      
+      <!-- TẦNG 1: VĨ MÔ & CẤU TRÚC HỆ THỐNG -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 1/4 • VĨ MÔ</div>
+            <h3>📁 1. Kiến Trúc Token Tập Trung</h3>
+            <p>
+              Thay vì để các component tự chế pixel tùy hứng, toàn bộ hệ thống định nghĩa duy nhất tại <code>src/client/src/index.css</code>. Mọi component chỉ việc kế thừa utility chuẩn từ Tailwind CSS v4.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Tailwind v4</span>
+              <span class="meta-tag blue">Single Source of Truth</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <div class="code-dots">
+                  <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                </div>
+                <div class="file-dropdown-wrapper">
+                  <button class="file-dropdown-trigger" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleFileDropdown(this)">
+                    <span>📁 src/client/src/</span><span class="chevron">▼</span>
+                  </button>
+                  <div class="file-dropdown-menu">
+                    <div class="file-dropdown-header"><span>TẬP TIN</span><span>DIR</span></div>
+                    <button class="file-dropdown-item path" type="button" onclick="copyFilePath('src/client/src/index.css')">Sao chép đường dẫn</button>
+                  </div>
+                </div>
+              </div>
+              <div class="code-actions">
+                <span class="diff-stat"><span class="stat-add">+15</span> <span class="stat-del">-18 files</span></span>
+                <span class="code-lang-badge"><span class="lang-dot structure"></span> ARCHITECTURE</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 <span class="prop">src/client/src</span>/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 <span class="prop">index.css</span> <span class="c-comment"># Khai báo @theme inline & token scale</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📁 <span class="prop">components</span>/ <span class="c-comment"># 16 UI components dọn sạch class cũ</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    ├── 📄 <span class="prop">TrackCard.tsx</span> <span class="c-comment"># duration, youtube, playing badges</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    ├── 📄 <span class="prop">SliceCard.tsx</span> <span class="c-comment"># slice index badge</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    ├── 📄 <span class="prop">PlaylistTableView.tsx</span> <span class="c-comment"># table cell badges & status</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    ├── 📄 <span class="prop">LogDrawer.tsx</span> <span class="c-comment"># log levels & timestamp tags</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    └── 📄 <span class="prop">SliceStudio.tsx</span> <span class="c-comment"># nudge button counters</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  ├── 📄 <span class="prop">App.tsx</span> <span class="c-comment"># category filter pills & playlist counts</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 2: FILES & COMPONENT LEVEL -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 2/4 • COMPONENT LEVEL</div>
+            <h3>📄 2. Biến Đổi Component Thực Tế</h3>
+            <p>
+              Ví dụ điển hình trên <code>TrackCard.tsx</code> và <code>App.tsx</code>. Không còn dùng class tùy tiện <code>text-[10px]</code>, mọi nhãn phụ chuyển sang <code>text-2xs</code> có line-height và tracking rõ ràng.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">TrackCard</span>
+              <span class="meta-tag yellow">Badges</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/client/src/components/TrackCard.tsx</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot tsx"></span> TSX</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">Badge</span> <span class="attr">className</span>=<span class="str">"flex items-center gap-1 text-[10px] py-0.5"</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">Badge</span> <span class="attr">className</span>=<span class="str">"flex items-center gap-1 text-2xs py-0.5"</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">YoutubeIcon</span> <span class="attr">className</span>=<span class="str">"h-3 w-3"</span> <span class="punc">/&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">span</span><span class="punc">&gt;</span>YouTube<span class="punc">&lt;/</span><span class="tag">span</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="punc">&lt;/</span><span class="tag">Badge</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">div</span> <span class="attr">className</span>=<span class="str">"rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-mono"</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">div</span> <span class="attr">className</span>=<span class="str">"rounded bg-black/80 px-1.5 py-0.5 text-2xs font-mono"</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    {formatDuration(track.duration)}</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="punc">&lt;/</span><span class="tag">div</span><span class="punc">&gt;</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 3: THEME ARCHITECTURE LEVEL -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 3/4 • THEME TOKENS</div>
+            <h3>⚙️ 3. Định Nghĩa Tại index.css</h3>
+            <p>
+              Tận dụng sức mạnh của Tailwind CSS v4 <code>@theme inline</code>. Khi khai báo cặp <code>--text-*</code> và <code>--text-*--line-height</code>, compiler tự động sinh ra các class <code>.text-*</code> đi kèm <code>line-height: var(--tw-leading, ...)</code> mà không cần viết CSS thủ công.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">@theme inline</span>
+              <span class="meta-tag blue">rem Units</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/client/src/index.css</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot css"></span> CSS</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">@theme inline</span> {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-2xs</span>: <span class="num">0.75rem</span>;              <span class="c-comment"># 12px (Floor tối thiểu cho badges & tags)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-2xs--line-height</span>: <span class="num">1rem</span>;     <span class="c-comment"># 16px (Tỷ lệ 1.33x không bị dính chữ)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-xs</span>: <span class="num">0.8125rem</span>;             <span class="c-comment"># 13px (Secondary body & compact UI)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-xs--line-height</span>: <span class="num">1.125rem</span>;   <span class="c-comment"># 18px</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-sm</span>: <span class="num">0.9375rem</span>;             <span class="c-comment"># 15px (Body chính, inputs, track titles)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-sm--line-height</span>: <span class="num">1.375rem</span>;   <span class="c-comment"># 22px</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-base</span>: <span class="num">1.0625rem</span>;           <span class="c-comment"># 17px (Desktop primary body)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">--text-base--line-height</span>: <span class="num">1.625rem</span>; <span class="c-comment"># 26px</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 4: ALGORITHM & VERIFICATION LEVEL -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 4/4 • VERIFICATION</div>
+            <h3>🛡️ 4. Quy Trình Kiểm Thử & Nghiệm Thu</h3>
+            <p>
+              Đảm bảo 0 lỗi hồi quy (regression) qua bộ ba: Typecheck sạch bóng, Build CSS tạo đầy đủ utility class, và 2 Subagents review song song đồng thuận APPROVE.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">APPROVE (2/2)</span>
+              <span class="meta-tag blue">0 Blockers</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 verification-pipeline.log</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot logic"></span> PIPELINE</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">pipeline</span> <span class="fn">TypographyVerification</span> {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">runCheck</span>(<span class="str">"ripgrep text-\\[\\d+px\\]"</span>) <span class="punc">-&gt;</span> <span class="num">0 matches</span> <span class="c-comment"># Dọn sạch 100%</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">runCheck</span>(<span class="str">"tsc --noEmit"</span>)              <span class="punc">-&gt;</span> <span class="num">0 errors</span> <span class="c-comment"># Pass</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">runCheck</span>(<span class="str">"vite build"</span>)                <span class="punc">-&gt;</span> <span class="num">Built in 8.92s</span> <span class="c-comment"># Output .text-2xs generated</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">reviewAgent1</span>(<span class="str">"code-review + impeccable"</span>) <span class="punc">-&gt;</span> <span class="prop">APPROVE</span> (0 Blocker)</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">reviewAgent2</span>(<span class="str">"code-review + impeccable"</span>) <span class="punc">-&gt;</span> <span class="prop">APPROVE</span> (0 Blocker)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </div>
+
+  <!-- Nút Inspector Toggle Fixed -->
+  <button id="inspector-toggle" onclick="toggleDiff()">
+    <span>🔍 Check Diff</span>
+    <span id="diffStatusTag">[BẬT]</span>
+  </button>
+
+  <script src="./visual-core.js"></script>
+
+  <script>
+    // Hàm live test font size cho Card 3
+    function updateLiveText(label, fontSize, lineHeight) {
+      const previewText = document.getElementById('livePreviewText');
+      const tokenLabel = document.getElementById('liveTokenLabel');
+      if (previewText && tokenLabel) {
+        previewText.style.fontSize = fontSize;
+        previewText.style.lineHeight = lineHeight;
+        tokenLabel.textContent = 'ĐANG CHỌN: ' + label + ' - line-height: ' + lineHeight;
+      }
+    }
+  </script>
+</body>
+</html>

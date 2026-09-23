@@ -130,7 +130,7 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
         isExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
       )}
     >
-      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1 flex items-center justify-between">
+      <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1 flex items-center justify-between">
         <span>{t("addToPlaylist.title")}</span>
         {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       </div>

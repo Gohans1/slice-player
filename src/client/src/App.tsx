@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { Navbar } from "./components/Navbar";
@@ -120,6 +121,7 @@ export function App() {
   const [isMorePlaylistsOpen, setIsMorePlaylistsOpen] = React.useState(false);
   const [morePlaylistsCoords, setMorePlaylistsCoords] = React.useState<{ top: number; left: number } | null>(null);
   const morePlaylistsContainerRef = React.useRef<HTMLDivElement>(null);
+  const morePlaylistsMenuRef = React.useRef<HTMLDivElement>(null);
 
   const handleToggleMorePlaylists = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!isMorePlaylistsOpen) {
@@ -134,31 +136,36 @@ export function App() {
       setIsMorePlaylistsOpen(true);
     } else {
       setIsMorePlaylistsOpen(false);
-      setMorePlaylistsCoords(null);
     }
   };
 
   React.useEffect(() => {
     if (!isMorePlaylistsOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (morePlaylistsContainerRef.current && !morePlaylistsContainerRef.current.contains(e.target as Node)) {
-        setIsMorePlaylistsOpen(false);
-        setMorePlaylistsCoords(null);
+      const target = e.target as Node;
+      if (
+        (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(target)) ||
+        (morePlaylistsMenuRef.current && morePlaylistsMenuRef.current.contains(target))
+      ) {
+        return;
       }
+      setIsMorePlaylistsOpen(false);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsMorePlaylistsOpen(false);
-        setMorePlaylistsCoords(null);
       }
     };
     const handleCloseOnScroll = (e: Event) => {
       // Ignore internal scroll events from the dropdown menu list itself
-      if (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(target)) ||
+        (morePlaylistsMenuRef.current && morePlaylistsMenuRef.current.contains(target))
+      ) {
         return;
       }
       setIsMorePlaylistsOpen(false);
-      setMorePlaylistsCoords(null);
     };
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
@@ -177,13 +184,14 @@ export function App() {
 
   const isTestOrReducedMotion =
     (typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST))) ||
+    typeof (globalThis as any).IS_REACT_ACT_ENVIRONMENT !== "undefined" ||
     (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches));
 
   React.useEffect(() => {
     if (isMorePlaylistsOpen) {
       setIsMoreMenuRendered(true);
       setIsMoreMenuExiting(false);
-    } else if (isMoreMenuRendered) {
+    } else {
       if (isTestOrReducedMotion) {
         setIsMoreMenuRendered(false);
         setIsMoreMenuExiting(false);
@@ -196,14 +204,17 @@ export function App() {
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [isMorePlaylistsOpen, isMoreMenuRendered, isTestOrReducedMotion]);
+  }, [isMorePlaylistsOpen, isTestOrReducedMotion]);
 
   const renderMorePlaylistsMenu = (list: typeof playlists) => {
     if (!isMorePlaylistsOpen && (isTestOrReducedMotion || !isMoreMenuRendered)) return null;
-    return (
+    const menuElement = (
       <div
+        ref={morePlaylistsMenuRef}
         role="menu"
         aria-label={t("library.morePlaylistsTitle", "Other playlists")}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         style={
           morePlaylistsCoords
             ? {
@@ -217,9 +228,9 @@ export function App() {
           isMoreMenuExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
         )}
       >
-        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
+        <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
           <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
-          <span className="font-mono text-[10px] opacity-70">({list.length})</span>
+          <span className="font-mono text-2xs opacity-70">({list.length})</span>
         </div>
         <div className="max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
           {list.map((pl) => {
@@ -232,7 +243,6 @@ export function App() {
                 onClick={() => {
                   setActivePlaylist(pl.id);
                   setIsMorePlaylistsOpen(false);
-                  setMorePlaylistsCoords(null);
                 }}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors cursor-pointer ${
                   isSelected
@@ -244,7 +254,7 @@ export function App() {
                   <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span className="truncate">{pl.name}</span>
                 </div>
-                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                <span className="font-mono text-2xs text-muted-foreground shrink-0">
                   ({pl.item_count || 0})
                 </span>
               </button>
@@ -253,6 +263,11 @@ export function App() {
         </div>
       </div>
     );
+
+    if (typeof document !== "undefined" && document.body) {
+      return createPortal(menuElement, document.body);
+    }
+    return menuElement;
   };
 
   // Maximum custom playlist tabs shown directly in the bar before folding the rest into More menu
@@ -1065,7 +1080,7 @@ export function App() {
               >
                 <Shuffle className="h-3 w-3" />
                 <span className="font-semibold">{t("categories.mixed")}</span>
-                <span className="font-mono text-[11px] opacity-80">({allMixedItems.length})</span>
+                <span className="font-mono text-2xs opacity-80">({allMixedItems.length})</span>
               </button>
 
               {/* Folded toggle button right next to Mix when folded */}
@@ -1078,7 +1093,7 @@ export function App() {
                   className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
-                  <span className="font-mono text-[11px] opacity-80">4</span>
+                  <span className="font-mono text-2xs opacity-80">4</span>
                   {errorTracks.length > 0 ? (
                     <span className="relative flex h-2 w-2 ml-0.5" title={t("categories.errors")}>
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
@@ -1109,7 +1124,7 @@ export function App() {
                   >
                     <Scissors className="h-3 w-3" />
                     <span>{t("categories.slices")}</span>
-                    <span className="font-mono text-[11px] opacity-80">({allSliceItems.length})</span>
+                    <span className="font-mono text-2xs opacity-80">({allSliceItems.length})</span>
                   </button>
 
                   <button
@@ -1128,7 +1143,7 @@ export function App() {
                   >
                     <Disc className="h-3 w-3" />
                     <span>{t("categories.tracks")}</span>
-                    <span className="font-mono text-[11px] opacity-80">({originalTracks.length})</span>
+                    <span className="font-mono text-2xs opacity-80">({originalTracks.length})</span>
                   </button>
 
                   <button
@@ -1147,7 +1162,7 @@ export function App() {
                   >
                     <Loader2 className={`h-3 w-3 ${downloadingTracks.length > 0 ? "animate-spin" : ""}`} />
                     <span>{t("categories.downloading")}</span>
-                    <span className="font-mono text-[11px] opacity-80">({downloadingTracks.length})</span>
+                    <span className="font-mono text-2xs opacity-80">({downloadingTracks.length})</span>
                   </button>
 
                   <button
@@ -1166,7 +1181,7 @@ export function App() {
                   >
                     <AlertCircle className={`h-3 w-3 ${errorTracks.length > 0 && activeSystemCategory !== "error_only" ? "text-destructive" : ""}`} />
                     <span>{t("categories.errors")}</span>
-                    <span className="font-mono text-[11px] opacity-80">({errorTracks.length})</span>
+                    <span className="font-mono text-2xs opacity-80">({errorTracks.length})</span>
                   </button>
 
                   <button
@@ -1208,7 +1223,7 @@ export function App() {
                     >
                       <Folder className="h-3 w-3 shrink-0 text-primary-foreground" />
                       <span>{activePl.name}</span>
-                      <span className="font-mono text-[11px] opacity-80">({activePl.item_count || 0})</span>
+                      <span className="font-mono text-2xs opacity-80">({activePl.item_count || 0})</span>
                     </button>
                   )}
 
@@ -1222,7 +1237,7 @@ export function App() {
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                       <Folder className="h-3 w-3 text-primary" />
-                      <span className="font-mono text-[11px] opacity-80">{playlists.length}</span>
+                      <span className="font-mono text-2xs opacity-80">{playlists.length}</span>
                     </button>
 
                     <button
@@ -1265,7 +1280,7 @@ export function App() {
                       >
                         <Folder className="h-3 w-3 shrink-0 text-primary" />
                         <span>{pl.name}</span>
-                        <span className="font-mono text-[11px] opacity-80">({pl.item_count || 0})</span>
+                        <span className="font-mono text-2xs opacity-80">({pl.item_count || 0})</span>
                       </button>
                     );
                   })}
@@ -1282,7 +1297,7 @@ export function App() {
                         className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
                       >
                         <MoreHorizontal className="h-3.5 w-3.5" />
-                        <span className="font-mono text-[11px] opacity-80">{overflowCustomPlaylists.length}</span>
+                        <span className="font-mono text-2xs opacity-80">{overflowCustomPlaylists.length}</span>
                       </button>
 
                       {renderMorePlaylistsMenu(overflowCustomPlaylists)}

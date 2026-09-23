@@ -305,16 +305,16 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       moreBtn.click();
     });
 
-    const menu = container.querySelector('[role="menu"]');
+    const menu = happyWindow.document.querySelector('[role="menu"]');
     expect(menu).not.toBeNull();
     expect(menu?.classList.contains("fixed")).toBe(true);
     expect(menu?.textContent).toContain("Playlist 4");
     expect(menu?.textContent).toContain("Playlist 5");
 
     // Clicking Playlist 4 from popover selects it and brings it into visible tabs
-    const pl4Btn = Array.from(menu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(
+    const pl4Btn = Array.from(menu!.querySelectorAll('[role="menuitem"]')).find(
       (b) => b.textContent?.includes("Playlist 4")
-    );
+    ) as HTMLElement | undefined;
     expect(pl4Btn).toBeDefined();
 
     await act(async () => {
@@ -323,7 +323,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
 
     expect(usePlayerStore.getState().activePlaylistId).toBe("pl_4");
     expect(container.querySelector("#tab-playlist-pl_4")).not.toBeNull();
-    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(happyWindow.document.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("folded custom playlists more button opens fixed menu and closes on Escape", async () => {
@@ -346,7 +346,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       moreBtn.click();
     });
 
-    let menu = container.querySelector('[role="menu"]');
+    let menu = happyWindow.document.querySelector('[role="menu"]');
     expect(menu).not.toBeNull();
     expect(menu?.classList.contains("fixed")).toBe(true);
     expect(menu?.textContent).toContain("Playlist 1");
@@ -357,7 +357,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       happyWindow.document.dispatchEvent(new happyWindow.KeyboardEvent("keydown", { key: "Escape" } as any));
     });
 
-    menu = container.querySelector('[role="menu"]');
+    menu = happyWindow.document.querySelector('[role="menu"]');
     expect(menu).toBeNull();
   });
 
@@ -385,7 +385,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       moreBtn.click();
     });
 
-    let menu = container.querySelector('[role="menu"]');
+    let menu = happyWindow.document.querySelector('[role="menu"]');
     expect(menu).not.toBeNull();
 
     const scrollableList = menu?.querySelector(".overflow-y-auto");
@@ -396,14 +396,14 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       scrollableList!.dispatchEvent(new happyWindow.Event("scroll", { bubbles: false } as any) as any);
     });
 
-    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+    expect(happyWindow.document.querySelector('[role="menu"]')).not.toBeNull();
 
     // Outer window/document scroll DOES dismiss menu
     await act(async () => {
       happyWindow.dispatchEvent(new happyWindow.Event("scroll") as any);
     });
 
-    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(happyWindow.document.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("closes more menu when custom fold button is toggled", async () => {
@@ -429,7 +429,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       moreBtn.click();
     });
 
-    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+    expect(happyWindow.document.querySelector('[role="menu"]')).not.toBeNull();
 
     const foldBtn = container.querySelector(
       'button[title="Collapse custom playlists"], button[title="Thu gọn playlist cá nhân"]'
@@ -440,7 +440,7 @@ describe("Library Tabs Fold & Custom Playlists Separator", () => {
       foldBtn.click();
     });
 
-    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(happyWindow.document.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("tablist container has shrink-0 to prevent flexbox shrink collision with + New Playlist", async () => {

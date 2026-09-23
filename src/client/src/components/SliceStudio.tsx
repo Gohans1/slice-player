@@ -880,7 +880,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                   type="button"
                   onClick={() => handleZoomChange(zoomLevel === 0 ? 40 : 0)}
                   disabled={!isWaveSurferReady}
-                  className="px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground hover:text-foreground rounded transition-colors disabled:opacity-30"
+                  className="px-1.5 py-0.5 text-2xs font-mono text-muted-foreground hover:text-foreground rounded transition-colors disabled:opacity-30"
                   title={t("studio.zoomFit")}
                   aria-label={t("studio.zoomFit")}
                 >
@@ -1072,7 +1072,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "start", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeStartBack", "-0.1s start")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
+                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
                           </button>
@@ -1082,7 +1082,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "start", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeStartForward", "+0.1s start")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
+                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
                           </button>
@@ -1094,7 +1094,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "end", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeEndBack", "-0.1s end")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
+                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
                           </button>
@@ -1104,12 +1104,12 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                             onClick={() => handleNudgeSegment(seg.id, "end", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeEndForward", "+0.1s end")}
-                            className="h-5 px-1 rounded text-[10px] bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
+                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
                           </button>
                         </div>
-                        <span className="text-[11px] text-flexoki-cyan">
+                        <span className="text-2xs text-flexoki-cyan">
                           ({duration.toFixed(1)}s)
                         </span>
                       </div>

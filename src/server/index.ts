@@ -954,8 +954,9 @@ const server = serve({
           return Response.json({ error: "track_id là bắt buộc" }, { status: 400, headers: corsHeaders });
         }
         const segmentId = url.searchParams.get("segment_id");
+        const includeAll = url.searchParams.get("all") === "true";
         try {
-          const memberships = getPlaylistMemberships(trackId, segmentId);
+          const memberships = getPlaylistMemberships(trackId, segmentId, includeAll);
           return Response.json(memberships, { headers: corsHeaders });
         } catch (e: any) {
           return Response.json({ error: e.message || "Không thể tải danh sách phát của bài hát" }, { status: 500, headers: corsHeaders });

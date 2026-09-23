@@ -227,7 +227,7 @@ interface PlayerState {
   removeFromPlaylist: (playlistId: string, itemId: string) => Promise<boolean>;
   reorderPlaylist: (playlistId: string, itemIds: string[]) => Promise<boolean>;
   setViewMode: (mode: "grid" | "list") => void;
-  buildPlaylistQueue: (playlistId: string, forceShuffle?: boolean, startIndexOrItemId?: number | string) => Promise<void>;
+  buildPlaylistQueue: (playlistId: string, forceShuffle?: boolean, startIndexOrItemId?: number | string, keepCurrentTrack?: boolean) => Promise<void>;
   playPlaylistItemAtIndex: (playlistId: string, indexOrItemId: number | string) => Promise<void>;
 }
 
@@ -2863,7 +2863,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ viewMode: mode });
   },
 
-  buildPlaylistQueue: async (playlistId: string, forceShuffle = false, startIndexOrItemId: number | string = 0) => {
+  buildPlaylistQueue: async (
+    playlistId: string,
+    forceShuffle = false,
+    startIndexOrItemId: number | string = 0,
+    keepCurrentTrack = false
+  ) => {
     try {
       let items: PlaylistItemWithDetails[] = [];
       if (playlistId === get().activePlaylistId && get().activePlaylistItems.length > 0) {
@@ -2886,6 +2891,47 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       let queueItems = [...rawQueueItems];
       let targetIndex = 0;
+
+      if (keepCurrentTrack && get().activeTrack) {
+        const curTrackId = get().activeTrack!.id;
+        const curSegId = get().activeSegment?.id;
+
+        // Prefer matching exact slice if playing a non-fallback segment, otherwise match track
+        let matchIdx = -1;
+        if (curSegId && !curSegId.startsWith("fallback_")) {
+          matchIdx = queueItems.findIndex((it) => it.segment.id === curSegId);
+        }
+        if (matchIdx === -1) {
+          matchIdx = queueItems.findIndex((it) => it.track.id === curTrackId);
+        }
+
+        if (matchIdx !== -1) {
+          const matchedItem = queueItems[matchIdx];
+          const remainingItems = queueItems.filter((_, idx) => idx !== matchIdx);
+          const finalRest = forceShuffle ? shuffleArray(remainingItems) : remainingItems;
+          queueItems = [matchedItem, ...finalRest];
+          targetIndex = 0;
+
+          set({
+            queue: queueItems,
+            queueIndex: 0,
+            isShuffle: forceShuffle,
+            activePlaylistPlayingId: playlistId,
+            activePlaylistOriginalQueue: rawQueueItems,
+          });
+
+          // If current track and segment are already actively playing, do not call playSegment to avoid restarting audio
+          const isCurrentlyPlayingThis =
+            get().isPlaying &&
+            get().activeTrack?.id === matchedItem.track.id &&
+            get().activeSegment?.id === matchedItem.segment.id;
+
+          if (!isCurrentlyPlayingThis) {
+            await get().playSegment(matchedItem.segment, matchedItem.track, 0);
+          }
+          return;
+        }
+      }
 
       if (typeof startIndexOrItemId === "string") {
         const found = queueItems.findIndex((it) => it.queueItemId === startIndexOrItemId);

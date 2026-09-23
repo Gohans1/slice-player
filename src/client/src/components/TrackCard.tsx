@@ -159,12 +159,12 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
         {/* Source Badge */}
         <div className="absolute top-2 left-2">
           {track.source_type === "youtube" ? (
-            <Badge variant="destructive" className="flex items-center gap-1 text-[10px] py-0.5">
+            <Badge variant="destructive" className="flex items-center gap-1 text-2xs py-0.5">
               <YoutubeIcon className="h-3 w-3" />
               <span>YouTube</span>
             </Badge>
           ) : (
-            <Badge variant="cyan" className="flex items-center gap-1 text-[10px] py-0.5">
+            <Badge variant="cyan" className="flex items-center gap-1 text-2xs py-0.5">
               <Disc className="h-3 w-3" />
               <span>{t("trackCard.flacLocal", "FLAC Local")}</span>
             </Badge>
@@ -195,15 +195,15 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
         </button>
 
         {/* Duration badge */}
-        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[10px] font-mono font-medium text-white backdrop-blur-xs">
+        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-mono font-medium text-white backdrop-blur-xs">
           {formatDuration(track.duration)}
         </div>
 
         {/* Active Playing Equalizer Badge */}
         {isCurrentPlaying && (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
+          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-2xs font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
             <NowPlayingEqualizer />
-            <span className="uppercase text-[10px] tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
+            <span className="uppercase text-2xs tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
           </div>
         )}
 
@@ -247,7 +247,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs gap-1.5 p-2 text-center">
             <Clock className="h-6 w-6 text-primary/90 animate-pulse" />
             <span className="text-xs font-medium text-primary-foreground/90">{t("trackCard.queued", "Queued...")}</span>
-            <span className="text-[10px] text-muted-foreground">{t("trackCard.inQueue", "In download queue")}</span>
+            <span className="text-2xs text-muted-foreground">{t("trackCard.inQueue", "In download queue")}</span>
           </div>
         )}
 
@@ -262,7 +262,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-3 text-center z-10">
             <AlertCircle className="h-5 w-5 text-destructive mb-1 shrink-0" />
             <span className="text-xs text-destructive font-semibold">{t("trackCard.error", "Download failed")}</span>
-            <span className="text-[10px] text-muted-foreground mt-0.5 mb-2 line-clamp-2" title={track.error_message || ""}>
+            <span className="text-2xs text-muted-foreground mt-0.5 mb-2 line-clamp-2" title={track.error_message || ""}>
               {track.error_message || t("trackCard.unknownError", "Unknown error")}
             </span>
             <Button
@@ -294,7 +294,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
 
         {/* Segment badge & actions */}
         <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
-          <Badge variant="secondary" className="font-mono text-[11px] font-normal">
+          <Badge variant="secondary" className="font-mono text-2xs font-normal">
             {t("trackCard.slicesCount", {
               count: track.segment_count ?? segments?.length ?? 0,
               defaultValue: `${track.segment_count ?? segments?.length ?? 0} slices`,
