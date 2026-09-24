@@ -1583,18 +1583,21 @@ export function App() {
               scrollRequest={gridScrollRequest}
               onScrollHandled={handleGridScrollHandled}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item, idx) => (
-                <SliceCard
-                  key={item.id}
-                  index={idx}
-                  segment={item.segment}
-                  track={item.track}
-                  visibleItemIds={visibleItems}
-                  onPlay={() => playSegmentInMode("slices_only", item.segment, item.track, sliceQueue, idx)}
-                  onOpenStudio={() => openSliceStudio(item.track)}
-                  onDelete={handleDeleteSlice}
-                />
-              )}
+              renderItem={(item, idx) => {
+                const qIdx = sliceQueue.findIndex((q) => q.segment.id === item.segment.id);
+                return (
+                  <SliceCard
+                    key={item.id}
+                    index={idx}
+                    segment={item.segment}
+                    track={item.track}
+                    visibleItemIds={visibleItems}
+                    onPlay={() => playSegmentInMode("slices_only", item.segment, item.track, sliceQueue, qIdx >= 0 ? qIdx : undefined)}
+                    onOpenStudio={() => openSliceStudio(item.track)}
+                    onDelete={handleDeleteSlice}
+                  />
+                );
+              }}
             />
           )
         ) : activeSystemCategory === "mixed" ? (
@@ -1636,6 +1639,7 @@ export function App() {
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => {
                 if (item.type === "slice") {
+                  const qIdx = mixedQueue.findIndex((q) => q.segment.id === item.segment.id);
                   return (
                     <SliceCard
                       key={item.id}
@@ -1644,19 +1648,22 @@ export function App() {
                       segment={item.segment}
                       track={item.track}
                       visibleItemIds={visibleItems}
-                      onPlay={() => playSegmentInMode("mixed", item.segment, item.track, mixedQueue, idx)}
+                      onPlay={() => playSegmentInMode("mixed", item.segment, item.track, mixedQueue, qIdx >= 0 ? qIdx : undefined)}
                       onOpenStudio={() => openSliceStudio(item.track)}
                       onDelete={handleDeleteSlice}
                     />
                   );
                 }
+                const qIdx = mixedQueue.findIndex(
+                  (q) => q.track.id === item.track.id && q.segment.id.startsWith("fallback_")
+                );
                 return (
                   <TrackCard
                     key={item.id}
                     track={item.track}
                     onDelete={handleDeleteTrack}
                     visibleTrackIds={visibleItems}
-                    onPlay={() => playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, mixedQueue, idx)}
+                    onPlay={() => playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, mixedQueue, qIdx >= 0 ? qIdx : undefined)}
                   />
                 );
               }}
@@ -1831,15 +1838,18 @@ export function App() {
             scrollRequest={gridScrollRequest}
             onScrollHandled={handleGridScrollHandled}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-            renderItem={(track, idx) => (
-              <TrackCard
-                key={track.id}
-                track={track}
-                onDelete={handleDeleteTrack}
-                visibleTrackIds={visibleItems}
-                onPlay={() => playSegmentInMode("original_only", createDefaultFullSegment(track), track, originalQueue, idx)}
-              />
-            )}
+            renderItem={(track) => {
+              const qIdx = originalQueue.findIndex((q) => q.track.id === track.id && q.segment.id.startsWith("fallback_"));
+              return (
+                <TrackCard
+                  key={track.id}
+                  track={track}
+                  onDelete={handleDeleteTrack}
+                  visibleTrackIds={visibleItems}
+                  onPlay={() => playSegmentInMode("original_only", createDefaultFullSegment(track), track, originalQueue, qIdx >= 0 ? qIdx : undefined)}
+                />
+              );
+            }}
           />
         )}
           </div>

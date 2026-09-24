@@ -573,7 +573,13 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Track & Segment Info */}
         <div className="flex items-center gap-3 w-full sm:flex-1 min-w-0">
-          <div className="relative h-11 w-11 rounded-md overflow-hidden bg-muted shrink-0 border border-border">
+          <button
+            type="button"
+            onClick={handleActiveTagClick}
+            className="relative h-11 w-11 rounded-md overflow-hidden bg-muted shrink-0 border border-border cursor-pointer group hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-left p-0"
+            title={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
+            aria-label={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
+          >
             <TrackThumbnail
               key={activeTrack.id}
               src={activeTrack.thumbnail_url}
@@ -586,13 +592,18 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               className="absolute bottom-0 left-0 right-0 h-1"
               style={{ backgroundColor: activeSegment.color || "#4385BE" }}
             />
-          </div>
+          </button>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px]">
+              <button
+                type="button"
+                onClick={handleActiveTagClick}
+                className="font-semibold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px] hover:underline cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-xs p-0 border-none bg-transparent"
+                title={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
+              >
                 {activeTrack.title}
-              </span>
+              </button>
               <button
                 type="button"
                 onClick={handleActiveTagClick}

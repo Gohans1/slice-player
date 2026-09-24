@@ -76,8 +76,8 @@ export function getSortedPlaylistItems(
       const trackDiff = (b.track?.created_at || 0) - (a.track?.created_at || 0);
       if (trackDiff !== 0) return trackDiff;
 
-      // 3. Fallback: later in batch has higher sort_order
-      const orderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0);
+      // 3. Fallback: match SQLite ORDER BY pi.sort_order ASC
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
       if (orderDiff !== 0) return orderDiff;
 
       return a.id.localeCompare(b.id);
@@ -104,7 +104,7 @@ export function getSortedPlaylistItems(
 
   if (sortMode === "random") {
     if (!randomOrderMap || randomOrderMap.length === 0) {
-      return [...items];
+      return [...items].reverse();
     }
     const orderMap = new Map(randomOrderMap.map((id, index) => [id, index]));
     return [...items].sort((a, b) => {
@@ -123,7 +123,7 @@ export function getSortedPlaylistItems(
       if (timeDiff !== 0) return timeDiff;
       const trackDiff = (b.track?.created_at || 0) - (a.track?.created_at || 0);
       if (trackDiff !== 0) return trackDiff;
-      const orderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0);
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
       if (orderDiff !== 0) return orderDiff;
       return a.id.localeCompare(b.id);
     });
@@ -170,7 +170,7 @@ export function getSortedMixedItems(
 
   if (sortMode === "random") {
     if (!randomOrderMap || randomOrderMap.length === 0) {
-      return [...items];
+      return [...items].reverse();
     }
     const orderMap = new Map(randomOrderMap.map((id, index) => [id, index]));
     return [...items].sort((a, b) => {
@@ -219,7 +219,7 @@ export function getSortedSliceItems(
 
   if (sortMode === "random") {
     if (!randomOrderMap || randomOrderMap.length === 0) {
-      return [...items];
+      return [...items].reverse();
     }
     const orderMap = new Map(randomOrderMap.map((id, index) => [id, index]));
     return [...items].sort((a, b) => {
@@ -266,7 +266,7 @@ export function getSortedTracks(
 
   if (sortMode === "random") {
     if (!randomOrderMap || randomOrderMap.length === 0) {
-      return [...tracks];
+      return [...tracks].reverse();
     }
     const orderMap = new Map(randomOrderMap.map((id, index) => [id, index]));
     return [...tracks].sort((a, b) => {

@@ -3150,10 +3150,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
         modeItems = generateModeQueueItems(mode, segments, get().tracks);
       }
-      let idx =
-        typeof customIndex === "number" && customIndex >= 0 && customIndex < modeItems.length
-          ? customIndex
-          : modeItems.findIndex((it) => it.segment.id === segment.id);
+      let idx = -1;
+      if (
+        typeof customIndex === "number" &&
+        customIndex >= 0 &&
+        customIndex < modeItems.length
+      ) {
+        const candidate = modeItems[customIndex];
+        if (
+          candidate.segment.id === segment.id ||
+          (segment.id.startsWith("fallback_") && candidate.track.id === track.id && candidate.segment.id.startsWith("fallback_"))
+        ) {
+          idx = customIndex;
+        }
+      }
+      if (idx === -1) {
+        idx = modeItems.findIndex((it) => {
+          if (it.segment.id === segment.id) return true;
+          if (segment.id.startsWith("fallback_") && it.track.id === track.id && it.segment.id.startsWith("fallback_")) {
+            return true;
+          }
+          return false;
+        });
+      }
       if (idx === -1) {
         const newItem = createQueueItem(segment, track);
         modeItems = [newItem, ...modeItems];

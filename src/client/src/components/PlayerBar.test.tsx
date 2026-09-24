@@ -963,6 +963,76 @@ describe("PlayerBar Component", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  it("triggers requestScrollToActiveTrack when clicking track title or thumbnail", async () => {
+    const origFetch = globalThis.fetch;
+    const mockTrack: Track = {
+      id: "track-lowg",
+      source_type: "local",
+      source_uri: "local://lowg.mp3",
+      title: "Low G - An Thit Cho",
+      artist: "Low G",
+      duration: 180,
+      status: "ready",
+    };
+    const mockSegment: Segment = {
+      id: "fallback_track-lowg",
+      track_id: "track-lowg",
+      name: "Full Track",
+      start_time: 0,
+      end_time: 180,
+    };
+
+    let scrollRequestedCount = 0;
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null,
+      requestScrollToActiveTrack: () => {
+        scrollRequestedCount++;
+      },
+    });
+
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlayerBar
+            onToggleQueue={() => {}}
+            isQueueOpen={false}
+          />
+        );
+      });
+
+      // Find button containing track title
+      const titleBtn = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Low G - An Thit Cho")
+      );
+      expect(titleBtn).toBeDefined();
+
+      await act(async () => {
+        titleBtn?.click();
+      });
+
+      expect(scrollRequestedCount).toBe(1);
+
+      // Find thumbnail button
+      const thumbBtn = container.querySelector('button[title*="jump to active track" i], button[aria-label*="jump to active track" i]') as HTMLButtonElement | null;
+      expect(thumbBtn).not.toBeNull();
+
+      await act(async () => {
+        thumbBtn?.click();
+      });
+
+      expect(scrollRequestedCount).toBe(2);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
 
 
