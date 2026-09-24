@@ -1,4 +1,5 @@
-import type { PlaylistItemWithDetails, MixedItem, Track, Segment } from "@/server/types";
+import type { PlaylistItemWithDetails, Track, Segment } from "@/server/types";
+import type { MixedItem } from "../components/PlaylistTableView";
 
 export interface ActiveItemResolutionOptions {
   currentQueueItemId?: string | null;

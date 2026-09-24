@@ -19,6 +19,14 @@ import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertC
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
 import { compareDownloadingTracks, cn } from "./lib/utils";
+import {
+  findActivePlaylistItemIndex,
+  findActiveMixedItemIndex,
+  findActiveSliceItemIndex,
+  findActiveTrackIndex,
+} from "./lib/activeItemIndex";
+import { PlaylistSortSelector } from "./components/PlaylistSortSelector";
+import { getSortedPlaylistItems } from "./lib/playlistSort";
 import { Button } from "./components/ui/button";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -36,6 +44,8 @@ export function App() {
   const sliceStudioTrack = usePlayerStore((s) => s.sliceStudioTrack);
   const closeSliceStudio = usePlayerStore((s) => s.closeSliceStudio);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
+  const queue = usePlayerStore((s) => s.queue);
+  const queueIndex = usePlayerStore((s) => s.queueIndex);
   const isQueueEmpty = usePlayerStore((s) => s.queue.length === 0);
   const removeTrackFromQueue = usePlayerStore((s) => s.removeTrackFromQueue);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
@@ -46,6 +56,8 @@ export function App() {
   const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
   const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
+  const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
+  const playlistRandomMap = usePlayerStore((s) => s.playlistRandomMap);
   const viewMode = usePlayerStore((s) => s.viewMode);
   const fetchPlaylists = usePlayerStore((s) => s.fetchPlaylists);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
@@ -776,49 +788,68 @@ export function App() {
     });
   }, [allMixedItems, deferredQuery]);
 
+  const currentPlaylist = React.useMemo(() => {
+    return playlists.find((p) => p.id === activePlaylistId);
+  }, [playlists, activePlaylistId]);
+
+  const sortedPlaylistItems = React.useMemo(() => {
+    if (!activePlaylistId) return [];
+    return getSortedPlaylistItems(
+      activePlaylistItems,
+      playlistSortMode,
+      playlistRandomMap[activePlaylistId],
+      currentPlaylist?.is_custom_ordered
+    );
+  }, [activePlaylistId, activePlaylistItems, playlistSortMode, playlistRandomMap, currentPlaylist?.is_custom_ordered]);
+
   const displayedPlaylistItems = React.useMemo(() => {
     if (!activePlaylistId) return [];
-    return searchItems(activePlaylistItems, deferredQuery, (item) => ({
+    return searchItems(sortedPlaylistItems, deferredQuery, (item) => ({
       title: item.segment?.name || item.track?.title,
       artist: item.track?.artist,
       segmentName: item.segment ? item.track?.title : undefined,
       createdAt: item.added_at,
     }));
-  }, [activePlaylistId, activePlaylistItems, deferredQuery]);
+  }, [activePlaylistId, sortedPlaylistItems, deferredQuery]);
 
-  const [gridScrollToIndex, setGridScrollToIndex] = React.useState<number | null>(null);
+  const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
   const lastHandledGridScrollRequestIdRef = React.useRef<number | null>(null);
+
+  const handleGridScrollHandled = React.useCallback((id: number) => {
+    setGridScrollRequest((prev) => (prev?.requestId === id ? null : prev));
+  }, []);
 
   React.useEffect(() => {
     if (viewMode !== "grid" || !activeTrackScrollRequest) return;
     if (lastHandledGridScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
     if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
 
-    lastHandledGridScrollRequestIdRef.current = activeTrackScrollRequest.id;
-
     let targetIdx = -1;
+    const isFallback = !activeSegment || activeSegment.id.startsWith("fallback_");
+
     if (activePlaylistId) {
-      targetIdx = displayedPlaylistItems.findIndex((it) =>
-        it.segment_id
-          ? it.segment?.id === activeSegment?.id
-          : it.track?.id === activeTrack?.id && !activeSegment?.id.startsWith("seg_")
-      );
+      const currentQueueItemId = queueIndex >= 0 ? queue[queueIndex]?.queueItemId : undefined;
+      targetIdx = findActivePlaylistItemIndex(displayedPlaylistItems, {
+        currentQueueItemId,
+        activeTrackId: activeTrack?.id,
+        activeSegmentId: activeSegment?.id,
+        isFallbackSegment: isFallback,
+      });
     } else if (activeSystemCategory === "mixed") {
-      targetIdx = filteredMixedItems.findIndex((it) =>
-        it.type === "slice"
-          ? it.segment.id === activeSegment?.id
-          : it.track.id === activeTrack?.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
-      );
+      targetIdx = findActiveMixedItemIndex(filteredMixedItems, {
+        activeTrackId: activeTrack?.id,
+        activeSegmentId: activeSegment?.id,
+        isFallbackSegment: isFallback,
+      });
     } else if (activeSystemCategory === "slices_only") {
-      targetIdx = filteredSliceItems.findIndex((it) => it.segment.id === activeSegment?.id);
+      targetIdx = findActiveSliceItemIndex(filteredSliceItems, activeSegment?.id);
     } else if (activeSystemCategory === "original_only") {
-      targetIdx = filteredTracks.findIndex(
-        (t) => t.id === activeTrack?.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
-      );
+      targetIdx = findActiveTrackIndex(filteredTracks, activeTrack?.id, isFallback);
     }
 
     if (targetIdx >= 0) {
-      setGridScrollToIndex(targetIdx);
+      lastHandledGridScrollRequestIdRef.current = activeTrackScrollRequest.id;
+      setGridScrollRequest({ index: targetIdx, requestId: activeTrackScrollRequest.id });
     }
   }, [
     viewMode,
@@ -831,6 +862,8 @@ export function App() {
     filteredTracks,
     activeTrack?.id,
     activeSegment?.id,
+    queueIndex,
+    queue,
   ]);
 
   const handlePlayPlaylistItem = React.useCallback(
@@ -1068,8 +1101,9 @@ export function App() {
                 )}
               </div>
 
-              {/* View Mode Switcher */}
+              {/* View Mode Switcher & Playlist Sort Selector */}
               <div className="flex items-center gap-2 shrink-0">
+                {activePlaylistId && <PlaylistSortSelector />}
                 <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
                 <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">
                   <button
@@ -1447,7 +1481,8 @@ export function App() {
               key={`playlist_${activePlaylistId}`}
               items={displayedPlaylistItems}
               getItemKey={getItemEntityId}
-              scrollToIndex={gridScrollToIndex}
+              scrollRequest={gridScrollRequest}
+              onScrollHandled={handleGridScrollHandled}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => (
                 <PlaylistItemCard
@@ -1494,7 +1529,8 @@ export function App() {
               key="slices_only"
               items={filteredSliceItems}
               getItemKey={getItemEntityId}
-              scrollToIndex={gridScrollToIndex}
+              scrollRequest={gridScrollRequest}
+              onScrollHandled={handleGridScrollHandled}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => (
                 <SliceCard
@@ -1544,7 +1580,8 @@ export function App() {
               key="mixed"
               items={filteredMixedItems}
               getItemKey={getItemEntityId}
-              scrollToIndex={gridScrollToIndex}
+              scrollRequest={gridScrollRequest}
+              onScrollHandled={handleGridScrollHandled}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => {
                 if (item.type === "slice") {
@@ -1739,7 +1776,8 @@ export function App() {
             key="original_only"
             items={filteredTracks}
             getItemKey={getItemEntityId}
-            scrollToIndex={gridScrollToIndex}
+            scrollRequest={gridScrollRequest}
+            onScrollHandled={handleGridScrollHandled}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
             renderItem={(track) => (
               <TrackCard

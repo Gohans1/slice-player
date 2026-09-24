@@ -234,7 +234,17 @@
     "deletePlaylistTitle": "Xóa danh sách phát?",
     "confirmDelete": "Bạn có chắc chắn muốn xóa danh sách phát \"{{name}}\"?",
     "nowPlayingBadge": "● Đang phát",
-    "shuffleTooltip": "Xáo trộn {{name}}"
+    "shuffleTooltip": "Xáo trộn {{name}}",
+    "sortLabel": "Sắp xếp danh sách",
+    "sortManual": "Thủ công",
+    "sortManualTooltip": "Thứ tự thủ công (cho phép kéo thả)",
+    "sortNewest": "Mới nhất",
+    "sortNewestTooltip": "Thêm vào gần đây nhất",
+    "sortOldest": "Cũ nhất",
+    "sortOldestTooltip": "Thêm vào sớm nhất",
+    "sortRandom": "Ngẫu nhiên",
+    "sortRandomTooltip": "Xáo trộn thứ tự hiển thị",
+    "reshuffleTooltip": "Bấm lại để xáo trộn lại"
   },
   "studio": {
     "title": "Studio Cắt Đoạn",

@@ -67,6 +67,7 @@ const dummyPlaylist: Playlist & { item_count: number } = {
   created_at: 1000,
   updated_at: 1000,
   item_count: 2,
+  is_custom_ordered: true,
 };
 
 const dummyPlaylistItem1: PlaylistItemWithDetails = {
@@ -123,6 +124,8 @@ describe("PlaylistTableView", () => {
       isPlaying: false,
       activeTrack: null,
       activeSegment: null,
+      playlistSortMode: "manual",
+      playlistRandomMap: {},
     });
   });
 
@@ -144,6 +147,8 @@ describe("PlaylistTableView", () => {
       isPlaying: false,
       activeTrack: null,
       activeSegment: null,
+      playlistSortMode: "manual",
+      playlistRandomMap: {},
       playSegmentInMode: origPlaySegmentInMode,
       playPlaylistItemAtIndex: origPlayPlaylistItemAtIndex,
       pause: origPause,
@@ -2161,8 +2166,10 @@ describe("PlaylistTableView", () => {
   });
 
   describe("Scroll to active item on request", () => {
+    let scrollCalledWith: any = null;
+
     it("scrolls to active item in mixed view when activeTrackScrollRequest triggers", async () => {
-      let scrollCalledWith: any = null;
+      scrollCalledWith = null;
       window.scrollTo = (optionsOrX: any, y?: any) => {
         scrollCalledWith = typeof optionsOrX === "object" ? optionsOrX : { top: y, left: optionsOrX };
       };
@@ -2210,8 +2217,218 @@ describe("PlaylistTableView", () => {
 
       expect(scrollCalledWith).not.toBeNull();
     });
+
+    it("handles async playlist items arrival without dropping scroll request", async () => {
+      scrollCalledWith = null;
+      window.scrollTo = (optionsOrX: any, y?: any) => {
+        scrollCalledWith = typeof optionsOrX === "object" ? optionsOrX : { top: y, left: optionsOrX };
+      };
+
+      // Step 1: User switches to playlist, items are initially empty []
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_async",
+        activePlaylistPlayingId: "pl_custom_async",
+        activePlaylistItems: [],
+        activeTrack: dummyTrack2,
+        activeSegment: {
+          id: "fallback_trk_tbl_2",
+          track_id: dummyTrack2.id,
+          name: dummyTrack2.title,
+          start_time: 0,
+          end_time: dummyTrack2.duration,
+        },
+        isPlaying: true,
+        activeTrackScrollRequest: { id: 99, timestamp: Date.now() },
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      scrollCalledWith = null;
+
+      // Step 2: 30ms later async fetch completes, populating items
+      await act(async () => {
+        usePlayerStore.setState({
+          activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        });
+      });
+
+      // Wait for the scroll timer
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 80));
+      });
+
+      // It should scroll to dummyPlaylistItem2 (index 1)
+      expect(scrollCalledWith).not.toBeNull();
+    });
+
+    it("scrolls to the exact duplicate playlist item when matched by queueItemId", async () => {
+      scrollCalledWith = null;
+      window.scrollTo = (optionsOrX: any, y?: any) => {
+        scrollCalledWith = typeof optionsOrX === "object" ? optionsOrX : { top: y, left: optionsOrX };
+      };
+
+      const duplicate1: PlaylistItemWithDetails = {
+        id: "pi_dup_1",
+        playlist_id: "pl_dup",
+        track_id: dummyTrack.id,
+        segment_id: null,
+        sort_order: 0,
+        added_at: 10,
+        track: dummyTrack,
+        segment: null,
+      };
+      const duplicate2: PlaylistItemWithDetails = {
+        id: "pi_dup_2",
+        playlist_id: "pl_dup",
+        track_id: dummyTrack.id,
+        segment_id: null,
+        sort_order: 1,
+        added_at: 20,
+        track: dummyTrack,
+        segment: null,
+      };
+
+      usePlayerStore.setState({
+        activePlaylistId: "pl_dup",
+        activePlaylistPlayingId: "pl_dup",
+        activePlaylistItems: [duplicate1, duplicate2],
+        activeTrack: dummyTrack,
+        activeSegment: {
+          id: `fallback_${dummyTrack.id}`,
+          track_id: dummyTrack.id,
+          name: dummyTrack.title,
+          start_time: 0,
+          end_time: dummyTrack.duration,
+        },
+        queue: [
+          { queueItemId: "pi_dup_2", segment: { id: `fallback_${dummyTrack.id}`, track_id: dummyTrack.id, name: dummyTrack.title, start_time: 0, end_time: dummyTrack.duration, color: "#fff", sort_order: 0 }, track: dummyTrack },
+        ],
+        queueIndex: 0,
+        isPlaying: true,
+        activeTrackScrollRequest: { id: 101, timestamp: Date.now() },
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 80));
+      });
+
+      // Must scroll to duplicate 2
+      expect(scrollCalledWith).not.toBeNull();
+    });
+  });
+
+  describe("Playlist Sorting & Drag-Drop Mode Restrictions", () => {
+    it("renders drag handles and allows drag only in manual mode", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const handles = container.querySelectorAll('[data-drag-handle="true"]');
+      expect(handles.length).toBe(2);
+
+      const rows = container.querySelectorAll(".group[role='row']");
+      expect(rows[0].getAttribute("draggable")).toBe("true");
+    });
+
+    it("hides drag handles and disables draggable when in newest mode", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "newest",
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const handles = container.querySelectorAll('[data-drag-handle="true"]');
+      expect(handles.length).toBe(0);
+
+      const rows = container.querySelectorAll(".group[role='row']");
+      expect(rows[0].getAttribute("draggable")).toBe("false");
+    });
+
+    it("sorts newest items first when in newest mode", async () => {
+      // dummyPlaylistItem1 has added_at: 1000, dummyPlaylistItem2 has added_at: 1001
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "newest",
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const rows = container.querySelectorAll(".group[role='row']");
+      // Newest (item_2, added_at 1001) should be first row
+      expect(rows[0].textContent).toContain("Table Test Track");
+    });
+
+    it("sorts oldest items first when in oldest mode", async () => {
+      // dummyPlaylistItem1 has added_at: 1000, dummyPlaylistItem2 has added_at: 1001
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem2, dummyPlaylistItem1],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "oldest",
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const handles = container.querySelectorAll('[data-drag-handle="true"]');
+      expect(handles.length).toBe(0);
+    });
+
+    it("prevents reorder drop when not in manual mode", async () => {
+      const reorderSpy = mock((_plId: string, _itemIds: string[]) => Promise.resolve(true));
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "newest",
+        reorderPlaylist: reorderSpy as any,
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const header = container.querySelector("[role='row'][aria-rowindex='1']");
+      const dropEvent = new window.Event("drop", { bubbles: true }) as any;
+      dropEvent.preventDefault = () => {};
+      dropEvent.stopPropagation = () => {};
+      dropEvent.dataTransfer = {
+        getData: () => "1",
+      };
+
+      await act(async () => {
+        header!.dispatchEvent(dropEvent);
+      });
+
+      expect(reorderSpy).not.toHaveBeenCalled();
+    });
   });
 });
+
+
 
 
 

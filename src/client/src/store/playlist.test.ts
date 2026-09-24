@@ -51,6 +51,7 @@ describe("usePlayerStore playlist management", () => {
     created_at: 1000,
     updated_at: 1000,
     item_count: 2,
+    is_custom_ordered: true,
   };
 
   const mockItem1: PlaylistItemWithDetails = {
@@ -78,11 +79,13 @@ describe("usePlayerStore playlist management", () => {
   beforeEach(() => {
     clearDismissedSegments();
     usePlayerStore.setState({
-      playlists: [],
+      playlists: [mockPlaylist],
       activePlaylistId: null,
       activePlaylistPlayingId: null,
       activePlaylistItems: [],
       activePlaylistOriginalQueue: [],
+      playlistSortMode: "manual",
+      playlistRandomMap: {},
       viewMode: "grid",
     });
   });
@@ -1352,6 +1355,128 @@ describe("usePlayerStore playlist management", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  describe("buildPlaylistQueue sort synchronization", () => {
+    let origPlaySegment: any;
+
+    beforeEach(() => {
+      origPlaySegment = usePlayerStore.getState().playSegment;
+      usePlayerStore.setState({
+        playSegment: async () => {},
+      });
+    });
+
+    afterEach(() => {
+      usePlayerStore.setState({
+        playSegment: origPlaySegment,
+        playlistSortMode: "manual",
+        playlistRandomMap: {},
+      });
+    });
+
+    it("synchronizes playback queue with newest sort mode", async () => {
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            ...mockPlaylist,
+            items: [mockItem1, mockItem2], // mockItem1: added_at 1000, mockItem2: added_at 2000
+          }),
+          { status: 200 }
+        );
+      }) as any;
+
+      try {
+        usePlayerStore.setState({
+          activePlaylistId: "pl_1",
+          activePlaylistItems: [mockItem1, mockItem2],
+          playlistSortMode: "newest",
+          playlists: [mockPlaylist],
+        });
+
+        await usePlayerStore.getState().buildPlaylistQueue("pl_1", false, "item_1");
+
+        const q = usePlayerStore.getState().queue;
+        expect(q.length).toBe(2);
+        // Newest mode: mockItem2 (2000) should be index 0, mockItem1 (1000) should be index 1
+        expect(q[0].queueItemId).toBe("item_2");
+        expect(q[1].queueItemId).toBe("item_1");
+        // Clicked item_1, so queueIndex should be 1
+        expect(usePlayerStore.getState().queueIndex).toBe(1);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    it("synchronizes playback queue with oldest sort mode", async () => {
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            ...mockPlaylist,
+            items: [mockItem2, mockItem1],
+          }),
+          { status: 200 }
+        );
+      }) as any;
+
+      try {
+        usePlayerStore.setState({
+          activePlaylistId: "pl_1",
+          activePlaylistItems: [mockItem2, mockItem1],
+          playlistSortMode: "oldest",
+          playlists: [mockPlaylist],
+        });
+
+        await usePlayerStore.getState().buildPlaylistQueue("pl_1", false, "item_2");
+
+        const q = usePlayerStore.getState().queue;
+        expect(q.length).toBe(2);
+        // Oldest mode: mockItem1 (1000) at index 0, mockItem2 (2000) at index 1
+        expect(q[0].queueItemId).toBe("item_1");
+        expect(q[1].queueItemId).toBe("item_2");
+        // Clicked item_2, so queueIndex should be 1
+        expect(usePlayerStore.getState().queueIndex).toBe(1);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+
+    it("synchronizes playback queue with random sort mode", async () => {
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = mock(async () => {
+        return new Response(
+          JSON.stringify({
+            ...mockPlaylist,
+            items: [mockItem1, mockItem2],
+          }),
+          { status: 200 }
+        );
+      }) as any;
+
+      try {
+        usePlayerStore.setState({
+          activePlaylistId: "pl_1",
+          activePlaylistItems: [mockItem1, mockItem2],
+          playlistSortMode: "random",
+          playlistRandomMap: { pl_1: ["item_2", "item_1"] },
+          playlists: [mockPlaylist],
+        });
+
+        await usePlayerStore.getState().buildPlaylistQueue("pl_1", false, "item_2");
+
+        const q = usePlayerStore.getState().queue;
+        expect(q.length).toBe(2);
+        // Random mode matches playlistRandomMap
+        expect(q[0].queueItemId).toBe("item_2");
+        expect(q[1].queueItemId).toBe("item_1");
+        expect(usePlayerStore.getState().queueIndex).toBe(0);
+      } finally {
+        globalThis.fetch = origFetch;
+      }
+    });
+  });
 });
+
 
 

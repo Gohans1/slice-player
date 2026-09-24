@@ -5,7 +5,8 @@ import {
   findActiveSliceItemIndex,
   findActiveTrackIndex,
 } from "./activeItemIndex";
-import type { PlaylistItemWithDetails, MixedItem } from "@/server/types";
+import type { PlaylistItemWithDetails } from "@/server/types";
+import type { MixedItem } from "../components/PlaylistTableView";
 
 describe("activeItemIndex helpers", () => {
   describe("findActivePlaylistItemIndex", () => {
@@ -88,11 +89,13 @@ describe("activeItemIndex helpers", () => {
     const mockMixed: MixedItem[] = [
       {
         type: "track",
+        id: "m_1",
         track: { id: "t_1", title: "Track 1" } as any,
         createdAt: 100,
       },
       {
         type: "slice",
+        id: "m_2",
         track: { id: "t_1", title: "Track 1" } as any,
         segment: { id: "seg_1", track_id: "t_1", name: "Slice 1" } as any,
         createdAt: 101,

@@ -5,7 +5,14 @@ import { Play, Pause, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shu
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration, createDefaultFullSegment } from "../lib/utils";
+import {
+  findActivePlaylistItemIndex,
+  findActiveMixedItemIndex,
+  findActiveSliceItemIndex,
+  findActiveTrackIndex,
+} from "../lib/activeItemIndex";
 import { searchItems } from "../lib/search";
+import { getSortedPlaylistItems } from "../lib/playlistSort";
 import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
 import {
   useSelectionStore,
@@ -220,6 +227,8 @@ export function PlaylistTableView({
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
   const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
+  const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
+  const playlistRandomMap = usePlayerStore((s) => s.playlistRandomMap);
   const playlists = usePlayerStore((s) => s.playlists);
   const playPlaylistItemAtIndex = usePlayerStore((s) => s.playPlaylistItemAtIndex);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
@@ -241,6 +250,20 @@ export function PlaylistTableView({
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const selectAllVisible = useSelectionStore((s) => s.selectAllVisible);
   const deselectAllVisible = useSelectionStore((s) => s.deselectAllVisible);
+
+  const currentPlaylist = React.useMemo(() => {
+    return playlists.find((p) => p.id === activePlaylistId);
+  }, [playlists, activePlaylistId]);
+
+  const sortedPlaylistItems = React.useMemo(() => {
+    if (!activePlaylistId) return [];
+    return getSortedPlaylistItems(
+      activePlaylistItems,
+      playlistSortMode,
+      playlistRandomMap[activePlaylistId],
+      currentPlaylist?.is_custom_ordered
+    );
+  }, [activePlaylistId, activePlaylistItems, playlistSortMode, playlistRandomMap, currentPlaylist?.is_custom_ordered]);
 
   const [isReordering, setIsReordering] = React.useState(false);
   const isReorderingRef = React.useRef(false);
@@ -269,14 +292,14 @@ export function PlaylistTableView({
 
   const resolveHoverTargetIndex = React.useCallback(
     (clientY: number, threshold = 30): number | null => {
-      if (!tableContainerRef.current || activePlaylistItems.length === 0) return null;
+      if (!tableContainerRef.current || sortedPlaylistItems.length === 0) return null;
       const rect = tableContainerRef.current.getBoundingClientRect();
       if (rect.height <= 0) return null;
       if (clientY <= rect.top + threshold) {
         return 0;
       }
       if (clientY >= rect.bottom - threshold) {
-        return Math.max(0, activePlaylistItems.length - 1);
+        return Math.max(0, sortedPlaylistItems.length - 1);
       }
       const offsetInTable = clientY - rect.top;
       const scrollMargin = virtualizerRef.current?.options?.scrollMargin ?? 0;
@@ -285,13 +308,13 @@ export function PlaylistTableView({
         vItem &&
         typeof vItem.index === "number" &&
         vItem.index >= 0 &&
-        vItem.index < activePlaylistItems.length
+        vItem.index < sortedPlaylistItems.length
       ) {
         return vItem.index;
       }
       return null;
     },
-    [activePlaylistItems.length]
+    [sortedPlaylistItems.length]
   );
 
   const setDragOverIdxSafe = React.useCallback(
@@ -484,25 +507,25 @@ export function PlaylistTableView({
 
   const commitReorder = React.useCallback(
     async (fromIdx: number, toIdx: number) => {
-      if (!activePlaylistId || isReorderingRef.current || Boolean(searchQuery?.trim())) return;
+      if (!activePlaylistId || isReorderingRef.current || Boolean(searchQuery?.trim()) || playlistSortMode !== "manual") return;
       if (fromIdx === toIdx) return;
       if (
         fromIdx < 0 ||
-        fromIdx >= activePlaylistItems.length ||
+        fromIdx >= sortedPlaylistItems.length ||
         toIdx < 0 ||
-        toIdx >= activePlaylistItems.length
+        toIdx >= sortedPlaylistItems.length
       ) {
         return;
       }
       isReorderingRef.current = true;
       setIsReordering(true);
       try {
-        const newItems = [...activePlaylistItems];
+        const newItems = [...sortedPlaylistItems];
         const [moved] = newItems.splice(fromIdx, 1);
         newItems.splice(toIdx, 0, moved);
         const newIds = newItems.map((it) => it.id);
         await reorderPlaylist(activePlaylistId, newIds);
-        if (virtualizerRef.current?.scrollToIndex && toIdx >= 0 && toIdx < activePlaylistItems.length) {
+        if (virtualizerRef.current?.scrollToIndex && toIdx >= 0 && toIdx < sortedPlaylistItems.length) {
           virtualizerRef.current.scrollToIndex(toIdx, { align: "auto" });
         }
       } finally {
@@ -510,12 +533,12 @@ export function PlaylistTableView({
         setIsReordering(false);
       }
     },
-    [activePlaylistId, searchQuery, activePlaylistItems, reorderPlaylist]
+    [activePlaylistId, searchQuery, sortedPlaylistItems, reorderPlaylist, playlistSortMode]
   );
 
   const handleDragStart = React.useCallback(
     (e: React.DragEvent, idx: number, name: string) => {
-      if (!isDraggingHandleRef.current) {
+      if (!isDraggingHandleRef.current || playlistSortMode !== "manual") {
         e.preventDefault();
         return;
       }
@@ -652,30 +675,27 @@ export function PlaylistTableView({
     resolveHoverTargetIndex,
   ]);
 
-  const currentPlaylist = React.useMemo(() => {
-    return playlists.find((p) => p.id === activePlaylistId);
-  }, [playlists, activePlaylistId]);
-
   const displayedItems = React.useMemo(() => {
-    return searchItems(activePlaylistItems, searchQuery || "", (item) => ({
+    return searchItems(sortedPlaylistItems, searchQuery || "", (item) => ({
       title: item.segment?.name || item.track?.title,
       artist: item.track?.artist,
       segmentName: item.segment ? item.track?.title : undefined,
       createdAt: item.added_at,
     }));
-  }, [activePlaylistItems, searchQuery]);
+  }, [sortedPlaylistItems, searchQuery]);
 
   const originalIdxMap = React.useMemo(() => {
-    return new Map(activePlaylistItems.map((it, idx) => [it.id, idx]));
-  }, [activePlaylistItems]);
+    return new Map(sortedPlaylistItems.map((it, idx) => [it.id, idx]));
+  }, [sortedPlaylistItems]);
 
   const handleMoveItem = React.useCallback(
     async (e: React.MouseEvent, itemIndex: number, direction: "up" | "down") => {
       e.stopPropagation();
+      if (playlistSortMode !== "manual") return;
       const targetIdx = direction === "up" ? itemIndex - 1 : itemIndex + 1;
       await commitReorder(itemIndex, targetIdx);
     },
-    [commitReorder]
+    [commitReorder, playlistSortMode]
   );
 
   const handlePlayPlaylistItem = React.useCallback(
@@ -931,30 +951,31 @@ export function PlaylistTableView({
     if (lastHandledScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
     if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
 
-    lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
-
     let activeIndex = -1;
+    const isFallback = !activeSegment || activeSegment.id.startsWith("fallback_");
+
     if (mixedItems) {
-      activeIndex = mixedItems.findIndex((item) =>
-        item.type === "slice"
-          ? activeSegment?.id === item.segment.id
-          : activeTrack?.id === item.track.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
-      );
+      activeIndex = findActiveMixedItemIndex(mixedItems, {
+        activeTrackId: activeTrack?.id,
+        activeSegmentId: activeSegment?.id,
+        isFallbackSegment: isFallback,
+      });
     } else if (sliceItems) {
-      activeIndex = sliceItems.findIndex((item) => activeSegment?.id === item.segment.id);
+      activeIndex = findActiveSliceItemIndex(sliceItems, activeSegment?.id);
     } else if (filteredTracks) {
-      activeIndex = trackList.findIndex(
-        (track) => activeTrack?.id === track.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
-      );
+      activeIndex = findActiveTrackIndex(filteredTracks, activeTrack?.id, isFallback);
     } else {
-      activeIndex = displayedItems.findIndex((item) =>
-        item.segment_id
-          ? activeSegment?.id === item.segment?.id
-          : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")
-      );
+      const currentQueueItemId = queueIndex >= 0 ? queue[queueIndex]?.queueItemId : undefined;
+      activeIndex = findActivePlaylistItemIndex(displayedItems, {
+        currentQueueItemId,
+        activeTrackId: activeTrack?.id,
+        activeSegmentId: activeSegment?.id,
+        isFallbackSegment: isFallback,
+      });
     }
 
     if (activeIndex >= 0) {
+      lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
       const timer = setTimeout(() => {
         if (virtualizerRef.current?.scrollToIndex) {
           virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "smooth" });
@@ -967,10 +988,11 @@ export function PlaylistTableView({
     mixedItems,
     sliceItems,
     filteredTracks,
-    trackList,
     displayedItems,
     activeTrack?.id,
     activeSegment?.id,
+    queueIndex,
+    queue,
   ]);
 
   // If in a custom playlist
@@ -1013,7 +1035,7 @@ export function PlaylistTableView({
         aria-label={t("nav.playlists")}
         aria-rowcount={displayedItems.length + 1}
         onDragOver={(e) => {
-          if (draggedIdxRef.current === null) return;
+          if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           checkAutoScroll(e.clientY);
@@ -1024,7 +1046,7 @@ export function PlaylistTableView({
           }
         }}
         onDrop={(e) => {
-          if (draggedIdxRef.current === null) return;
+          if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
           e.preventDefault();
           e.stopPropagation();
           const targetIdx = dragOverIdxRef.current ?? resolveHoverTargetIndex(e.clientY, 50);
@@ -1041,7 +1063,7 @@ export function PlaylistTableView({
           role="row"
           aria-rowindex={1}
           onDragOver={(e) => {
-            if (draggedIdxRef.current === null) return;
+            if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
             checkAutoScroll(e.clientY);
@@ -1050,7 +1072,7 @@ export function PlaylistTableView({
             }
           }}
           onDrop={(e) => {
-            if (draggedIdxRef.current === null) return;
+            if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
             handleDrop(e, 0);
           }}
           className={`grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b transition-colors ${
@@ -1113,18 +1135,19 @@ export function PlaylistTableView({
                 ? currentQueueItem.queueItemId === item.id
                 : (isSlice && item.segment
                     ? activeSegment?.id === item.segment.id
-                    : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")));
+                    : activeTrack?.id === item.track?.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))));
             const isCurrentPlaying = isCurrentActive && isPlaying;
 
             const isSearching = Boolean(searchQuery?.trim());
             const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
             const originalIdx = originalIdxMap.get(item.id) ?? -1;
-            const canMoveUp = !isSearching && !isReordering && originalIdx > 0;
-            const canMoveDown = !isSearching && !isReordering && originalIdx >= 0 && originalIdx < activePlaylistItems.length - 1;
-            const showDragHandle = !isSearching && originalIdx >= 0;
+            const isManualSort = playlistSortMode === "manual";
+            const canMoveUp = isManualSort && !isSearching && !isReordering && originalIdx > 0;
+            const canMoveDown = isManualSort && !isSearching && !isReordering && originalIdx >= 0 && originalIdx < sortedPlaylistItems.length - 1;
+            const showDragHandle = isManualSort && !isSearching && originalIdx >= 0;
             const canDrag = showDragHandle && !isReordering;
-            const isDragging = draggedIdx === originalIdx;
-            const isDragTarget = dragOverIdx === originalIdx && draggedIdx !== null && draggedIdx !== originalIdx;
+            const isDragging = isManualSort && draggedIdx === originalIdx;
+            const isDragTarget = isManualSort && dragOverIdx === originalIdx && draggedIdx !== null && draggedIdx !== originalIdx;
 
             // FLIP shift animation for rows to smoothly move out of the way
             let shiftY = 0;

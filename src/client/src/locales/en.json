@@ -234,7 +234,17 @@
     "deletePlaylistTitle": "Delete playlist?",
     "confirmDelete": "Delete playlist \"{{name}}\"?",
     "nowPlayingBadge": "● Playing",
-    "shuffleTooltip": "Shuffle {{name}}"
+    "shuffleTooltip": "Shuffle {{name}}",
+    "sortLabel": "Sort playlist",
+    "sortManual": "Manual",
+    "sortManualTooltip": "Manual order (drag & drop enabled)",
+    "sortNewest": "Newest",
+    "sortNewestTooltip": "Recently added first",
+    "sortOldest": "Oldest",
+    "sortOldestTooltip": "Earliest added first",
+    "sortRandom": "Random",
+    "sortRandomTooltip": "Random order",
+    "reshuffleTooltip": "Click again to reshuffle"
   },
   "studio": {
     "title": "Slice Studio",

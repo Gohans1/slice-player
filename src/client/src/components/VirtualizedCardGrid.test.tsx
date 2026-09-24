@@ -139,7 +139,7 @@ describe("VirtualizedCardGrid Component", () => {
     // Wait for the 50ms timer
     await new Promise((r) => setTimeout(r, 80));
 
-    expect(handledId).toBe(42);
+    expect(handledId as any).toBe(42);
 
     await act(async () => {
       root.unmount();

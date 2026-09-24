@@ -4,8 +4,9 @@ import { createDefaultFullSegment } from "../lib/utils";
 import { pickSmartRandomItem } from "../lib/shufflePicker";
 import { logClientInfo, logClientError } from "./useLogStore";
 import { useSelectionStore } from "./useSelectionStore";
+import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds } from "../lib/playlistSort";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
-export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails };
+export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
 
 export interface QueueItem {
@@ -173,6 +174,8 @@ interface PlayerState {
   activePlaylistPlayingId: string | null;
   activePlaylistItems: PlaylistItemWithDetails[];
   activePlaylistOriginalQueue: QueueItem[];
+  playlistSortMode: PlaylistSortMode;
+  playlistRandomMap: Record<string, string[]>;
   viewMode: "grid" | "list";
   activeSystemCategory: SystemCategory;
   activeTrackScrollRequest: { id: number; timestamp: number } | null;
@@ -229,6 +232,8 @@ interface PlayerState {
   removeFromPlaylist: (playlistId: string, itemId: string) => Promise<boolean>;
   reorderPlaylist: (playlistId: string, itemIds: string[]) => Promise<boolean>;
   setViewMode: (mode: "grid" | "list") => void;
+  setPlaylistSortMode: (mode: PlaylistSortMode) => void;
+  randomizePlaylistSort: (playlistId?: string) => void;
   buildPlaylistQueue: (playlistId: string, forceShuffle?: boolean, startIndexOrItemId?: number | string, keepCurrentTrack?: boolean) => Promise<void>;
   playPlaylistItemAtIndex: (playlistId: string, indexOrItemId: number | string) => Promise<void>;
 }
@@ -564,6 +569,29 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activePlaylistPlayingId: null,
   activePlaylistItems: [],
   activePlaylistOriginalQueue: [],
+  playlistSortMode: "manual",
+  playlistRandomMap: {},
+  setPlaylistSortMode: (mode: PlaylistSortMode) => {
+    set({ playlistSortMode: mode });
+    if (mode === "random") {
+      const activePlId = get().activePlaylistId;
+      if (activePlId && !get().playlistRandomMap[activePlId]) {
+        const shuffled = getShuffledItemIds(get().activePlaylistItems);
+        set((state) => ({
+          playlistRandomMap: { ...state.playlistRandomMap, [activePlId]: shuffled },
+        }));
+      }
+    }
+  },
+  randomizePlaylistSort: (playlistId?: string) => {
+    const targetId = playlistId || get().activePlaylistId;
+    if (!targetId) return;
+    const shuffled = getShuffledItemIds(get().activePlaylistItems);
+    set((state) => ({
+      playlistSortMode: "random",
+      playlistRandomMap: { ...state.playlistRandomMap, [targetId]: shuffled },
+    }));
+  },
   viewMode: getStoredViewMode(),
   activeSystemCategory: "mixed",
   setActiveSystemCategory: (cat: SystemCategory) => {
@@ -2809,7 +2837,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (get().activePlaylistId === playlistId) {
       const itemMap = new Map(currentItems.map((it) => [it.id, it]));
       const optimistic = itemIds.map((id) => itemMap.get(id)!).filter(Boolean);
-      set({ activePlaylistItems: optimistic });
+      set({
+        activePlaylistItems: optimistic,
+        playlists: get().playlists.map((p) => (p.id === playlistId ? { ...p, is_custom_ordered: true } : p)),
+      });
     }
     if (get().activePlaylistPlayingId === playlistId) {
       const orderMap = new Map(itemIds.map((id, idx) => [id, idx]));
@@ -2895,7 +2926,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       );
       if (validItems.length === 0) return;
 
-      const rawQueueItems: QueueItem[] = validItems.map((item) => {
+      const sortMode = get().playlistSortMode;
+      const currentPl = get().playlists.find((p) => p.id === playlistId);
+      const randomOrder = get().playlistRandomMap[playlistId];
+      const sortedValidItems = getSortedPlaylistItems(
+        validItems,
+        sortMode,
+        randomOrder,
+        currentPl?.is_custom_ordered
+      );
+
+      const rawQueueItems: QueueItem[] = sortedValidItems.map((item) => {
         const seg = item.segment || createDefaultFullSegment(item.track);
         return createQueueItem(seg, item.track, item.id);
       });
