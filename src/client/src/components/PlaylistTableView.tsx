@@ -975,9 +975,9 @@ export function PlaylistTableView({
     }
 
     if (activeIndex >= 0) {
-      lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
       const timer = setTimeout(() => {
         if (virtualizerRef.current?.scrollToIndex) {
+          lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
           virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "smooth" });
         }
       }, 50);

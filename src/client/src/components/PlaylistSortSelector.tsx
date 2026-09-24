@@ -79,7 +79,7 @@ export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorPro
             }`}
           >
             {opt.icon}
-            <span>{opt.label}</span>
+            <span className="hidden sm:inline">{opt.label}</span>
           </button>
         );
       })}

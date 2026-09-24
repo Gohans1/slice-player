@@ -2253,7 +2253,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setActivePlaylist: async (id: string | null, force = false) => {
     if (!force && get().activePlaylistId === id) return;
     if (get().activePlaylistId !== id) {
-      set({ activePlaylistId: id, activePlaylistItems: [] });
+      set({ activePlaylistId: id, activePlaylistItems: [], playlistSortMode: "manual" });
     }
     if (!id) return;
     try {

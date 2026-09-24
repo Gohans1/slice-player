@@ -23,11 +23,13 @@ export function findActivePlaylistItemIndex(
   // 2. Fallback match by segment ID or track ID
   return items.findIndex((item) => {
     if (item.segment_id) {
-      return Boolean(options.activeSegmentId && item.segment?.id === options.activeSegmentId);
+      const segId = item.segment?.id ?? item.segment_id;
+      return Boolean(options.activeSegmentId && segId === options.activeSegmentId);
     }
+    const trackId = item.track?.id ?? item.track_id;
     return Boolean(
       options.activeTrackId &&
-      item.track?.id === options.activeTrackId &&
+      trackId === options.activeTrackId &&
       options.isFallbackSegment
     );
   });

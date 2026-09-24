@@ -148,9 +148,9 @@ export function VirtualizedCardGrid<T>({
       cols > 0 &&
       lastHandledScrollRequestIdRef.current !== scrollRequest.requestId
     ) {
-      lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
       const rowIndex = Math.floor(scrollRequest.index / cols);
       const timer = setTimeout(() => {
+        lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
         virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "smooth" });
         onScrollHandled?.(scrollRequest.requestId);
       }, 50);
