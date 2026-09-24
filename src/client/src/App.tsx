@@ -805,6 +805,20 @@ export function App() {
     return playlists.find((p) => p.id === activePlaylistId);
   }, [playlists, activePlaylistId]);
 
+  const builtInItemIds = React.useMemo(() => {
+    if (activePlaylistId) return undefined;
+    if (activeSystemCategory === "mixed") {
+      return allMixedItems.map((it) => it.id);
+    }
+    if (activeSystemCategory === "slices_only") {
+      return allSliceItems.map((it) => it.id);
+    }
+    if (activeSystemCategory === "original_only") {
+      return originalTracks.map((it) => it.id);
+    }
+    return undefined;
+  }, [activePlaylistId, activeSystemCategory, allMixedItems, allSliceItems, originalTracks]);
+
   const sortedPlaylistItems = React.useMemo(() => {
     if (!activePlaylistId) return [];
     return getSortedPlaylistItems(
@@ -1139,7 +1153,7 @@ export function App() {
               {/* View Mode Switcher & Playlist Sort Selector */}
               <div className="flex items-center gap-2 shrink-0">
                 {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
-                  <PlaylistSortSelector />
+                  <PlaylistSortSelector builtInItemIds={builtInItemIds} />
                 )}
                 <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
                 <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">

@@ -203,7 +203,7 @@ interface PlayerState {
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, startIndex?: number, forceShuffle?: boolean) => Promise<void>;
   playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number) => Promise<void>;
-  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode) => void;
+  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
   setVolume: (vol: number) => void;
   setTrackVolume: (trackId: string, volume: number) => Promise<void>;
@@ -606,29 +606,42 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       playlistRandomMap: { ...state.playlistRandomMap, [targetId]: shuffled },
     }));
   },
-  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode) => {
+  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => {
     set((state) => ({
       systemCategorySortMode: {
         ...state.systemCategorySortMode,
         [mode]: sortMode,
       },
     }));
+    if (sortMode === "random") {
+      const currentMap = get().systemRandomMap[mode];
+      if (!currentMap || currentMap.length === 0) {
+        get().randomizeSystemSort(mode, itemIds);
+      }
+    }
   },
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => {
     let ids = itemIds && itemIds.length > 0 ? getShuffledEntityIds(itemIds.map((id) => ({ id }))) : [];
     if (ids.length === 0) {
       if (mode === "original_only") {
-        ids = getShuffledEntityIds(get().tracks.map((t) => ({ id: t.id })));
+        ids = getShuffledEntityIds(get().tracks.filter((t) => t.status === "ready").map((t) => ({ id: t.id })));
       } else if (mode === "slices_only") {
         const modeQueue = get().queuesByMode.slices_only || [];
-        ids = getShuffledEntityIds(modeQueue.map((it) => ({ id: it.segment.id })));
+        if (modeQueue.length > 0) {
+          ids = getShuffledEntityIds(modeQueue.map((it) => ({ id: it.segment.id })));
+        }
       } else if (mode === "mixed") {
         const modeQueue = get().queuesByMode.mixed || [];
-        ids = getShuffledEntityIds(
-          modeQueue.map((it) => ({
-            id: it.segment.id.startsWith("fallback_") ? `track_${it.track.id}` : `slice_${it.segment.id}`,
-          }))
-        );
+        if (modeQueue.length > 0) {
+          ids = getShuffledEntityIds(
+            modeQueue.map((it) => ({
+              id: it.segment.id.startsWith("fallback_") ? `track_${it.track.id}` : `slice_${it.segment.id}`,
+            }))
+          );
+        } else {
+          const trackIds = get().tracks.filter((t) => t.status === "ready").map((t) => ({ id: `track_${t.id}` }));
+          ids = getShuffledEntityIds(trackIds);
+        }
       }
     }
     set((state) => ({

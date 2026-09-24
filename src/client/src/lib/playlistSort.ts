@@ -123,7 +123,9 @@ export function getSortedPlaylistItems(
       if (timeDiff !== 0) return timeDiff;
       const trackDiff = (b.track?.created_at || 0) - (a.track?.created_at || 0);
       if (trackDiff !== 0) return trackDiff;
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      const orderDiff = (b.sort_order ?? 0) - (a.sort_order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return a.id.localeCompare(b.id);
     });
   }
 

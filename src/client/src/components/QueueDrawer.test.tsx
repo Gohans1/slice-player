@@ -208,7 +208,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     expect(html).toContain('Lát cắt');
   });
 
-  it("PlayerBar does not render a shuffle button in controls", () => {
+  it("PlayerBar renders a shuffle button in controls", () => {
     usePlayerStore.setState({
       activeTrack: dummyTrack,
       activeSegment: dummySegment,
@@ -225,9 +225,9 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     const shuffleBtn = container.querySelector(
-      'button[aria-label*="shuffle" i], button[title*="shuffle" i], button[title*="xáo trộn" i], button svg.lucide-shuffle'
+      'button[aria-label*="shuffle" i], button[title*="shuffle" i], button[title*="ngẫu nhiên" i], button[title*="xáo trộn" i], button svg.lucide-shuffle'
     );
-    expect(shuffleBtn).toBeNull();
+    expect(shuffleBtn).not.toBeNull();
   });
 
   it("PlayerBar transport controls render with accessible aria-labels and queue aria-expanded", () => {

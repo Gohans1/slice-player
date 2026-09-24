@@ -5,9 +5,10 @@ import { usePlayerStore, type PlaylistSortMode, type PlaybackMode } from "../sto
 
 interface PlaylistSortSelectorProps {
   className?: string;
+  builtInItemIds?: string[];
 }
 
-export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorProps) {
+export function PlaylistSortSelector({ className = "", builtInItemIds }: PlaylistSortSelectorProps) {
   const { t } = useTranslation();
   const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
   const setPlaylistSortMode = usePlayerStore((s) => s.setPlaylistSortMode);
@@ -33,9 +34,9 @@ export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorPro
   const handleSelect = (mode: PlaylistSortMode) => {
     if (builtInCat) {
       if (mode === "random" && currentMode === "random") {
-        randomizeSystemSort(builtInCat);
+        randomizeSystemSort(builtInCat, builtInItemIds);
       } else {
-        setSystemSortMode(builtInCat, mode);
+        setSystemSortMode(builtInCat, mode, builtInItemIds);
       }
     } else {
       if (mode === "random" && playlistSortMode === "random") {

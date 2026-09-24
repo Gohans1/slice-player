@@ -149,4 +149,50 @@ describe("PlaylistSortSelector Component", () => {
     expect(shuffled.length).toBe(3);
     expect(shuffled.sort()).toEqual(["pi_1", "pi_2", "pi_3"]);
   });
+
+  it("handles randomizing and reshuffling built-in categories with builtInItemIds", async () => {
+    const itemIds = ["track_1", "slice_1", "slice_2"];
+    usePlayerStore.setState({
+      activePlaylistId: null,
+      activeSystemCategory: "mixed",
+      systemCategorySortMode: {
+        mixed: "newest",
+        slices_only: "newest",
+        original_only: "newest",
+      },
+      systemRandomMap: {
+        mixed: [],
+        slices_only: [],
+        original_only: [],
+      },
+    });
+
+    await act(async () => {
+      root.render(<PlaylistSortSelector builtInItemIds={itemIds} />);
+    });
+
+    const buttons = container.querySelectorAll("button");
+    const randomBtn = buttons[2]; // [0] newest, [1] oldest, [2] random
+    expect(randomBtn.getAttribute("aria-pressed")).toBe("false");
+
+    // Click to switch to random
+    await act(async () => {
+      randomBtn.dispatchEvent(new (window as any).MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(usePlayerStore.getState().systemCategorySortMode.mixed).toBe("random");
+    const map = usePlayerStore.getState().systemRandomMap.mixed;
+    expect(map).toBeDefined();
+    expect(map?.length).toBe(3);
+    expect([...(map || [])].sort()).toEqual(["slice_1", "slice_2", "track_1"]);
+
+    // Click again to reshuffle
+    await act(async () => {
+      randomBtn.dispatchEvent(new (window as any).MouseEvent("click", { bubbles: true }));
+    });
+    expect(usePlayerStore.getState().systemCategorySortMode.mixed).toBe("random");
+    const reshuffled = usePlayerStore.getState().systemRandomMap.mixed;
+    expect(reshuffled).toBeDefined();
+    expect(reshuffled?.length).toBe(3);
+  });
 });

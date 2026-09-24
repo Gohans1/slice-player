@@ -11,6 +11,7 @@ describe("YoutubeIngestModal Component", () => {
   let container: HTMLDivElement;
   let root: Root;
   let happyWindow: any;
+  const origFetchTracks = usePlayerStore.getState().fetchTracks;
 
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,6 +38,9 @@ describe("YoutubeIngestModal Component", () => {
   afterEach(() => {
     act(() => {
       root.unmount();
+    });
+    usePlayerStore.setState({
+      fetchTracks: origFetchTracks,
     });
     container.remove();
   });

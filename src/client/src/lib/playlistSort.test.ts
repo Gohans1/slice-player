@@ -79,6 +79,17 @@ describe("playlistSort helpers", () => {
       expect(sorted.map((it) => it.id)).toEqual(["pli_3", "pli_2", "pli_1"]);
     });
 
+    it("produces identical order between newest and uncustomized manual view even with timestamp collisions", () => {
+      const collisionItems: PlaylistItemWithDetails[] = [
+        { ...item1, id: "batch_1", added_at: 1000, sort_order: 0, track: { ...dummyTrack, created_at: 10 } },
+        { ...item2, id: "batch_2", added_at: 1000, sort_order: 1, track: { ...dummyTrack, created_at: 10 } },
+        { ...item3, id: "batch_3", added_at: 1000, sort_order: 2, track: { ...dummyTrack, created_at: 10 } },
+      ];
+      const newestOrder = getSortedPlaylistItems(collisionItems, "newest").map((it) => it.id);
+      const manualOrder = getSortedPlaylistItems(collisionItems, "manual", undefined, false).map((it) => it.id);
+      expect(manualOrder).toEqual(newestOrder);
+    });
+
     it("in manual mode, preserves manual sort_order when playlist is custom ordered (isCustomOrdered = true)", () => {
       // Create items where manual sort_order differs from added_at
       const customItems: PlaylistItemWithDetails[] = [

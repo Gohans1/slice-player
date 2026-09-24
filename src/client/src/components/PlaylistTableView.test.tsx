@@ -93,6 +93,7 @@ const dummyPlaylistItem2: PlaylistItemWithDetails = {
 describe("PlaylistTableView", () => {
   const origPlaySegmentInMode = usePlayerStore.getState().playSegmentInMode;
   const origPlayPlaylistItemAtIndex = usePlayerStore.getState().playPlaylistItemAtIndex;
+  const origReorderPlaylist = usePlayerStore.getState().reorderPlaylist;
   const origPause = usePlayerStore.getState().pause;
   const origResume = usePlayerStore.getState().resume;
   let window: any;
@@ -151,6 +152,7 @@ describe("PlaylistTableView", () => {
       playlistRandomMap: {},
       playSegmentInMode: origPlaySegmentInMode,
       playPlaylistItemAtIndex: origPlayPlaylistItemAtIndex,
+      reorderPlaylist: origReorderPlaylist,
       pause: origPause,
       resume: origResume,
       queuesByMode: {
