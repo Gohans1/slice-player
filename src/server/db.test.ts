@@ -218,7 +218,7 @@ describe("Database layer (bun:sqlite)", () => {
     expect(customTrack?.volume).toBe(0.9);
 
     const versionRow = finalDb.query("PRAGMA user_version;").get() as { user_version: number };
-    expect(versionRow.user_version).toBe(3);
+    expect(versionRow.user_version).toBe(4);
   });
 
   describe("Playlist operations", () => {
@@ -286,8 +286,8 @@ describe("Database layer (bun:sqlite)", () => {
 
       const items = getPlaylistItems(pl.id);
       expect(items.length).toBe(2);
-      expect(items[0].id).toBe(item1.id);
-      expect(items[1].id).toBe(item2.id);
+      expect(items[0].id).toBe(item2.id);
+      expect(items[1].id).toBe(item1.id);
 
       // Re-adding identical item should return existing item (idempotent)
       const dup = addPlaylistItem(pl.id, track.id, seg.id);
@@ -455,6 +455,37 @@ describe("Database layer (bun:sqlite)", () => {
       // Track 2 is not in any playlist
       const membershipsTrack2 = getPlaylistMemberships(track2.id);
       expect(membershipsTrack2.length).toBe(0);
+    });
+  });
+
+  describe("Playlist initial ordering and is_custom_ordered flag", () => {
+    it("defaults is_custom_ordered to false and orders items newest-first until reordered", () => {
+      const track1 = createTrack({ id: "trk-ord-1", title: "Track 1", duration: 100, file_path: "p1", source_type: "local", source_uri: "local://p1", status: "ready" });
+      const track2 = createTrack({ id: "trk-ord-2", title: "Track 2", duration: 100, file_path: "p2", source_type: "local", source_uri: "local://p2", status: "ready" });
+      const pl = createPlaylist("Order Test PL");
+
+      expect(pl.is_custom_ordered).toBe(false);
+
+      const i1 = addPlaylistItem(pl.id, track1.id);
+      const i2 = addPlaylistItem(pl.id, track2.id);
+
+      // Initially not custom ordered -> newest (i2) should be first
+      const itemsInitial = getPlaylistItems(pl.id);
+      expect(itemsInitial.length).toBe(2);
+      expect(itemsInitial[0].id).toBe(i2.id);
+      expect(itemsInitial[1].id).toBe(i1.id);
+
+      // Reorder items manually: i1 first, then i2
+      const ok = reorderPlaylistItems(pl.id, [i1.id, i2.id]);
+      expect(ok).toBe(true);
+
+      const plAfter = getPlaylist(pl.id);
+      expect(plAfter?.is_custom_ordered).toBe(true);
+
+      // Now custom ordered -> respects sort_order: i1 first, then i2
+      const itemsAfterReorder = getPlaylistItems(pl.id);
+      expect(itemsAfterReorder[0].id).toBe(i1.id);
+      expect(itemsAfterReorder[1].id).toBe(i2.id);
     });
   });
 });

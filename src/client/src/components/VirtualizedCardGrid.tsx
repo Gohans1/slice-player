@@ -7,6 +7,9 @@ export interface VirtualizedCardGridProps<T> {
   renderItem: (item: T, index: number) => React.ReactNode;
   className?: string;
   estimateCardHeight?: number;
+  scrollRequest?: { index: number; requestId: number } | null;
+  onScrollHandled?: (requestId: number) => void;
+  /** @deprecated use scrollRequest instead */
   scrollToIndex?: number | null;
 }
 
@@ -57,6 +60,8 @@ export function VirtualizedCardGrid<T>({
   renderItem,
   className,
   estimateCardHeight,
+  scrollRequest,
+  onScrollHandled,
   scrollToIndex,
 }: VirtualizedCardGridProps<T>) {
   const cols = useGridColumnCount();
@@ -132,6 +137,26 @@ export function VirtualizedCardGrid<T>({
       virtualizer.measure();
     }
   }, [cols, virtualizer]);
+
+  const lastHandledScrollRequestIdRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (
+      scrollRequest &&
+      typeof scrollRequest.index === "number" &&
+      scrollRequest.index >= 0 &&
+      cols > 0 &&
+      lastHandledScrollRequestIdRef.current !== scrollRequest.requestId
+    ) {
+      lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
+      const rowIndex = Math.floor(scrollRequest.index / cols);
+      const timer = setTimeout(() => {
+        virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "smooth" });
+        onScrollHandled?.(scrollRequest.requestId);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollRequest, cols, virtualizer, onScrollHandled]);
 
   React.useEffect(() => {
     if (typeof scrollToIndex === "number" && scrollToIndex >= 0 && cols > 0) {

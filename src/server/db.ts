@@ -46,7 +46,8 @@ function runMigrations(db: Database): void {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             created_at INTEGER DEFAULT (unixepoch()),
-            updated_at INTEGER DEFAULT (unixepoch())
+            updated_at INTEGER DEFAULT (unixepoch()),
+            is_custom_ordered INTEGER NOT NULL DEFAULT 0
           );
         `);
         db.run(`
@@ -70,6 +71,17 @@ function runMigrations(db: Database): void {
       try {
         db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_items_unique ON playlist_items(playlist_id, track_id, IFNULL(segment_id, ''));`);
       } catch {}
+    }
+
+    if (userVersion < 4) {
+      db.transaction(() => {
+        // v4: Add is_custom_ordered flag to playlists to track manual drag-drop ordering
+        const cols = db.query("PRAGMA table_info(playlists);").all() as { name: string }[];
+        if (!cols.some((c) => c.name === "is_custom_ordered")) {
+          db.run("ALTER TABLE playlists ADD COLUMN is_custom_ordered INTEGER NOT NULL DEFAULT 0;");
+        }
+        db.run("PRAGMA user_version = 4;");
+      })();
     }
   } catch (err) {
     console.error("[db] Error executing database migrations:", err);
@@ -478,35 +490,37 @@ export function createPlaylist(name: string, customId?: string): Playlist {
   }
   const id = customId || `pl_${crypto.randomUUID()}`;
   const query = db.query(`
-    INSERT INTO playlists (id, name, created_at, updated_at)
-    VALUES ($id, $name, unixepoch(), unixepoch())
+    INSERT INTO playlists (id, name, created_at, updated_at, is_custom_ordered)
+    VALUES ($id, $name, unixepoch(), unixepoch(), 0)
     RETURNING *;
   `);
-  const pl = query.get({ $id: id, $name: trimmed }) as Playlist;
-  return { ...pl, item_count: 0 };
+  const pl = query.get({ $id: id, $name: trimmed }) as any;
+  return { ...pl, item_count: 0, is_custom_ordered: false };
 }
 
 export function getPlaylist(id: string): (Playlist & { item_count: number }) | null {
   const db = getDb();
   const row = db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, COUNT(pi.id) as item_count
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, COUNT(pi.id) as item_count
     FROM playlists p
     LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
     WHERE p.id = $id
     GROUP BY p.id
-  `).get({ $id: id }) as (Playlist & { item_count: number }) | null;
-  return row || null;
+  `).get({ $id: id }) as any;
+  if (!row) return null;
+  return { ...row, is_custom_ordered: Boolean(row.is_custom_ordered) };
 }
 
 export function listPlaylists(): (Playlist & { item_count: number })[] {
   const db = getDb();
-  return db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, COUNT(pi.id) as item_count
+  const rows = db.query(`
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, COUNT(pi.id) as item_count
     FROM playlists p
     LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
     GROUP BY p.id
     ORDER BY p.updated_at DESC, p.created_at DESC
-  `).all() as (Playlist & { item_count: number })[];
+  `).all() as any[];
+  return rows.map((r) => ({ ...r, is_custom_ordered: Boolean(r.is_custom_ordered) }));
 }
 
 export function updatePlaylist(id: string, name: string): Playlist | null {
@@ -521,10 +535,10 @@ export function updatePlaylist(id: string, name: string): Playlist | null {
     WHERE id = $id
     RETURNING *;
   `);
-  const row = query.get({ $id: id, $name: trimmed }) as Playlist | null;
+  const row = query.get({ $id: id, $name: trimmed }) as any;
   if (!row) return null;
   const countRow = db.query("SELECT COUNT(*) as count FROM playlist_items WHERE playlist_id = $id").get({ $id: id }) as { count: number };
-  return { ...row, item_count: countRow?.count ?? 0 };
+  return { ...row, item_count: countRow?.count ?? 0, is_custom_ordered: Boolean(row.is_custom_ordered) };
 }
 
 export function deletePlaylist(id: string): boolean {
@@ -535,6 +549,10 @@ export function deletePlaylist(id: string): boolean {
 
 export function getPlaylistItems(playlistId: string): PlaylistItemWithDetails[] {
   const db = getDb();
+  const pl = getPlaylist(playlistId);
+  const orderClause = pl?.is_custom_ordered
+    ? "ORDER BY pi.sort_order ASC, pi.added_at ASC"
+    : "ORDER BY pi.added_at DESC, pi.sort_order ASC";
   const rows = db.query(`
     SELECT 
       pi.id, pi.playlist_id, pi.track_id, pi.segment_id, pi.sort_order, pi.added_at,
@@ -548,7 +566,7 @@ export function getPlaylistItems(playlistId: string): PlaylistItemWithDetails[] 
     JOIN tracks t ON pi.track_id = t.id
     LEFT JOIN segments s ON pi.segment_id = s.id
     WHERE pi.playlist_id = $playlist_id
-    ORDER BY pi.sort_order ASC, pi.added_at ASC
+    ${orderClause}
   `).all({ $playlist_id: playlistId }) as any[];
 
   return rows.map((r) => {
@@ -636,25 +654,23 @@ export function addPlaylistItem(playlistId: string, trackId: string, segmentId?:
       return;
     }
 
-    const maxOrderRow = db.query(`
-      SELECT COALESCE(MAX(sort_order), -1) as max_order 
-      FROM playlist_items 
+    db.query(`
+      UPDATE playlist_items 
+      SET sort_order = sort_order + 1 
       WHERE playlist_id = $playlist_id
-    `).get({ $playlist_id: playlistId }) as { max_order: number };
-    const nextOrder = (maxOrderRow?.max_order ?? -1) + 1;
+    `).run({ $playlist_id: playlistId });
 
     const id = `pli_${crypto.randomUUID()}`;
     try {
       const item = db.query(`
         INSERT INTO playlist_items (id, playlist_id, track_id, segment_id, sort_order, added_at)
-        VALUES ($id, $playlist_id, $track_id, $segment_id, $sort_order, unixepoch())
+        VALUES ($id, $playlist_id, $track_id, $segment_id, 0, unixepoch())
         RETURNING *;
       `).get({
         $id: id,
         $playlist_id: playlistId,
         $track_id: trackId,
         $segment_id: cleanSegId,
-        $sort_order: nextOrder,
       }) as PlaylistItem;
 
       db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: playlistId });
@@ -858,7 +874,7 @@ export function reorderPlaylistItems(playlistId: string, itemIds: string[]): boo
           throw new Error(`Item ${itemIds[i]} does not belong to playlist`);
         }
       }
-      db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: playlistId });
+      db.query("UPDATE playlists SET is_custom_ordered = 1, updated_at = unixepoch() WHERE id = $id").run({ $id: playlistId });
       success = true;
     })();
   } catch {

@@ -107,4 +107,43 @@ describe("VirtualizedCardGrid Component", () => {
       root.unmount();
     });
   });
+
+  it("handles scrollRequest and triggers onScrollHandled", async () => {
+    const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
+    (globalThis as any).window = happyWindow;
+    (globalThis as any).document = happyWindow.document;
+    (globalThis as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
+    (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
+
+    const container = happyWindow.document.createElement("div");
+    happyWindow.document.body.appendChild(container);
+    const root = createRoot(container as any);
+
+    const testItems = Array.from({ length: 50 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
+    let handledId: number | null = null;
+
+    await act(async () => {
+      root.render(
+        <VirtualizedCardGrid
+          items={testItems}
+          getItemKey={(item) => item.id}
+          renderItem={(item) => <div className="card-item">{item.title}</div>}
+          scrollRequest={{ index: 10, requestId: 42 }}
+          onScrollHandled={(reqId) => {
+            handledId = reqId;
+          }}
+        />
+      );
+    });
+
+    // Wait for the 50ms timer
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(handledId).toBe(42);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });
+

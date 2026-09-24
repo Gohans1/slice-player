@@ -37,6 +37,7 @@ export interface Playlist {
   created_at: number;
   updated_at: number;
   item_count?: number;
+  is_custom_ordered?: boolean;
 }
 
 export interface PlaylistItem {
