@@ -175,10 +175,12 @@ interface PlayerState {
   activePlaylistOriginalQueue: QueueItem[];
   viewMode: "grid" | "list";
   activeSystemCategory: SystemCategory;
+  activeTrackScrollRequest: { id: number; timestamp: number } | null;
   retryingTrackIds: Record<string, boolean>;
   isRetryingAll: boolean;
 
   // Actions
+  requestScrollToActiveTrack: () => void;
   fetchTracks: (reconcileSegments?: boolean) => Promise<void>;
   retryTrack: (trackId: string) => Promise<boolean>;
   retryAllErrors: (trackIds?: string[]) => Promise<boolean>;
@@ -566,6 +568,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activeSystemCategory: "mixed",
   setActiveSystemCategory: (cat: SystemCategory) => {
     set({ activeSystemCategory: cat, activePlaylistId: null });
+  },
+  activeTrackScrollRequest: null,
+  requestScrollToActiveTrack: () => {
+    set((state) => ({
+      activeTrackScrollRequest: {
+        id: (state.activeTrackScrollRequest?.id ?? 0) + 1,
+        timestamp: Date.now(),
+      },
+    }));
   },
   retryingTrackIds: {},
   isRetryingAll: false,

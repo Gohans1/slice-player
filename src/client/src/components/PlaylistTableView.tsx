@@ -232,6 +232,7 @@ export function PlaylistTableView({
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const activeTrackScrollRequest = usePlayerStore((s) => s.activeTrackScrollRequest);
   const retryTrack = usePlayerStore((s) => s.retryTrack);
   const retryingTrackIds = usePlayerStore((s) => s.retryingTrackIds);
 
@@ -923,6 +924,55 @@ export function PlaylistTableView({
   const allTracksSelected = isAllVisibleSelected(selectedTrackIds, visibleTrackIds);
   const partiallyTracksSelected = isPartiallyVisibleSelected(selectedTrackIds, visibleTrackIds);
 
+  const lastHandledScrollRequestIdRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (!activeTrackScrollRequest) return;
+    if (lastHandledScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
+    if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
+
+    lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
+
+    let activeIndex = -1;
+    if (mixedItems) {
+      activeIndex = mixedItems.findIndex((item) =>
+        item.type === "slice"
+          ? activeSegment?.id === item.segment.id
+          : activeTrack?.id === item.track.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
+      );
+    } else if (sliceItems) {
+      activeIndex = sliceItems.findIndex((item) => activeSegment?.id === item.segment.id);
+    } else if (filteredTracks) {
+      activeIndex = trackList.findIndex(
+        (track) => activeTrack?.id === track.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
+      );
+    } else {
+      activeIndex = displayedItems.findIndex((item) =>
+        item.segment_id
+          ? activeSegment?.id === item.segment?.id
+          : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")
+      );
+    }
+
+    if (activeIndex >= 0) {
+      const timer = setTimeout(() => {
+        if (virtualizerRef.current?.scrollToIndex) {
+          virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "smooth" });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    activeTrackScrollRequest,
+    mixedItems,
+    sliceItems,
+    filteredTracks,
+    trackList,
+    displayedItems,
+    activeTrack?.id,
+    activeSegment?.id,
+  ]);
+
   // If in a custom playlist
   if (activePlaylistId) {
     if (activePlaylistItems.length === 0) {
@@ -1497,6 +1547,7 @@ export function PlaylistTableView({
         <VirtualizedTableBody
           items={sliceItems}
           getItemKey={getEntityId}
+          virtualizerRef={virtualizerRef}
           renderRow={(item, idx) => {
             const isCurrentActive = activeSegment?.id === item.segment.id;
             const isCurrentPlaying = isPlaying && isCurrentActive;
@@ -1710,6 +1761,7 @@ export function PlaylistTableView({
         <VirtualizedTableBody
           items={mixedItems}
           getItemKey={getEntityId}
+          virtualizerRef={virtualizerRef}
           renderRow={(item, idx) => {
             const isSlice = item.type === "slice";
             const entityId = isSlice ? item.segment.id : item.track.id;
@@ -1999,6 +2051,7 @@ export function PlaylistTableView({
       <VirtualizedTableBody
         items={trackList}
         getItemKey={getEntityId}
+        virtualizerRef={virtualizerRef}
         renderRow={(track, idx) => {
           const isSelected = selectedTrackIds.has(track.id);
           const isCurrentActive =

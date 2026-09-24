@@ -904,5 +904,65 @@ describe("PlayerBar Component", () => {
       window.localStorage.clear();
     }
   });
+
+  it("triggers requestScrollToActiveTrack when clicking active Mix or playlist tag", async () => {
+    const origFetch = globalThis.fetch;
+    const mockTrack: Track = {
+      id: "track-mix-scroll",
+      source_type: "local",
+      source_uri: "local://test.mp3",
+      title: "New World - Minecraft Parody",
+      artist: "SkyDoesMinecraft",
+      duration: 275.9,
+      status: "ready",
+    };
+    const mockSegment: Segment = {
+      id: "fallback_track-mix-scroll",
+      track_id: "track-mix-scroll",
+      name: "Full Track",
+      start_time: 0,
+      end_time: 275.9,
+    };
+
+    let scrollRequested = false;
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null,
+      requestScrollToActiveTrack: () => {
+        scrollRequested = true;
+      },
+    });
+
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlayerBar
+            onToggleQueue={() => {}}
+            isQueueOpen={false}
+          />
+        );
+      });
+
+      const mixTagBtn = container.querySelector(
+        'button[title*="Mix"], button[aria-label*="Mix"], button[title*="Trộn"], button[aria-label*="Trộn"]'
+      ) as HTMLButtonElement | null;
+      expect(mixTagBtn).not.toBeNull();
+
+      await act(async () => {
+        mixTagBtn?.click();
+      });
+
+      expect(scrollRequested).toBe(true);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
+
 

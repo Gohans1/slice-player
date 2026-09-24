@@ -286,6 +286,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
   const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
+  const requestScrollToActiveTrack = usePlayerStore((s) => s.requestScrollToActiveTrack);
   const activePlaylistPlayingName = usePlayerStore((s) => {
     if (!s.activePlaylistPlayingId) return null;
     return s.playlists.find((p) => p.id === s.activePlaylistPlayingId)?.name ?? null;
@@ -368,7 +369,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
         setActiveSystemCategory(playbackMode);
       }
     }
-  }, [activePlaylistPlayingId, playbackMode, setActivePlaylist, setActiveSystemCategory]);
+    requestScrollToActiveTrack();
+  }, [activePlaylistPlayingId, playbackMode, setActivePlaylist, setActiveSystemCategory, requestScrollToActiveTrack]);
 
   const shuffleButtonRef = React.useRef<HTMLButtonElement>(null);
   const shuffleMenuRef = React.useRef<HTMLDivElement>(null);

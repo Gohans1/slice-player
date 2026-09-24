@@ -58,6 +58,9 @@ export function App() {
   const isRetryingAll = usePlayerStore((s) => s.isRetryingAll);
   const retryAllErrors = usePlayerStore((s) => s.retryAllErrors);
   const retryingTrackIds = usePlayerStore((s) => s.retryingTrackIds);
+  const activeTrack = usePlayerStore((s) => s.activeTrack);
+  const activeSegment = usePlayerStore((s) => s.activeSegment);
+  const activeTrackScrollRequest = usePlayerStore((s) => s.activeTrackScrollRequest);
 
   // Built-in tabs fold state (persisted to localStorage)
   const [isBuiltInFolded, setIsBuiltInFolded] = React.useState<boolean>(() => {
@@ -783,6 +786,53 @@ export function App() {
     }));
   }, [activePlaylistId, activePlaylistItems, deferredQuery]);
 
+  const [gridScrollToIndex, setGridScrollToIndex] = React.useState<number | null>(null);
+  const lastHandledGridScrollRequestIdRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (viewMode !== "grid" || !activeTrackScrollRequest) return;
+    if (lastHandledGridScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
+    if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
+
+    lastHandledGridScrollRequestIdRef.current = activeTrackScrollRequest.id;
+
+    let targetIdx = -1;
+    if (activePlaylistId) {
+      targetIdx = displayedPlaylistItems.findIndex((it) =>
+        it.segment_id
+          ? it.segment?.id === activeSegment?.id
+          : it.track?.id === activeTrack?.id && !activeSegment?.id.startsWith("seg_")
+      );
+    } else if (activeSystemCategory === "mixed") {
+      targetIdx = filteredMixedItems.findIndex((it) =>
+        it.type === "slice"
+          ? it.segment.id === activeSegment?.id
+          : it.track.id === activeTrack?.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
+      );
+    } else if (activeSystemCategory === "slices_only") {
+      targetIdx = filteredSliceItems.findIndex((it) => it.segment.id === activeSegment?.id);
+    } else if (activeSystemCategory === "original_only") {
+      targetIdx = filteredTracks.findIndex(
+        (t) => t.id === activeTrack?.id && (!activeSegment || activeSegment.id.startsWith("fallback_"))
+      );
+    }
+
+    if (targetIdx >= 0) {
+      setGridScrollToIndex(targetIdx);
+    }
+  }, [
+    viewMode,
+    activeTrackScrollRequest,
+    activePlaylistId,
+    activeSystemCategory,
+    displayedPlaylistItems,
+    filteredMixedItems,
+    filteredSliceItems,
+    filteredTracks,
+    activeTrack?.id,
+    activeSegment?.id,
+  ]);
+
   const handlePlayPlaylistItem = React.useCallback(
     (itemId: string) => {
       if (activePlaylistId) {
@@ -1397,6 +1447,7 @@ export function App() {
               key={`playlist_${activePlaylistId}`}
               items={displayedPlaylistItems}
               getItemKey={getItemEntityId}
+              scrollToIndex={gridScrollToIndex}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => (
                 <PlaylistItemCard
@@ -1443,6 +1494,7 @@ export function App() {
               key="slices_only"
               items={filteredSliceItems}
               getItemKey={getItemEntityId}
+              scrollToIndex={gridScrollToIndex}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => (
                 <SliceCard
@@ -1492,6 +1544,7 @@ export function App() {
               key="mixed"
               items={filteredMixedItems}
               getItemKey={getItemEntityId}
+              scrollToIndex={gridScrollToIndex}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => {
                 if (item.type === "slice") {
@@ -1686,6 +1739,7 @@ export function App() {
             key="original_only"
             items={filteredTracks}
             getItemKey={getItemEntityId}
+            scrollToIndex={gridScrollToIndex}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
             renderItem={(track) => (
               <TrackCard

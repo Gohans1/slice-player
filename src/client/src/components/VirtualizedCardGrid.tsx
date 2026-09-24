@@ -7,6 +7,7 @@ export interface VirtualizedCardGridProps<T> {
   renderItem: (item: T, index: number) => React.ReactNode;
   className?: string;
   estimateCardHeight?: number;
+  scrollToIndex?: number | null;
 }
 
 /**
@@ -56,6 +57,7 @@ export function VirtualizedCardGrid<T>({
   renderItem,
   className,
   estimateCardHeight,
+  scrollToIndex,
 }: VirtualizedCardGridProps<T>) {
   const cols = useGridColumnCount();
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -130,6 +132,16 @@ export function VirtualizedCardGrid<T>({
       virtualizer.measure();
     }
   }, [cols, virtualizer]);
+
+  React.useEffect(() => {
+    if (typeof scrollToIndex === "number" && scrollToIndex >= 0 && cols > 0) {
+      const rowIndex = Math.floor(scrollToIndex / cols);
+      const timer = setTimeout(() => {
+        virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "smooth" });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [scrollToIndex, cols, virtualizer]);
 
   if (items.length === 0) {
     return <div ref={containerRef} className={className} />;

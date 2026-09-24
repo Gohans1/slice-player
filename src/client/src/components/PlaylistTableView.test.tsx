@@ -2159,6 +2159,59 @@ describe("PlaylistTableView", () => {
       expect(reorderSpy).not.toHaveBeenCalled();
     });
   });
+
+  describe("Scroll to active item on request", () => {
+    it("scrolls to active item in mixed view when activeTrackScrollRequest triggers", async () => {
+      let scrollCalledWith: any = null;
+      window.scrollTo = (optionsOrX: any, y?: any) => {
+        scrollCalledWith = typeof optionsOrX === "object" ? optionsOrX : { top: y, left: optionsOrX };
+      };
+
+      const mixedItems: MixedItem[] = [
+        { type: "track", id: "trk_tbl_1", track: dummyTrack },
+        { type: "track", id: "trk_tbl_2", track: dummyTrack2 },
+      ];
+
+      usePlayerStore.setState({
+        activeTrack: dummyTrack2,
+        activeSegment: {
+          id: "fallback_trk_tbl_2",
+          track_id: dummyTrack2.id,
+          name: dummyTrack2.title,
+          start_time: 0,
+          end_time: dummyTrack2.duration,
+        },
+        isPlaying: true,
+        activeTrackScrollRequest: null,
+      });
+
+      await act(async () => {
+        root.render(
+          <PlaylistTableView
+            mixedItems={mixedItems}
+          />
+        );
+      });
+
+      // Reset spy call before triggering activeTrackScrollRequest
+      scrollCalledWith = null;
+
+      // Now trigger activeTrackScrollRequest
+      await act(async () => {
+        usePlayerStore.setState({
+          activeTrackScrollRequest: { id: 1, timestamp: Date.now() },
+        });
+      });
+
+      // Wait for debounce/animation frame timeout
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 100));
+      });
+
+      expect(scrollCalledWith).not.toBeNull();
+    });
+  });
 });
+
 
 
