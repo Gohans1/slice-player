@@ -4,7 +4,7 @@ import { createDefaultFullSegment } from "../lib/utils";
 import { pickSmartRandomItem } from "../lib/shufflePicker";
 import { logClientInfo, logClientError } from "./useLogStore";
 import { useSelectionStore } from "./useSelectionStore";
-import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds } from "../lib/playlistSort";
+import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getShuffledEntityIds } from "../lib/playlistSort";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -176,6 +176,8 @@ interface PlayerState {
   activePlaylistOriginalQueue: QueueItem[];
   playlistSortMode: PlaylistSortMode;
   playlistRandomMap: Record<string, string[]>;
+  systemCategorySortMode: Record<PlaybackMode, PlaylistSortMode>;
+  systemRandomMap: Record<PlaybackMode, string[]>;
   viewMode: "grid" | "list";
   activeSystemCategory: SystemCategory;
   activeTrackScrollRequest: { id: number; timestamp: number } | null;
@@ -200,7 +202,9 @@ interface PlayerState {
   setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, startIndex?: number, forceShuffle?: boolean) => Promise<void>;
-  playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track) => Promise<void>;
+  playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number) => Promise<void>;
+  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode) => void;
+  randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
   setVolume: (vol: number) => void;
   setTrackVolume: (trackId: string, volume: number) => Promise<void>;
   setCurrentTime: (t: number) => void;
@@ -571,6 +575,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   activePlaylistOriginalQueue: [],
   playlistSortMode: "manual",
   playlistRandomMap: {},
+  systemCategorySortMode: {
+    mixed: "newest",
+    slices_only: "newest",
+    original_only: "newest",
+  },
+  systemRandomMap: {
+    mixed: [],
+    slices_only: [],
+    original_only: [],
+  },
   setPlaylistSortMode: (mode: PlaylistSortMode) => {
     set({ playlistSortMode: mode });
     if (mode === "random") {
@@ -590,6 +604,42 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((state) => ({
       playlistSortMode: "random",
       playlistRandomMap: { ...state.playlistRandomMap, [targetId]: shuffled },
+    }));
+  },
+  setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode) => {
+    set((state) => ({
+      systemCategorySortMode: {
+        ...state.systemCategorySortMode,
+        [mode]: sortMode,
+      },
+    }));
+  },
+  randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => {
+    let ids = itemIds && itemIds.length > 0 ? getShuffledEntityIds(itemIds.map((id) => ({ id }))) : [];
+    if (ids.length === 0) {
+      if (mode === "original_only") {
+        ids = getShuffledEntityIds(get().tracks.map((t) => ({ id: t.id })));
+      } else if (mode === "slices_only") {
+        const modeQueue = get().queuesByMode.slices_only || [];
+        ids = getShuffledEntityIds(modeQueue.map((it) => ({ id: it.segment.id })));
+      } else if (mode === "mixed") {
+        const modeQueue = get().queuesByMode.mixed || [];
+        ids = getShuffledEntityIds(
+          modeQueue.map((it) => ({
+            id: it.segment.id.startsWith("fallback_") ? `track_${it.track.id}` : `slice_${it.segment.id}`,
+          }))
+        );
+      }
+    }
+    set((state) => ({
+      systemCategorySortMode: {
+        ...state.systemCategorySortMode,
+        [mode]: "random",
+      },
+      systemRandomMap: {
+        ...state.systemRandomMap,
+        [mode]: ids,
+      },
     }));
   },
   viewMode: getStoredViewMode(),
@@ -2262,6 +2312,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const data = await res.json();
         if (get().activePlaylistId === id) {
           set({ activePlaylistItems: data.items || [] });
+          if (get().activeTrackScrollRequest) {
+            get().requestScrollToActiveTrack();
+          }
         }
       }
     } catch (e) {
@@ -3065,9 +3118,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  playSegmentInMode: async (mode: PlaybackMode, segment: Segment, track: Track) => {
+  playSegmentInMode: async (
+    mode: PlaybackMode,
+    segment: Segment,
+    track: Track,
+    customQueue?: QueueItem[],
+    customIndex?: number
+  ) => {
     try {
-      let modeItems = get().queuesByMode[mode] || [];
+      let modeItems = customQueue && customQueue.length > 0 ? customQueue : (get().queuesByMode[mode] || []);
       if (modeItems.length === 0) {
         let segments: Segment[] = [];
         if (mode !== "original_only") {
@@ -3078,7 +3137,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
         modeItems = generateModeQueueItems(mode, segments, get().tracks);
       }
-      let idx = modeItems.findIndex((it) => it.segment.id === segment.id);
+      let idx =
+        typeof customIndex === "number" && customIndex >= 0 && customIndex < modeItems.length
+          ? customIndex
+          : modeItems.findIndex((it) => it.segment.id === segment.id);
       if (idx === -1) {
         const newItem = createQueueItem(segment, track);
         modeItems = [newItem, ...modeItems];

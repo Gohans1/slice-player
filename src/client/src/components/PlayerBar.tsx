@@ -360,11 +360,11 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
     );
   }, [containingPlaylists, activePlaylistPlayingId, playingPlaylistName]);
 
-  const handleActiveTagClick = React.useCallback(() => {
+  const handleActiveTagClick = React.useCallback(async () => {
     if (activePlaylistPlayingId) {
-      setActivePlaylist(activePlaylistPlayingId);
+      await setActivePlaylist(activePlaylistPlayingId);
     } else {
-      setActivePlaylist(null);
+      await setActivePlaylist(null);
       if (playbackMode) {
         setActiveSystemCategory(playbackMode);
       }
@@ -626,8 +626,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
                     <button
                       key={pl.id}
                       type="button"
-                      onClick={() => {
-                        setActivePlaylist(pl.id);
+                      onClick={async () => {
+                        await setActivePlaylist(pl.id);
                         requestScrollToActiveTrack();
                       }}
                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-normal bg-secondary/80 text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/40 hover:border-border/80 shrink-0 max-w-[100px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"

@@ -1,5 +1,5 @@
 import type { PlaylistItemWithDetails, Track, Segment } from "@/server/types";
-import type { MixedItem } from "../components/PlaylistTableView";
+import type { MixedItem } from "./playlistSort";
 
 export interface ActiveItemResolutionOptions {
   currentQueueItemId?: string | null;
@@ -20,19 +20,35 @@ export function findActivePlaylistItemIndex(
     if (queueIdx >= 0) return queueIdx;
   }
 
-  // 2. Fallback match by segment ID or track ID
-  return items.findIndex((item) => {
-    if (item.segment_id) {
+  // 2. Exact match by segment ID if playing a custom slice
+  if (options.activeSegmentId && !options.activeSegmentId.startsWith("fallback_")) {
+    const segIdx = items.findIndex((item) => {
       const segId = item.segment?.id ?? item.segment_id;
-      return Boolean(options.activeSegmentId && segId === options.activeSegmentId);
+      return segId === options.activeSegmentId;
+    });
+    if (segIdx >= 0) return segIdx;
+  }
+
+  // 3. Match by track ID
+  if (options.activeTrackId) {
+    // Prefer matching full-track item when active is fallback full track
+    if (options.isFallbackSegment) {
+      const fullTrackIdx = items.findIndex((item) => {
+        const trackId = item.track?.id ?? item.track_id;
+        return trackId === options.activeTrackId && !item.segment_id;
+      });
+      if (fullTrackIdx >= 0) return fullTrackIdx;
     }
-    const trackId = item.track?.id ?? item.track_id;
-    return Boolean(
-      options.activeTrackId &&
-      trackId === options.activeTrackId &&
-      options.isFallbackSegment
-    );
-  });
+
+    // Otherwise match any item belonging to this track
+    const anyTrackIdx = items.findIndex((item) => {
+      const trackId = item.track?.id ?? item.track_id;
+      return trackId === options.activeTrackId;
+    });
+    if (anyTrackIdx >= 0) return anyTrackIdx;
+  }
+
+  return -1;
 }
 
 export function findActiveMixedItemIndex(
@@ -44,15 +60,32 @@ export function findActiveMixedItemIndex(
   }
 ): number {
   if (!items || items.length === 0) return -1;
-  return items.findIndex((item) =>
-    item.type === "slice"
-      ? Boolean(options.activeSegmentId && item.segment.id === options.activeSegmentId)
-      : Boolean(
-          options.activeTrackId &&
-          item.track.id === options.activeTrackId &&
-          options.isFallbackSegment
-        )
-  );
+
+  // 1. Exact slice match if playing a real segment
+  if (options.activeSegmentId && !options.activeSegmentId.startsWith("fallback_")) {
+    const sliceIdx = items.findIndex(
+      (item) => item.type === "slice" && item.segment?.id === options.activeSegmentId
+    );
+    if (sliceIdx >= 0) return sliceIdx;
+    // If playing a specific non-fallback slice, do not incorrectly match the full track row
+    if (options.isFallbackSegment === false) return -1;
+  }
+
+  // 2. Track match
+  if (options.activeTrackId) {
+    if (options.isFallbackSegment !== false) {
+      const trackIdx = items.findIndex(
+        (item) => item.type === "track" && item.track.id === options.activeTrackId
+      );
+      if (trackIdx >= 0) return trackIdx;
+    }
+
+    // Fallback: any item belonging to this track
+    const anyIdx = items.findIndex((item) => item.track.id === options.activeTrackId);
+    if (anyIdx >= 0) return anyIdx;
+  }
+
+  return -1;
 }
 
 export function findActiveSliceItemIndex(
@@ -68,6 +101,7 @@ export function findActiveTrackIndex(
   activeTrackId?: string | null,
   isFallbackSegment?: boolean
 ): number {
-  if (!tracks || tracks.length === 0 || !activeTrackId || !isFallbackSegment) return -1;
+  if (!tracks || tracks.length === 0 || !activeTrackId) return -1;
+  if (isFallbackSegment === false) return -1;
   return tracks.findIndex((track) => track.id === activeTrackId);
 }

@@ -13,7 +13,7 @@ import {
 } from "../lib/activeItemIndex";
 import { searchItems } from "../lib/search";
 import { getSortedPlaylistItems } from "../lib/playlistSort";
-import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
+import { usePlayerStore, isPlaybackMode, createQueueItem, type QueueItem } from "../store/usePlayerStore";
 import {
   useSelectionStore,
   useIsSelectionActive,
@@ -28,22 +28,8 @@ import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";
-
-export type MixedItem =
-  | {
-      type: "track";
-      id: string;
-      track: Track;
-      segment?: never;
-      createdAt?: number;
-    }
-  | {
-      type: "slice";
-      id: string;
-      track: Track;
-      segment: Segment;
-      createdAt?: number;
-    };
+import type { MixedItem } from "../lib/playlistSort";
+export type { MixedItem };
 
 const getEntityId = (item: { id: string }) => item.id;
 const PLAYLIST_ROW_HEIGHT = 68;
@@ -771,14 +757,20 @@ export function PlaylistTableView({
       busyIdRef.current = segment.id;
       lastPlayInitiatedRef.current = Date.now();
       try {
-        await playSegmentInMode("slices_only", segment, track);
+        const customQueue = sliceItems
+          ? sliceItems
+              .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
+              .map((it) => createQueueItem(it.segment, it.track, it.id))
+          : undefined;
+        const customIndex = customQueue ? customQueue.findIndex((q) => q.segment.id === segment.id) : undefined;
+        await playSegmentInMode("slices_only", segment, track, customQueue, customIndex);
       } finally {
         setTimeout(() => {
           if (busyIdRef.current === segment.id) busyIdRef.current = null;
         }, 500);
       }
     },
-    [playSegmentInMode]
+    [playSegmentInMode, sliceItems]
   );
 
   const handlePlayMixed = React.useCallback(
@@ -811,10 +803,28 @@ export function PlaylistTableView({
       busyIdRef.current = itemId;
       lastPlayInitiatedRef.current = Date.now();
       try {
-        if (isSlice) {
-          await playSegmentInMode("mixed", item.segment, item.track);
+        const customQueue = mixedItems
+          ? mixedItems
+              .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
+              .map((it) =>
+                it.type === "slice" && it.segment
+                  ? createQueueItem(it.segment, it.track, it.id)
+                  : createQueueItem(createDefaultFullSegment(it.track), it.track, it.id)
+              )
+          : undefined;
+        const customIndex = customQueue
+          ? customQueue.findIndex((q) => {
+              if (isSlice && item.segment) {
+                return q.segment.id === item.segment.id;
+              }
+              return q.track.id === item.track.id && q.segment.id.startsWith("fallback_");
+            })
+          : undefined;
+
+        if (isSlice && item.segment) {
+          await playSegmentInMode("mixed", item.segment, item.track, customQueue, customIndex);
         } else {
-          await playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track);
+          await playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, customQueue, customIndex);
         }
       } finally {
         setTimeout(() => {
@@ -822,7 +832,7 @@ export function PlaylistTableView({
         }, 500);
       }
     },
-    [playSegmentInMode]
+    [playSegmentInMode, mixedItems]
   );
 
   const handlePlayTrack = React.useCallback(
@@ -854,8 +864,30 @@ export function PlaylistTableView({
 
       try {
         const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
-        if (targetMode === "original_only" || targetMode === "mixed") {
-          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
+        if (targetMode === "original_only") {
+          const customQueue = filteredTracks
+            ? filteredTracks
+                .filter((t) => t.status === "ready" && (t.duration ?? 0) > 0)
+                .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id))
+            : undefined;
+          const customIndex = customQueue ? customQueue.findIndex((q) => q.track.id === track.id) : undefined;
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex);
+          return;
+        }
+        if (targetMode === "mixed") {
+          const customQueue = mixedItems
+            ? mixedItems
+                .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
+                .map((it) =>
+                  it.type === "slice" && it.segment
+                    ? createQueueItem(it.segment, it.track, it.id)
+                    : createQueueItem(createDefaultFullSegment(it.track), it.track, it.id)
+                )
+            : undefined;
+          const customIndex = customQueue
+            ? customQueue.findIndex((q) => q.track.id === track.id && q.segment.id.startsWith("fallback_"))
+            : undefined;
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex);
           return;
         }
         const modeQueue = store.queuesByMode[targetMode] || [];
@@ -885,7 +917,7 @@ export function PlaylistTableView({
         }, 500);
       }
     },
-    [activeSystemCategory, playbackMode, playSegmentInMode]
+    [activeSystemCategory, playbackMode, playSegmentInMode, filteredTracks, mixedItems]
   );
 
   const trackList = filteredTracks || [];
@@ -978,7 +1010,7 @@ export function PlaylistTableView({
       const timer = setTimeout(() => {
         if (virtualizerRef.current?.scrollToIndex) {
           lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
-          virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "smooth" });
+          virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "auto" });
         }
       }, 50);
       return () => clearTimeout(timer);

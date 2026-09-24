@@ -24,9 +24,10 @@ interface TrackCardProps {
   onDelete: (id: string) => void;
   deleteTitle?: string;
   visibleTrackIds?: (string | SelectedItem)[];
+  onPlay?: () => void;
 }
 
-export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackIds }: TrackCardProps) {
+export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackIds, onPlay }: TrackCardProps) {
   const { t } = useTranslation();
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const retryTrack = usePlayerStore((s) => s.retryTrack);
@@ -85,6 +86,10 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
     lastPlayInitiatedRef.current = Date.now();
 
     try {
+      if (onPlay) {
+        onPlay();
+        return;
+      }
       const { activeSystemCategory, playbackMode, playSegmentInMode } = store;
       const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
 

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { usePlayerStore } from "./store/usePlayerStore";
+import { usePlayerStore, createQueueItem, type QueueItem } from "./store/usePlayerStore";
 import { Navbar } from "./components/Navbar";
 import { TrackCard } from "./components/TrackCard";
 import { SliceStudio } from "./components/SliceStudio";
@@ -11,14 +11,14 @@ import { LogDrawer } from "./components/LogDrawer";
 import { PlaylistDrawer } from "./components/PlaylistDrawer";
 import { CreatePlaylistModal } from "./components/CreatePlaylistModal";
 import { ShortcutsModal } from "./components/ShortcutsModal";
-import { PlaylistTableView, type MixedItem } from "./components/PlaylistTableView";
+import { PlaylistTableView } from "./components/PlaylistTableView";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
 import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
-import { compareDownloadingTracks, cn } from "./lib/utils";
+import { compareDownloadingTracks, cn, createDefaultFullSegment } from "./lib/utils";
 import {
   findActivePlaylistItemIndex,
   findActiveMixedItemIndex,
@@ -26,7 +26,13 @@ import {
   findActiveTrackIndex,
 } from "./lib/activeItemIndex";
 import { PlaylistSortSelector } from "./components/PlaylistSortSelector";
-import { getSortedPlaylistItems } from "./lib/playlistSort";
+import {
+  getSortedPlaylistItems,
+  getSortedMixedItems,
+  getSortedSliceItems,
+  getSortedTracks,
+  type MixedItem,
+} from "./lib/playlistSort";
 import { Button } from "./components/ui/button";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -58,6 +64,8 @@ export function App() {
   const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
   const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
   const playlistRandomMap = usePlayerStore((s) => s.playlistRandomMap);
+  const systemCategorySortMode = usePlayerStore((s) => s.systemCategorySortMode);
+  const systemRandomMap = usePlayerStore((s) => s.systemRandomMap);
   const viewMode = usePlayerStore((s) => s.viewMode);
   const fetchPlaylists = usePlayerStore((s) => s.fetchPlaylists);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
@@ -680,11 +688,14 @@ export function App() {
   }, [hasActiveDownloads]);
 
   const originalTracks = React.useMemo(() => {
-    const ready = tracks
-      .filter((t) => t.status === "ready")
-      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
-    return [...downloadingTracks, ...ready];
-  }, [tracks, downloadingTracks]);
+    const ready = tracks.filter((t) => t.status === "ready");
+    const sortedReady = getSortedTracks(
+      ready,
+      systemCategorySortMode.original_only,
+      systemRandomMap.original_only
+    );
+    return [...downloadingTracks, ...sortedReady];
+  }, [tracks, downloadingTracks, systemCategorySortMode.original_only, systemRandomMap.original_only]);
 
   const errorTracks = React.useMemo(() => {
     return tracks.filter((t) => t.status === "error");
@@ -717,8 +728,12 @@ export function App() {
         items.push({ id: seg.id, segment: seg, track: trk });
       }
     }
-    return items;
-  }, [segments, tracks]);
+    return getSortedSliceItems(
+      items,
+      systemCategorySortMode.slices_only,
+      systemRandomMap.slices_only
+    );
+  }, [segments, tracks, systemCategorySortMode.slices_only, systemRandomMap.slices_only]);
 
   const filteredSliceItems = React.useMemo(() => {
     return searchItems(allSliceItems, deferredQuery, (item) => ({
@@ -759,16 +774,14 @@ export function App() {
       });
     }
 
-    readyItems.sort((a, b) => {
-      const diff = (b.createdAt || 0) - (a.createdAt || 0);
-      if (diff !== 0) return diff;
-      const titleA = a.type === "slice" ? a.segment.name : a.track.title;
-      const titleB = b.type === "slice" ? b.segment.name : b.track.title;
-      return (titleA || "").localeCompare(titleB || "");
-    });
+    const sortedReady = getSortedMixedItems(
+      readyItems,
+      systemCategorySortMode.mixed,
+      systemRandomMap.mixed
+    );
 
-    return [...pendingItems, ...readyItems];
-  }, [downloadingTracks, tracks, allSliceItems]);
+    return [...pendingItems, ...sortedReady];
+  }, [downloadingTracks, tracks, allSliceItems, systemCategorySortMode.mixed, systemRandomMap.mixed]);
 
   const filteredMixedItems = React.useMemo(() => {
     return searchItems(allMixedItems, deferredQuery, (item) => {
@@ -811,6 +824,28 @@ export function App() {
       createdAt: item.added_at,
     }));
   }, [activePlaylistId, sortedPlaylistItems, deferredQuery]);
+
+  const sliceQueue = React.useMemo<QueueItem[]>(() => {
+    return filteredSliceItems
+      .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
+      .map((it) => createQueueItem(it.segment, it.track, it.id));
+  }, [filteredSliceItems]);
+
+  const mixedQueue = React.useMemo<QueueItem[]>(() => {
+    return filteredMixedItems
+      .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
+      .map((it) =>
+        it.type === "slice" && it.segment
+          ? createQueueItem(it.segment, it.track, it.id)
+          : createQueueItem(createDefaultFullSegment(it.track), it.track, it.id)
+      );
+  }, [filteredMixedItems]);
+
+  const originalQueue = React.useMemo<QueueItem[]>(() => {
+    return filteredTracks
+      .filter((t) => t.status === "ready" && (t.duration ?? 0) > 0)
+      .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id));
+  }, [filteredTracks]);
 
   const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
   const lastHandledGridScrollRequestIdRef = React.useRef<number | null>(null);
@@ -1103,7 +1138,9 @@ export function App() {
 
               {/* View Mode Switcher & Playlist Sort Selector */}
               <div className="flex items-center gap-2 shrink-0">
-                {activePlaylistId && <PlaylistSortSelector />}
+                {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
+                  <PlaylistSortSelector />
+                )}
                 <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
                 <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">
                   <button
@@ -1539,7 +1576,7 @@ export function App() {
                   segment={item.segment}
                   track={item.track}
                   visibleItemIds={visibleItems}
-                  onPlay={() => playSegmentInMode("slices_only", item.segment, item.track)}
+                  onPlay={() => playSegmentInMode("slices_only", item.segment, item.track, sliceQueue, idx)}
                   onOpenStudio={() => openSliceStudio(item.track)}
                   onDelete={handleDeleteSlice}
                 />
@@ -1593,7 +1630,7 @@ export function App() {
                       segment={item.segment}
                       track={item.track}
                       visibleItemIds={visibleItems}
-                      onPlay={() => playSegmentInMode("mixed", item.segment, item.track)}
+                      onPlay={() => playSegmentInMode("mixed", item.segment, item.track, mixedQueue, idx)}
                       onOpenStudio={() => openSliceStudio(item.track)}
                       onDelete={handleDeleteSlice}
                     />
@@ -1605,6 +1642,7 @@ export function App() {
                     track={item.track}
                     onDelete={handleDeleteTrack}
                     visibleTrackIds={visibleItems}
+                    onPlay={() => playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, mixedQueue, idx)}
                   />
                 );
               }}
@@ -1779,12 +1817,13 @@ export function App() {
             scrollRequest={gridScrollRequest}
             onScrollHandled={handleGridScrollHandled}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-            renderItem={(track) => (
+            renderItem={(track, idx) => (
               <TrackCard
                 key={track.id}
                 track={track}
                 onDelete={handleDeleteTrack}
                 visibleTrackIds={visibleItems}
+                onPlay={() => playSegmentInMode("original_only", createDefaultFullSegment(track), track, originalQueue, idx)}
               />
             )}
           />

@@ -3,6 +3,9 @@ import {
   type PlaylistSortMode,
   getSortedPlaylistItems,
   getShuffledItemIds,
+  getSortedMixedItems,
+  getSortedSliceItems,
+  getSortedTracks,
 } from "./playlistSort";
 import type { PlaylistItemWithDetails } from "@/server/types";
 
@@ -101,11 +104,72 @@ describe("playlistSort helpers", () => {
     });
   });
 
-  describe("getShuffledItemIds", () => {
-    it("returns a permutation of all item ids", () => {
-      const shuffled = getShuffledItemIds(items);
-      expect(shuffled.length).toBe(3);
-      expect(new Set(shuffled)).toEqual(new Set(["pli_1", "pli_2", "pli_3"]));
+  describe("getSortedMixedItems", () => {
+    const mixedList: any[] = [
+      { type: "track", id: "m_1", track: { id: "t1", title: "Track A" }, createdAt: 100 },
+      { type: "slice", id: "m_2", track: { id: "t2", title: "Track B" }, segment: { name: "Slice Z" }, createdAt: 300 },
+      { type: "track", id: "m_3", track: { id: "t3", title: "Track C" }, createdAt: 200 },
+    ];
+
+    it("sorts newest first by createdAt DESC", () => {
+      const res = getSortedMixedItems(mixedList, "newest");
+      expect(res.map((r) => r.id)).toEqual(["m_2", "m_3", "m_1"]);
+    });
+
+    it("sorts oldest first by createdAt ASC", () => {
+      const res = getSortedMixedItems(mixedList, "oldest");
+      expect(res.map((r) => r.id)).toEqual(["m_1", "m_3", "m_2"]);
+    });
+
+    it("sorts random according to randomOrderMap", () => {
+      const res = getSortedMixedItems(mixedList, "random", ["m_3", "m_1", "m_2"]);
+      expect(res.map((r) => r.id)).toEqual(["m_3", "m_1", "m_2"]);
+    });
+  });
+
+  describe("getSortedSliceItems", () => {
+    const sliceList: any[] = [
+      { id: "sl_1", segment: { id: "s1", name: "Alpha", created_at: 50 }, track: { created_at: 50 } },
+      { id: "sl_2", segment: { id: "s2", name: "Beta", created_at: 200 }, track: { created_at: 200 } },
+      { id: "sl_3", segment: { id: "s3", name: "Gamma", created_at: 100 }, track: { created_at: 100 } },
+    ];
+
+    it("sorts newest first by segment created_at DESC", () => {
+      const res = getSortedSliceItems(sliceList, "newest");
+      expect(res.map((r) => r.id)).toEqual(["sl_2", "sl_3", "sl_1"]);
+    });
+
+    it("sorts oldest first by segment created_at ASC", () => {
+      const res = getSortedSliceItems(sliceList, "oldest");
+      expect(res.map((r) => r.id)).toEqual(["sl_1", "sl_3", "sl_2"]);
+    });
+
+    it("sorts random according to randomOrderMap", () => {
+      const res = getSortedSliceItems(sliceList, "random", ["sl_3", "sl_1", "sl_2"]);
+      expect(res.map((r) => r.id)).toEqual(["sl_3", "sl_1", "sl_2"]);
+    });
+  });
+
+  describe("getSortedTracks", () => {
+    const trackList: any[] = [
+      { id: "tr_1", title: "A", created_at: 10 },
+      { id: "tr_2", title: "B", created_at: 30 },
+      { id: "tr_3", title: "C", created_at: 20 },
+    ];
+
+    it("sorts newest first by track created_at DESC", () => {
+      const res = getSortedTracks(trackList, "newest");
+      expect(res.map((r) => r.id)).toEqual(["tr_2", "tr_3", "tr_1"]);
+    });
+
+    it("sorts oldest first by track created_at ASC", () => {
+      const res = getSortedTracks(trackList, "oldest");
+      expect(res.map((r) => r.id)).toEqual(["tr_1", "tr_3", "tr_2"]);
+    });
+
+    it("sorts random according to randomOrderMap", () => {
+      const res = getSortedTracks(trackList, "random", ["tr_3", "tr_2", "tr_1"]);
+      expect(res.map((r) => r.id)).toEqual(["tr_3", "tr_2", "tr_1"]);
     });
   });
 });

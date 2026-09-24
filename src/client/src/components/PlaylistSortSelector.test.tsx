@@ -36,8 +36,8 @@ describe("PlaylistSortSelector Component", () => {
     container.remove();
   });
 
-  it("renders all 4 sort mode buttons with manual active by default", async () => {
-    usePlayerStore.setState({ playlistSortMode: "manual" });
+  it("renders all 4 sort mode buttons with manual active by default for custom playlist", async () => {
+    usePlayerStore.setState({ activePlaylistId: "pl_1", playlistSortMode: "manual" });
 
     await act(async () => {
       root.render(<PlaylistSortSelector />);
@@ -50,6 +50,36 @@ describe("PlaylistSortSelector Component", () => {
     expect(buttons[1].getAttribute("aria-pressed")).toBe("false");
     expect(buttons[2].getAttribute("aria-pressed")).toBe("false");
     expect(buttons[3].getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("renders 3 sort mode buttons for built-in categories with newest active by default", async () => {
+    usePlayerStore.setState({
+      activePlaylistId: null,
+      activeSystemCategory: "mixed",
+      systemCategorySortMode: {
+        mixed: "newest",
+        slices_only: "newest",
+        original_only: "newest",
+      },
+    });
+
+    await act(async () => {
+      root.render(<PlaylistSortSelector />);
+    });
+
+    const buttons = container.querySelectorAll("button");
+    expect(buttons.length).toBe(3);
+
+    // [0] is newest, [1] is oldest, [2] is random
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    expect(buttons[1].getAttribute("aria-pressed")).toBe("false");
+    expect(buttons[2].getAttribute("aria-pressed")).toBe("false");
+
+    // Click "Oldest"
+    await act(async () => {
+      buttons[1].dispatchEvent(new (window as any).MouseEvent("click", { bubbles: true }));
+    });
+    expect(usePlayerStore.getState().systemCategorySortMode.mixed).toBe("oldest");
   });
 
   it("switches to newest, oldest, and random mode when clicked", async () => {

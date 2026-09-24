@@ -1,7 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpDown, ArrowDownNarrowWide, ArrowUpNarrowWide, Shuffle } from "lucide-react";
-import { usePlayerStore, type PlaylistSortMode } from "../store/usePlayerStore";
+import { usePlayerStore, type PlaylistSortMode, type PlaybackMode } from "../store/usePlayerStore";
 
 interface PlaylistSortSelectorProps {
   className?: string;
@@ -13,26 +13,52 @@ export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorPro
   const setPlaylistSortMode = usePlayerStore((s) => s.setPlaylistSortMode);
   const randomizePlaylistSort = usePlayerStore((s) => s.randomizePlaylistSort);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
+  const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
+  const systemCategorySortMode = usePlayerStore((s) => s.systemCategorySortMode);
+  const setSystemSortMode = usePlayerStore((s) => s.setSystemSortMode);
+  const randomizeSystemSort = usePlayerStore((s) => s.randomizeSystemSort);
+
+  const isBuiltInCategory =
+    !activePlaylistId &&
+    (activeSystemCategory === "mixed" ||
+      activeSystemCategory === "slices_only" ||
+      activeSystemCategory === "original_only");
+
+  const builtInCat = isBuiltInCategory ? (activeSystemCategory as PlaybackMode) : null;
+
+  const currentMode: PlaylistSortMode = builtInCat
+    ? systemCategorySortMode[builtInCat] ?? "newest"
+    : playlistSortMode;
 
   const handleSelect = (mode: PlaylistSortMode) => {
-    if (mode === "random" && playlistSortMode === "random") {
-      randomizePlaylistSort(activePlaylistId || undefined);
+    if (builtInCat) {
+      if (mode === "random" && currentMode === "random") {
+        randomizeSystemSort(builtInCat);
+      } else {
+        setSystemSortMode(builtInCat, mode);
+      }
     } else {
-      setPlaylistSortMode(mode);
+      if (mode === "random" && playlistSortMode === "random") {
+        randomizePlaylistSort(activePlaylistId || undefined);
+      } else {
+        setPlaylistSortMode(mode);
+      }
     }
   };
 
-  const sortOptions: Array<{
+  const allSortOptions: Array<{
     mode: PlaylistSortMode;
     label: string;
     tooltip: string;
     icon: React.ReactNode;
+    hideForBuiltIn?: boolean;
   }> = [
     {
       mode: "manual",
       label: t("playlist.sortManual", "Manual"),
       tooltip: t("playlist.sortManualTooltip", "Manual order (drag & drop enabled)"),
       icon: <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />,
+      hideForBuiltIn: true,
     },
     {
       mode: "newest",
@@ -50,12 +76,16 @@ export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorPro
       mode: "random",
       label: t("playlist.sortRandom", "Random"),
       tooltip:
-        playlistSortMode === "random"
+        currentMode === "random"
           ? t("playlist.reshuffleTooltip", "Click again to reshuffle")
           : t("playlist.sortRandomTooltip", "Random order"),
       icon: <Shuffle className="h-3.5 w-3.5 shrink-0" />,
     },
   ];
+
+  const sortOptions = isBuiltInCategory
+    ? allSortOptions.filter((opt) => !opt.hideForBuiltIn)
+    : allSortOptions;
 
   return (
     <div
@@ -64,7 +94,7 @@ export function PlaylistSortSelector({ className = "" }: PlaylistSortSelectorPro
       className={`inline-flex items-center rounded-lg border border-border bg-card/60 p-0.5 text-xs ${className}`}
     >
       {sortOptions.map((opt) => {
-        const isActive = playlistSortMode === opt.mode;
+        const isActive = currentMode === opt.mode;
         return (
           <button
             key={opt.mode}
