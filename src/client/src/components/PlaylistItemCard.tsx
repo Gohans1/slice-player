@@ -129,9 +129,9 @@ export function PlaylistItemCardComponent({
               position: index + 1,
               total: totalItems ?? index + 1,
             })}
-            aria-description={t("library.dragToReorder", "Drag or use arrow keys to reorder playlist")}
+            aria-description={t("playlist.dragToReorder", "Drag or use arrow keys to reorder playlist")}
             aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
-            title={dragProps?.isReordering ? t("table.reordering") : t("queue.dragHandleTitle", "Drag to reorder")}
+            title={dragProps?.isReordering ? t("playlist.movingItem", "Moving item...") : t("queue.dragHandleTitle", "Drag to reorder")}
             disabled={dragProps?.isReordering}
             onPointerDown={(e) => {
               if (e.button === 0 && !dragProps?.isReordering) {

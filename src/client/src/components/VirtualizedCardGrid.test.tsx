@@ -198,9 +198,9 @@ describe("VirtualizedCardGrid Component", () => {
     const cardWrappers = container.querySelectorAll(".card-item");
     expect(cardWrappers.length).toBeGreaterThanOrEqual(4);
 
-    const firstHandle = cardWrappers[0].querySelector("[data-drag-handle='true']") as HTMLElement;
-    const firstCell = cardWrappers[0].parentElement as HTMLElement;
-    const thirdCell = cardWrappers[2].parentElement as HTMLElement;
+    const firstHandle = cardWrappers[0].querySelector("[data-drag-handle='true']") as unknown as HTMLElement;
+    const firstCell = cardWrappers[0].parentElement as unknown as HTMLElement;
+    const thirdCell = cardWrappers[2].parentElement as unknown as HTMLElement;
 
     // 1. Simulate pointerdown on drag handle
     await act(async () => {
@@ -248,8 +248,8 @@ describe("VirtualizedCardGrid Component", () => {
       thirdCell.dispatchEvent(dropEvent);
     });
 
-    expect(reorderedFrom).toBe(0);
-    expect(reorderedTo).toBe(2);
+    expect(reorderedFrom as any).toBe(0);
+    expect(reorderedTo as any).toBe(2);
 
     await act(async () => {
       root.unmount();
@@ -300,25 +300,25 @@ describe("VirtualizedCardGrid Component", () => {
     await act(async () => {
       handles[1].dispatchEvent(new (happyWindow as any).KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     });
-    expect(lastReorder).toEqual([1, 2]);
+    expect(lastReorder as any).toEqual([1, 2]);
 
     // Press ArrowLeft on item 1 -> moves to 0
     await act(async () => {
       handles[1].dispatchEvent(new (happyWindow as any).KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     });
-    expect(lastReorder).toEqual([1, 0]);
+    expect(lastReorder as any).toEqual([1, 0]);
 
     // Press End on item 1 -> moves to 7
     await act(async () => {
       handles[1].dispatchEvent(new (happyWindow as any).KeyboardEvent("keydown", { key: "End", bubbles: true }));
     });
-    expect(lastReorder).toEqual([1, 7]);
+    expect(lastReorder as any).toEqual([1, 7]);
 
     // Press Home on item 3 -> moves to 0
     await act(async () => {
       handles[3].dispatchEvent(new (happyWindow as any).KeyboardEvent("keydown", { key: "Home", bubbles: true }));
     });
-    expect(lastReorder).toEqual([3, 0]);
+    expect(lastReorder as any).toEqual([3, 0]);
 
     await act(async () => {
       root.unmount();
@@ -356,7 +356,7 @@ describe("VirtualizedCardGrid Component", () => {
       );
     });
 
-    const card = container.querySelector(".card-item")?.parentElement as HTMLElement;
+    const card = container.querySelector(".card-item")?.parentElement as unknown as HTMLElement;
     const dropEvent = new (happyWindow as any).CustomEvent("drop", { bubbles: true, cancelable: true });
     (dropEvent as any).dataTransfer = {
       getData: () => "0",

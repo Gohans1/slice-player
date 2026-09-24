@@ -292,10 +292,13 @@ export function VirtualizedCardGrid<T>({
         e.preventDefault();
         e.stopPropagation();
         pendingFocusIndexRef.current = targetIdx;
+        if (virtualizer?.scrollToIndex && cols > 0) {
+          virtualizer.scrollToIndex(Math.floor(targetIdx / cols), { align: "auto" });
+        }
         commitReorder(index, targetIdx);
       }
     },
-    [isReorderable, cols, items.length, commitReorder]
+    [isReorderable, cols, items.length, virtualizer, commitReorder]
   );
 
   // Restore focus to moved item's drag handle after keyboard reordering
