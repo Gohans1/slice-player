@@ -244,7 +244,9 @@
     "sortOldestTooltip": "Thêm vào sớm nhất",
     "sortRandom": "Ngẫu nhiên",
     "sortRandomTooltip": "Xáo trộn thứ tự hiển thị",
-    "reshuffleTooltip": "Bấm lại để xáo trộn lại"
+    "reshuffleTooltip": "Bấm lại để xáo trộn lại",
+    "dragToReorder": "Kéo hoặc dùng phím mũi tên để đổi thứ tự bài hát",
+    "movingItem": "Đang di chuyển bài hát..."
   },
   "studio": {
     "title": "Studio Cắt Đoạn",

@@ -283,4 +283,128 @@ describe("PlaylistItemCardComponent", () => {
       });
     });
   });
+
+  it("renders drag handle when dragProps.canDrag is true and handles interactions", async () => {
+    const onPointerDownHandle = mock();
+    const onKeyDownHandle = mock();
+
+    await act(async () => {
+      root.render(
+        <PlaylistItemCardComponent
+          item={dummyPlaylistItem}
+          index={2}
+          totalItems={10}
+          onPlay={mock()}
+          onDelete={mock()}
+          dragProps={{
+            canDrag: true,
+            isDragging: false,
+            isDragTarget: false,
+            isReordering: false,
+            onPointerDownHandle,
+            onKeyDownHandle,
+          }}
+        />
+      );
+    });
+
+    const handle = container.querySelector("[data-drag-handle='true']");
+    expect(handle).not.toBeNull();
+    expect(handle?.getAttribute("data-drag-handle-index")).toBe("2");
+
+    // Pointer down with button 0
+    await act(async () => {
+      handle?.dispatchEvent(new (window as any).PointerEvent("pointerdown", { button: 0, bubbles: true }));
+    });
+    expect(onPointerDownHandle).toHaveBeenCalledTimes(1);
+
+    // Key down with ArrowRight
+    await act(async () => {
+      handle?.dispatchEvent(new (window as any).KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(onKeyDownHandle).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render drag handle when dragProps is omitted or canDrag is false", async () => {
+    await act(async () => {
+      root.render(
+        <PlaylistItemCardComponent
+          item={dummyPlaylistItem}
+          index={0}
+          onPlay={mock()}
+          onDelete={mock()}
+        />
+      );
+    });
+
+    expect(container.querySelector("[data-drag-handle='true']")).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <PlaylistItemCardComponent
+          item={dummyPlaylistItem}
+          index={0}
+          onPlay={mock()}
+          onDelete={mock()}
+          dragProps={{
+            canDrag: false,
+            isDragging: false,
+            isDragTarget: false,
+            onPointerDownHandle: mock(),
+            onKeyDownHandle: mock(),
+          }}
+        />
+      );
+    });
+
+    expect(container.querySelector("[data-drag-handle='true']")).toBeNull();
+  });
+
+  it("applies isDragging and isDragTarget styling to card container", async () => {
+    // isDragging = true
+    await act(async () => {
+      root.render(
+        <PlaylistItemCardComponent
+          item={dummyPlaylistItem}
+          index={0}
+          onPlay={mock()}
+          onDelete={mock()}
+          dragProps={{
+            canDrag: true,
+            isDragging: true,
+            isDragTarget: false,
+            onPointerDownHandle: mock(),
+            onKeyDownHandle: mock(),
+          }}
+        />
+      );
+    });
+
+    const cardContainer = container.firstElementChild as HTMLElement;
+    expect(cardContainer.className).toContain("opacity-35");
+    expect(cardContainer.className).toContain("border-dashed");
+
+    // isDragTarget = true
+    await act(async () => {
+      root.render(
+        <PlaylistItemCardComponent
+          item={dummyPlaylistItem}
+          index={0}
+          onPlay={mock()}
+          onDelete={mock()}
+          dragProps={{
+            canDrag: true,
+            isDragging: false,
+            isDragTarget: true,
+            onPointerDownHandle: mock(),
+            onKeyDownHandle: mock(),
+          }}
+        />
+      );
+    });
+
+    expect(cardContainer.className).toContain("ring-2 ring-primary");
+    expect(cardContainer.className).toContain("scale-[1.02]");
+  });
 });
+

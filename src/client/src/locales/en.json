@@ -244,7 +244,9 @@
     "sortOldestTooltip": "Earliest added first",
     "sortRandom": "Random",
     "sortRandomTooltip": "Random order",
-    "reshuffleTooltip": "Click again to reshuffle"
+    "reshuffleTooltip": "Click again to reshuffle",
+    "dragToReorder": "Drag or use arrow keys to reorder playlist",
+    "movingItem": "Moving item..."
   },
   "studio": {
     "title": "Slice Studio",

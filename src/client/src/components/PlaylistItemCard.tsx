@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check } from "lucide-react";
+import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check, GripVertical } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration } from "../lib/utils";
@@ -10,21 +10,26 @@ import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { PlaylistItemWithDetails } from "@/server/types";
+import type { CardDragProps } from "./VirtualizedCardGrid";
 
 interface PlaylistItemCardProps {
   item: PlaylistItemWithDetails;
   index: number;
+  totalItems?: number;
   visibleItemIds?: (string | SelectedItem)[];
   onPlay: (itemId: string) => void;
   onDelete: (itemId: string, name: string) => void;
+  dragProps?: CardDragProps;
 }
 
 export function PlaylistItemCardComponent({
   item,
   index,
+  totalItems,
   visibleItemIds,
   onPlay,
   onDelete,
+  dragProps,
 }: PlaylistItemCardProps) {
   const { t } = useTranslation();
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -67,10 +72,18 @@ export function PlaylistItemCardComponent({
     ? t("trackCard.playSliceTitle", { name: item.segment.name, defaultValue: `Play slice "${item.segment.name}"` })
     : t("trackCard.playTitle", { title: itemTitle, defaultValue: `Play ${itemTitle}` });
 
+  const isDragging = dragProps?.isDragging;
+  const isDragTarget = dragProps?.isDragTarget;
+  const canDrag = dragProps?.canDrag;
+
   return (
     <div
-      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
-        isSelected
+      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
+        isDragging
+          ? "opacity-35 scale-[0.98] border-dashed border-primary/60 bg-primary/5"
+          : isDragTarget
+          ? "ring-2 ring-primary border-primary bg-primary/5 shadow-xl shadow-primary/20 scale-[1.02]"
+          : isSelected
           ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
           : isCurrentPlaying
           ? "border-primary/60 bg-primary/5 shadow-xs ring-1 ring-primary/30"
@@ -104,6 +117,50 @@ export function PlaylistItemCardComponent({
             </Badge>
           )}
         </div>
+
+        {/* Drag Handle */}
+        {canDrag && (
+          <button
+            type="button"
+            data-drag-handle="true"
+            data-drag-handle-index={index}
+            aria-label={t("queue.dragHandleAria", {
+              name: itemTitle,
+              position: index + 1,
+              total: totalItems ?? index + 1,
+            })}
+            aria-description={t("library.dragToReorder", "Drag or use arrow keys to reorder playlist")}
+            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
+            title={dragProps?.isReordering ? t("table.reordering") : t("queue.dragHandleTitle", "Drag to reorder")}
+            disabled={dragProps?.isReordering}
+            onPointerDown={(e) => {
+              if (e.button === 0 && !dragProps?.isReordering) {
+                dragProps?.onPointerDownHandle(e);
+              }
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+              if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+                e.stopPropagation();
+                dragProps?.onKeyDownHandle(e);
+              }
+            }}
+            className={`absolute top-2 right-9 z-20 flex h-6 w-6 items-center justify-center rounded-md bg-black/60 text-white/80 backdrop-blur-xs transition-[background-color,color,opacity,box-shadow,transform] duration-150 active:scale-95 motion-reduce:transform-none cursor-grab active:cursor-grabbing hover:bg-black/80 hover:text-white focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+              dragProps?.isReordering
+                ? "opacity-30 cursor-not-allowed"
+                : "opacity-60 sm:opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         {/* Selection Checkbox */}
         <button

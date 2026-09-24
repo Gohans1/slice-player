@@ -71,6 +71,7 @@ export function App() {
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
   const setViewMode = usePlayerStore((s) => s.setViewMode);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
+  const reorderPlaylist = usePlayerStore((s) => s.reorderPlaylist);
   const playPlaylistItemAtIndex = usePlayerStore((s) => s.playPlaylistItemAtIndex);
   const playSegmentInMode = usePlayerStore((s) => s.playSegmentInMode);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
@@ -936,6 +937,27 @@ export function App() {
     [activePlaylistId]
   );
 
+  const handleGridReorder = React.useCallback(
+    async (fromIdx: number, toIdx: number) => {
+      if (!activePlaylistId || Boolean(deferredQuery.trim()) || playlistSortMode !== "manual") return;
+      if (fromIdx === toIdx) return;
+      if (
+        fromIdx < 0 ||
+        fromIdx >= displayedPlaylistItems.length ||
+        toIdx < 0 ||
+        toIdx >= displayedPlaylistItems.length
+      ) {
+        return;
+      }
+      const newItems = [...displayedPlaylistItems];
+      const [moved] = newItems.splice(fromIdx, 1);
+      newItems.splice(toIdx, 0, moved);
+      const newIds = newItems.map((it) => it.id);
+      await reorderPlaylist(activePlaylistId, newIds);
+    },
+    [activePlaylistId, deferredQuery, playlistSortMode, displayedPlaylistItems, reorderPlaylist]
+  );
+
   const isSearching = Boolean(deferredQuery.trim());
   const isLibraryEmpty = tracks.length === 0;
 
@@ -1532,17 +1554,23 @@ export function App() {
               key={`playlist_${activePlaylistId}`}
               items={displayedPlaylistItems}
               getItemKey={getItemEntityId}
+              getItemName={(item) => (item.segment ? item.segment.name : item.track?.title || "")}
+              getItemThumbnail={(item) => item.track?.thumbnail_url}
+              isReorderable={Boolean(activePlaylistId && playlistSortMode === "manual" && !deferredQuery.trim())}
+              onReorder={handleGridReorder}
               scrollRequest={gridScrollRequest}
               onScrollHandled={handleGridScrollHandled}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item, idx) => (
+              renderItem={(item, idx, dragProps) => (
                 <PlaylistItemCard
                   key={item.id}
                   item={item}
                   index={idx}
+                  totalItems={displayedPlaylistItems.length}
                   visibleItemIds={visibleItems}
                   onPlay={handlePlayPlaylistItem}
                   onDelete={handleDeletePlaylistItem}
+                  dragProps={dragProps}
                 />
               )}
             />
