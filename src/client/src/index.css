@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
-html {
+html,
+body {
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));

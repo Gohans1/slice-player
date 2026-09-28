@@ -4,3 +4,6 @@ data
 *.log
 .DS_Store
 .codegraph
+.env*
+*.pem
+*.key

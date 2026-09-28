@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useLogStore, type LogFilterCategory, type AppLogItem } from "../store/useLogStore";
 import { normalizeVi, tokenizeQuery } from "../lib/search";
 import { cn } from "../lib/utils";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface LogDrawerProps {
   isOpen: boolean;
@@ -223,6 +224,55 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
       return true;
     });
   }, [logs, filterCategory, deferredSearch, isOpen]);
+
+  const observeElementRect = React.useCallback(
+    (
+      instance: { scrollElement: HTMLDivElement | null },
+      cb: (rect: { width: number; height: number }) => void
+    ) => {
+      const el = instance.scrollElement;
+      if (!el) return () => {};
+      const update = () => {
+        const r = el.getBoundingClientRect();
+        cb({
+          width: r.width > 0 ? r.width : 400,
+          height: r.height > 0 ? r.height : 600,
+        });
+      };
+      update();
+      if (typeof ResizeObserver !== "undefined") {
+        const observer = new ResizeObserver((entries) => {
+          const entry = entries[0];
+          if (entry) {
+            const borderBox = entry.borderBoxSize?.[0];
+            const width = borderBox ? borderBox.inlineSize : entry.contentRect?.width;
+            const height = borderBox ? borderBox.blockSize : entry.contentRect?.height;
+            cb({
+              width: width && width > 0 ? Math.round(width) : 400,
+              height: height && height > 0 ? Math.round(height) : 600,
+            });
+          } else {
+            update();
+          }
+        });
+        observer.observe(el, { box: "border-box" });
+        return () => {
+          observer.disconnect();
+        };
+      }
+      return () => {};
+    },
+    []
+  );
+
+  const rowVirtualizer = useVirtualizer({
+    count: filteredLogs.length,
+    getScrollElement: () => listContainerRef.current,
+    estimateSize: () => 56,
+    overscan: 10,
+    initialRect: { width: 400, height: 600 },
+    observeElementRect,
+  });
 
   // Track user scrolling: pause auto-scroll if user has scrolled away from the bottom
   const handleContainerScroll = React.useCallback(() => {
@@ -528,7 +578,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
           aria-label={t("logs.title")}
           tabIndex={0}
           onScroll={handleContainerScroll}
-          className="flex-1 overflow-y-auto p-3 space-y-1.5 font-mono text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex-1 overflow-y-auto p-3 font-mono text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {filteredLogs.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
@@ -550,100 +600,123 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
               )}
             </div>
           ) : (
-            filteredLogs.map((item) => {
-              const isExpanded = expandedLogIds.has(item.id);
-              const hasDetails = item.details !== undefined && item.details !== null;
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const item = filteredLogs[virtualRow.index];
+                if (!item) return null;
+                const isExpanded = expandedLogIds.has(item.id);
+                const hasDetails = item.details !== undefined && item.details !== null;
 
-              let levelBadge = (
-                <span className="px-1 py-0.5 rounded text-2xs font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
-                  INFO
-                </span>
-              );
-              let icon = <Info className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />;
-              let borderColor = "border-border/60 hover:border-border";
-
-              if (item.level === "error") {
-                levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-destructive/20 text-destructive border border-destructive/30 shrink-0">
-                    ERROR
+                let levelBadge = (
+                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
+                    INFO
                   </span>
                 );
-                icon = <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />;
-                borderColor = "border-destructive/30 bg-destructive/5 hover:border-destructive/50";
-              } else if (item.level === "warn") {
-                levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-yellow/20 text-flexoki-yellow border border-flexoki-yellow/30 shrink-0">
-                    WARN
-                  </span>
-                );
-                icon = <AlertTriangle className="h-3.5 w-3.5 text-flexoki-yellow shrink-0 mt-0.5" />;
-                borderColor = "border-flexoki-yellow/30 bg-flexoki-yellow/5 hover:border-flexoki-yellow/50";
-              } else if (item.level === "success") {
-                levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-green/20 text-flexoki-green border border-flexoki-green/30 shrink-0">
-                    OK
-                  </span>
-                );
-                icon = <CheckCircle2 className="h-3.5 w-3.5 text-flexoki-green shrink-0 mt-0.5" />;
-                borderColor = "border-flexoki-green/30 bg-flexoki-green/5 hover:border-flexoki-green/50";
-              }
+                let icon = <Info className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />;
+                let borderColor = "border-border/60 hover:border-border";
 
-              let categoryTag = t("logs.filterSystem").toUpperCase();
-              if (item.category === "download") categoryTag = t("logs.filterDownload").toUpperCase();
-              if (item.category === "playback") categoryTag = t("logs.filterPlayback").toUpperCase();
+                if (item.level === "error") {
+                  levelBadge = (
+                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-destructive/20 text-destructive border border-destructive/30 shrink-0">
+                      ERROR
+                    </span>
+                  );
+                  icon = <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />;
+                  borderColor = "border-destructive/30 bg-destructive/5 hover:border-destructive/50";
+                } else if (item.level === "warn") {
+                  levelBadge = (
+                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-yellow/20 text-flexoki-yellow border border-flexoki-yellow/30 shrink-0">
+                      WARN
+                    </span>
+                  );
+                  icon = <AlertTriangle className="h-3.5 w-3.5 text-flexoki-yellow shrink-0 mt-0.5" />;
+                  borderColor = "border-flexoki-yellow/30 bg-flexoki-yellow/5 hover:border-flexoki-yellow/50";
+                } else if (item.level === "success") {
+                  levelBadge = (
+                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-green/20 text-flexoki-green border border-flexoki-green/30 shrink-0">
+                      OK
+                    </span>
+                  );
+                  icon = <CheckCircle2 className="h-3.5 w-3.5 text-flexoki-green shrink-0 mt-0.5" />;
+                  borderColor = "border-flexoki-green/30 bg-flexoki-green/5 hover:border-flexoki-green/50";
+                }
 
-              return (
-                <div
-                  key={item.id}
-                  className={`rounded-md border p-2 transition-colors ${borderColor}`}
-                >
-                  <div className="flex items-start gap-2">
-                    {icon}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap text-2xs text-muted-foreground mb-0.5">
-                        <span className="font-semibold text-foreground/80">
-                          {formatLogTimestamp(item.timestamp)}
-                        </span>
-                        {levelBadge}
-                        <span className="px-1 py-0.2 rounded bg-secondary text-secondary-foreground text-2xs uppercase tracking-wider">
-                          {categoryTag}
-                        </span>
+                let categoryTag = t("logs.filterSystem").toUpperCase();
+                if (item.category === "download") categoryTag = t("logs.filterDownload").toUpperCase();
+                if (item.category === "playback") categoryTag = t("logs.filterPlayback").toUpperCase();
+
+                return (
+                  <div
+                    key={item.id}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualRow.index}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className="pb-1.5"
+                  >
+                    <div
+                      className={`rounded-md border p-2 transition-colors ${borderColor}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {icon}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap text-2xs text-muted-foreground mb-0.5">
+                            <span className="font-semibold text-foreground/80">
+                              {formatLogTimestamp(item.timestamp)}
+                            </span>
+                            {levelBadge}
+                            <span className="px-1 py-0.2 rounded bg-secondary text-secondary-foreground text-2xs uppercase tracking-wider">
+                              {categoryTag}
+                            </span>
+                          </div>
+                          <p className="break-words text-xs leading-relaxed text-foreground select-text">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        {hasDetails && (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(item.id)}
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
+                            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
+                            title={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
+                          >
+                            <ChevronRight
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform duration-150",
+                                isExpanded && "rotate-90"
+                              )}
+                            />
+                          </button>
+                        )}
                       </div>
-                      <p className="break-words text-xs leading-relaxed text-foreground select-text">
-                        {item.message}
-                      </p>
-                    </div>
 
-                    {hasDetails && (
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(item.id)}
-                        aria-expanded={isExpanded}
-                        aria-label={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
-                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
-                        title={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
-                      >
-                        <ChevronRight
-                          className={cn(
-                            "h-3.5 w-3.5 transition-transform duration-150",
-                            isExpanded && "rotate-90"
-                          )}
-                        />
-                      </button>
-                    )}
+                      {/* Expandable JSON / Details */}
+                      {hasDetails && isExpanded && (
+                        <div className="mt-2 pt-2 border-t border-border/50 text-2xs overflow-x-auto bg-black/30 p-2 rounded animate-in fade-in slide-in-from-top-1 duration-150 ease-out motion-reduce:animate-none">
+                          <pre className="text-muted-foreground whitespace-pre-wrap break-all">
+                            {safePrettyStringify(item.details)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
                   </div>
-
-                  {/* Expandable JSON / Details */}
-                  {hasDetails && isExpanded && (
-                    <div className="mt-2 pt-2 border-t border-border/50 text-2xs overflow-x-auto bg-black/30 p-2 rounded animate-in fade-in slide-in-from-top-1 duration-150 ease-out motion-reduce:animate-none">
-                      <pre className="text-muted-foreground whitespace-pre-wrap break-all">
-                        {safePrettyStringify(item.details)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
 

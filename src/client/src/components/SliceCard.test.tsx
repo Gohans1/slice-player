@@ -304,4 +304,30 @@ describe("SliceCard Component", () => {
       });
     });
   });
+
+  it("applies uniform height and overflow prevention classes to card, title, and footer", () => {
+    act(() => {
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={() => {}}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const cardRoot = container.firstElementChild as HTMLElement;
+    expect(cardRoot.className).toContain("h-full");
+
+    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
+    expect(titleEl.className).toContain("min-h-[2.5rem]");
+
+    const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
+    expect(studioBtn).not.toBeNull();
+    const footerEl = studioBtn?.parentElement as HTMLElement;
+    expect(footerEl.className).toContain("mt-auto");
+    expect(footerEl.textContent).not.toContain("Playlist");
+  });
 });

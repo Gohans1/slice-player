@@ -41,6 +41,7 @@ interface VirtualizedTableBodyProps<T> {
   estimateRowHeight?: number;
   draggedIdx?: number | null;
   virtualizerRef?: React.MutableRefObject<Virtualizer<Window, Element> | null>;
+  initialScrollOffset?: number;
 }
 
 function VirtualizedTableBody<T>({
@@ -50,6 +51,7 @@ function VirtualizedTableBody<T>({
   estimateRowHeight = PLAYLIST_ROW_HEIGHT,
   draggedIdx,
   virtualizerRef,
+  initialScrollOffset,
 }: VirtualizedTableBodyProps<T>) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = React.useState(0);
@@ -120,6 +122,9 @@ function VirtualizedTableBody<T>({
     overscan: 10,
     scrollMargin,
     rangeExtractor,
+    ...(typeof initialScrollOffset === "number" && initialScrollOffset > 0
+      ? { initialOffset: initialScrollOffset }
+      : {}),
     getItemKey: React.useCallback(
       (index: number) => (items[index] ? getItemKeyRef.current(items[index], index) : index),
       [items]
@@ -142,7 +147,7 @@ function VirtualizedTableBody<T>({
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <div ref={containerRef} className="pt-1" role="rowgroup">
+    <div ref={containerRef} className="pt-1" role="rowgroup" style={{ overflowAnchor: "none" }}>
       <div
         role="presentation"
         style={{
@@ -195,6 +200,7 @@ interface PlaylistTableViewProps {
   onDeleteTrack?: (id: string) => void;
   onDeleteSlice?: (id: string) => void;
   onDeletePlaylistItem?: (itemId: string, name: string) => void;
+  initialScrollOffset?: number;
 }
 
 export function PlaylistTableView({
@@ -205,6 +211,7 @@ export function PlaylistTableView({
   onDeleteTrack,
   onDeleteSlice,
   onDeletePlaylistItem,
+  initialScrollOffset,
 }: PlaylistTableViewProps) {
   const { t } = useTranslation();
   const [playlistItemToDelete, setPlaylistItemToDelete] = React.useState<{ id: string; name: string } | null>(null);
@@ -216,7 +223,9 @@ export function PlaylistTableView({
   const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
   const playlistRandomMap = usePlayerStore((s) => s.playlistRandomMap);
   const playlists = usePlayerStore((s) => s.playlists);
+  const isMixPlaylist = Boolean(playlists.find((p) => p.id === activePlaylistId)?.is_mix);
   const playPlaylistItemAtIndex = usePlayerStore((s) => s.playPlaylistItemAtIndex);
+  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
   const reorderPlaylist = usePlayerStore((s) => s.reorderPlaylist);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
@@ -545,7 +554,7 @@ export function PlaylistTableView({
       setDraggedIdx(idx);
       updatePreviewPosition(e.clientX, e.clientY);
     },
-    [updatePreviewPosition]
+    [playlistSortMode, updatePreviewPosition]
   );
 
   const handleDragOver = React.useCallback(
@@ -721,14 +730,23 @@ export function PlaylistTableView({
       busyIdRef.current = item.id;
       lastPlayInitiatedRef.current = Date.now();
       try {
-        await playPlaylistItemAtIndex(activePlaylistId, item.id);
+        if (searchQuery?.trim()) {
+          await buildPlaylistQueue(activePlaylistId, false, item.id, false, {
+            type: "search",
+            query: searchQuery.trim(),
+            count: displayedItems.length,
+            playlistId: activePlaylistId,
+          });
+        } else {
+          await playPlaylistItemAtIndex(activePlaylistId, item.id);
+        }
       } finally {
         setTimeout(() => {
           if (busyIdRef.current === item.id) busyIdRef.current = null;
         }, 500);
       }
     },
-    [activePlaylistId, playPlaylistItemAtIndex]
+    [activePlaylistId, playPlaylistItemAtIndex, buildPlaylistQueue, searchQuery, displayedItems.length]
   );
 
   const handlePlaySlice = React.useCallback(
@@ -763,14 +781,28 @@ export function PlaylistTableView({
               .map((it) => createQueueItem(it.segment, it.track, it.id))
           : undefined;
         const customIndex = customQueue ? customQueue.findIndex((q) => q.segment.id === segment.id) : undefined;
-        await playSegmentInMode("slices_only", segment, track, customQueue, customIndex);
+        await playSegmentInMode(
+          "slices_only",
+          segment,
+          track,
+          customQueue,
+          customIndex,
+          searchQuery?.trim()
+            ? {
+                type: "search",
+                query: searchQuery.trim(),
+                count: customQueue ? customQueue.length : sliceItems?.length || 0,
+                mode: "slices_only",
+              }
+            : { type: "system", mode: "slices_only" }
+        );
       } finally {
         setTimeout(() => {
           if (busyIdRef.current === segment.id) busyIdRef.current = null;
         }, 500);
       }
     },
-    [playSegmentInMode, sliceItems]
+    [playSegmentInMode, sliceItems, searchQuery]
   );
 
   const handlePlayMixed = React.useCallback(
@@ -821,10 +853,20 @@ export function PlaylistTableView({
             })
           : undefined;
 
+        const isSearch = Boolean(searchQuery?.trim());
+        const searchOrigin = isSearch
+          ? {
+              type: "search" as const,
+              query: searchQuery.trim(),
+              count: customQueue ? customQueue.length : mixedItems?.length || 0,
+              mode: "mixed" as const,
+            }
+          : { type: "system" as const, mode: "mixed" as const };
+
         if (isSlice && item.segment) {
-          await playSegmentInMode("mixed", item.segment, item.track, customQueue, customIndex);
+          await playSegmentInMode("mixed", item.segment, item.track, customQueue, customIndex, searchOrigin);
         } else {
-          await playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, customQueue, customIndex);
+          await playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, customQueue, customIndex, searchOrigin);
         }
       } finally {
         setTimeout(() => {
@@ -832,7 +874,7 @@ export function PlaylistTableView({
         }, 500);
       }
     },
-    [playSegmentInMode, mixedItems]
+    [playSegmentInMode, mixedItems, searchQuery]
   );
 
   const handlePlayTrack = React.useCallback(
@@ -864,6 +906,7 @@ export function PlaylistTableView({
 
       try {
         const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
+        const isSearch = Boolean(searchQuery?.trim());
         if (targetMode === "original_only") {
           const customQueue = filteredTracks
             ? filteredTracks
@@ -871,7 +914,15 @@ export function PlaylistTableView({
                 .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id))
             : undefined;
           const customIndex = customQueue ? customQueue.findIndex((q) => q.track.id === track.id) : undefined;
-          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex);
+          const searchOrigin = isSearch
+            ? {
+                type: "search" as const,
+                query: searchQuery.trim(),
+                count: customQueue ? customQueue.length : filteredTracks?.length || 0,
+                mode: targetMode,
+              }
+            : { type: "system" as const, mode: targetMode };
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex, searchOrigin);
           return;
         }
         if (targetMode === "mixed") {
@@ -887,7 +938,15 @@ export function PlaylistTableView({
           const customIndex = customQueue
             ? customQueue.findIndex((q) => q.track.id === track.id && q.segment.id.startsWith("fallback_"))
             : undefined;
-          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex);
+          const searchOrigin = isSearch
+            ? {
+                type: "search" as const,
+                query: searchQuery.trim(),
+                count: customQueue ? customQueue.length : mixedItems?.length || 0,
+                mode: targetMode,
+              }
+            : { type: "system" as const, mode: targetMode };
+          await playSegmentInMode(targetMode, createDefaultFullSegment(track), track, customQueue, customIndex, searchOrigin);
           return;
         }
         const modeQueue = store.queuesByMode[targetMode] || [];
@@ -917,7 +976,7 @@ export function PlaylistTableView({
         }, 500);
       }
     },
-    [activeSystemCategory, playbackMode, playSegmentInMode, filteredTracks, mixedItems]
+    [activeSystemCategory, playbackMode, playSegmentInMode, filteredTracks, mixedItems, searchQuery]
   );
 
   const trackList = filteredTracks || [];
@@ -983,6 +1042,11 @@ export function PlaylistTableView({
     if (lastHandledScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
     if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
 
+    if (activeTrackScrollRequest.targetKey) {
+      const currentViewKey = activePlaylistId ? `playlist:${activePlaylistId}` : `category:${activeSystemCategory}`;
+      if (activeTrackScrollRequest.targetKey !== currentViewKey) return;
+    }
+
     let activeIndex = -1;
     const isFallback = !activeSegment || activeSegment.id.startsWith("fallback_");
 
@@ -1007,16 +1071,27 @@ export function PlaylistTableView({
     }
 
     if (activeIndex >= 0) {
-      const timer = setTimeout(() => {
-        if (virtualizerRef.current?.scrollToIndex) {
-          lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
-          virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior: "auto" });
-        }
-      }, 50);
-      return () => clearTimeout(timer);
+      if (virtualizerRef.current?.scrollToIndex) {
+        lastHandledScrollRequestIdRef.current = activeTrackScrollRequest.id;
+        const currentY = typeof window !== "undefined" ? window.scrollY || window.pageYOffset || 0 : 0;
+        const estimatedRowHeight = PLAYLIST_ROW_HEIGHT;
+        const estimatedTargetY = activeIndex * estimatedRowHeight;
+        const distance = Math.abs(currentY - estimatedTargetY);
+        const isClose = distance < (typeof window !== "undefined" ? window.innerHeight * 1.2 : 800);
+        const prefersReduced =
+          typeof window !== "undefined" &&
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const behavior = !prefersReduced && isClose && distance > 20 ? "smooth" : "auto";
+
+        virtualizerRef.current.scrollToIndex(activeIndex, { align: "center", behavior });
+        usePlayerStore.getState().clearActiveTrackScrollRequest();
+      }
     }
   }, [
     activeTrackScrollRequest,
+    activePlaylistId,
+    activeSystemCategory,
     mixedItems,
     sliceItems,
     filteredTracks,
@@ -1153,6 +1228,7 @@ export function PlaylistTableView({
           getItemKey={getEntityId}
           draggedIdx={draggedIdx}
           virtualizerRef={virtualizerRef}
+          initialScrollOffset={initialScrollOffset}
           renderRow={(item: PlaylistItemWithDetails, idx: number) => {
             const isSlice = Boolean(item.segment);
             const duration = isSlice && item.segment
@@ -1173,7 +1249,7 @@ export function PlaylistTableView({
             const isSearching = Boolean(searchQuery?.trim());
             const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
             const originalIdx = originalIdxMap.get(item.id) ?? -1;
-            const isManualSort = playlistSortMode === "manual";
+            const isManualSort = playlistSortMode === "manual" && !isMixPlaylist;
             const canMoveUp = isManualSort && !isSearching && !isReordering && originalIdx > 0;
             const canMoveDown = isManualSort && !isSearching && !isReordering && originalIdx >= 0 && originalIdx < sortedPlaylistItems.length - 1;
             const showDragHandle = isManualSort && !isSearching && originalIdx >= 0;
@@ -1463,24 +1539,26 @@ export function PlaylistTableView({
                     buttonClassName="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:opacity-30"
                     showText={false}
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={isReordering}
-                    onClick={() => {
-                      const name = item.segment ? item.segment.name : (item.track?.title || "");
-                      if (onDeletePlaylistItem) {
-                        onDeletePlaylistItem(item.id, name);
-                      } else {
-                        setPlaylistItemToDelete({ id: item.id, name });
-                      }
-                    }}
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-30"
-                    title={t("table.removeFromPlaylist")}
-                    aria-label={t("table.removeFromPlaylist")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  {!isMixPlaylist && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isReordering}
+                      onClick={() => {
+                        const name = item.segment ? item.segment.name : (item.track?.title || "");
+                        if (onDeletePlaylistItem) {
+                          onDeletePlaylistItem(item.id, name);
+                        } else {
+                          setPlaylistItemToDelete({ id: item.id, name });
+                        }
+                      }}
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-30"
+                      title={t("table.removeFromPlaylist")}
+                      aria-label={t("table.removeFromPlaylist")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -1603,6 +1681,7 @@ export function PlaylistTableView({
           items={sliceItems}
           getItemKey={getEntityId}
           virtualizerRef={virtualizerRef}
+          initialScrollOffset={initialScrollOffset}
           renderRow={(item, idx) => {
             const isCurrentActive = activeSegment?.id === item.segment.id;
             const isCurrentPlaying = isPlaying && isCurrentActive;
@@ -1817,6 +1896,7 @@ export function PlaylistTableView({
           items={mixedItems}
           getItemKey={getEntityId}
           virtualizerRef={virtualizerRef}
+          initialScrollOffset={initialScrollOffset}
           renderRow={(item, idx) => {
             const isSlice = item.type === "slice";
             const entityId = isSlice ? item.segment.id : item.track.id;
@@ -2107,6 +2187,7 @@ export function PlaylistTableView({
         items={trackList}
         getItemKey={getEntityId}
         virtualizerRef={virtualizerRef}
+        initialScrollOffset={initialScrollOffset}
         renderRow={(track, idx) => {
           const isSelected = selectedTrackIds.has(track.id);
           const isCurrentActive =

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check, GripVertical } from "lucide-react";
+import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check, GripVertical, ImageIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration } from "../lib/utils";
@@ -18,7 +18,7 @@ interface PlaylistItemCardProps {
   totalItems?: number;
   visibleItemIds?: (string | SelectedItem)[];
   onPlay: (itemId: string) => void;
-  onDelete: (itemId: string, name: string) => void;
+  onDelete?: (itemId: string, name: string) => void;
   dragProps?: CardDragProps;
 }
 
@@ -33,16 +33,23 @@ export function PlaylistItemCardComponent({
 }: PlaylistItemCardProps) {
   const { t } = useTranslation();
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const activeSegment = usePlayerStore((s) => s.activeSegment);
-  const queue = usePlayerStore((s) => s.queue);
-  const queueIndex = usePlayerStore((s) => s.queueIndex);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
 
-  const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
+  const setPlaylistCover = usePlayerStore((s) => s.setPlaylistCover);
+  const isCover = usePlayerStore(
+    (s) => Boolean(item.track?.id) && s.playlists.find((p) => p.id === s.activePlaylistId)?.cover_track_id === item.track?.id
+  );
   const isSelected = useIsTrackSelected(item.id);
   const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
+
+  const onPlayRef = React.useRef(onPlay);
+  onPlayRef.current = onPlay;
+  const onDeleteRef = React.useRef(onDelete);
+  onDeleteRef.current = onDelete;
+  const visibleItemIdsRef = React.useRef(visibleItemIds);
+  visibleItemIdsRef.current = visibleItemIds;
 
   const isSlice = Boolean(item.segment);
   const duration = isSlice && item.segment
@@ -50,15 +57,17 @@ export function PlaylistItemCardComponent({
     : Math.max(0, item.track?.duration ?? 0);
   const isReady = item.track?.status === "ready" && (item.track?.duration ?? 0) > 0;
 
-  const isThisPlaylistPlaying = activePlaylistPlayingId !== null && activePlaylistPlayingId === activePlaylistId;
-  const currentQueueItem = queue[queueIndex];
-  const isCurrentActive =
-    isThisPlaylistPlaying &&
-    (currentQueueItem?.queueItemId
-      ? currentQueueItem.queueItemId === item.id
-      : (isSlice && item.segment
-          ? activeSegment?.id === item.segment.id
-          : activeSegment?.track_id === item.track?.id && !activeSegment?.id.startsWith("seg_")));
+  const isCurrentActive = usePlayerStore((s) => {
+    const isThisPlaylistPlaying = s.activePlaylistPlayingId !== null && s.activePlaylistPlayingId === s.activePlaylistId;
+    if (!isThisPlaylistPlaying) return false;
+    const currentQueueItem = s.queueIndex >= 0 ? s.queue[s.queueIndex] : null;
+    if (currentQueueItem?.queueItemId) {
+      return currentQueueItem.queueItemId === item.id;
+    }
+    return isSlice && item.segment
+      ? s.activeSegment?.id === item.segment.id
+      : s.activeSegment?.track_id === item.track?.id && !s.activeSegment?.id.startsWith("seg_");
+  });
   const isCurrentPlaying = isCurrentActive && isPlaying;
 
   const isPlayBusyRef = React.useRef(false);
@@ -78,7 +87,7 @@ export function PlaylistItemCardComponent({
 
   return (
     <div
-      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
+      className={`group relative flex flex-col h-full rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
         isDragging
           ? "opacity-35 scale-[0.98] border-dashed border-primary/60 bg-primary/5"
           : isDragTarget
@@ -173,7 +182,7 @@ export function PlaylistItemCardComponent({
           })}
           onClick={(e) => {
             e.stopPropagation();
-            toggleTrack(item.id, visibleItemIds, e.shiftKey, {
+            toggleTrack(item.id, visibleItemIdsRef.current, e.shiftKey, {
               id: item.id,
               type: "playlist_item",
               trackId: item.track.id,
@@ -215,7 +224,7 @@ export function PlaylistItemCardComponent({
             onClick={async (e) => {
               e.stopPropagation();
               if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-                toggleTrack(item.id, visibleItemIds, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                toggleTrack(item.id, visibleItemIdsRef.current, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
                 return;
               }
 
@@ -252,7 +261,7 @@ export function PlaylistItemCardComponent({
               isPlayBusyRef.current = true;
               lastPlayInitiatedRef.current = Date.now();
               try {
-                await onPlay(item.id);
+                await onPlayRef.current(item.id);
               } finally {
                 setTimeout(() => {
                   isPlayBusyRef.current = false;
@@ -323,7 +332,7 @@ export function PlaylistItemCardComponent({
 
       {/* Info */}
       <div className="mt-3 flex-1 flex flex-col">
-        <h3 className="font-semibold text-sm leading-snug line-clamp-2 text-foreground group-hover:text-primary transition-colors">
+        <h3 className="font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
           {isSlice && item.segment ? item.segment.name : item.track.title}
         </h3>
         <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
@@ -345,15 +354,15 @@ export function PlaylistItemCardComponent({
             size="sm"
             onClick={(e) => {
               if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-                toggleTrack(item.id, visibleItemIds, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+                toggleTrack(item.id, visibleItemIdsRef.current, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
                 return;
               }
-              if (isReady) onPlay(item.id);
+              if (isReady) onPlayRef.current(item.id);
             }}
             disabled={!isSelectionActive && !isReady}
             title={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : undefined}
             aria-label={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : (isCurrentPlaying && isPlaying ? t("trackCard.pause") : t("trackCard.play"))}
-            className="h-8 text-xs gap-1.5 px-3 hover:border-primary/40 hover:text-primary cursor-pointer disabled:opacity-60"
+            className="h-8 text-xs gap-1.5 px-3 hover:border-primary/40 hover:text-primary cursor-pointer disabled:opacity-60 shrink-0"
           >
             {isSelectionActive ? (
               <>
@@ -383,7 +392,7 @@ export function PlaylistItemCardComponent({
             )}
           </Button>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -404,18 +413,34 @@ export function PlaylistItemCardComponent({
               showText={false}
             />
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                const name = isSlice && item.segment ? item.segment.name : item.track.title;
-                onDelete(item.id, name);
-              }}
-              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              title={t("table.removeFromPlaylist", "Remove from Playlist")}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            {activePlaylistId && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-pressed={isCover}
+                onClick={() => setPlaylistCover(activePlaylistId, isCover ? null : item.track.id)}
+                className={`h-8 w-8 hover:bg-flexoki-yellow/10 ${isCover ? "text-flexoki-yellow" : "text-muted-foreground hover:text-flexoki-yellow"}`}
+                title={isCover ? t("playlist.clearCover", "Remove playlist cover") : t("playlist.setCover", "Set as playlist cover")}
+                aria-label={t("playlist.setCover", "Set as playlist cover")}
+              >
+                <ImageIcon className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const name = isSlice && item.segment ? item.segment.name : item.track.title;
+                  onDeleteRef.current?.(item.id, name);
+                }}
+                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                title={t("table.removeFromPlaylist", "Remove from Playlist")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -423,4 +448,28 @@ export function PlaylistItemCardComponent({
   );
 }
 
-export const PlaylistItemCard = React.memo(PlaylistItemCardComponent);
+export const PlaylistItemCard = React.memo(PlaylistItemCardComponent, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.sort_order === next.item.sort_order &&
+    prev.item.track?.id === next.item.track?.id &&
+    prev.item.track?.title === next.item.track?.title &&
+    prev.item.track?.artist === next.item.track?.artist &&
+    prev.item.track?.status === next.item.track?.status &&
+    prev.item.track?.duration === next.item.track?.duration &&
+    prev.item.track?.thumbnail_url === next.item.track?.thumbnail_url &&
+    prev.item.segment?.id === next.item.segment?.id &&
+    prev.item.segment?.name === next.item.segment?.name &&
+    prev.item.segment?.start_time === next.item.segment?.start_time &&
+    prev.item.segment?.end_time === next.item.segment?.end_time &&
+    prev.index === next.index &&
+    prev.totalItems === next.totalItems &&
+    Boolean(prev.onDelete) === Boolean(next.onDelete) &&
+    prev.onPlay === next.onPlay &&
+    prev.visibleItemIds === next.visibleItemIds &&
+    prev.dragProps?.canDrag === next.dragProps?.canDrag &&
+    prev.dragProps?.isDragging === next.dragProps?.isDragging &&
+    prev.dragProps?.isDragTarget === next.dragProps?.isDragTarget &&
+    prev.dragProps?.isReordering === next.dragProps?.isReordering
+  );
+});

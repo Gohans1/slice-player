@@ -1033,6 +1033,389 @@ describe("PlayerBar Component", () => {
       globalThis.fetch = origFetch;
     }
   });
+
+  it("renders search origin badge with search icon, tab name, and matching count", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    const mockTrack: Track = {
+      id: "track-search-1",
+      source_type: "local",
+      source_uri: "local://test.mp3",
+      title: "Search Result Track",
+      artist: "Search Artist",
+      duration: 200,
+      volume: 0.8,
+      created_at: Date.now(),
+      status: "ready",
+    };
+
+    const mockSegment: Segment = {
+      id: "seg-search-1",
+      track_id: "track-search-1",
+      name: "Search Slice",
+      start_time: 0,
+      end_time: 45,
+      created_at: Date.now(),
+    };
+
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [
+        { track: mockTrack, segment: mockSegment },
+        { track: mockTrack, segment: mockSegment },
+        { track: mockTrack, segment: mockSegment },
+      ],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null,
+      isShuffle: false,
+      queueOrigin: {
+        type: "search",
+        query: "chill",
+        count: 3,
+        mode: "mixed",
+      },
+    });
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
+      // Find badge button
+      const badgeBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Mix") && b.textContent?.includes("(3)")
+      );
+      expect(badgeBtn).toBeDefined();
+
+      // Check for search icon inside badge
+      const searchIcon = badgeBtn?.querySelector("svg.lucide-search");
+      expect(searchIcon).not.toBeNull();
+
+      // Should not have shuffle icon
+      const shuffleIcon = badgeBtn?.querySelector("svg.lucide-shuffle");
+      expect(shuffleIcon).toBeNull();
+
+      // Check title / aria-label contains search info
+      const titleAttr = badgeBtn?.getAttribute("title") || "";
+      expect(titleAttr.length).toBeGreaterThan(0);
+      expect(titleAttr).toMatch(/chill|3/i);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("renders both shuffle and search icons when queue is shuffled from search results", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    const mockTrack: Track = {
+      id: "track-search-2",
+      source_type: "local",
+      source_uri: "local://test.mp3",
+      title: "Search Result Track 2",
+      artist: "Search Artist 2",
+      duration: 200,
+      volume: 0.8,
+      created_at: Date.now(),
+      status: "ready",
+    };
+
+    const mockSegment: Segment = {
+      id: "seg-search-2",
+      track_id: "track-search-2",
+      name: "Search Slice 2",
+      start_time: 0,
+      end_time: 60,
+      created_at: Date.now(),
+    };
+
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [
+        { track: mockTrack, segment: mockSegment },
+        { track: mockTrack, segment: mockSegment },
+      ],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null,
+      isShuffle: true,
+      queueOrigin: {
+        type: "search",
+        query: "acoustic",
+        count: 2,
+        mode: "mixed",
+      },
+    });
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
+      // Find badge button
+      const badgeBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+        b.textContent?.includes("Mix") && b.textContent?.includes("(2)")
+      );
+      expect(badgeBtn).toBeDefined();
+
+      // Check for both shuffle and search icons
+      const searchIcon = badgeBtn?.querySelector("svg.lucide-search");
+      const shuffleIcon = badgeBtn?.querySelector("svg.lucide-shuffle");
+      expect(searchIcon).not.toBeNull();
+      expect(shuffleIcon).not.toBeNull();
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("clicking shuffle button when playing from search toggles shuffle on current queue without hijacking to last shuffled playlist", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: string) => {
+      if (url.includes("/containing-playlists")) {
+        return new Response(JSON.stringify([{ id: "pl-last", name: "Recent Playlist" }]), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    }) as any;
+
+    const mockTrack: Track = {
+      id: "track-search-3",
+      source_type: "local",
+      source_uri: "local://test.mp3",
+      title: "Search Result Track 3",
+      artist: "Search Artist 3",
+      duration: 180,
+      volume: 0.8,
+      created_at: Date.now(),
+      status: "ready",
+    };
+
+    const mockSegment: Segment = {
+      id: "seg-search-3",
+      track_id: "track-search-3",
+      name: "Search Slice 3",
+      start_time: 0,
+      end_time: 50,
+      created_at: Date.now(),
+    };
+
+    let shuffleToggled = false;
+    let buildPlaylistQueueCalled = false;
+
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null,
+      playlists: [
+        {
+          id: "pl-last",
+          name: "Recent Playlist",
+          created_at: Date.now(),
+          updated_at: Date.now(),
+          item_count: 1,
+          is_custom_ordered: false,
+        },
+      ],
+      isShuffle: false,
+      queueOrigin: {
+        type: "search",
+        query: "pop",
+        count: 1,
+        mode: "mixed",
+      },
+      toggleShuffle: () => {
+        shuffleToggled = true;
+      },
+      buildPlaylistQueue: async () => {
+        buildPlaylistQueueCalled = true;
+      },
+    });
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
+      const shuffleBtn = container.querySelector('button[aria-label*="shuffle" i], button[title*="shuffle" i]') as HTMLButtonElement | null;
+      expect(shuffleBtn).not.toBeNull();
+
+      await act(async () => {
+        shuffleBtn?.click();
+      });
+
+      expect(shuffleToggled).toBe(true);
+      expect(buildPlaylistQueueCalled).toBe(false);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("when playing from Mix and viewing an open playlist containing the active track, clicking Mix badge jumps to track in the open playlist without closing it", async () => {
+    const origFetch = globalThis.fetch;
+    const mockTrack: Track = {
+      id: "track-open-pl",
+      source_type: "local",
+      source_uri: "local://open.mp3",
+      title: "Song In Open Playlist",
+      artist: "Open Artist",
+      duration: 180,
+      status: "ready",
+    };
+    const mockSegment: Segment = {
+      id: "seg-open-pl",
+      track_id: "track-open-pl",
+      name: "Full Track",
+      start_time: 0,
+      end_time: 180,
+    };
+
+    let requestedTargetKey: string | undefined = undefined;
+    let setActivePlaylistCalled = false;
+
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null, // playing from Mix -> badge says Mix
+      activePlaylistId: "pl_open", // User is currently viewing playlist "pl_open"
+      activePlaylistItems: [
+        {
+          id: "item_1",
+          playlist_id: "pl_open",
+          track_id: "track-open-pl",
+          sort_order: 0,
+          added_at: 1000,
+          track: mockTrack,
+          segment: null,
+        } as any,
+      ],
+      setActivePlaylist: (async (id: string | null) => {
+        setActivePlaylistCalled = true;
+      }) as any,
+      requestScrollToActiveTrack: (targetKey?: string) => {
+        requestedTargetKey = targetKey;
+      },
+    });
+
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
+      // Find Mix badge button
+      const mixBadgeBtn = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Mix") || b.textContent?.includes("Trộn")
+      );
+      expect(mixBadgeBtn).toBeDefined();
+
+      await act(async () => {
+        mixBadgeBtn?.click();
+      });
+
+      // Crucial: It MUST NOT close the open playlist!
+      expect(setActivePlaylistCalled).toBe(false);
+      // Crucial: It MUST request scroll in the currently open playlist!
+      expect(requestedTargetKey as string | undefined).toBe("playlist:pl_open");
+
+      // Also verify clicking track title or thumbnail jumps to the track in the open playlist
+      requestedTargetKey = undefined;
+      const titleBtn = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Song In Open Playlist")
+      );
+      expect(titleBtn).toBeDefined();
+      await act(async () => {
+        titleBtn?.click();
+      });
+      expect(setActivePlaylistCalled).toBe(false);
+      expect(requestedTargetKey as string | undefined).toBe("playlist:pl_open");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("when playing from Mix and viewing an open playlist that does NOT contain the active track, clicking Mix badge navigates to Mix category", async () => {
+    const origFetch = globalThis.fetch;
+    const mockTrack: Track = {
+      id: "track-other",
+      source_type: "local",
+      source_uri: "local://other.mp3",
+      title: "Song Not In Open Playlist",
+      artist: "Other Artist",
+      duration: 180,
+      status: "ready",
+    };
+    const mockSegment: Segment = {
+      id: "seg-other",
+      track_id: "track-other",
+      name: "Full Track",
+      start_time: 0,
+      end_time: 180,
+    };
+
+    let requestedTargetKey: string | undefined = undefined;
+    let setActivePlaylistArg: string | null | undefined = undefined;
+
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+      playbackMode: "mixed",
+      activePlaylistPlayingId: null, // playing from Mix -> badge says Mix
+      activePlaylistId: "pl_open", // User is currently viewing playlist "pl_open"
+      activePlaylistItems: [
+        {
+          id: "item_99",
+          playlist_id: "pl_open",
+          track_id: "some-different-track",
+          sort_order: 0,
+          added_at: 1000,
+          track: { id: "some-different-track", title: "Diff", status: "ready" } as any,
+          segment: null,
+        } as any,
+      ],
+      setActivePlaylist: (async (id: string | null) => {
+        setActivePlaylistArg = id;
+      }) as any,
+      requestScrollToActiveTrack: (targetKey?: string) => {
+        requestedTargetKey = targetKey;
+      },
+    });
+
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
+      const mixBadgeBtn = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Mix") || b.textContent?.includes("Trộn")
+      );
+      expect(mixBadgeBtn).toBeDefined();
+
+      await act(async () => {
+        mixBadgeBtn?.click();
+      });
+
+      // Because the track is NOT in the open playlist, it SHOULD navigate back to Mix
+      expect(setActivePlaylistArg).toBeNull();
+      expect(requestedTargetKey as string | undefined).toBe("category:mixed");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });
+
 
 

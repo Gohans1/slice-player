@@ -1,23 +1,26 @@
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, createQueueItem, type QueueItem } from "./store/usePlayerStore";
 import { Navbar } from "./components/Navbar";
 import { TrackCard } from "./components/TrackCard";
-import { SliceStudio } from "./components/SliceStudio";
+const SliceStudio = React.lazy(() => import("./components/SliceStudio").then((m) => ({ default: m.SliceStudio })));
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
-import { LogDrawer } from "./components/LogDrawer";
+const LogDrawer = React.lazy(() => import("./components/LogDrawer").then((m) => ({ default: m.LogDrawer })));
 import { PlaylistDrawer } from "./components/PlaylistDrawer";
-import { CreatePlaylistModal } from "./components/CreatePlaylistModal";
-import { ShortcutsModal } from "./components/ShortcutsModal";
+const CreatePlaylistModal = React.lazy(() => import("./components/CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
+const MixPlaylistModal = React.lazy(() => import("./components/MixPlaylistModal").then((m) => ({ default: m.MixPlaylistModal })));
+const ShortcutsModal = React.lazy(() => import("./components/ShortcutsModal").then((m) => ({ default: m.ShortcutsModal })));
 import { PlaylistTableView } from "./components/PlaylistTableView";
+import { PlaylistGrid } from "./components/PlaylistGrid";
+import { PlaylistHeader } from "./components/PlaylistHeader";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
-import { Music, Loader2, LayoutGrid, List, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Music, Loader2, LayoutGrid, List, ListMusic, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
+import { showsItemsOf } from "./lib/mixPlaylist";
 import { compareDownloadingTracks, cn, createDefaultFullSegment } from "./lib/utils";
 import {
   findActivePlaylistItemIndex,
@@ -35,10 +38,12 @@ import {
 } from "./lib/playlistSort";
 import { Button } from "./components/ui/button";
 import { BulkActionBar } from "./components/BulkActionBar";
+import { FloatingScrollControls } from "./components/FloatingScrollControls";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { useSelectionStore, type SelectedItem } from "./store/useSelectionStore";
 import { useLogStore } from "./store/useLogStore";
-import type { Segment, Track } from "@/server/types";
+import { getViewScrollKey } from "./store/usePlayerStore";
+import type { Playlist, Segment, Track } from "@/server/types";
 
 const getItemEntityId = (item: { id: string }) => item.id;
 
@@ -50,6 +55,7 @@ export function App() {
   const sliceStudioTrack = usePlayerStore((s) => s.sliceStudioTrack);
   const closeSliceStudio = usePlayerStore((s) => s.closeSliceStudio);
   const buildShuffleQueue = usePlayerStore((s) => s.buildShuffleQueue);
+  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const isQueueEmpty = usePlayerStore((s) => s.queue.length === 0);
@@ -102,14 +108,14 @@ export function App() {
         window.localStorage.setItem("slice_player_builtin_folded", JSON.stringify(next));
       }
     } catch {}
-    if (next && activePlaylistId === null && activeSystemCategory !== "mixed") {
+    if (next && activePlaylistId === null && activeSystemCategory !== "mixed" && activeSystemCategory !== "playlists") {
       setActiveSystemCategory("mixed");
     }
   }, [isBuiltInFolded, activePlaylistId, activeSystemCategory, setActiveSystemCategory]);
 
   // Auto-unfold if a non-mixed built-in category is explicitly navigated to
   React.useEffect(() => {
-    if (activePlaylistId === null && activeSystemCategory !== "mixed" && isBuiltInFolded) {
+    if (activePlaylistId === null && activeSystemCategory !== "mixed" && activeSystemCategory !== "playlists" && isBuiltInFolded) {
       setIsBuiltInFolded(false);
       try {
         if (typeof window !== "undefined" && window.localStorage) {
@@ -119,214 +125,32 @@ export function App() {
     }
   }, [activePlaylistId, activeSystemCategory, isBuiltInFolded]);
 
-  // Custom playlists fold state (persisted to localStorage)
-  const [isCustomFolded, setIsCustomFolded] = React.useState<boolean>(() => {
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        const saved = window.localStorage.getItem("slice_player_custom_playlists_folded");
-        return saved !== null ? JSON.parse(saved) : false;
-      }
-    } catch {}
-    return false;
-  });
-
-  const handleToggleCustomFold = React.useCallback(() => {
-    const next = !isCustomFolded;
-    setIsCustomFolded(next);
-    setIsMorePlaylistsOpen(false);
-    setMorePlaylistsCoords(null);
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.setItem("slice_player_custom_playlists_folded", JSON.stringify(next));
-      }
-    } catch {}
-  }, [isCustomFolded]);
-
-  const [isMorePlaylistsOpen, setIsMorePlaylistsOpen] = React.useState(false);
-  const [morePlaylistsCoords, setMorePlaylistsCoords] = React.useState<{ top: number; left: number } | null>(null);
-  const morePlaylistsContainerRef = React.useRef<HTMLDivElement>(null);
-  const morePlaylistsMenuRef = React.useRef<HTMLDivElement>(null);
-
-  const handleToggleMorePlaylists = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (!isMorePlaylistsOpen) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const menuWidth = 224;
-      const maxLeft = (typeof window !== "undefined" ? window.innerWidth : 1024) - menuWidth - 8;
-      const left = Math.max(8, Math.min(rect.left, maxLeft));
-      setMorePlaylistsCoords({
-        top: rect.bottom + 6,
-        left,
-      });
-      setIsMorePlaylistsOpen(true);
-    } else {
-      setIsMorePlaylistsOpen(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (!isMorePlaylistsOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(target)) ||
-        (morePlaylistsMenuRef.current && morePlaylistsMenuRef.current.contains(target))
-      ) {
-        return;
-      }
-      setIsMorePlaylistsOpen(false);
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsMorePlaylistsOpen(false);
-      }
-    };
-    const handleCloseOnScroll = (e: Event) => {
-      // Ignore internal scroll events from the dropdown menu list itself
-      const target = e.target as Node;
-      if (
-        (morePlaylistsContainerRef.current && morePlaylistsContainerRef.current.contains(target)) ||
-        (morePlaylistsMenuRef.current && morePlaylistsMenuRef.current.contains(target))
-      ) {
-        return;
-      }
-      setIsMorePlaylistsOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("resize", handleCloseOnScroll);
-    window.addEventListener("scroll", handleCloseOnScroll, true);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", handleCloseOnScroll);
-      window.removeEventListener("scroll", handleCloseOnScroll, true);
-    };
-  }, [isMorePlaylistsOpen]);
-
-  const [isMoreMenuRendered, setIsMoreMenuRendered] = React.useState(isMorePlaylistsOpen);
-  const [isMoreMenuExiting, setIsMoreMenuExiting] = React.useState(false);
-
-  const isTestOrReducedMotion =
-    (typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST))) ||
-    typeof (globalThis as any).IS_REACT_ACT_ENVIRONMENT !== "undefined" ||
-    (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches));
-
-  React.useEffect(() => {
-    if (isMorePlaylistsOpen) {
-      setIsMoreMenuRendered(true);
-      setIsMoreMenuExiting(false);
-    } else {
-      if (isTestOrReducedMotion) {
-        setIsMoreMenuRendered(false);
-        setIsMoreMenuExiting(false);
-        return;
-      }
-      setIsMoreMenuExiting(true);
-      const timer = setTimeout(() => {
-        setIsMoreMenuRendered(false);
-        setIsMoreMenuExiting(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isMorePlaylistsOpen, isTestOrReducedMotion]);
-
-  const renderMorePlaylistsMenu = (list: typeof playlists) => {
-    if (!isMorePlaylistsOpen && (isTestOrReducedMotion || !isMoreMenuRendered)) return null;
-    const menuElement = (
-      <div
-        ref={morePlaylistsMenuRef}
-        role="menu"
-        aria-label={t("library.morePlaylistsTitle", "Other playlists")}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        style={
-          morePlaylistsCoords
-            ? {
-                top: `${morePlaylistsCoords.top}px`,
-                left: `${morePlaylistsCoords.left}px`,
-              }
-            : undefined
-        }
-        className={cn(
-          "fixed w-56 origin-top-left rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 duration-100",
-          isMoreMenuExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
-        )}
-      >
-        <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60 mb-1 flex items-center justify-between">
-          <span>{t("library.morePlaylistsTitle", "Other playlists")}</span>
-          <span className="font-mono text-2xs opacity-70">({list.length})</span>
-        </div>
-        <div className="max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
-          {list.map((pl) => {
-            const isSelected = activePlaylistId === pl.id;
-            return (
-              <button
-                key={pl.id}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setActivePlaylist(pl.id);
-                  setIsMorePlaylistsOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors cursor-pointer ${
-                  isSelected
-                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                    : "hover:bg-accent hover:text-accent-foreground text-foreground"
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate min-w-0 flex-1 mr-2">
-                  <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="truncate">{pl.name}</span>
-                </div>
-                <span className="font-mono text-2xs text-muted-foreground shrink-0">
-                  ({pl.item_count || 0})
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-
-    if (typeof document !== "undefined" && document.body) {
-      return createPortal(menuElement, document.body);
-    }
-    return menuElement;
-  };
-
-  // Maximum custom playlist tabs shown directly in the bar before folding the rest into More menu
-  const { visibleCustomPlaylists, overflowCustomPlaylists } = React.useMemo(() => {
-    if (playlists.length <= 3) {
-      return { visibleCustomPlaylists: playlists, overflowCustomPlaylists: [] };
-    }
-    if (activePlaylistId) {
-      const activeIdx = playlists.findIndex((p) => p.id === activePlaylistId);
-      if (activeIdx >= 3) {
-        const visible = [playlists[0], playlists[1], playlists[activeIdx]];
-        const overflow = playlists.filter((p) => !visible.some((v) => v.id === p.id));
-        return { visibleCustomPlaylists: visible, overflowCustomPlaylists: overflow };
-      }
-    }
-    return {
-      visibleCustomPlaylists: playlists.slice(0, 3),
-      overflowCustomPlaylists: playlists.slice(3),
-    };
-  }, [playlists, activePlaylistId]);
-
   const [segments, setSegments] = React.useState<Segment[]>([]);
+  const segmentsEtagRef = React.useRef<string | null>(null);
+  const segmentsDataRef = React.useRef<Segment[]>([]);
 
   const fetchSegments = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/segments");
+      const headers: Record<string, string> = {};
+      if (segmentsEtagRef.current) {
+        headers["If-None-Match"] = segmentsEtagRef.current;
+      }
+      const res = await fetch("/api/segments", { headers });
+      if (res.status === 304) {
+        return segmentsDataRef.current;
+      }
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
+          const etag = res.headers?.get ? res.headers.get("etag") : null;
+          segmentsEtagRef.current = etag || null;
+          segmentsDataRef.current = data;
           setSegments(data);
           return data;
         }
       }
     } catch {}
-    return [];
+    return segmentsDataRef.current;
   }, []);
 
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -335,6 +159,8 @@ export function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isPlaylistDrawerOpen, setIsPlaylistDrawerOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
+  // null = closed; {} = create a new mix; { mix } = edit that mix's sources
+  const [mixModal, setMixModal] = React.useState<{ mix?: Playlist } | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<{
     type: "track" | "slice" | "playlist_item";
     id: string;
@@ -414,13 +240,21 @@ export function App() {
               useLogStore.getState().clearLogsLocal();
               return;
             }
-            const segmentId = data.segmentId || data.data?.segmentId;
-            if (data.type === "segment_deleted" && segmentId) {
-              removeSegmentFromQueue(segmentId);
+            if (data.type === "segments_deleted" && Array.isArray(data.segmentIds)) {
+              usePlayerStore.getState().removeSegmentsBatchFromQueue(data.segmentIds);
+            } else {
+              const segmentId = data.segmentId || data.data?.segmentId;
+              if (data.type === "segment_deleted" && segmentId) {
+                removeSegmentFromQueue(segmentId);
+              }
             }
-            const trackId = data.trackId || data.data?.trackId;
-            if (data.type === "track_deleted" && trackId) {
-              removeTrackFromQueue(trackId);
+            if (data.type === "tracks_deleted" && Array.isArray(data.trackIds)) {
+              usePlayerStore.getState().removeTracksBatchFromQueue(data.trackIds);
+            } else {
+              const trackId = data.trackId || data.data?.trackId;
+              if (data.type === "track_deleted" && trackId) {
+                removeTrackFromQueue(trackId);
+              }
             }
             if (data.type === "track_updated") {
               window.dispatchEvent(new CustomEvent("app:track_updated", { detail: data }));
@@ -467,12 +301,20 @@ export function App() {
               playlistWsDebounceTimer = setTimeout(() => {
                 fetchPlaylists();
                 const freshActive = usePlayerStore.getState().activePlaylistId;
-                if (freshActive && (!plId || plId === freshActive)) {
+                if (freshActive && (!plId || showsItemsOf(freshActive, plId, usePlayerStore.getState().playlists))) {
                   setActivePlaylist(freshActive, true);
                 }
               }, 150);
             }
-            if (data.type === "track_updated" || data.type === "track_created" || data.type === "track_deleted" || data.type === "segment_deleted" || data.type === "segment_updated") {
+            if (
+              data.type === "track_updated" ||
+              data.type === "track_created" ||
+              data.type === "track_deleted" ||
+              data.type === "tracks_deleted" ||
+              data.type === "segment_deleted" ||
+              data.type === "segments_deleted" ||
+              data.type === "segment_updated"
+            ) {
               const shouldReconcileSegments = data.type !== "track_updated" || data.reason !== "volume";
               clearTimeout(wsDebounceTimer);
               wsDebounceTimer = setTimeout(() => {
@@ -547,16 +389,20 @@ export function App() {
   React.useEffect(() => {
     if (hasReadyTracks && isQueueEmpty && !hasAttemptedQueueBuildRef.current) {
       hasAttemptedQueueBuildRef.current = true;
-      fetch("/api/segments")
-        .then((r) => (r.ok ? r.json() : []))
+      fetchSegments()
         .then((segments) => {
           if (Array.isArray(segments)) {
-            buildShuffleQueue(segments, tracks);
+            if (usePlayerStore.getState().queue.length === 0) {
+              buildShuffleQueue(segments, tracks);
+            }
           }
         })
-        .catch(console.error);
+        .catch((e) => {
+          hasAttemptedQueueBuildRef.current = false;
+          console.error(e);
+        });
     }
-  }, [hasReadyTracks, isQueueEmpty, buildShuffleQueue, tracks]);
+  }, [hasReadyTracks, isQueueEmpty, buildShuffleQueue, tracks, fetchSegments]);
 
   // Global shortcuts: `~`/`F2` for Logs, `?` for Shortcuts, `Q` for Queue, `Space` for Play/Pause
   React.useEffect(() => {
@@ -862,17 +708,21 @@ export function App() {
       .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id));
   }, [filteredTracks]);
 
+  const currentViewKey = getViewScrollKey(activePlaylistId, activeSystemCategory);
+
   const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
   const lastHandledGridScrollRequestIdRef = React.useRef<number | null>(null);
 
   const handleGridScrollHandled = React.useCallback((id: number) => {
     setGridScrollRequest((prev) => (prev?.requestId === id ? null : prev));
+    usePlayerStore.getState().clearActiveTrackScrollRequest();
   }, []);
 
   React.useEffect(() => {
     if (viewMode !== "grid" || !activeTrackScrollRequest) return;
     if (lastHandledGridScrollRequestIdRef.current === activeTrackScrollRequest.id) return;
     if (Date.now() - activeTrackScrollRequest.timestamp > 2000) return;
+    if (activeTrackScrollRequest.targetKey && activeTrackScrollRequest.targetKey !== currentViewKey) return;
 
     let targetIdx = -1;
     const isFallback = !activeSegment || activeSegment.id.startsWith("fallback_");
@@ -904,6 +754,7 @@ export function App() {
   }, [
     viewMode,
     activeTrackScrollRequest,
+    currentViewKey,
     activePlaylistId,
     activeSystemCategory,
     displayedPlaylistItems,
@@ -919,10 +770,19 @@ export function App() {
   const handlePlayPlaylistItem = React.useCallback(
     (itemId: string) => {
       if (activePlaylistId) {
-        playPlaylistItemAtIndex(activePlaylistId, itemId);
+        if (deferredQuery.trim()) {
+          buildPlaylistQueue(activePlaylistId, false, itemId, false, {
+            type: "search",
+            query: deferredQuery.trim(),
+            count: displayedPlaylistItems.length,
+            playlistId: activePlaylistId,
+          });
+        } else {
+          playPlaylistItemAtIndex(activePlaylistId, itemId);
+        }
       }
     },
-    [activePlaylistId, playPlaylistItemAtIndex]
+    [activePlaylistId, buildPlaylistQueue, playPlaylistItemAtIndex, deferredQuery, displayedPlaylistItems.length]
   );
 
   const handleDeletePlaylistItem = React.useCallback(
@@ -959,6 +819,11 @@ export function App() {
   );
 
   const isSearching = Boolean(deferredQuery.trim());
+
+  const displayedPlaylists = React.useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return q ? playlists.filter((p) => p.name.toLowerCase().includes(q)) : playlists;
+  }, [playlists, deferredQuery]);
   const isLibraryEmpty = tracks.length === 0;
 
   const visibleItems = React.useMemo<SelectedItem[]>(() => {
@@ -1046,6 +911,119 @@ export function App() {
     useSelectionStore.getState().pruneSelection(validIds, activePlaylistId);
   }, [tracks, segments, activePlaylistItems, activePlaylistId]);
 
+  // View scroll position persistence & restoration per playlist / view
+  const currentViewKeyRef = React.useRef(currentViewKey);
+  currentViewKeyRef.current = currentViewKey;
+  const viewModeRef = React.useRef(viewMode);
+  viewModeRef.current = viewMode;
+  const isSearchingRef = React.useRef(isSearching);
+  isSearchingRef.current = isSearching;
+  const pendingScrollRestoreRef = React.useRef<{ key: string; targetY: number } | null>(null);
+
+  // Track window scroll continuously to save position of currently visible view
+  React.useEffect(() => {
+    let rafId: number | null = null;
+    const safeRaf = (cb: () => void) => {
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        return window.requestAnimationFrame(cb);
+      }
+      return (setTimeout(cb, 16) as unknown) as number;
+    };
+    const safeCancelRaf = (id: number) => {
+      if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(id);
+      } else {
+        clearTimeout(id);
+      }
+    };
+
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      if (typeof window === "undefined") return;
+      if (isSearchingRef.current) return;
+      if (pendingScrollRestoreRef.current) return;
+      rafId = safeRaf(() => {
+        rafId = null;
+        if (isSearchingRef.current) return;
+        if (pendingScrollRestoreRef.current) return;
+        const y = window.scrollY || window.pageYOffset || document.documentElement?.scrollTop || 0;
+        const baseKey = currentViewKeyRef.current;
+        const mode = viewModeRef.current;
+        const store = usePlayerStore.getState();
+        store.saveViewScrollPosition(`${baseKey}:${mode}`, y);
+        store.saveViewScrollPosition(baseKey, y);
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      if (rafId !== null) safeCancelRaf(rafId);
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  const targetScrollY = React.useMemo(() => {
+    if (isSearching) return 0;
+    const store = usePlayerStore.getState();
+    const fullKey = `${currentViewKey}:${viewMode}`;
+    return store.viewScrollPositions[fullKey] ?? store.viewScrollPositions[currentViewKey] ?? 0;
+  }, [currentViewKey, viewMode, isSearching]);
+
+  const isPendingActiveTrackScroll = Boolean(
+    activeTrackScrollRequest &&
+      Date.now() - activeTrackScrollRequest.timestamp <= 2000 &&
+      (!activeTrackScrollRequest.targetKey || activeTrackScrollRequest.targetKey === currentViewKey)
+  );
+
+  const lastRestoredViewRef = React.useRef<string | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (isSearching) {
+      lastRestoredViewRef.current = null;
+      return;
+    }
+
+    const fullKey = `${currentViewKey}:${viewMode}`;
+    const isViewTransition = lastRestoredViewRef.current !== fullKey;
+    lastRestoredViewRef.current = fullKey;
+
+    if (!isViewTransition) return;
+
+    if (isPendingActiveTrackScroll) {
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
+
+    if (targetScrollY <= 0) {
+      pendingScrollRestoreRef.current = null;
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "instant" });
+      }
+      return;
+    }
+
+    pendingScrollRestoreRef.current = { key: currentViewKey, targetY: targetScrollY };
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: targetScrollY, behavior: "instant" });
+    }
+  }, [currentViewKey, viewMode, targetScrollY, isSearching, isPendingActiveTrackScroll]);
+
+  // When items load or change (e.g. custom playlist items finish fetching), ensure scroll is restored
+  const currentItemCount = activePlaylistId ? activePlaylistItems.length : (visibleItems.length || 0);
+  React.useEffect(() => {
+    if (isPendingActiveTrackScroll) return;
+    if (currentItemCount > 0 && pendingScrollRestoreRef.current?.key === currentViewKey) {
+      const y = pendingScrollRestoreRef.current.targetY;
+      pendingScrollRestoreRef.current = null;
+      if (typeof window !== "undefined") {
+        const safeRaf = typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame : (cb: () => void) => setTimeout(cb, 0);
+        safeRaf(() => {
+          window.scrollTo({ top: y, behavior: "instant" });
+        });
+      }
+    }
+  }, [currentItemCount, currentViewKey, isPendingActiveTrackScroll]);
+
   const headerMeta = React.useMemo(() => {
     if (activePl) {
       return {
@@ -1055,6 +1033,12 @@ export function App() {
       };
     }
     switch (activeSystemCategory) {
+      case "playlists":
+        return {
+          title: t("categories.playlists"),
+          count: `(${t("playlist.customCount", { count: playlists.length })})`,
+          description: t("categories.playlistsDesc"),
+        };
       case "slices_only":
         return {
           title: t("categories.slices"),
@@ -1112,6 +1096,7 @@ export function App() {
     errorTracks.length,
     filteredMixedItems.length,
     allMixedItems.length,
+    playlists.length,
     t,
   ]);
 
@@ -1155,13 +1140,13 @@ export function App() {
       <main className="flex-1 w-full pb-28 sm:pb-32">
         {/* Sticky Library Header & Navigation Bar (Always follows scroll, pushed up & compact) */}
         <div data-testid="sticky-library-header" className="sticky top-[var(--navbar-height,61px)] z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
             {/* Top Row: Compact Title & View Mode Switcher */}
             <div className="flex items-center justify-between gap-3 mb-1.5">
               <div className="flex items-center gap-2.5 min-w-0">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0">
-                  <span>{headerMeta.title}</span>
-                  <span className="text-xs font-normal text-muted-foreground font-mono" aria-live="polite" aria-atomic="true">
+                <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 min-w-0">
+                  <span className="truncate">{headerMeta.title}</span>
+                  <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
                     {headerMeta.count}
                   </span>
                 </h1>
@@ -1220,6 +1205,28 @@ export function App() {
               onKeyDown={handleTablistKeyDown}
               className="flex items-center gap-2 min-w-0 shrink-0"
             >
+              {/* Playlists: library of custom playlists as cover cards */}
+              <button
+                type="button"
+                role="tab"
+                id="tab-category-playlists"
+                aria-controls="main-library-panel"
+                aria-selected={activePlaylistId === null && activeSystemCategory === "playlists"}
+                tabIndex={activePlaylistId === null && activeSystemCategory === "playlists" ? 0 : -1}
+                onClick={() => setActiveSystemCategory("playlists")}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
+                  activePlaylistId === null && activeSystemCategory === "playlists"
+                    ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                    : "bg-primary/10 text-primary font-semibold hover:bg-primary/20 border border-primary/40"
+                }`}
+              >
+                <ListMusic className="h-3.5 w-3.5" />
+                <span>{t("categories.playlists")}</span>
+                <span className="font-mono text-2xs opacity-80">({playlists.length})</span>
+              </button>
+
+              <div role="presentation" aria-hidden="true" className="h-4 w-px bg-border/80 mx-0.5 shrink-0 self-center" />
+
               {/* System category: Mix (Always visible, primary anchor) */}
               <button
                 type="button"
@@ -1353,124 +1360,25 @@ export function App() {
                 </div>
               )}
 
-              {/* Vertical separator between Built-in categories and User custom playlists */}
-              {playlists.length > 0 && (
-                <div
-                  role="presentation"
-                  aria-hidden="true"
-                  data-testid="playlist-separator"
-                  title={t("playlist.customHeader")}
-                  className="h-4 w-px bg-border/80 mx-1 shrink-0 self-center"
-                />
-              )}
-
-              {/* Folded state for custom playlists */}
-              {playlists.length > 0 && isCustomFolded && (
+              {/* Open playlist pill (the Playlists tab is the way in; this shows where you are) */}
+              {activePl && (
                 <>
-                  {activePlaylistId && activePl && (
-                    <button
-                      type="button"
-                      role="tab"
-                      id={`tab-playlist-${activePl.id}`}
-                      aria-controls="main-library-panel"
-                      aria-selected={true}
-                      tabIndex={0}
-                      onClick={() => setActivePlaylist(activePl.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 bg-primary text-primary-foreground shadow-xs"
-                    >
-                      <Folder className="h-3 w-3 shrink-0 text-primary-foreground" />
-                      <span>{activePl.name}</span>
-                      <span className="font-mono text-2xs opacity-80">({activePl.item_count || 0})</span>
-                    </button>
-                  )}
-
-                  <div className="relative inline-flex items-center gap-1 shrink-0" ref={morePlaylistsContainerRef}>
-                    <button
-                      type="button"
-                      onClick={handleToggleCustomFold}
-                      aria-label={t("library.unfoldCustomPlaylists", { count: playlists.length })}
-                      title={t("library.unfoldCustomPlaylists", { count: playlists.length })}
-                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                      <Folder className="h-3 w-3 text-primary" />
-                      <span className="font-mono text-2xs opacity-80">{playlists.length}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleToggleMorePlaylists}
-                      aria-expanded={isMorePlaylistsOpen}
-                      aria-haspopup="menu"
-                      aria-label={t("library.morePlaylistsTitle", "Other playlists")}
-                      title={t("library.morePlaylistsTitle", "Other playlists")}
-                      className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
-                    >
-                      <MoreHorizontal className="h-3.5 w-3.5" />
-                    </button>
-
-                    {renderMorePlaylistsMenu(playlists)}
-                  </div>
-                </>
-              )}
-
-              {/* Unfolded state for custom playlists */}
-              {playlists.length > 0 && !isCustomFolded && (
-                <div className="flex items-center gap-2 shrink-0 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
-                  {visibleCustomPlaylists.map((pl) => {
-                    const isSelected = activePlaylistId === pl.id;
-                    return (
-                      <button
-                        key={pl.id}
-                        type="button"
-                        role="tab"
-                        id={`tab-playlist-${pl.id}`}
-                        aria-controls="main-library-panel"
-                        aria-selected={isSelected}
-                        tabIndex={isSelected ? 0 : -1}
-                        onClick={() => setActivePlaylist(pl.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                          isSelected
-                            ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                            : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
-                        }`}
-                      >
-                        <Folder className="h-3 w-3 shrink-0 text-primary" />
-                        <span>{pl.name}</span>
-                        <span className="font-mono text-2xs opacity-80">({pl.item_count || 0})</span>
-                      </button>
-                    );
-                  })}
-
-                  {overflowCustomPlaylists.length > 0 && (
-                    <div className="relative inline-flex items-center shrink-0" ref={morePlaylistsContainerRef}>
-                      <button
-                        type="button"
-                        onClick={handleToggleMorePlaylists}
-                        aria-expanded={isMorePlaylistsOpen}
-                        aria-haspopup="menu"
-                        title={t("library.morePlaylists", { count: overflowCustomPlaylists.length })}
-                        aria-label={t("library.morePlaylists", { count: overflowCustomPlaylists.length })}
-                        className="inline-flex items-center gap-1 h-7 px-2 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                        <span className="font-mono text-2xs opacity-80">{overflowCustomPlaylists.length}</span>
-                      </button>
-
-                      {renderMorePlaylistsMenu(overflowCustomPlaylists)}
-                    </div>
-                  )}
-
+                  <div role="presentation" aria-hidden="true" className="h-4 w-px bg-border/80 mx-1 shrink-0 self-center" />
                   <button
                     type="button"
-                    onClick={handleToggleCustomFold}
-                    aria-label={t("library.foldCustomPlaylists")}
-                    title={t("library.foldCustomPlaylists")}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
+                    role="tab"
+                    id={`tab-playlist-${activePl.id}`}
+                    aria-controls="main-library-panel"
+                    aria-selected={true}
+                    tabIndex={0}
+                    onClick={() => setActivePlaylist(activePl.id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 bg-primary text-primary-foreground shadow-xs"
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" />
+                    <Folder className="h-3 w-3 shrink-0 text-primary-foreground" />
+                    <span>{activePl.name}</span>
+                    <span className="font-mono text-2xs opacity-80">({activePl.item_count || 0})</span>
                   </button>
-                </div>
+                </>
               )}
             </div>
 
@@ -1486,19 +1394,12 @@ export function App() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsPlaylistDrawerOpen(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-primary transition-colors shrink-0 font-medium cursor-pointer"
-          >
-            <span>{t("library.allPlaylists")}</span>
-          </button>
             </div>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
           <div
             id="main-library-panel"
             role="tabpanel"
@@ -1508,7 +1409,7 @@ export function App() {
           >
         {isLoadingTracks && isLibraryEmpty ? (
           <div className="flex flex-col items-center justify-center py-6 px-4 animate-in fade-in duration-200">
-            <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[2048px]:grid-cols-7 min-[2560px]:grid-cols-8 gap-4 mb-6">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="rounded-xl border border-border/50 bg-card/40 p-3 space-y-3 animate-pulse">
                   <div className="aspect-video w-full rounded-lg bg-secondary/60" />
@@ -1524,10 +1425,20 @@ export function App() {
           </div>
         ) : activePlaylistId ? (
           /* Custom Playlist Active */
-          viewMode === "list" ? (
+          <>
+          {activePl && (
+            <PlaylistHeader
+              playlist={activePl}
+              items={activePlaylistItems}
+              onEditSources={() => setMixModal({ mix: activePl })}
+            />
+          )}
+          {viewMode === "list" ? (
             <PlaylistTableView
+              key={`playlist_table_${activePlaylistId}`}
               searchQuery={deferredQuery}
               onDeletePlaylistItem={handleDeletePlaylistItem}
+              initialScrollOffset={targetScrollY}
             />
           ) : activePlaylistItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
@@ -1556,10 +1467,11 @@ export function App() {
               getItemKey={getItemEntityId}
               getItemName={(item) => (item.segment ? item.segment.name : item.track?.title || "")}
               getItemThumbnail={(item) => item.track?.thumbnail_url}
-              isReorderable={Boolean(activePlaylistId && playlistSortMode === "manual" && !deferredQuery.trim())}
+              isReorderable={Boolean(activePlaylistId && !activePl?.is_mix && playlistSortMode === "manual" && !deferredQuery.trim())}
               onReorder={handleGridReorder}
               scrollRequest={gridScrollRequest}
               onScrollHandled={handleGridScrollHandled}
+              initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx, dragProps) => (
                 <PlaylistItemCard
@@ -1569,10 +1481,29 @@ export function App() {
                   totalItems={displayedPlaylistItems.length}
                   visibleItemIds={visibleItems}
                   onPlay={handlePlayPlaylistItem}
-                  onDelete={handleDeletePlaylistItem}
+                  onDelete={activePl?.is_mix ? undefined : handleDeletePlaylistItem}
                   dragProps={dragProps}
                 />
               )}
+            />
+          )}
+          </>
+        ) : activeSystemCategory === "playlists" ? (
+          /* Playlists library: one cover card per custom playlist */
+          displayedPlaylists.length === 0 && isSearching ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
+              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
+              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+                {t("library.clearSearch")}
+              </Button>
+            </div>
+          ) : (
+            <PlaylistGrid
+              playlists={displayedPlaylists}
+              onOpen={(id) => setActivePlaylist(id)}
+              onCreate={() => setIsCreateModalOpen(true)}
+              onMix={() => setMixModal({})}
             />
           )
         ) : activeSystemCategory === "slices_only" ? (
@@ -1602,6 +1533,7 @@ export function App() {
               sliceItems={filteredSliceItems}
               searchQuery={deferredQuery}
               onDeleteSlice={handleDeleteSlice}
+              initialScrollOffset={targetScrollY}
             />
           ) : (
             <VirtualizedCardGrid
@@ -1610,6 +1542,7 @@ export function App() {
               getItemKey={getItemEntityId}
               scrollRequest={gridScrollRequest}
               onScrollHandled={handleGridScrollHandled}
+              initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => {
                 const qIdx = sliceQueue.findIndex((q) => q.segment.id === item.segment.id);
@@ -1619,8 +1552,18 @@ export function App() {
                     index={idx}
                     segment={item.segment}
                     track={item.track}
-                    visibleItemIds={visibleItems}
-                    onPlay={() => playSegmentInMode("slices_only", item.segment, item.track, sliceQueue, qIdx >= 0 ? qIdx : undefined)}
+                    onPlay={() =>
+                      playSegmentInMode(
+                        "slices_only",
+                        item.segment,
+                        item.track,
+                        sliceQueue,
+                        qIdx >= 0 ? qIdx : undefined,
+                        deferredQuery.trim()
+                          ? { type: "search", query: deferredQuery.trim(), count: sliceQueue.length, mode: "slices_only" }
+                          : { type: "system", mode: "slices_only" }
+                      )
+                    }
                     onOpenStudio={() => openSliceStudio(item.track)}
                     onDelete={handleDeleteSlice}
                   />
@@ -1656,6 +1599,7 @@ export function App() {
               searchQuery={deferredQuery}
               onDeleteTrack={handleDeleteTrack}
               onDeleteSlice={handleDeleteSlice}
+              initialScrollOffset={targetScrollY}
             />
           ) : (
             <VirtualizedCardGrid
@@ -1664,6 +1608,7 @@ export function App() {
               getItemKey={getItemEntityId}
               scrollRequest={gridScrollRequest}
               onScrollHandled={handleGridScrollHandled}
+              initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(item, idx) => {
                 if (item.type === "slice") {
@@ -1676,7 +1621,18 @@ export function App() {
                       segment={item.segment}
                       track={item.track}
                       visibleItemIds={visibleItems}
-                      onPlay={() => playSegmentInMode("mixed", item.segment, item.track, mixedQueue, qIdx >= 0 ? qIdx : undefined)}
+                      onPlay={() =>
+                        playSegmentInMode(
+                          "mixed",
+                          item.segment,
+                          item.track,
+                          mixedQueue,
+                          qIdx >= 0 ? qIdx : undefined,
+                          deferredQuery.trim()
+                            ? { type: "search", query: deferredQuery.trim(), count: mixedQueue.length, mode: "mixed" }
+                            : { type: "system", mode: "mixed" }
+                        )
+                      }
                       onOpenStudio={() => openSliceStudio(item.track)}
                       onDelete={handleDeleteSlice}
                     />
@@ -1691,7 +1647,18 @@ export function App() {
                     track={item.track}
                     onDelete={handleDeleteTrack}
                     visibleTrackIds={visibleItems}
-                    onPlay={() => playSegmentInMode("mixed", createDefaultFullSegment(item.track), item.track, mixedQueue, qIdx >= 0 ? qIdx : undefined)}
+                    onPlay={() =>
+                      playSegmentInMode(
+                        "mixed",
+                        createDefaultFullSegment(item.track),
+                        item.track,
+                        mixedQueue,
+                        qIdx >= 0 ? qIdx : undefined,
+                        deferredQuery.trim()
+                          ? { type: "search", query: deferredQuery.trim(), count: mixedQueue.length, mode: "mixed" }
+                          : { type: "system", mode: "mixed" }
+                      )
+                    }
                   />
                 );
               }}
@@ -1727,12 +1694,14 @@ export function App() {
               filteredTracks={filteredDownloadingTracks}
               searchQuery={deferredQuery}
               onDeleteTrack={handleDeleteTrack}
+              initialScrollOffset={targetScrollY}
             />
           ) : (
             <VirtualizedCardGrid
               key="downloading_only"
               items={filteredDownloadingTracks}
               getItemKey={getItemEntityId}
+              initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
               renderItem={(track) => (
                 <TrackCard
@@ -1798,12 +1767,14 @@ export function App() {
                   filteredTracks={filteredErrorTracks}
                   searchQuery={deferredQuery}
                   onDeleteTrack={handleDeleteTrack}
+                  initialScrollOffset={targetScrollY}
                 />
               ) : (
                 <VirtualizedCardGrid
                   key="error_only"
                   items={filteredErrorTracks}
                   getItemKey={getItemEntityId}
+                  initialScrollOffset={targetScrollY}
                   className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
                   renderItem={(track) => (
                     <TrackCard
@@ -1856,6 +1827,7 @@ export function App() {
             filteredTracks={filteredTracks}
             searchQuery={deferredQuery}
             onDeleteTrack={handleDeleteTrack}
+            initialScrollOffset={targetScrollY}
           />
         ) : (
           /* Track Grid */
@@ -1865,6 +1837,7 @@ export function App() {
             getItemKey={getItemEntityId}
             scrollRequest={gridScrollRequest}
             onScrollHandled={handleGridScrollHandled}
+            initialScrollOffset={targetScrollY}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
             renderItem={(track) => {
               const qIdx = originalQueue.findIndex((q) => q.track.id === track.id && q.segment.id.startsWith("fallback_"));
@@ -1874,7 +1847,18 @@ export function App() {
                   track={track}
                   onDelete={handleDeleteTrack}
                   visibleTrackIds={visibleItems}
-                  onPlay={() => playSegmentInMode("original_only", createDefaultFullSegment(track), track, originalQueue, qIdx >= 0 ? qIdx : undefined)}
+                  onPlay={() =>
+                    playSegmentInMode(
+                      "original_only",
+                      createDefaultFullSegment(track),
+                      track,
+                      originalQueue,
+                      qIdx >= 0 ? qIdx : undefined,
+                      deferredQuery.trim()
+                        ? { type: "search", query: deferredQuery.trim(), count: originalQueue.length, mode: "original_only" }
+                        : { type: "system", mode: "original_only" }
+                    )
+                  }
                 />
               );
             }}
@@ -1889,16 +1873,18 @@ export function App() {
 
       {/* Slice Studio Modal */}
       {sliceStudioTrack && (
-        <SliceStudio
-          track={sliceStudioTrack}
-          onClose={() => {
-            closeSliceStudio();
-            fetchSegments();
-            setTimeout(() => {
-              fetchTracks();
-            }, 100);
-          }}
-        />
+        <React.Suspense fallback={null}>
+          <SliceStudio
+            track={sliceStudioTrack}
+            onClose={() => {
+              closeSliceStudio();
+              fetchSegments();
+              setTimeout(() => {
+                fetchTracks();
+              }, 100);
+            }}
+          />
+        </React.Suspense>
       )}
 
       {/* Playlist Drawer (Left) */}
@@ -1945,13 +1931,29 @@ export function App() {
       )}
 
       {/* Create Playlist Modal */}
-      <CreatePlaylistModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onCreated={(id) => {
-          setActivePlaylist(id);
-        }}
-      />
+      {isCreateModalOpen && (
+        <React.Suspense fallback={null}>
+          <CreatePlaylistModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onCreated={(id) => {
+              setActivePlaylist(id);
+            }}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Mix Playlist Modal (create, or edit an open mix's sources) */}
+      {mixModal && (
+        <React.Suspense fallback={null}>
+          <MixPlaylistModal
+            isOpen
+            mix={mixModal.mix}
+            onClose={() => setMixModal(null)}
+            onCreated={(id) => setActivePlaylist(id)}
+          />
+        </React.Suspense>
+      )}
 
       {/* Queue Drawer (Right) */}
       <QueueDrawer
@@ -1960,16 +1962,27 @@ export function App() {
       />
 
       {/* Activity & Error Log Drawer (Slide-over) */}
-      <LogDrawer
-        isOpen={isLogDrawerOpen}
-        onClose={closeLogDrawer}
-      />
+      {isLogDrawerOpen && (
+        <React.Suspense fallback={null}>
+          <LogDrawer
+            isOpen={isLogDrawerOpen}
+            onClose={closeLogDrawer}
+          />
+        </React.Suspense>
+      )}
 
       {/* Keyboard Shortcuts Cheatsheet Modal */}
-      <ShortcutsModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+      {isShortcutsOpen && (
+        <React.Suspense fallback={null}>
+          <ShortcutsModal
+            isOpen={isShortcutsOpen}
+            onClose={() => setIsShortcutsOpen(false)}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Quick Scroll Navigation Widget (Floating Controls) */}
+      <FloatingScrollControls />
 
       {/* Player Bar */}
       <PlayerBar

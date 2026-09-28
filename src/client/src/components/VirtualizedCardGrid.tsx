@@ -19,6 +19,7 @@ export interface VirtualizedCardGridProps<T> {
   estimateCardHeight?: number;
   scrollRequest?: { index: number; requestId: number } | null;
   onScrollHandled?: (requestId: number) => void;
+  initialScrollOffset?: number;
   /** @deprecated use scrollRequest instead */
   scrollToIndex?: number | null;
   isReorderable?: boolean;
@@ -28,16 +29,24 @@ export interface VirtualizedCardGridProps<T> {
 }
 
 /**
- * Hook to track responsive column count matching Tailwind breakpoints:
+ * Hook to track responsive column count matching responsive breakpoints:
  * - default (<640px): 1 column
  * - sm (640px - 767px): 2 columns
  * - md (768px - 1023px): 3 columns
- * - lg+ (>= 1024px): 4 columns
+ * - lg (1024px - 1365px): 4 columns
+ * - xl (1366px - 1679px): 5 columns
+ * - 2xl / 1080p full screen (1680px - 2047px): 6 columns
+ * - 3xl / Ultrawide (2048px - 2559px): 7 columns
+ * - 4K / 2K large (>= 2560px): 8 columns
  */
 export function useGridColumnCount(): number {
   const getCols = React.useCallback(() => {
     if (typeof window === "undefined") return 4;
     const w = window.innerWidth > 0 ? window.innerWidth : 1024;
+    if (w >= 2560) return 8;
+    if (w >= 2048) return 7;
+    if (w >= 1680) return 6;
+    if (w >= 1366) return 5;
     if (w >= 1024) return 4;
     if (w >= 768) return 3;
     if (w >= 640) return 2;
@@ -76,6 +85,7 @@ export function VirtualizedCardGrid<T>({
   estimateCardHeight,
   scrollRequest,
   onScrollHandled,
+  initialScrollOffset,
   scrollToIndex,
   isReorderable = false,
   onReorder,
@@ -169,6 +179,9 @@ export function VirtualizedCardGrid<T>({
     overscan: 4,
     scrollMargin,
     rangeExtractor,
+    ...(typeof initialScrollOffset === "number" && initialScrollOffset > 0
+      ? { initialOffset: initialScrollOffset }
+      : {}),
     getItemKey: React.useCallback(
       (index: number) => `row_c${cols}_${index}`,
       [cols]
@@ -445,25 +458,37 @@ export function VirtualizedCardGrid<T>({
       cols > 0 &&
       lastHandledScrollRequestIdRef.current !== scrollRequest.requestId
     ) {
+      lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
       const rowIndex = Math.floor(scrollRequest.index / cols);
-      const timer = setTimeout(() => {
-        lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
-        virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "smooth" });
-        onScrollHandled?.(scrollRequest.requestId);
-      }, 50);
-      return () => clearTimeout(timer);
+      const currentY = typeof window !== "undefined" ? window.scrollY || window.pageYOffset || 0 : 0;
+      const estimatedTargetY = rowIndex * defaultEstimatedHeight;
+      const distance = Math.abs(currentY - estimatedTargetY);
+      const isClose = distance < (typeof window !== "undefined" ? window.innerHeight * 1.2 : 800);
+      const prefersReduced =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const behavior = !prefersReduced && isClose && distance > 20 ? "smooth" : "auto";
+
+      virtualizer.scrollToIndex(rowIndex, { align: "center", behavior });
+      onScrollHandled?.(scrollRequest.requestId);
     }
-  }, [scrollRequest, cols, virtualizer, onScrollHandled]);
+  }, [scrollRequest, cols, virtualizer, onScrollHandled, defaultEstimatedHeight]);
 
   React.useEffect(() => {
     if (typeof scrollToIndex === "number" && scrollToIndex >= 0 && cols > 0) {
       const rowIndex = Math.floor(scrollToIndex / cols);
-      const timer = setTimeout(() => {
-        virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "smooth" });
-      }, 50);
-      return () => clearTimeout(timer);
+      virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "auto" });
     }
   }, [scrollToIndex, cols, virtualizer]);
+
+  isReorderingRef.current = isReordering;
+
+  const handlePointerDownHandle = React.useCallback((e: React.PointerEvent) => {
+    if (e.button === 0 && !isReorderingRef.current) {
+      isDraggingHandleRef.current = true;
+    }
+  }, []);
 
   if (items.length === 0) {
     return <div ref={containerRef} className={className} />;
@@ -472,7 +497,7 @@ export function VirtualizedCardGrid<T>({
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <div ref={containerRef} className={`relative ${className || ""}`}>
+    <div ref={containerRef} className={`relative ${className || ""}`} style={{ overflowAnchor: "none" }}>
       {/* Floating Drag Preview */}
       {draggedIdx !== null && items[draggedIdx] && (
         <div
@@ -540,11 +565,7 @@ export function VirtualizedCardGrid<T>({
                   isDragging,
                   isDragTarget,
                   isReordering,
-                  onPointerDownHandle: (e) => {
-                    if (e.button === 0 && !isReordering) {
-                      isDraggingHandleRef.current = true;
-                    }
-                  },
+                  onPointerDownHandle: handlePointerDownHandle,
                   onKeyDownHandle: (e) => {
                     handleKeyDownReorder(e, itemIndex);
                   },

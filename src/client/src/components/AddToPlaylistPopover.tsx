@@ -3,7 +3,7 @@ import { FolderPlus, Check, Loader2, Plus } from "lucide-react";
 import { Button } from "./ui/button";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { CreatePlaylistModal } from "./CreatePlaylistModal";
+const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { cn } from "../lib/utils";
 
 interface AddToPlaylistMenuProps {
@@ -33,7 +33,9 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
     }
   }, [isOpen, isRendered]);
 
-  const playlists = usePlayerStore((s) => s.playlists);
+  const allPlaylists = usePlayerStore((s) => s.playlists);
+  // A mix owns no items, so it can never be a destination
+  const playlists = React.useMemo(() => allPlaylists.filter((pl) => !pl.is_mix), [allPlaylists]);
   const addToPlaylist = usePlayerStore((s) => s.addToPlaylist);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
 
@@ -269,14 +271,19 @@ export const AddToPlaylistPopover = React.memo(function AddToPlaylistPopover({
         }}
       />
 
-      <CreatePlaylistModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onCreated={async (newId) => {
-          setIsCreateModalOpen(false);
-          await addToPlaylist(newId, trackId, segmentId || null);
-        }}
-      />
+      {isCreateModalOpen && (
+        <React.Suspense fallback={null}>
+          <CreatePlaylistModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onCreated={async (newId) => {
+              setIsCreateModalOpen(false);
+              await addToPlaylist(newId, trackId, segmentId || null);
+            }}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 });
+

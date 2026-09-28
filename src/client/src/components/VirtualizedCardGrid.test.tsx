@@ -108,6 +108,90 @@ describe("VirtualizedCardGrid Component", () => {
     });
   });
 
+  it("dynamically adjusts column counts across the full spectrum of screen sizes and on window resize", async () => {
+    const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
+    (globalThis as any).window = happyWindow;
+    (globalThis as any).document = happyWindow.document;
+    (globalThis as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
+    (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
+
+    function TestColComponent() {
+      const cols = useGridColumnCount();
+      return <div data-testid="col-count">{cols}</div>;
+    }
+
+    const container = happyWindow.document.createElement("div");
+    happyWindow.document.body.appendChild(container);
+    const root = createRoot(container as any);
+
+    // Initial render at 1920px (Full HD / Maximized Screen)
+    happyWindow.innerWidth = 1920;
+    await act(async () => {
+      root.render(<TestColComponent />);
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("6");
+
+    // Dynamic resize to 1440px (5 columns)
+    happyWindow.innerWidth = 1440;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("5");
+
+    // Dynamic resize to 1200px (4 columns)
+    happyWindow.innerWidth = 1200;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("4");
+
+    // Dynamic resize to 800px (3 columns)
+    happyWindow.innerWidth = 800;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("3");
+
+    // Dynamic resize to 700px (2 columns)
+    happyWindow.innerWidth = 700;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("2");
+
+    // Dynamic resize to 500px (1 column)
+    happyWindow.innerWidth = 500;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("1");
+
+    // Dynamic resize to 2100px (7 columns)
+    happyWindow.innerWidth = 2100;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("7");
+
+    // Dynamic resize to 2560px (8 columns)
+    happyWindow.innerWidth = 2560;
+    await act(async () => {
+      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("8");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("handles scrollRequest and triggers onScrollHandled", async () => {
     const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
     (globalThis as any).window = happyWindow;

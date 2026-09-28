@@ -3,17 +3,18 @@ import { existsSync, statSync, mkdirSync, unlinkSync, readdirSync } from "node:f
 import { createHash } from "node:crypto";
 import { resolve, join, extname, basename, sep } from "node:path";
 import {
-  initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, deleteTracksBatch,
-  getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listAllSegments, validateVolume,
-  createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist,
+  initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, deleteTracksBatch, getTracksBatch,
+  getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listSegmentsByTrackIds, listAllSegments, validateVolume,
+  createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist, setPlaylistCover, createMixPlaylist, setMixSources,
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
-  getPlaylistMemberships, getCrossPlatformBasename
+  getPlaylistMemberships, getCrossPlatformBasename, getDb
 } from "./db";
-import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks } from "./ingest";
+import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
-import { getRecentLogs, clearServerLogs, logEvent } from "./logger";
-import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring } from "./backup";
+import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
+import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
+import { createCachedJsonResponse } from "./etag";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -73,6 +74,7 @@ const mimeTypes: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".m4a": "audio/mp4",
+  ".mp4": "audio/mp4",
   ".webm": "audio/webm",
   ".flac": "audio/flac",
   ".opus": "audio/ogg",
@@ -113,6 +115,13 @@ const server = serve({
   port: PORT,
   idleTimeout: 120,
   maxRequestBodySize: 2048 * 1024 * 1024, // 2GB max upload limit for library backup restore
+  error(err: Error) {
+    logEvent("error", "system", "Lỗi server không bắt được:", err);
+    return new Response(JSON.stringify({ error: "Đã xảy ra lỗi máy chủ nội bộ." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
   async fetch(req, server) {
     const url = new URL(req.url);
 
@@ -124,11 +133,13 @@ const server = serve({
       );
     }
 
-    // Prevent cross-site subresource leakage while permitting top-level navigation
+    // Prevent cross-site subresource leakage while permitting top-level navigation only for non-API web pages
     const secFetchSite = req.headers.get("sec-fetch-site");
     const isTopLevelNav = req.method === "GET" && req.headers.get("sec-fetch-mode") === "navigate";
-    if (secFetchSite === "cross-site" && !isTopLevelNav) {
-      return new Response("Forbidden: Cross-site requests rejected", { status: 403 });
+    if (secFetchSite === "cross-site") {
+      if (url.pathname.startsWith("/api/") || !isTopLevelNav) {
+        return new Response("Forbidden: Cross-site requests rejected", { status: 403 });
+      }
     }
 
     // Host header validation to prevent DNS rebinding attacks
@@ -172,11 +183,22 @@ const server = serve({
     const corsHeaders = {
       "Access-Control-Allow-Origin": origin || `http://127.0.0.1:${PORT}`,
       "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, If-None-Match",
+      "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, ETag",
       "Content-Security-Policy": "default-src 'self'; media-src 'self' blob:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' blob:; worker-src blob:; frame-ancestors 'none';",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    };
+
+    const formatError = (err: unknown, isClientErr = false): Response => {
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const sanitized = sanitizeInternalPaths(rawMsg);
+      const isProd = process.env.NODE_ENV === "production";
+      const status = isClientErr ? 400 : 500;
+      const message = !isClientErr && isProd ? "Đã xảy ra lỗi máy chủ nội bộ." : sanitized;
+      return Response.json({ error: message }, { status, headers: corsHeaders });
     };
 
     if (req.method === "OPTIONS") {
@@ -243,21 +265,25 @@ const server = serve({
 
       // 1. Tracks API
       if (url.pathname === "/api/tracks" && req.method === "GET") {
-        const tracks = listTracks();
-        const queueOrder = getDownloadQueueOrder();
-        const UNINDEXED_QUEUE_FALLBACK = 999_999;
-        const queueMap = new Map<string, number>(queueOrder.map((id, idx) => [id, idx]));
-        const enrichedTracks = tracks.map((track) => {
-          if (track.status === "downloading" || track.status === "queued") {
-            const idx = queueMap.get(track.id);
-            return {
-              ...track,
-              download_index: idx !== undefined ? idx : (track.status === "downloading" ? 0 : UNINDEXED_QUEUE_FALLBACK),
-            };
-          }
-          return track;
-        });
-        return Response.json(enrichedTracks, { headers: corsHeaders });
+        try {
+          const tracks = listTracks();
+          const queueOrder = getDownloadQueueOrder();
+          const UNINDEXED_QUEUE_FALLBACK = 999_999;
+          const queueMap = new Map<string, number>(queueOrder.map((id, idx) => [id, idx]));
+          const enrichedTracks = tracks.map((track) => {
+            if (track.status === "downloading" || track.status === "queued") {
+              const idx = queueMap.get(track.id);
+              return {
+                ...track,
+                download_index: idx !== undefined ? idx : (track.status === "downloading" ? 0 : UNINDEXED_QUEUE_FALLBACK),
+              };
+            }
+            return track;
+          });
+          return createCachedJsonResponse(enrichedTracks, req, corsHeaders);
+        } catch (err) {
+          return formatError(err);
+        }
       }
 
       if (url.pathname === "/api/tracks/ingest-youtube" && req.method === "POST") {
@@ -268,8 +294,7 @@ const server = serve({
           return Response.json(res, { status: res.success ? 200 : 400, headers: corsHeaders });
         } catch (err: unknown) {
           const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
-          const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          return formatError(err, isClientErr);
         }
       }
 
@@ -357,9 +382,9 @@ const server = serve({
           }, { status: 200, headers: corsHeaders });
         } catch (err: unknown) {
           const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
-          const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          return formatError(err, isClientErr);
         }
+
       }
 
       if (url.pathname === "/api/tracks/upload" && req.method === "POST") {
@@ -403,10 +428,10 @@ const server = serve({
           }, { status: 200, headers: corsHeaders });
         } catch (err: unknown) {
           const isClientErr = err instanceof SyntaxError || err instanceof TypeError;
-          const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          return formatError(err, isClientErr);
         }
       }
+
 
       // Track batch delete
       if (url.pathname === "/api/tracks/batch-delete" && req.method === "POST") {
@@ -429,9 +454,16 @@ const server = serve({
           const pendingSegmentDeletions: { segmentId: string; trackId: string }[] = [];
           const pendingTrackDeletions: string[] = [];
 
+          const tracksToDelete = getTracksBatch(ids);
+          const trackMap = new Map(tracksToDelete.map((t) => [t.id, t]));
+          const segmentsToDelete = listSegmentsByTrackIds(ids);
+          for (const seg of segmentsToDelete) {
+            pendingSegmentDeletions.push({ segmentId: seg.id, trackId: seg.track_id });
+          }
+
           for (const trackId of ids) {
             await cancelDownloadIfActive(trackId, preReadAudioFiles);
-            const track = getTrack(trackId);
+            const track = trackMap.get(trackId);
             if (track) {
               if (track.file_path) {
                 await cancelWaveformForFile(track.file_path);
@@ -446,28 +478,26 @@ const server = serve({
                   await unlinkWithRetry(thumbPath);
                 }
               }
-              const segmentsToDelete = listSegmentsByTrack(trackId);
-              for (const seg of segmentsToDelete) {
-                pendingSegmentDeletions.push({ segmentId: seg.id, trackId });
-              }
               pendingTrackDeletions.push(trackId);
             }
           }
 
           const deletedCount = deleteTracksBatch(ids);
 
-          for (const item of pendingSegmentDeletions) {
-            serverEvents.emit("segment_deleted", item);
+          if (pendingSegmentDeletions.length > 0) {
+            serverEvents.emit("segments_deleted", {
+              segmentIds: pendingSegmentDeletions.map((s) => s.segmentId),
+              items: pendingSegmentDeletions,
+            });
           }
-          for (const trackId of pendingTrackDeletions) {
-            serverEvents.emit("track_deleted", { trackId });
+          if (pendingTrackDeletions.length > 0) {
+            serverEvents.emit("tracks_deleted", { trackIds: pendingTrackDeletions });
           }
           serverEvents.emit("playlist_items_changed", {});
 
           return Response.json({ success: true, count: deletedCount }, { headers: corsHeaders });
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: 500, headers: corsHeaders });
+          return formatError(err, false);
         }
       }
 
@@ -496,18 +526,26 @@ const server = serve({
                 );
               }
             }
-            const updated = updateTrack(trackId, body);
+            // Whitelist client-editable fields only: title, artist, volume
+            const allowedClientKeys: (keyof Track)[] = ["title", "artist", "volume"];
+            const sanitizedUpdates: Partial<Track> = {};
+            for (const k of allowedClientKeys) {
+              if (body[k] !== undefined) {
+                (sanitizedUpdates as any)[k] = body[k];
+              }
+            }
+            if (Object.keys(sanitizedUpdates).length === 0) {
+              const existingTrack = getTrack(trackId);
+              if (!existingTrack) {
+                return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+              }
+              return Response.json(existingTrack, { headers: corsHeaders });
+            }
+            const updated = updateTrack(trackId, sanitizedUpdates);
             if (!updated) {
               return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
             }
-            const allowedTrackKeys: (keyof Track)[] = [
-              "title", "artist", "duration", "thumbnail_url",
-              "file_path", "peaks_json", "status", "error_message", "volume"
-            ];
-            const modifiedKeys = Object.keys(body).filter(
-              (k) => (body as any)[k] !== undefined && allowedTrackKeys.includes(k as keyof Track)
-            );
-            const isVolumeOnly = modifiedKeys.length === 1 && modifiedKeys[0] === "volume";
+            const isVolumeOnly = Object.keys(sanitizedUpdates).length === 1 && sanitizedUpdates.volume !== undefined;
             serverEvents.emit("track_updated", {
               trackId,
               track: updated,
@@ -519,9 +557,9 @@ const server = serve({
               err instanceof SyntaxError ||
               err instanceof TypeError ||
               (err instanceof Error && err.message.toLowerCase().includes("constraint"));
-            const msg = err instanceof Error ? err.message : String(err);
-            return Response.json({ error: msg }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+            return formatError(err, isClientErr);
           }
+
         }
         if (req.method === "DELETE") {
           await cancelDownloadIfActive(trackId);
@@ -638,10 +676,15 @@ const server = serve({
         }
 
         let targetFilePath = track.file_path;
+        const pathCheck = validateSafeLocalAudioPath(targetFilePath);
+        if (!pathCheck.ok) {
+          return new Response("Invalid or forbidden audio file path", { status: 403, headers: corsHeaders });
+        }
         let audioFile = bunFile(targetFilePath);
         if (!(await audioFile.exists())) {
           const localCandidate = resolve(join("./data/cache/audio", getCrossPlatformBasename(targetFilePath)));
-          if (existsSync(localCandidate)) {
+          const candidateCheck = validateSafeLocalAudioPath(localCandidate);
+          if (candidateCheck.ok && existsSync(localCandidate)) {
             updateTrack(track.id, { file_path: localCandidate });
             targetFilePath = localCandidate;
             audioFile = bunFile(targetFilePath);
@@ -651,6 +694,10 @@ const server = serve({
         }
 
         const ext = extname(targetFilePath).toLowerCase();
+        const allowedAudioExts = new Set<string>(SUPPORTED_AUDIO_EXTENSIONS);
+        if (!allowedAudioExts.has(ext)) {
+          return new Response("Unsupported or forbidden audio file format", { status: 403, headers: corsHeaders });
+        }
         const contentType = mimeTypes[ext] || "application/octet-stream";
 
         if (req.method === "HEAD") {
@@ -815,10 +862,11 @@ const server = serve({
             return Response.json(created, { headers: corsHeaders });
           } catch (e: any) {
             const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
-            return Response.json({ error: e.message || "Failed to create segment" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+            return formatError(e, isClientErr);
           }
         }
       }
+
 
       // Individual segment update / delete
       const segmentDetailMatch = url.pathname.match(/^\/api\/segments\/([^/]+)$/);
@@ -878,8 +926,9 @@ const server = serve({
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
             const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
-            return Response.json({ error: e.message || "Failed to update segment" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+            return formatError(e, isClientErr);
           }
+
         }
         if (req.method === "DELETE") {
           const existingSeg = getSegment(segId);
@@ -914,35 +963,42 @@ const server = serve({
 
           const affectedTrackIds = new Set<string>();
           const segmentTrackMap = new Map<string, string>();
-          for (const sid of validIds) {
-            const seg = getSegment(sid);
-            if (seg) {
+          const CHUNK_SIZE = 500;
+          for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
+            const chunk = validIds.slice(i, i + CHUNK_SIZE);
+            const placeholders = chunk.map(() => "?").join(",");
+            const segRows = getDb().query(`SELECT id, track_id FROM segments WHERE id IN (${placeholders})`).all(...chunk) as { id: string; track_id: string }[];
+            for (const seg of segRows) {
               affectedTrackIds.add(seg.track_id);
-              segmentTrackMap.set(sid, seg.track_id);
+              segmentTrackMap.set(seg.id, seg.track_id);
             }
           }
 
           const deletedCount = deleteSegmentsBatch(validIds);
 
-          for (const sid of validIds) {
-            serverEvents.emit("segment_deleted", { segmentId: sid, trackId: segmentTrackMap.get(sid) });
-          }
-          for (const tid of affectedTrackIds) {
-            serverEvents.emit("track_updated", { trackId: tid });
+          serverEvents.emit("segments_deleted", { segmentIds: validIds, segmentTrackMap: Object.fromEntries(segmentTrackMap) });
+          if (affectedTrackIds.size <= 10) {
+            for (const tid of affectedTrackIds) {
+              serverEvents.emit("track_updated", { trackId: tid });
+            }
           }
           serverEvents.emit("playlist_items_changed", {});
 
           return Response.json({ success: true, deletedCount }, { headers: corsHeaders });
         } catch (e: any) {
           const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
-          return Response.json({ error: e.message || "Failed to batch delete segments" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          return formatError(e, isClientErr);
         }
       }
 
       // All segments for global shuffle queue
       if (url.pathname === "/api/segments" && req.method === "GET") {
-        const segments = listAllSegments();
-        return Response.json(segments, { headers: corsHeaders });
+        try {
+          const segments = listAllSegments();
+          return createCachedJsonResponse(segments, req, corsHeaders);
+        } catch (err) {
+          return formatError(err);
+        }
       }
 
       // --- PLAYLIST API ROUTES ---
@@ -989,7 +1045,54 @@ const server = serve({
           return Response.json(playlist, { status: 201, headers: corsHeaders });
         } catch (e: any) {
           const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
-          return Response.json({ error: e.message || "Không thể tạo danh sách phát" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
+          return formatError(e, isClientErr);
+        }
+
+      }
+
+      // 2b. Create mix playlist (live view over source playlists)
+      if (url.pathname === "/api/playlists/mix" && req.method === "POST") {
+        try {
+          const body = await parseJsonBody<{ name: string; source_ids: unknown }>(req);
+          const sourceIds = body.source_ids;
+          if (typeof body.name !== "string" || !Array.isArray(sourceIds) || !sourceIds.every((s) => typeof s === "string")) {
+            return Response.json({ error: "Cần name (chuỗi) và source_ids (mảng chuỗi)" }, { status: 400, headers: corsHeaders });
+          }
+          const rawName = body.name.replace(/[\r\n\t\x00-\x1F\x7F]/g, " ").trim().slice(0, 100);
+          if (!rawName) {
+            return Response.json({ error: "Tên danh sách phát không được để trống" }, { status: 400, headers: corsHeaders });
+          }
+          const playlist = createMixPlaylist(rawName, sourceIds);
+          serverEvents.emit("playlist_created", { playlist });
+          return Response.json(playlist, { status: 201, headers: corsHeaders });
+        } catch (e: any) {
+          const status = e.message?.includes("not found") ? 404 : 400;
+          return Response.json({ error: e.message || "Không thể tạo playlist gộp" }, { status, headers: corsHeaders });
+        }
+      }
+
+      // 2c. Replace a mix playlist's sources: /api/playlists/:id/sources
+      const playlistSourcesMatch = url.pathname.match(/^\/api\/playlists\/([^/]+)\/sources$/);
+      if (playlistSourcesMatch && req.method === "PUT") {
+        let plId: string;
+        try {
+          plId = decodeURIComponent(playlistSourcesMatch[1]);
+        } catch {
+          return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
+        }
+        try {
+          const body = await parseJsonBody<{ source_ids: unknown }>(req);
+          const sourceIds = body.source_ids;
+          if (!Array.isArray(sourceIds) || !sourceIds.every((s) => typeof s === "string")) {
+            return Response.json({ error: "source_ids phải là mảng chuỗi" }, { status: 400, headers: corsHeaders });
+          }
+          const playlist = setMixSources(plId, sourceIds);
+          if (!playlist) return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+          serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          return Response.json(playlist, { headers: corsHeaders });
+        } catch (e: any) {
+          const status = e.message?.includes("not found") ? 404 : 400;
+          return Response.json({ error: e.message || "Không thể cập nhật nguồn của playlist gộp" }, { status, headers: corsHeaders });
         }
       }
 
@@ -1085,7 +1188,7 @@ const server = serve({
           serverEvents.emit("playlist_items_changed", { playlistId: plId });
           return Response.json({ success: true, count: added.length, items: added }, { status: 200, headers: corsHeaders });
         } catch (e: any) {
-          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError || Boolean(e?.message?.includes("mix playlist"));
           const status = isClientErr ? 400 : 500;
           return Response.json({ error: e.message || "Không thể thêm các mục vào playlist" }, { status, headers: corsHeaders });
         }
@@ -1159,7 +1262,7 @@ const server = serve({
           serverEvents.emit("playlist_items_changed", { playlistId: plId });
           return Response.json(item, { status: 201, headers: corsHeaders });
         } catch (e: any) {
-          const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("not found") || e.message.includes("does not belong") || e.message.toLowerCase().includes("constraint")));
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("not found") || e.message.includes("does not belong") || e.message.includes("mix playlist") || e.message.toLowerCase().includes("constraint")));
           const status = e.message?.includes("not found") ? 404 : isClientErr ? 400 : 500;
           return Response.json({ error: e.message || "Không thể thêm mục vào playlist" }, { status, headers: corsHeaders });
         }
@@ -1186,7 +1289,17 @@ const server = serve({
         }
         if (req.method === "PATCH") {
           try {
-            const body = await parseJsonBody<{ name: string }>(req);
+            const body = await parseJsonBody<{ name: string; cover_track_id?: unknown }>(req);
+            if (body && "cover_track_id" in body) {
+              const coverId = body.cover_track_id;
+              if (coverId !== null && typeof coverId !== "string") {
+                return Response.json({ error: "cover_track_id phải là chuỗi hoặc null" }, { status: 400, headers: corsHeaders });
+              }
+              const updated = setPlaylistCover(plId, coverId);
+              if (!updated) return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
+              serverEvents.emit("playlist_updated", { playlistId: updated.id, playlist: updated });
+              return Response.json(updated, { headers: corsHeaders });
+            }
             if (typeof body.name !== "string") {
               return Response.json({ error: "Tên danh sách phát phải là chuỗi" }, { status: 400, headers: corsHeaders });
             }
@@ -1199,7 +1312,7 @@ const server = serve({
             serverEvents.emit("playlist_updated", { playlistId: updated.id, playlist: updated });
             return Response.json(updated, { headers: corsHeaders });
           } catch (e: any) {
-            const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && e.message.includes("cannot be empty"));
+            const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("cannot be empty") || e.message.includes("not in this playlist")));
             return Response.json({ error: e.message || "Không thể đổi tên danh sách phát" }, { status: isClientErr ? 400 : 500, headers: corsHeaders });
           }
         }
@@ -1232,21 +1345,28 @@ const server = serve({
 
       // 8. Library Export & Import API
       if (url.pathname === "/api/library/export" && req.method === "GET") {
+        if (isLibraryExporting()) {
+          return Response.json(
+            { error: "Thao tác xuất thư viện đang được xử lý, vui lòng thử lại sau giây lát." },
+            { status: 429, headers: corsHeaders }
+          );
+        }
         try {
-          const archiveBytes = await exportLibraryArchive();
+          const archiveBlob = await exportLibraryArchive();
           const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-          return new Response(archiveBytes as unknown as BodyInit, {
+          return new Response(archiveBlob, {
             status: 200,
             headers: {
               ...corsHeaders,
               "Content-Type": "application/gzip",
               "Content-Disposition": `attachment; filename="slice-player-backup-${timestamp}.tar.gz"`,
-              "Content-Length": String(archiveBytes.length),
+              "Content-Length": String(archiveBlob.size),
             },
           });
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: `Lỗi xuất dữ liệu thư viện: ${msg}` }, { status: 500, headers: corsHeaders });
+          const isBusy = msg.includes("đang diễn ra");
+          return Response.json({ error: `Lỗi xuất dữ liệu thư viện: ${msg}` }, { status: isBusy ? 429 : 500, headers: corsHeaders });
         }
       }
 
@@ -1272,8 +1392,9 @@ const server = serve({
           const res = await importLibraryArchive(archiveBytes);
           return Response.json(res, { status: 200, headers: corsHeaders });
         } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          return Response.json({ error: msg }, { status: 400, headers: corsHeaders });
+          const rawMsg = err instanceof Error ? err.message : String(err);
+          const sanitized = sanitizeInternalPaths(rawMsg);
+          return Response.json({ error: sanitized }, { status: 400, headers: corsHeaders });
         }
       }
 
@@ -1287,6 +1408,8 @@ const server = serve({
       "Content-Security-Policy": corsHeaders["Content-Security-Policy"],
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     };
 
     let rawRel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);

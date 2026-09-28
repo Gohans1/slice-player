@@ -61,6 +61,7 @@ function runMigrations(db: Database): void {
           );
         `);
         db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id, sort_order ASC);`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_items_added ON playlist_items(playlist_id, added_at DESC, sort_order ASC);`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_items_track ON playlist_items(track_id);`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_items_segment ON playlist_items(segment_id);`);
         db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_items_unique ON playlist_items(playlist_id, track_id, IFNULL(segment_id, ''));`);
@@ -81,6 +82,54 @@ function runMigrations(db: Database): void {
           db.run("ALTER TABLE playlists ADD COLUMN is_custom_ordered INTEGER NOT NULL DEFAULT 0;");
         }
         db.run("PRAGMA user_version = 4;");
+      })();
+    }
+
+    if (userVersion < 5) {
+      db.transaction(() => {
+        // v5: Add indexes on tracks created_at and status for fast pagination and polling
+        db.run("CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at DESC);");
+        db.run("CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(status);");
+        db.run("PRAGMA user_version = 5;");
+      })();
+    }
+
+    if (userVersion < 6) {
+      db.transaction(() => {
+        // v6: Add index on playlist_items for default added_at DESC sort
+        db.run("CREATE INDEX IF NOT EXISTS idx_playlist_items_added ON playlist_items(playlist_id, added_at DESC, sort_order ASC);");
+        db.run("PRAGMA user_version = 6;");
+      })();
+    }
+
+    if (userVersion < 7) {
+      db.transaction(() => {
+        // v7: Optional playlist cover chosen from one of its tracks (guarded: migrations must stay re-runnable)
+        const cols = db.query("PRAGMA table_info(playlists);").all() as { name: string }[];
+        if (!cols.some((c) => c.name === "cover_track_id")) {
+          db.run("ALTER TABLE playlists ADD COLUMN cover_track_id TEXT REFERENCES tracks(id) ON DELETE SET NULL;");
+        }
+        db.run("PRAGMA user_version = 7;");
+      })();
+    }
+
+    if (userVersion < 8) {
+      db.transaction(() => {
+        // v8: Mix playlists are live views: no own items, only an ordered list of source playlists
+        const cols = db.query("PRAGMA table_info(playlists);").all() as { name: string }[];
+        if (!cols.some((c) => c.name === "is_mix")) {
+          db.run("ALTER TABLE playlists ADD COLUMN is_mix INTEGER NOT NULL DEFAULT 0;");
+        }
+        db.run(`
+          CREATE TABLE IF NOT EXISTS playlist_sources (
+            mix_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+            source_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,
+            PRIMARY KEY (mix_id, source_id)
+          );
+        `);
+        db.run("CREATE INDEX IF NOT EXISTS idx_playlist_sources_source ON playlist_sources(source_id);");
+        db.run("PRAGMA user_version = 8;");
       })();
     }
   } catch (err) {
@@ -183,6 +232,8 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
     );
   `);
 
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at DESC);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(status);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_segments_track ON segments(track_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_segments_created_at ON segments(created_at DESC);`);
 
@@ -331,13 +382,28 @@ export function listTracks(): (Track & { segment_count: number })[] {
     SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
            tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
            tracks.status, tracks.error_message, tracks.volume, tracks.created_at,
-           COUNT(segments.id) AS segment_count
+           (SELECT COUNT(*) FROM segments WHERE segments.track_id = tracks.id) AS segment_count
     FROM tracks
-    LEFT JOIN segments ON tracks.id = segments.track_id
-    GROUP BY tracks.id
     ORDER BY tracks.created_at DESC
   `).all() as (Track & { segment_count: number })[];
 }
+
+export function getTracksBatch(ids: string[]): { id: string; file_path: string | null }[] {
+  if (!ids || ids.length === 0) return [];
+  const db = getDb();
+  const results: { id: string; file_path: string | null }[] = [];
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + CHUNK_SIZE);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = db.query(
+      `SELECT id, file_path FROM tracks WHERE id IN (${placeholders})`
+    ).all(...chunk) as { id: string; file_path: string | null }[];
+    results.push(...rows);
+  }
+  return results;
+}
+
 
 export function deleteTrack(id: string): boolean {
   const db = getDb();
@@ -349,10 +415,12 @@ export function deleteTracksBatch(ids: string[]): number {
   if (!ids || ids.length === 0) return 0;
   const db = getDb();
   let deletedCount = 0;
+  const CHUNK_SIZE = 500;
   db.transaction(() => {
-    const stmt = db.query("DELETE FROM tracks WHERE id = $id");
-    for (const id of ids) {
-      const res = stmt.run({ $id: id });
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const res = db.query(`DELETE FROM tracks WHERE id IN (${placeholders})`).run(...chunk);
       deletedCount += res.changes;
     }
   })();
@@ -430,6 +498,23 @@ export function listSegmentsByTrack(trackId: string): Segment[] {
   return db.query("SELECT * FROM segments WHERE track_id = $track_id ORDER BY sort_order ASC, start_time ASC").all({ $track_id: trackId }) as Segment[];
 }
 
+export function listSegmentsByTrackIds(trackIds: string[]): { id: string; track_id: string }[] {
+  if (!trackIds || trackIds.length === 0) return [];
+  const db = getDb();
+  const results: { id: string; track_id: string }[] = [];
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < trackIds.length; i += CHUNK_SIZE) {
+    const chunk = trackIds.slice(i, i + CHUNK_SIZE);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = db.query(
+      `SELECT id, track_id FROM segments WHERE track_id IN (${placeholders})`
+    ).all(...chunk) as { id: string; track_id: string }[];
+    results.push(...rows);
+  }
+  return results;
+}
+
+
 export function listAllSegments(): Segment[] {
   const db = getDb();
   return db.query("SELECT * FROM segments ORDER BY created_at DESC").all() as Segment[];
@@ -445,10 +530,12 @@ export function deleteSegmentsBatch(ids: string[]): number {
   if (!ids || ids.length === 0) return 0;
   const db = getDb();
   let deletedCount = 0;
+  const CHUNK_SIZE = 500;
   db.transaction(() => {
-    const stmt = db.query("DELETE FROM segments WHERE id = $id");
-    for (const id of ids) {
-      const res = stmt.run({ $id: id });
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const res = db.query(`DELETE FROM segments WHERE id IN (${placeholders})`).run(...chunk);
       deletedCount += res.changes;
     }
   })();
@@ -501,26 +588,163 @@ export function createPlaylist(name: string, customId?: string): Playlist {
 export function getPlaylist(id: string): (Playlist & { item_count: number }) | null {
   const db = getDb();
   const row = db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, COUNT(pi.id) as item_count
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, COUNT(pi.id) as item_count
     FROM playlists p
     LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
     WHERE p.id = $id
     GROUP BY p.id
   `).get({ $id: id }) as any;
   if (!row) return null;
-  return { ...row, is_custom_ordered: Boolean(row.is_custom_ordered) };
+  if (row.is_mix) {
+    return {
+      ...row,
+      is_custom_ordered: true,
+      is_mix: true,
+      item_count: getMixItems(id).length,
+      source_ids: getMixSourceIds(id),
+    };
+  }
+  return { ...row, is_custom_ordered: Boolean(row.is_custom_ordered), is_mix: false };
+}
+
+function getMixSourceIds(mixId: string): string[] {
+  const rows = getDb()
+    .query("SELECT source_id FROM playlist_sources WHERE mix_id = $id ORDER BY position ASC")
+    .all({ $id: mixId }) as { source_id: string }[];
+  return rows.map((r) => r.source_id);
+}
+
+// Sources in order, each in its own default order; a song in several sources is kept at its first position.
+// sort_order is rewritten to the merged position so the client's "manual" sort shows this exact order.
+// ponytail: computed on every read (no cache); fine for a local library, add caching if mixes feel slow.
+function getMixItems(mixId: string): PlaylistItemWithDetails[] {
+  const seen = new Set<string>();
+  const merged: PlaylistItemWithDetails[] = [];
+  for (const sourceId of getMixSourceIds(mixId)) {
+    for (const item of getPlaylistItems(sourceId)) {
+      const key = `${item.track_id}|${item.segment_id ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push({ ...item, sort_order: merged.length });
+    }
+  }
+  return merged;
+}
+
+function validateMixSources(sourceIds: string[], mixId?: string): string[] {
+  const unique = [...new Set(sourceIds)];
+  if (unique.length < 2) throw new Error("A mix playlist needs at least 2 different source playlists");
+  const db = getDb();
+  for (const id of unique) {
+    if (id === mixId) throw new Error("A mix playlist cannot include itself");
+    const src = db.query("SELECT is_mix FROM playlists WHERE id = $id").get({ $id: id }) as { is_mix: number } | null;
+    if (!src) throw new Error(`Playlist ${id} not found`);
+    if (src.is_mix) throw new Error("A mix playlist cannot use another mix as a source");
+  }
+  return unique;
+}
+
+function writeMixSources(mixId: string, sourceIds: string[]): void {
+  const db = getDb();
+  db.query("DELETE FROM playlist_sources WHERE mix_id = $id").run({ $id: mixId });
+  const insert = db.query("INSERT INTO playlist_sources (mix_id, source_id, position) VALUES ($mix, $src, $pos)");
+  sourceIds.forEach((src, pos) => insert.run({ $mix: mixId, $src: src, $pos: pos }));
+}
+
+export function createMixPlaylist(name: string, sourceIds: string[]): Playlist & { item_count: number } {
+  const db = getDb();
+  let mixId = "";
+  db.transaction(() => {
+    const sources = validateMixSources(sourceIds);
+    mixId = createPlaylist(name).id;
+    db.query("UPDATE playlists SET is_mix = 1, is_custom_ordered = 1 WHERE id = $id").run({ $id: mixId });
+    writeMixSources(mixId, sources);
+  })();
+  return getPlaylist(mixId)!;
+}
+
+export function setMixSources(mixId: string, sourceIds: string[]): (Playlist & { item_count: number }) | null {
+  const db = getDb();
+  const mix = db.query("SELECT is_mix FROM playlists WHERE id = $id").get({ $id: mixId }) as { is_mix: number } | null;
+  if (!mix) return null;
+  if (!mix.is_mix) throw new Error("Playlist is not a mix playlist");
+  db.transaction(() => {
+    writeMixSources(mixId, validateMixSources(sourceIds, mixId));
+    db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: mixId });
+  })();
+  return getPlaylist(mixId);
 }
 
 export function listPlaylists(): (Playlist & { item_count: number })[] {
   const db = getDb();
+  // Mosaic follows the same item order as getPlaylistItems(); a track sliced several times fills only one tile.
+  // Cover only counts while its track is still in the playlist.
   const rows = db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, COUNT(pi.id) as item_count
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, p.cover_track_id,
+      (SELECT COUNT(*) FROM playlist_items pi WHERE pi.playlist_id = p.id) as item_count,
+      (SELECT NULLIF(t.thumbnail_url, '') FROM tracks t
+        WHERE t.id = p.cover_track_id
+          AND EXISTS (SELECT 1 FROM playlist_items y WHERE y.playlist_id = p.id AND y.track_id = t.id)
+      ) as cover_url,
+      (SELECT json_group_array(url) FROM (
+        SELECT url FROM (
+          SELECT t.id as tid, t.thumbnail_url as url,
+            ROW_NUMBER() OVER (ORDER BY
+              CASE WHEN p.is_custom_ordered THEN x.sort_order ELSE 0 END ASC,
+              CASE WHEN p.is_custom_ordered THEN x.added_at ELSE -x.added_at END ASC,
+              x.sort_order ASC
+            ) as rn
+          FROM playlist_items x JOIN tracks t ON t.id = x.track_id
+          WHERE x.playlist_id = p.id AND t.thumbnail_url <> ''
+        )
+        GROUP BY tid ORDER BY MIN(rn) LIMIT 4
+      )) as mosaic_urls
     FROM playlists p
-    LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
-    GROUP BY p.id
     ORDER BY p.updated_at DESC, p.created_at DESC
   `).all() as any[];
-  return rows.map((r) => ({ ...r, is_custom_ordered: Boolean(r.is_custom_ordered) }));
+  return rows.map((r) => {
+    if (!r.is_mix) {
+      return {
+        ...r,
+        is_custom_ordered: Boolean(r.is_custom_ordered),
+        is_mix: false,
+        mosaic_urls: JSON.parse(r.mosaic_urls || "[]"),
+      };
+    }
+    // Mix rows have no items of their own, so count, cover and mosaic come from the merged view
+    const items = getMixItems(r.id);
+    const thumbs = new Map<string, string>();
+    for (const it of items) {
+      if (it.track.thumbnail_url && !thumbs.has(it.track_id)) thumbs.set(it.track_id, it.track.thumbnail_url);
+    }
+    return {
+      ...r,
+      is_custom_ordered: true,
+      is_mix: true,
+      item_count: items.length,
+      source_ids: getMixSourceIds(r.id),
+      cover_url: (r.cover_track_id && thumbs.get(r.cover_track_id)) || null,
+      mosaic_urls: [...thumbs.values()].slice(0, 4),
+    };
+  });
+}
+
+export function setPlaylistCover(id: string, trackId: string | null): Playlist | null {
+  const db = getDb();
+  const pl = getPlaylist(id);
+  if (!pl) return null;
+  if (trackId !== null) {
+    const inPlaylist = pl.is_mix
+      ? getMixItems(id).some((it) => it.track_id === trackId)
+      : db
+          .query("SELECT 1 FROM playlist_items WHERE playlist_id = $id AND track_id = $trackId LIMIT 1")
+          .get({ $id: id, $trackId: trackId });
+    if (!inPlaylist) throw new Error("Track is not in this playlist");
+  }
+  // updated_at is left alone on purpose: changing a cover should not reorder the playlist list
+  return db
+    .query("UPDATE playlists SET cover_track_id = $trackId WHERE id = $id RETURNING *;")
+    .get({ $id: id, $trackId: trackId }) as Playlist;
 }
 
 export function updatePlaylist(id: string, name: string): Playlist | null {
@@ -537,6 +761,7 @@ export function updatePlaylist(id: string, name: string): Playlist | null {
   `);
   const row = query.get({ $id: id, $name: trimmed }) as any;
   if (!row) return null;
+  if (row.is_mix) return getPlaylist(id);
   const countRow = db.query("SELECT COUNT(*) as count FROM playlist_items WHERE playlist_id = $id").get({ $id: id }) as { count: number };
   return { ...row, item_count: countRow?.count ?? 0, is_custom_ordered: Boolean(row.is_custom_ordered) };
 }
@@ -549,7 +774,10 @@ export function deletePlaylist(id: string): boolean {
 
 export function getPlaylistItems(playlistId: string): PlaylistItemWithDetails[] {
   const db = getDb();
-  const pl = getPlaylist(playlistId);
+  const pl = db.query("SELECT is_custom_ordered, is_mix FROM playlists WHERE id = $id").get({ $id: playlistId }) as
+    | { is_custom_ordered: number; is_mix: number }
+    | null;
+  if (pl?.is_mix) return getMixItems(playlistId);
   const orderClause = pl?.is_custom_ordered
     ? "ORDER BY pi.sort_order ASC, pi.added_at ASC"
     : "ORDER BY pi.added_at DESC, pi.sort_order ASC";
@@ -618,8 +846,9 @@ export function addPlaylistItem(playlistId: string, trackId: string, segmentId?:
   const db = getDb();
 
   db.transaction(() => {
-    const pl = db.query("SELECT id FROM playlists WHERE id = $id").get({ $id: playlistId });
+    const pl = db.query("SELECT id, is_mix FROM playlists WHERE id = $id").get({ $id: playlistId }) as { is_mix: number } | null;
     if (!pl) throw new Error(`Playlist ${playlistId} not found`);
+    if (pl.is_mix) throw new Error("Cannot add items to a mix playlist");
 
     const trk = getTrack(trackId);
     if (!trk) throw new Error(`Track ${trackId} not found`);
@@ -720,8 +949,9 @@ export function addPlaylistItemsBatch(
   const results: PlaylistItemWithDetails[] = [];
 
   db.transaction(() => {
-    const pl = db.query("SELECT id FROM playlists WHERE id = $id").get({ $id: playlistId });
+    const pl = db.query("SELECT id, is_mix FROM playlists WHERE id = $id").get({ $id: playlistId }) as { is_mix: number } | null;
     if (!pl) throw new Error(`Playlist ${playlistId} not found`);
+    if (pl.is_mix) throw new Error("Cannot add items to a mix playlist");
 
     const maxOrderRow = db.query(`
       SELECT COALESCE(MAX(sort_order), -1) as max_order 
@@ -743,25 +973,58 @@ export function addPlaylistItemsBatch(
       RETURNING *;
     `);
 
+    // Pre-fetch unique tracks and segments in bulk to eliminate N+1 queries
+    const uniqueTrackIds = Array.from(new Set(items.map((i) => i.trackId).filter(Boolean)));
+    const uniqueSegIds = Array.from(
+      new Set(
+        items
+          .map((i) => (typeof i.segmentId === "string" && i.segmentId.trim() ? i.segmentId.trim() : null))
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    const trackMap = new Map<string, Track>();
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < uniqueTrackIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueTrackIds.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const trks = db.query(`SELECT * FROM tracks WHERE id IN (${placeholders})`).all(...chunk) as Track[];
+      for (const t of trks) trackMap.set(t.id, t);
+    }
+
+    const segMap = new Map<string, Segment>();
+    for (let i = 0; i < uniqueSegIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueSegIds.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const segs = db.query(`SELECT * FROM segments WHERE id IN (${placeholders})`).all(...chunk) as Segment[];
+      for (const s of segs) segMap.set(s.id, s);
+    }
+
+    // Pre-fetch existing playlist items for this playlist
+    const existingItems = db.query(
+      `SELECT * FROM playlist_items WHERE playlist_id = $playlist_id`
+    ).all({ $playlist_id: playlistId }) as PlaylistItem[];
+    const existingMap = new Map<string, PlaylistItem>();
+    for (const item of existingItems) {
+      existingMap.set(`${item.track_id}::${item.segment_id || ""}`, item);
+    }
+
     for (const entry of items) {
       const trackId = entry.trackId;
       const cleanSegId = typeof entry.segmentId === "string" && entry.segmentId.trim() ? entry.segmentId.trim() : null;
 
-      const trk = getTrack(trackId);
+      const trk = trackMap.get(trackId);
       if (!trk) continue;
       const cleanTrk = { ...trk, peaks_json: undefined };
 
       let seg: Segment | null = null;
       if (cleanSegId) {
-        seg = getSegment(cleanSegId);
+        seg = segMap.get(cleanSegId) ?? null;
         if (!seg || seg.track_id !== trackId) continue;
       }
 
-      const existing = checkStmt.get({
-        $playlist_id: playlistId,
-        $track_id: trackId,
-        $segment_id: cleanSegId,
-      }) as PlaylistItem | null;
+      const key = `${trackId}::${cleanSegId || ""}`;
+      const existing = existingMap.get(key);
 
       if (existing) {
         results.push({
@@ -782,6 +1045,7 @@ export function addPlaylistItemsBatch(
           $sort_order: nextOrder++,
         }) as PlaylistItem;
 
+        existingMap.set(key, item);
         results.push({
           ...item,
           track: cleanTrk,
@@ -795,6 +1059,7 @@ export function addPlaylistItemsBatch(
             $segment_id: cleanSegId,
           }) as PlaylistItem | null;
           if (existingNow) {
+            existingMap.set(key, existingNow);
             results.push({
               ...existingNow,
               track: cleanTrk,
@@ -830,10 +1095,14 @@ export function removePlaylistItemsBatch(playlistId: string, itemIds: string[]):
   if (!itemIds || itemIds.length === 0) return 0;
   const db = getDb();
   let deletedCount = 0;
+  const CHUNK_SIZE = 500;
   db.transaction(() => {
-    const stmt = db.query("DELETE FROM playlist_items WHERE id = $id AND playlist_id = $playlist_id");
-    for (const id of itemIds) {
-      const res = stmt.run({ $id: id, $playlist_id: playlistId });
+    for (let i = 0; i < itemIds.length; i += CHUNK_SIZE) {
+      const chunk = itemIds.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const res = db.query(
+        `DELETE FROM playlist_items WHERE playlist_id = ? AND id IN (${placeholders})`
+      ).run(playlistId, ...chunk);
       deletedCount += res.changes;
     }
     if (deletedCount > 0) {

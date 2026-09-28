@@ -101,6 +101,19 @@ describe("PlaylistItemCardComponent", () => {
     expect(addButtons.length).toBe(1);
   });
 
+  it("shows a remove button only when the playlist allows removing (not in a mix)", async () => {
+    const removeSelector = "button[title='Remove from Playlist'], button[title='Xóa khỏi danh sách phát']";
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
+    });
+    expect(container.querySelectorAll(removeSelector).length).toBe(1);
+
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} />);
+    });
+    expect(container.querySelectorAll(removeSelector).length).toBe(0);
+  });
+
   it("renders pause button and calls pause when clicked while actively playing", async () => {
     const { usePlayerStore } = await import("../store/usePlayerStore");
     const origPause = usePlayerStore.getState().pause;
@@ -405,6 +418,77 @@ describe("PlaylistItemCardComponent", () => {
 
     expect(cardContainer.className).toContain("ring-2 ring-primary");
     expect(cardContainer.className).toContain("scale-[1.02]");
+  });
+  it("sets this item's track as the open playlist's cover", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origSetCover = usePlayerStore.getState().setPlaylistCover;
+    const setCoverSpy = mock(async () => true);
+    usePlayerStore.setState({
+      activePlaylistId: "pl_card_1",
+      playlists: [{ id: "pl_card_1", name: "Drive", created_at: 1, updated_at: 1, item_count: 1, cover_track_id: null }],
+      setPlaylistCover: setCoverSpy,
+    });
+
+    try {
+      await act(async () => {
+        root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
+      });
+      const coverBtn = container.querySelector("button[aria-label='Set as playlist cover']") as HTMLButtonElement;
+      expect(coverBtn.getAttribute("aria-pressed")).toBe("false");
+
+      await act(async () => {
+        coverBtn.click();
+      });
+
+      expect(setCoverSpy).toHaveBeenCalledWith("pl_card_1", "trk_card_1");
+    } finally {
+      usePlayerStore.setState({ setPlaylistCover: origSetCover, activePlaylistId: null, playlists: [] });
+    }
+  });
+
+  it("clears the cover when this item's track is already the cover", async () => {
+    const { usePlayerStore } = await import("../store/usePlayerStore");
+    const origSetCover = usePlayerStore.getState().setPlaylistCover;
+    const setCoverSpy = mock(async () => true);
+    usePlayerStore.setState({
+      activePlaylistId: "pl_card_1",
+      playlists: [{ id: "pl_card_1", name: "Drive", created_at: 1, updated_at: 1, item_count: 1, cover_track_id: "trk_card_1" }],
+      setPlaylistCover: setCoverSpy,
+    });
+
+    try {
+      await act(async () => {
+        root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
+      });
+      const coverBtn = container.querySelector("button[aria-label='Set as playlist cover']") as HTMLButtonElement;
+      expect(coverBtn.getAttribute("aria-pressed")).toBe("true");
+
+      await act(async () => {
+        coverBtn.click();
+      });
+
+      expect(setCoverSpy).toHaveBeenCalledWith("pl_card_1", null);
+    } finally {
+      usePlayerStore.setState({ setPlaylistCover: origSetCover, activePlaylistId: null, playlists: [] });
+    }
+  });
+
+  it("applies uniform height and overflow prevention classes to card, title, and footer", async () => {
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
+    });
+
+    const cardRoot = container.firstElementChild as HTMLElement;
+    expect(cardRoot.className).toContain("h-full");
+
+    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
+    expect(titleEl.className).toContain("min-h-[2.5rem]");
+
+    const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
+    expect(studioBtn).not.toBeNull();
+    const footerEl = studioBtn?.parentElement?.parentElement as HTMLElement;
+    expect(footerEl.className).toContain("mt-auto");
+    expect(footerEl.textContent).not.toContain("Playlist");
   });
 });
 

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Giải Mã Vấn Đề Unbounded Payload & Giải Pháp ETag Pagination - 25-09-2026</title>
+  <link rel="stylesheet" href="./visual-core.css">
+
+  <style>
+    /* CSS Mockup đặc thù cho Network Waterfall, Memory Graph và Data Pipeline */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .metric-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      padding: 1rem;
+      text-align: center;
+    }
+    .metric-val {
+      font-size: 1.6rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 0.3rem;
+    }
+    .metric-val.bad { color: var(--accent-red); }
+    .metric-val.good { color: var(--accent-green); }
+    .metric-val.neutral { color: var(--accent-blue); }
+    .metric-label {
+      font-size: 0.8rem;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Mô phỏng thanh Network Waterfall */
+    .network-timeline {
+      background: #0d0d11;
+      border: 1px solid #22222a;
+      border-radius: 0.6rem;
+      padding: 1.2rem;
+      margin-top: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+    }
+    .net-row {
+      display: grid;
+      grid-template-columns: 8rem 5rem 1fr 5rem;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .net-row:last-child { border-bottom: none; }
+    .net-bar-track {
+      background: rgba(255, 255, 255, 0.06);
+      height: 0.85rem;
+      border-radius: 0.25rem;
+      overflow: hidden;
+      position: relative;
+    }
+    .net-bar-fill {
+      height: 100%;
+      border-radius: 0.25rem;
+      transition: width 0.3s ease;
+    }
+    .net-bar-fill.red { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    .net-bar-fill.green { background: linear-gradient(90deg, #22c55e, #16a34a); }
+
+    /* Interactive Demo Box */
+    .demo-sandbox {
+      background: #111116;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-top: 1.2rem;
+    }
+    .demo-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 0.75rem;
+    }
+    .status-badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .status-badge-live.red {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .status-badge-live.green {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    /* Option Card so sánh */
+    .option-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-top: 1.25rem;
+    }
+    @media (max-width: 840px) {
+      .option-cards { grid-template-columns: 1fr; }
+    }
+    .opt-card {
+      background: #121217;
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      padding: 1.25rem;
+      position: relative;
+    }
+    .opt-card.recommended {
+      border-color: #3b82f6;
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.12);
+    }
+    .opt-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .opt-badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 0.3rem;
+      font-weight: 700;
+    }
+    .opt-badge.blue { background: #1d4ed8; color: #fff; }
+    .opt-badge.purple { background: #6b21a8; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- STICKY TOPBAR -->
+  <header class="nav-header">
+    <div class="brand-title"><span>⚡</span> GIẢI MÃ BLOCKER HIỆU NĂNG: UNBOUNDED PAYLOAD &amp; ETAG CACHE</div>
+    <nav class="tab-group" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược &amp; So Sánh</button>
+      <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Mổ Xẻ Chi Tiết (Zoom-In 4 Tầng)</button>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- =================================================================
+         TAB 1: TÓM LƯỢC & SO SÁNH THỊ GIÁC (3 CARDS)
+         ================================================================= -->
+    <main id="tab-summarize" class="tab-pane active" role="tabpanel">
+      <section class="callout">
+        <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+        <p>Con subagent Performance còi báo động vì app đang "bê nguyên cả kho" 5.000 bài + 20.000 lát cắt (25MB JSON) ném qua HTTP mỗi khi chuyển tab, trong khi chỉ cần 1 chiếc tem niêm phong <strong>HTTP ETag (304 Not Modified)</strong> là tải lại chỉ tốn đúng 0 byte băng thông và 1ms phản hồi!</p>
+      </section>
+
+      <!-- CARD 1: COMPARISON SLIDER (Kéo trượt so sánh Before vs After) -->
+      <article class="card-wrapper card-slider">
+        <div class="card-header-bar">
+          <span class="card-badge badge-white">CARD 1: COMPARISON SLIDER</span>
+          <span style="font-size: 0.85rem; color: var(--text-main);">Kéo thanh trượt để so sánh Tải Toàn Bộ (Cũ) vs Có ETag Caching (Mới)</span>
+        </div>
+        <div class="slider-viewport">
+          <!-- Layer Before (Lỗi cũ: Unbounded Fetch) -->
+          <div class="slider-layer slider-before">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(239, 68, 68, 0.05); border-radius: 0.5rem; height: 100%;">
+              <span class="mock-annotation red">HIỆN TRẠNG CŨ (UNBOUNDED FETCH)</span>
+              <div style="font-weight: 700; color: var(--accent-red); margin-bottom: 0.75rem; font-size: 1.1rem;">
+                ⚠️ Kéo 25MB JSON về mọi lần đổi tab (HTTP 200 OK)
+              </div>
+              <div class="metric-grid">
+                <div class="metric-box">
+                  <div class="metric-label">Dung lượng mạng</div>
+                  <div class="metric-val bad">~25.4 MB</div>
+                </div>
+                <div class="metric-box">
+                  <div class="metric-label">Độ trễ phản hồi</div>
+                  <div class="metric-val bad">420 ms</div>
+                </div>
+                <div class="metric-box">
+                  <div class="metric-label">Khối lượng RAM Client</div>
+                  <div class="metric-val bad">~180 MB</div>
+                </div>
+              </div>
+              <div class="network-timeline">
+                <div class="net-row">
+                  <span style="color: #ef4444; font-weight: 700;">GET /api/tracks</span>
+                  <span>200 OK</span>
+                  <div class="net-bar-track"><div class="net-bar-fill red" style="width: 85%;"></div></div>
+                  <span style="text-align: right; color: #ef4444;">14.2 MB</span>
+                </div>
+                <div class="net-row">
+                  <span style="color: #ef4444; font-weight: 700;">GET /api/segments</span>
+                  <span>200 OK</span>
+                  <div class="net-bar-track"><div class="net-bar-fill red" style="width: 70%;"></div></div>
+                  <span style="text-align: right; color: #ef4444;">11.2 MB</span>
+                </div>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 0.75rem;">
+                👉 Hậu quả: Main thread trình duyệt bị đơ (UI jank) khi chạy <code>JSON.parse()</code> cho 25.000 đối tượng.
+              </p>
+            </div>
+          </div>
+
+          <!-- Layer After (Giải pháp ETag 304) -->
+          <div class="slider-layer slider-after">
+            <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.05); border-radius: 0.5rem; height: 100%;">
+              <span class="mock-annotation green">GIẢI PHÁP MỚI (HTTP ETAG 304 NOT MODIFIED)</span>
+              <div style="font-weight: 700; color: var(--accent-green); margin-bottom: 0.75rem; font-size: 1.1rem;">
+                ✅ Tem niêm phong ETag: 0 Byte truyền tải (HTTP 304)
+              </div>
+              <div class="metric-grid">
+                <div class="metric-box">
+                  <div class="metric-label">Dung lượng mạng</div>
+                  <div class="metric-val good">0 KB</div>
+                </div>
+                <div class="metric-box">
+                  <div class="metric-label">Độ trễ phản hồi</div>
+                  <div class="metric-val good">1.2 ms</div>
+                </div>
+                <div class="metric-box">
+                  <div class="metric-label">Tải CPU / RAM Client</div>
+                  <div class="metric-val good">0% / Ổn định</div>
+                </div>
+              </div>
+              <div class="network-timeline">
+                <div class="net-row">
+                  <span style="color: #22c55e; font-weight: 700;">GET /api/tracks</span>
+                  <span style="color: #22c55e;">304 Not Mod</span>
+                  <div class="net-bar-track"><div class="net-bar-fill green" style="width: 4%;"></div></div>
+                  <span style="text-align: right; color: #22c55e;">0 B</span>
+                </div>
+                <div class="net-row">
+                  <span style="color: #22c55e; font-weight: 700;">GET /api/segments</span>
+                  <span style="color: #22c55e;">304 Not Mod</span>
+                  <div class="net-bar-track"><div class="net-bar-fill green" style="width: 4%;"></div></div>
+                  <span style="text-align: right; color: #22c55e;">0 B</span>
+                </div>
+              </div>
+              <p style="font-size: 0.85rem; color: var(--text-sub); margin-top: 0.75rem;">
+                👉 Lợi ích: Dữ liệu chưa đổi thì server trả mã 304 ngay lập tức; client tái sử dụng cache trong 1 nháy mắt!
+              </p>
+            </div>
+          </div>
+
+          <!-- Thanh điều khiển kéo trượt -->
+          <div class="slider-divider">
+            <div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div>
+          </div>
+          <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+        </div>
+      </article>
+
+      <!-- CARD 2: BEFORE ONLY (Điểm nghẽn chi tiết) -->
+      <article class="card-wrapper card-before">
+        <div class="card-header-bar">
+          <span class="card-badge badge-red">CARD 2: BEFORE ONLY (CƠ CHẾ CŨ)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-red);">Truy vấn không giới hạn + Thiếu cơ chế đệm HTTP</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(239, 68, 68, 0.04);">
+          <span class="mock-annotation red">BLOCKER REQUIRED</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag del">- CŨ</span>
+            <span style="font-size: 1rem; font-weight: 700; color: var(--accent-red);">SELECT * không LIMIT &amp; Trình duyệt tải lại từ đầu</span>
+          </div>
+          <p style="font-size: 0.9rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+            Trong code hiện tại của <code>src/server/db.ts</code>, hàm <code>listTracks()</code> và <code>listAllSegments()</code> không hề có mệnh đề phân trang. Mỗi khi dev bấm chuyển qua lại giữa chế độ <em>"Bài hát gốc"</em>, <em>"Lát cắt"</em> hoặc <em>"Trộn lẫn"</em>, store Zustand lại kích hoạt <code>fetch("/api/segments")</code> kéo toàn bộ bảng về lại dù dữ liệu trong DB đéo hề thay đổi một chữ!
+          </p>
+          <div style="background: rgba(0,0,0,0.4); border-left: 3px solid var(--accent-red); padding: 0.85rem; border-radius: 0.3rem; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #fca5a5;">
+            SELECT * FROM segments ORDER BY created_at DESC; -- Kéo sạch 20.000 dòng!<br>
+            Response Headers: Content-Type: application/json (ĐÉO CÓ ETAG, ĐÉO CÓ CACHE-CONTROL)
+          </div>
+        </div>
+      </article>
+
+      <!-- CARD 3: AFTER ONLY (Tương tác giả lập ETag 304 vs 200) -->
+      <article class="card-wrapper card-after">
+        <div class="card-header-bar">
+          <span class="card-badge badge-green">CARD 3: AFTER ONLY (GIẢI PHÁP ĐÃ TỐI ƯU)</span>
+          <span style="font-size: 0.85rem; color: var(--accent-green);">Bấm nút bên dưới để test phản hồi thực tế</span>
+        </div>
+        <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.04);">
+          <span class="mock-annotation green">TỐI ƯU HTTP CACHE</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <span class="diff-tag add">+ MỚI</span>
+            <span style="font-size: 1rem; font-weight: 700; color: var(--accent-green);">Đóng dấu ETag bằng Timestamp Database (Zero-byte Revalidation)</span>
+          </div>
+          <p style="font-size: 0.9rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+            Server gắn thêm header <code>ETag: "v6_1727221200"</code>. Khi client chuyển tab, nó gửi kèm <code>If-None-Match: "v6_1727221200"</code>. Server kiểm tra trong SQLite thấy DB chưa có bài nào thêm/xóa/sửa thì trả ngay mã <strong>304 Not Modified</strong> với thân body rỗng 0 byte!
+          </p>
+
+          <div class="demo-sandbox">
+            <div class="demo-header">
+              <span style="font-weight: 700; font-size: 0.9rem; color: #fff;">🧪 Hộp Thử Nghiệm Băng Thông Client</span>
+              <span id="demo-status-pill" class="status-badge-live green">Sẵn sàng test</span>
+            </div>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+              <button type="button" class="tab-btn active" style="background: var(--accent-green); color: #000; font-weight: 700;" onclick="testEtag(true)">
+                ⚡ Bấm thử: Đổi tab khi DB KHÔNG ĐỔI (HTTP 304 - 0 Byte)
+              </button>
+              <button type="button" class="tab-btn" style="border: 1px solid var(--border); color: #fff;" onclick="testEtag(false)">
+                📥 Bấm thử: Có bài hát MỚI VỪA NẠP (HTTP 200 - Nhận Payload Mới)
+              </button>
+            </div>
+            <div id="demo-output" style="background: #08080a; border: 1px solid #1f1f26; border-radius: 0.4rem; padding: 0.85rem; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: #a1a1aa;">
+              [Trạng thái]: Nhấn 1 trong 2 nút bên trên để xem trình duyệt trao đổi dữ liệu ra sao...
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <!-- =================================================================
+         TAB 2: MỔ XẺ CHI TIẾT (ZOOM-IN 4 TẦNG)
+         ================================================================= -->
+    <section id="tab-explain" class="tab-pane" role="tabpanel" style="display: none;">
+
+      <!-- TẦNG 1: VĨ MÔ & NGUYÊN LÝ HOẠT ĐỘNG CỦA ETAG -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 1/4 • KIẾN TRÚC VĨ MÔ</div>
+            <h3>🌐 1. Nguyên Lý Bắt Tay ETag (304 Not Modified)</h3>
+            <p>
+              ETag giống như một <strong>"dấu niêm phong"</strong> trên phong bì. Khi client nhận dữ liệu lần đầu, nó ghi nhớ dấu niêm phong này. Lần sau cần lấy dữ liệu, nó chỉ hỏi: <em>"Niêm phong có đổi không?"</em>. Nếu không đổi, server chỉ bảo <em>"Chưa đổi đâu!"</em> (304), khỏi cần gửi lại cả phong bì 25MB!
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Chuẩn RFC 7232</span>
+              <span class="meta-tag blue">Tiết kiệm 99.9% Net</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <div class="code-dots">
+                  <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                </div>
+                <span style="font-size: 0.8rem; font-weight: 700; color: #fff;">Luồng Bắt Tay HTTP ETag</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot flow"></span> FLOW DIAGRAM</span>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">┌─────────────┐                           ┌─────────────┐</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">│   Browser   │                           │ Bun Server  │</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">└──────┬──────┘                           └──────┬──────┘</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">       │  LẦN ĐẦU TIÊN MỞ APP                     │</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">       │── GET /api/tracks ──────────────────────&gt;│ (Query SQLite)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">       │&lt;── 200 OK + [ETag: "tag_v1"] + 25MB Data ──│</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">       │                                          │</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      │  LẦN 2: CHUYỂN TAB HOẶC FETCH LẠI       │</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      │── GET /api/tracks ──────────────────────&gt;│ (So khớp ETag)</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      │   [If-None-Match: "tag_v1"]              │</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      │&lt;── 304 Not Modified (0 BYTE DATA!) ──────│ (Đéo tốn RAM)</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">       ▼ Dùng ngay dữ liệu đã có trong RAM!       ▼ Phản hồi 1ms</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 2: SO SÁNH 2 PHƯƠNG ÁN LỰA CHỌN -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 2/4 • LỰA CHỌN THỰC CHIẾN</div>
+            <h3>⚖️ 2. Đặt Lên Bàn Cân: Option A vs Option B</h3>
+            <p>
+              Tại sao bố m hỏi m trước khi làm? Vì mỗi phương án đều có ưu và nhược điểm đối với ứng dụng nghe nhạc:
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag yellow">Cân nhắc kiến trúc</span>
+              <span class="meta-tag purple">YAGNI &amp; Ponytail</span>
+            </div>
+          </div>
+
+          <div style="min-width: 0; width: 100%;">
+            <div class="option-cards">
+              <!-- Option A: ETag Only -->
+              <div class="opt-card recommended">
+                <div class="opt-title">
+                  <span>Option A: HTTP ETag Caching</span>
+                  <span class="opt-badge blue">KHUYÊN DÙNG</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-sub); line-height: 1.5; margin-bottom: 0.75rem;">
+                  Giữ nguyên việc load toàn bộ khi mở app, nhưng chặn đứng 100% việc tải thừa qua mã 304.
+                </p>
+                <ul style="font-size: 0.82rem; color: #d4d4d8; padding-left: 1.2rem; line-height: 1.6;">
+                  <li><strong style="color: var(--accent-green);">Ưu điểm:</strong> Giữ nguyên tính năng Shuffle toàn cục (ngẫu nhiên toàn thư viện) và Instant Search gõ phím tìm kiếm tức thì đéo cần mạng.</li>
+                  <li><strong style="color: var(--accent-green);">Độ phức tạp:</strong> Cực thấp, chỉ sửa ~30 dòng code server và client, đéo làm vỡ giao diện.</li>
+                  <li><strong style="color: var(--accent-yellow);">Nhược điểm:</strong> Lần đầu mở app nếu thư viện có &gt; 50.000 bài thì tải lần đầu vẫn hơi nặng.</li>
+                </ul>
+              </div>
+
+              <!-- Option B: Full Cursor Pagination -->
+              <div class="opt-card">
+                <div class="opt-title">
+                  <span>Option B: Cursor Pagination</span>
+                  <span class="opt-badge purple">ENTERPRISE SCALE</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-sub); line-height: 1.5; margin-bottom: 0.75rem;">
+                  Chỉ tải 50 bài một lần, cuộn chuột đến đâu gọi API kéo tiếp đến đó (Infinite Scroll).
+                </p>
+                <ul style="font-size: 0.82rem; color: #d4d4d8; padding-left: 1.2rem; line-height: 1.6;">
+                  <li><strong style="color: var(--accent-green);">Ưu điểm:</strong> Dù thư viện có 1.000.000 bài thì RAM vẫn chỉ ăn vài MB, khởi động dưới 50ms.</li>
+                  <li><strong style="color: var(--accent-red);">Nhược điểm:</strong> Phải viết lại thanh Search (tìm kiếm phải gửi lên server query SQLite), và nút Shuffle ngẫu nhiên phải sinh hàng đợi từ server.</li>
+                  <li><strong style="color: var(--accent-red);">Độ phức tạp:</strong> Cao, chạm vào hàng chục file store Zustand và component.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 3: VỊ TRÍ FILE & THAY ĐỔI CẦN THỰC HIỆN -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 3/4 • FILES &amp; COMPONENTS</div>
+            <h3>📁 3. Các File Trong Tầm Ngắm</h3>
+            <p>Nếu triển khai <strong>Option A (ETag Cache)</strong>, những file sau sẽ được nâng cấp một cách tinh gọn:</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">3 Files</span>
+              <span class="meta-tag blue">Tối giản</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.8rem; font-weight: 700; color: #fff;">Cấu Trúc Tác Động</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot structure"></span> STRUCTURE</span>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 src/</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  ├── 📁 server/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  │   ├── 📄 <span class="prop">db.ts</span> <span class="c-comment"># Hàm getLibraryVersionToken() lấy timestamp lớn nhất</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  │   └── 📄 <span class="prop">index.ts</span> <span class="c-comment"># So khớp If-None-Match &amp; trả HTTP 304</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  └── 📁 client/src/store/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      └── 📄 <span class="prop">usePlayerStore.ts</span> <span class="c-comment"># Lưu ETag vào ref, bỏ qua re-render khi gặp 304</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 4: MÃ NGUỒN TRIỂN KHAI MẪU (PSEUDOCODE) -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 4/4 • LOGIC CODE</div>
+            <h3>💻 4. Code Triển Khai Cốt Lõi (Server &amp; Client)</h3>
+            <p>Đoạn mã mẫu cực kỳ sạch sẽ, tận dụng triệt để tính năng native của Bun và HTTP standard:</p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Zero Dependencies</span>
+              <span class="meta-tag blue">Clean Code</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.8rem; font-weight: 700; color: #fff;">📄 src/server/index.ts &amp; store</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot ts"></span> TYPESCRIPT</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="c-comment">// 1. Phía Server (index.ts): Kiểm tra ETag trước khi query toàn bộ</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">const</span> <span class="prop">dbVersion</span> = <span class="fn">getDatabaseVersionTag</span>(); <span class="c-comment">// vd: "v6_1727221200"</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">const</span> <span class="prop">clientEtag</span> = <span class="prop">req</span>.<span class="prop">headers</span>.<span class="fn">get</span>(<span class="str">"if-none-match"</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="kwd">if</span> (<span class="prop">clientEtag</span> === <span class="prop">dbVersion</span>) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">return new</span> <span class="fn">Response</span>(<span class="kwd">null</span>, { <span class="prop">status</span>: <span class="num">304</span>, <span class="prop">headers</span>: <span class="prop">corsHeaders</span> });</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">}</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">const</span> <span class="prop">tracks</span> = <span class="fn">listTracks</span>();</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">return</span> <span class="fn">Response</span>.<span class="fn">json</span>(<span class="prop">tracks</span>, {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">headers</span>: { ...<span class="prop">corsHeaders</span>, <span class="str">"ETag"</span>: <span class="prop">dbVersion</span>, <span class="str">"Cache-Control"</span>: <span class="str">"private, must-revalidate"</span> }</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">});</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </div>
+
+  <!-- Nút Inspector Toggle Fixed -->
+  <button id="inspector-toggle" onclick="toggleDiff()">
+    <span>🔍 Check Diff</span>
+    <span id="diffStatusTag">[BẬT]</span>
+  </button>
+
+  <script src="./visual-core.js"></script>
+
+  <script>
+    // Hàm Demo giả lập tương tác ETag trong Card 3
+    function testEtag(isUnchanged) {
+      const pill = document.getElementById('demo-status-pill');
+      const out = document.getElementById('demo-output');
+      if (isUnchanged) {
+        pill.className = 'status-badge-live green';
+        pill.textContent = '304 Not Modified';
+        out.innerHTML = `
+          <span style="color: #22c55e; font-weight: 700;">&gt;&gt;&gt; [REQUEST] GET /api/segments (If-None-Match: "v6_1727221200")</span><br>
+          <span style="color: #60a5fa;">&lt;&lt;&lt; [RESPONSE] HTTP/1.1 304 Not Modified (Thời gian: 0.8ms)</span><br>
+          <span style="color: #a1a1aa;">- Kích thước Body truyền tải: 0 bytes.</span><br>
+          <span style="color: #a1a1aa;">- Trình duyệt: Giữ nguyên 20.000 lát cắt sẵn có trong RAM, đéo cần parse lại JSON!</span><br>
+          <span style="color: #22c55e;">✅ Main thread mượt mà 60 FPS, không một gợn giật lag.</span>
+        `;
+        showToast('✅ 304 Not Modified: 0 byte truyền tải, tức thì trong 1ms!', 'success');
+      } else {
+        pill.className = 'status-badge-live red';
+        pill.textContent = '200 OK (Data Changed)';
+        out.innerHTML = `
+          <span style="color: #f59e0b; font-weight: 700;">&gt;&gt;&gt; [REQUEST] GET /api/segments (If-None-Match: "v6_1727221200")</span><br>
+          <span style="color: #ef4444;">&lt;&lt;&lt; [RESPONSE] HTTP/1.1 200 OK (Thời gian: 310ms)</span><br>
+          <span style="color: #a1a1aa;">- Database phát hiện có bài mới vừa nạp -&gt; ETag mới: "v6_1727221590"</span><br>
+          <span style="color: #a1a1aa;">- Kích thước Body truyền tải: 11.2 MB.</span><br>
+          <span style="color: #60a5fa;">ℹ️ Trình duyệt cập nhật lại danh sách mới nhất vào Store.</span>
+        `;
+        showToast('📥 200 OK: Đã tải dữ liệu mới vì phát hiện thay đổi trong DB!', 'info');
+      }
+    }
+  </script>
+</body>
+</html>

@@ -297,4 +297,31 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       });
     });
   });
+
+  it("applies uniform height and overflow prevention classes to card, title, badge, and footer", () => {
+    const readyTrack: Track = { ...baseTrack, status: "ready" };
+    act(() => {
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const cardRoot = container.firstElementChild as HTMLElement;
+    expect(cardRoot.className).toContain("h-full");
+
+    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
+    expect(titleEl.className).toContain("min-h-[2.5rem]");
+
+    const slicesBadge = Array.from(cardRoot.querySelectorAll("div")).find(
+      (el) => el.children.length === 0 && el.textContent?.includes("slices")
+    );
+    expect(slicesBadge).toBeDefined();
+    expect(slicesBadge?.className).toContain("whitespace-nowrap");
+    expect(slicesBadge?.className).toContain("shrink-0");
+
+    const footerEl = slicesBadge?.parentElement as HTMLElement;
+    expect(footerEl.className).toContain("mt-auto");
+
+    // AddToPlaylistPopover should not show text 'Playlist' to avoid overflowing the footer
+    expect(footerEl.textContent).not.toContain("Playlist");
+  });
 });
+

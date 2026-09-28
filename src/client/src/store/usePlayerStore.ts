@@ -5,6 +5,8 @@ import { pickSmartRandomItem } from "../lib/shufflePicker";
 import { logClientInfo, logClientError } from "./useLogStore";
 import { useSelectionStore } from "./useSelectionStore";
 import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getShuffledEntityIds } from "../lib/playlistSort";
+import { searchItems } from "../lib/search";
+import { showsItemsOf } from "../lib/mixPlaylist";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -29,10 +31,20 @@ export function createQueueItem(segment: Segment, track: Track, queueItemId?: st
 }
 
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
-export type SystemCategory = PlaybackMode | "downloading_only" | "error_only";
+export type SystemCategory = PlaybackMode | "downloading_only" | "error_only" | "playlists";
 
 export function isPlaybackMode(cat: unknown): cat is PlaybackMode {
   return cat === "mixed" || cat === "slices_only" || cat === "original_only";
+}
+
+export function getViewScrollKey(
+  activePlaylistId: string | null,
+  activeSystemCategory: SystemCategory | string | null
+): string {
+  if (activePlaylistId) {
+    return `playlist:${activePlaylistId}`;
+  }
+  return `category:${activeSystemCategory || "mixed"}`;
 }
 
 let consecutivePlaybackFailures = 0;
@@ -75,6 +87,41 @@ let activeInitiationCount = 0;
 let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 let latestPlaybackModeRequestId = 0;
 let latestFetchTracksRequestId = 0;
+
+let cachedTracksEtag: string | null = null;
+let cachedSegmentsEtag: string | null = null;
+let cachedSegmentsData: Segment[] = [];
+
+export function resetEtagCache(): void {
+  cachedTracksEtag = null;
+  cachedSegmentsEtag = null;
+  cachedSegmentsData = [];
+}
+
+async function fetchAllSegmentsWithEtag(): Promise<{ success: boolean; segments: Segment[]; modified: boolean }> {
+  try {
+    const headers: Record<string, string> = {};
+    if (cachedSegmentsEtag) {
+      headers["If-None-Match"] = cachedSegmentsEtag;
+    }
+    const res = await fetch("/api/segments", { headers });
+    if (res.status === 304) {
+      return { success: true, segments: cachedSegmentsData, modified: false };
+    }
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const etag = res.headers?.get ? res.headers.get("etag") : null;
+        cachedSegmentsEtag = etag || null;
+        cachedSegmentsData = data;
+        return { success: true, segments: data, modified: true };
+      }
+    }
+    return { success: false, segments: [], modified: false };
+  } catch {
+    return { success: false, segments: [], modified: false };
+  }
+}
 
 export function normalizeTrackVolume(vol: unknown, fallback = 0.5): number {
   const safeFallback = typeof fallback === "number" && Number.isFinite(fallback)
@@ -148,6 +195,14 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   });
 }
 
+export interface QueueOrigin {
+  type: "search" | "playlist" | "system";
+  query?: string;
+  count?: number;
+  playlistId?: string;
+  mode?: PlaybackMode;
+}
+
 interface PlayerState {
   tracks: Track[];
   isLoadingTracks: boolean;
@@ -180,12 +235,19 @@ interface PlayerState {
   systemRandomMap: Record<PlaybackMode, string[]>;
   viewMode: "grid" | "list";
   activeSystemCategory: SystemCategory;
-  activeTrackScrollRequest: { id: number; timestamp: number } | null;
+  viewScrollPositions: Record<string, number>;
+  activeTrackScrollRequest: { id: number; timestamp: number; targetKey?: string } | null;
   retryingTrackIds: Record<string, boolean>;
   isRetryingAll: boolean;
+  queueOrigin: QueueOrigin | null;
 
   // Actions
-  requestScrollToActiveTrack: () => void;
+  setQueueOrigin: (origin: QueueOrigin | null) => void;
+  saveViewScrollPosition: (key: string, scrollY: number) => void;
+  getViewScrollPosition: (key: string) => number;
+  clearViewScrollPositions: () => void;
+  requestScrollToActiveTrack: (targetKey?: string) => void;
+  clearActiveTrackScrollRequest: () => void;
   fetchTracks: (reconcileSegments?: boolean) => Promise<void>;
   retryTrack: (trackId: string) => Promise<boolean>;
   retryAllErrors: (trackIds?: string[]) => Promise<boolean>;
@@ -202,7 +264,7 @@ interface PlayerState {
   setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, startIndex?: number, forceShuffle?: boolean) => Promise<void>;
-  playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number) => Promise<void>;
+  playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number, origin?: QueueOrigin | null) => Promise<void>;
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
   setVolume: (vol: number) => void;
@@ -210,7 +272,9 @@ interface PlayerState {
   setCurrentTime: (t: number) => void;
   seek: (seconds: number) => void;
   removeTrackFromQueue: (trackId: string) => void;
+  removeTracksBatchFromQueue: (trackIds: string[]) => void;
   removeSegmentFromQueue: (segmentId: string) => void;
+  removeSegmentsBatchFromQueue: (segmentIds: string[]) => void;
   removeQueueItemAtIndex: (index: number, modeOverride?: PlaybackMode) => void;
   reorderQueue: (fromIndex: number, toIndex: number, modeOverride?: PlaybackMode) => void;
   openSliceStudio: (track: Track) => void;
@@ -225,8 +289,11 @@ interface PlayerState {
   fetchPlaylists: () => Promise<void>;
   setActivePlaylist: (id: string | null, force?: boolean) => Promise<void>;
   createPlaylist: (name: string) => Promise<Playlist | null>;
+  createMixPlaylist: (name: string, sourceIds: string[]) => Promise<Playlist | null>;
+  setMixSources: (id: string, sourceIds: string[]) => Promise<boolean>;
   deletePlaylist: (id: string) => Promise<boolean>;
   renamePlaylist: (id: string, name: string) => Promise<boolean>;
+  setPlaylistCover: (id: string, trackId: string | null) => Promise<boolean>;
   addToPlaylist: (playlistId: string, trackId: string, segmentId?: string | null) => Promise<boolean>;
   addTracksToPlaylistBatch: (playlistId: string, itemsOrTrackIds: (string | { track_id: string; segment_id?: string | null })[]) => Promise<boolean>;
   addItemsToPlaylistBatch: (playlistId: string, itemsOrTrackIds: (string | { track_id: string; segment_id?: string | null })[]) => Promise<boolean>;
@@ -238,7 +305,7 @@ interface PlayerState {
   setViewMode: (mode: "grid" | "list") => void;
   setPlaylistSortMode: (mode: PlaylistSortMode) => void;
   randomizePlaylistSort: (playlistId?: string) => void;
-  buildPlaylistQueue: (playlistId: string, forceShuffle?: boolean, startIndexOrItemId?: number | string, keepCurrentTrack?: boolean) => Promise<void>;
+  buildPlaylistQueue: (playlistId: string, forceShuffle?: boolean, startIndexOrItemId?: number | string, keepCurrentTrack?: boolean, origin?: QueueOrigin | null) => Promise<void>;
   playPlaylistItemAtIndex: (playlistId: string, indexOrItemId: number | string) => Promise<void>;
 }
 
@@ -544,7 +611,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   isBuffering: false,
   isShuffle: false, // Default to sequential order! Only shuffle when user clicks shuffle!
-  isLoopQueue: true,
+  isLoopQueue: false,
   isLoopTrack: false,
   playbackMode: "mixed",
   queuesByMode: {
@@ -571,6 +638,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   playlists: [],
   activePlaylistId: null,
   activePlaylistPlayingId: null,
+  queueOrigin: null,
+  setQueueOrigin: (origin: QueueOrigin | null) => set({ queueOrigin: origin }),
   activePlaylistItems: [],
   activePlaylistOriginalQueue: [],
   playlistSortMode: "manual",
@@ -657,17 +726,49 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   viewMode: getStoredViewMode(),
   activeSystemCategory: "mixed",
+  viewScrollPositions: {},
+  saveViewScrollPosition: (key: string, scrollY: number) => {
+    if (!key) return;
+    const clamped = Math.max(0, Math.round(scrollY));
+    if (get().viewScrollPositions[key] === clamped) return;
+    set((state) => ({
+      viewScrollPositions: {
+        ...state.viewScrollPositions,
+        [key]: clamped,
+      },
+    }));
+  },
+  getViewScrollPosition: (key: string) => {
+    if (!key) return 0;
+    return get().viewScrollPositions[key] ?? 0;
+  },
+  clearViewScrollPositions: () => {
+    set({ viewScrollPositions: {} });
+  },
   setActiveSystemCategory: (cat: SystemCategory) => {
+    if (typeof window !== "undefined") {
+      const curPl = get().activePlaylistId;
+      const curCat = get().activeSystemCategory;
+      const curMode = get().viewMode;
+      const curKey = curPl ? `playlist:${curPl}` : `category:${curCat || "mixed"}`;
+      const y = window.scrollY || window.pageYOffset || (document?.documentElement?.scrollTop ?? 0);
+      get().saveViewScrollPosition(`${curKey}:${curMode}`, y);
+      get().saveViewScrollPosition(curKey, y);
+    }
     set({ activeSystemCategory: cat, activePlaylistId: null });
   },
   activeTrackScrollRequest: null,
-  requestScrollToActiveTrack: () => {
+  requestScrollToActiveTrack: (targetKey?: string) => {
     set((state) => ({
       activeTrackScrollRequest: {
         id: (state.activeTrackScrollRequest?.id ?? 0) + 1,
         timestamp: Date.now(),
+        targetKey,
       },
     }));
+  },
+  clearActiveTrackScrollRequest: () => {
+    set({ activeTrackScrollRequest: null });
   },
   retryingTrackIds: {},
   isRetryingAll: false,
@@ -721,12 +822,37 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ isLoadingTracks: true });
     }
     try {
-      const res = await fetch("/api/tracks");
+      const headers: Record<string, string> = {};
+      if (cachedTracksEtag) {
+        headers["If-None-Match"] = cachedTracksEtag;
+      }
+      const res = await fetch("/api/tracks", { headers });
       if (fetchId !== latestFetchTracksRequestId) return;
-      if (res.ok) {
+      const isTracks304 = res.status === 304;
+
+      if (!isTracks304 && !res.ok) {
+        return;
+      }
+
+      if (isTracks304 && !reconcileSegments) {
+        if (get().isLoadingTracks) {
+          set({ isLoadingTracks: false });
+        }
+        return;
+      }
+
+      const prevTracks = get().tracks;
+      const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
+      let finalTracks: Track[];
+      let hasNewlyReady = false;
+
+      if (isTracks304) {
+        finalTracks = prevTracks;
+      } else {
         const tracks: Track[] = await res.json();
         if (!Array.isArray(tracks)) return;
-        const prevTracks = get().tracks;
+        const etag = res.headers?.get ? res.headers.get("etag") : null;
+        cachedTracksEtag = etag || null;
         const prevTrackMap = new Map(prevTracks.map((t) => [t.id, t]));
         const stabilizedTracks = tracks.map((fresh) => {
           const prev = prevTrackMap.get(fresh.id);
@@ -750,11 +876,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const isTracksIdentical =
           stabilizedTracks.length === prevTracks.length &&
           stabilizedTracks.every((t, idx) => t === prevTracks[idx]);
-        const finalTracks = isTracksIdentical ? prevTracks : stabilizedTracks;
-        const trackMap = new Map(finalTracks.map((t) => [t.id, t]));
-        const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
-        const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
-        const hasNewlyReady = finalTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+        finalTracks = isTracksIdentical ? prevTracks : stabilizedTracks;
+
+
+        hasNewlyReady = finalTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+      }
+      const trackMap = new Map(finalTracks.map((t) => [t.id, t]));
+      const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
         if (!reconcileSegments) {
           if (hasNewlyReady) {
@@ -894,22 +1022,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           return;
         }
 
-        // Full reconciliation path: fetch segments to purge deleted segments across tabs
-        let fetchedSegments: Segment[] = [];
-        try {
-          const segRes = await fetch("/api/segments");
-          if (fetchId !== latestFetchTracksRequestId) return;
-          if (!segRes.ok) {
-            console.warn(`[Store] /api/segments returned ${segRes.status}; aborting segment purge to prevent queue wipe.`);
-            return;
-          }
-          fetchedSegments = await segRes.json();
-          if (fetchId !== latestFetchTracksRequestId) return;
-          if (!Array.isArray(fetchedSegments)) return;
-        } catch (e) {
-          console.warn("[Store] Network error fetching segments; aborting segment purge:", e);
+        const segRes = await fetchAllSegmentsWithEtag();
+        if (fetchId !== latestFetchTracksRequestId) return;
+        if (!segRes.success) {
+          console.warn("[Store] Network error fetching segments; aborting segment purge");
           return;
         }
+
+        if (isTracks304 && !segRes.modified) {
+          if (get().isLoadingTracks) {
+            set({ isLoadingTracks: false });
+          }
+          return;
+        }
+
+        const fetchedSegments = segRes.segments;
 
         const prevSegmentsMap = new Map<string, Segment>();
         for (const it of get().queue) {
@@ -941,7 +1068,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const currentActiveSegment = freshState.activeSegment;
         const currentItem = currentQueueIndex >= 0 ? currentQueue[currentQueueIndex] : null;
         const currentMode = freshState.playbackMode;
-        const newlyReadyTracks = stabilizedTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
+        const newlyReadyTracks = finalTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
         const modesToReconcile: PlaybackMode[] = ["mixed", "slices_only", "original_only"];
         const nextQueuesByMode: Record<PlaybackMode, QueueItem[]> = { ...freshState.queuesByMode };
 
@@ -1110,7 +1237,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         if (latestActiveSegment && !latestActiveSegment.id.startsWith("fallback_") && !segmentMap.has(latestActiveSegment.id)) {
           get().removeSegmentFromQueue(latestActiveSegment.id);
         }
-      }
     } catch (e) {
       console.error("[Store] Failed to fetch tracks", e);
     } finally {
@@ -1342,7 +1468,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const isLastItem = queueIndex >= queue.length - 1;
     if (isLastItem) {
-      if (!isLoopQueue) {
+      if (!isLoopQueue || queue.length <= 1) {
         audioEngine.pause();
         set({ isPlaying: false });
         return;
@@ -1384,7 +1510,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     let prevIdx = queueIndex - 1;
     if (prevIdx < 0) {
-      if (!isLoopQueue) {
+      if (!isLoopQueue || queue.length <= 1) {
         get().seek(activeSegment.start_time);
         return;
       }
@@ -1584,41 +1710,43 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ currentTime: target });
   },
 
-  removeTrackFromQueue: (trackId: string) => {
+  removeTracksBatchFromQueue: (trackIds: string[]) => {
+    if (!trackIds || trackIds.length === 0) return;
+    const trackIdSet = new Set(trackIds);
     const { queue, queueIndex, activeTrack, playbackMode, queuesByMode } = get();
-    const segmentIdsToDismiss = new Set<string>([`fallback_${trackId}`]);
+
+    for (const tid of trackIds) {
+      for (const m of ["mixed", "slices_only", "original_only"] as PlaybackMode[]) {
+        dismissedTrackIdsByMode[m].add(tid);
+        dismissedSegmentIdsByMode[m].add(`fallback_${tid}`);
+      }
+    }
+
     for (const otherMode of ["mixed", "slices_only", "original_only"] as PlaybackMode[]) {
       for (const item of queuesByMode[otherMode] || []) {
-        if (item.track.id === trackId) {
-          segmentIdsToDismiss.add(item.segment.id);
+        if (trackIdSet.has(item.track.id)) {
+          dismissedSegmentIdsByMode[otherMode].add(item.segment.id);
         }
       }
     }
-    for (const item of queue) {
-      if (item.track.id === trackId) {
-        segmentIdsToDismiss.add(item.segment.id);
-      }
-    }
-    for (const m of ["mixed", "slices_only", "original_only"] as PlaybackMode[]) {
-      dismissedTrackIdsByMode[m].add(trackId);
-      for (const sid of segmentIdsToDismiss) {
-        dismissedSegmentIdsByMode[m].add(sid);
-      }
-    }
+
     const isPlayingPlaylist = Boolean(get().activePlaylistPlayingId);
     const removedBeforeCurrent = queueIndex > 0
-      ? queue.slice(0, queueIndex).filter((item) => item.track.id === trackId).length
+      ? queue.slice(0, queueIndex).filter((item) => trackIdSet.has(item.track.id)).length
       : 0;
-    const updatedQueuesByMode: Record<PlaybackMode, QueueItem[]> = {
-      mixed: (queuesByMode.mixed || []).filter((item) => item.track.id !== trackId),
-      slices_only: (queuesByMode.slices_only || []).filter((item) => item.track.id !== trackId),
-      original_only: (queuesByMode.original_only || []).filter((item) => item.track.id !== trackId),
-    };
-    const newQueue = isPlayingPlaylist
-      ? queue.filter((item) => item.track.id !== trackId)
-      : updatedQueuesByMode[playbackMode];
 
-    if (activeTrack?.id === trackId) {
+    const updatedQueuesByMode: Record<PlaybackMode, QueueItem[]> = {
+      mixed: (queuesByMode.mixed || []).filter((item) => !trackIdSet.has(item.track.id)),
+      slices_only: (queuesByMode.slices_only || []).filter((item) => !trackIdSet.has(item.track.id)),
+      original_only: (queuesByMode.original_only || []).filter((item) => !trackIdSet.has(item.track.id)),
+    };
+
+    const filteredQueue = queue.filter((item) => !trackIdSet.has(item.track.id));
+    const newQueue = isPlayingPlaylist
+      ? filteredQueue
+      : (queuesByMode[playbackMode] && queuesByMode[playbackMode].length > 0 ? updatedQueuesByMode[playbackMode] : filteredQueue);
+
+    if (activeTrack && trackIdSet.has(activeTrack.id)) {
       const wasPlaying = get().isPlaying;
       transitionActiveItemOnRemoval(
         set,
@@ -1641,7 +1769,68 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       queue: newQueue,
       queueIndex: newIndex,
       activePlaylistOriginalQueue: isPlayingPlaylist
-        ? get().activePlaylistOriginalQueue.filter((item) => item.track.id !== trackId)
+        ? get().activePlaylistOriginalQueue.filter((item) => !trackIdSet.has(item.track.id))
+        : get().activePlaylistOriginalQueue,
+      activePlaylistPlayingId: isPlayingPlaylist && newQueue.length === 0 ? null : get().activePlaylistPlayingId,
+      queuesByMode: isPlayingPlaylist ? queuesByMode : updatedQueuesByMode,
+      initializedModes: isPlayingPlaylist ? get().initializedModes : {
+        ...get().initializedModes,
+        [playbackMode]: true,
+      },
+    });
+  },
+
+  removeTrackFromQueue: (trackId: string) => {
+    get().removeTracksBatchFromQueue([trackId]);
+  },
+
+  removeSegmentsBatchFromQueue: (segmentIds: string[]) => {
+    if (!segmentIds || segmentIds.length === 0) return;
+    const segIdSet = new Set(segmentIds);
+    for (const sid of segmentIds) {
+      for (const m of ["mixed", "slices_only", "original_only"] as PlaybackMode[]) {
+        dismissedSegmentIdsByMode[m].add(sid);
+      }
+    }
+    const { queue, queueIndex, activeSegment, playbackMode, queuesByMode } = get();
+    const isPlayingPlaylist = Boolean(get().activePlaylistPlayingId);
+    const removedBeforeCurrent = queueIndex > 0
+      ? queue.slice(0, queueIndex).filter((item) => segIdSet.has(item.segment.id)).length
+      : 0;
+    const updatedQueuesByMode: Record<PlaybackMode, QueueItem[]> = {
+      mixed: (queuesByMode.mixed || []).filter((item) => !segIdSet.has(item.segment.id)),
+      slices_only: (queuesByMode.slices_only || []).filter((item) => !segIdSet.has(item.segment.id)),
+      original_only: (queuesByMode.original_only || []).filter((item) => !segIdSet.has(item.segment.id)),
+    };
+    const filteredQueue = queue.filter((item) => !segIdSet.has(item.segment.id));
+    const newQueue = isPlayingPlaylist
+      ? filteredQueue
+      : (queuesByMode[playbackMode] && queuesByMode[playbackMode].length > 0 ? updatedQueuesByMode[playbackMode] : filteredQueue);
+
+    if (activeSegment && segIdSet.has(activeSegment.id)) {
+      const wasPlaying = get().isPlaying;
+      transitionActiveItemOnRemoval(
+        set,
+        get,
+        newQueue,
+        queueIndex - removedBeforeCurrent,
+        wasPlaying,
+        updatedQueuesByMode
+      );
+      return;
+    }
+
+    let newIndex = queueIndex;
+    if (newQueue.length === 0) {
+      newIndex = -1;
+    } else {
+      newIndex = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
+    }
+    set({
+      queue: newQueue,
+      queueIndex: newIndex,
+      activePlaylistOriginalQueue: isPlayingPlaylist
+        ? get().activePlaylistOriginalQueue.filter((item) => !segIdSet.has(item.segment.id))
         : get().activePlaylistOriginalQueue,
       activePlaylistPlayingId: isPlayingPlaylist && newQueue.length === 0 ? null : get().activePlaylistPlayingId,
       queuesByMode: isPlayingPlaylist ? queuesByMode : updatedQueuesByMode,
@@ -1653,55 +1842,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   removeSegmentFromQueue: (segmentId: string) => {
-    for (const m of ["mixed", "slices_only", "original_only"] as PlaybackMode[]) {
-      dismissedSegmentIdsByMode[m].add(segmentId);
-    }
-    const { queue, queueIndex, activeSegment, playbackMode, queuesByMode } = get();
-    const isPlayingPlaylist = Boolean(get().activePlaylistPlayingId);
-    const removedBeforeCurrent = queueIndex > 0
-      ? queue.slice(0, queueIndex).filter((item) => item.segment.id === segmentId).length
-      : 0;
-    const updatedQueuesByMode: Record<PlaybackMode, QueueItem[]> = {
-      mixed: (queuesByMode.mixed || []).filter((item) => item.segment.id !== segmentId),
-      slices_only: (queuesByMode.slices_only || []).filter((item) => item.segment.id !== segmentId),
-      original_only: (queuesByMode.original_only || []).filter((item) => item.segment.id !== segmentId),
-    };
-    const newQueue = isPlayingPlaylist
-      ? queue.filter((item) => item.segment.id !== segmentId)
-      : updatedQueuesByMode[playbackMode];
-
-    if (activeSegment?.id === segmentId) {
-      const wasPlaying = get().isPlaying;
-      transitionActiveItemOnRemoval(
-        set,
-        get,
-        newQueue,
-        queueIndex - removedBeforeCurrent,
-        wasPlaying,
-        updatedQueuesByMode
-      );
-      return;
-    }
-
-    let newIndex = queueIndex;
-    if (newQueue.length === 0) {
-      newIndex = -1;
-    } else {
-      newIndex = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex - removedBeforeCurrent, newQueue.length - 1));
-    }
-    set({
-      queue: newQueue,
-      queueIndex: newIndex,
-      activePlaylistOriginalQueue: isPlayingPlaylist
-        ? get().activePlaylistOriginalQueue.filter((item) => item.segment.id !== segmentId)
-        : get().activePlaylistOriginalQueue,
-      activePlaylistPlayingId: isPlayingPlaylist && newQueue.length === 0 ? null : get().activePlaylistPlayingId,
-      queuesByMode: isPlayingPlaylist ? queuesByMode : updatedQueuesByMode,
-      initializedModes: isPlayingPlaylist ? get().initializedModes : {
-        ...get().initializedModes,
-        [playbackMode]: true,
-      },
-    });
+    get().removeSegmentsBatchFromQueue([segmentId]);
   },
 
   removeQueueItemAtIndex: (index: number, modeOverride?: PlaybackMode) => {
@@ -1902,34 +2043,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { queuesByMode, initializedModes } = get();
     let targetQueue = queuesByMode[mode];
     const isInitialized = initializedModes[mode] || (targetQueue && targetQueue.length > 0);
-    let didFetchSucceed = true;
 
     // If queue for this mode hasn't been created yet, populate it sequentially
     if (!isInitialized && (!targetQueue || targetQueue.length === 0)) {
       let segments: Segment[] = [];
       if (mode !== "original_only") {
-        try {
-          const res = await fetch("/api/segments");
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data)) {
-              segments = data;
-            } else {
-              didFetchSucceed = false;
-            }
-          } else {
-            didFetchSucceed = false;
-          }
-        } catch {
-          didFetchSucceed = false;
-        }
+        const segRes = await fetchAllSegmentsWithEtag();
         // Guard against stale switch if another tab was clicked during network fetch
         if (requestId !== latestPlaybackModeRequestId) return false;
 
-        if (!didFetchSucceed) {
+        if (!segRes.success) {
           console.warn(`[Store] Failed to fetch segments for mode "${mode}"; aborting mode queue generation.`);
           return false;
         }
+        segments = segRes.segments;
       }
 
       const freshTracks = get().tracks;
@@ -1979,6 +2106,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       queue: targetQueue,
       queueIndex: newIndex,
       isShuffle: get().shuffleByMode[mode],
+      queueOrigin: { type: "system", mode },
     });
     return true;
   },
@@ -2041,6 +2169,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         queueIndex: finalQueueIndex,
         isShuffle: shouldShuffle,
         activePlaylistPlayingId: null,
+        queueOrigin: { type: "system", mode },
       });
     } else {
       set({
@@ -2145,16 +2274,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (currentQueue.length === 0) {
       let segments: Segment[] = allSegmentsOverride || [];
       if (segments.length === 0 && requestedMode !== "original_only") {
-        try {
-          const res = await fetch("/api/segments");
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data)) {
-              segments = data;
-            }
-          }
-        } catch (e) {
-          console.warn("[Store] Failed to fetch segments in quickShufflePlay:", e);
+        const segRes = await fetchAllSegmentsWithEtag();
+        if (segRes.success) {
+          segments = segRes.segments;
         }
       }
 
@@ -2239,17 +2361,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let didFetchSucceed = mode === "original_only";
     try {
       if (mode !== "original_only") {
-        try {
-          const res = await fetch("/api/segments");
-          if (res.ok) {
-            segments = await res.json();
-            didFetchSucceed = true;
-          } else {
-            console.warn(`[Store] ensureModeQueue: /api/segments returned ${res.status} for mode "${mode}"; aborting initialization.`);
-            return;
-          }
-        } catch (e) {
-          console.warn(`[Store] ensureModeQueue: failed to fetch segments for "${mode}":`, e);
+        const segRes = await fetchAllSegmentsWithEtag();
+        if (segRes.success) {
+          segments = segRes.segments;
+          didFetchSucceed = true;
+        } else {
+          console.warn(`[Store] ensureModeQueue: failed to fetch segments for mode "${mode}"; aborting initialization.`);
           return;
         }
       }
@@ -2315,6 +2432,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setActivePlaylist: async (id: string | null, force = false) => {
     if (!force && get().activePlaylistId === id) return;
+    if (typeof window !== "undefined") {
+      const curPl = get().activePlaylistId;
+      const curCat = get().activeSystemCategory;
+      const curMode = get().viewMode;
+      const curKey = curPl ? `playlist:${curPl}` : `category:${curCat || "mixed"}`;
+      const y = window.scrollY || window.pageYOffset || (document?.documentElement?.scrollTop ?? 0);
+      get().saveViewScrollPosition(`${curKey}:${curMode}`, y);
+      get().saveViewScrollPosition(curKey, y);
+    }
     if (get().activePlaylistId !== id) {
       set({ activePlaylistId: id, activePlaylistItems: [], playlistSortMode: "manual" });
     }
@@ -2325,9 +2451,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const data = await res.json();
         if (get().activePlaylistId === id) {
           set({ activePlaylistItems: data.items || [] });
-          if (get().activeTrackScrollRequest) {
-            get().requestScrollToActiveTrack();
-          }
         }
       }
     } catch (e) {
@@ -2351,6 +2474,44 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       console.error("[Store] Failed to create playlist:", e);
     }
     return null;
+  },
+
+  createMixPlaylist: async (name: string, sourceIds: string[]) => {
+    try {
+      const res = await fetch("/api/playlists/mix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, source_ids: sourceIds }),
+      });
+      if (res.ok) {
+        const pl: Playlist = await res.json();
+        await get().fetchPlaylists();
+        return pl;
+      }
+    } catch (e) {
+      console.error("[Store] Failed to create mix playlist:", e);
+    }
+    return null;
+  },
+
+  setMixSources: async (id: string, sourceIds: string[]) => {
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}/sources`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_ids: sourceIds }),
+      });
+      if (res.ok) {
+        await get().fetchPlaylists();
+        if (get().activePlaylistId === id) {
+          await get().setActivePlaylist(id, true);
+        }
+        return true;
+      }
+    } catch (e) {
+      console.error("[Store] Failed to update mix sources:", e);
+    }
+    return false;
   },
 
   deletePlaylist: async (id: string) => {
@@ -2414,6 +2575,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return false;
   },
 
+  setPlaylistCover: async (id: string, trackId: string | null) => {
+    try {
+      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cover_track_id: trackId }),
+      });
+      if (res.ok) {
+        await get().fetchPlaylists();
+        return true;
+      }
+    } catch (e) {
+      console.error("[Store] Failed to set playlist cover:", e);
+    }
+    return false;
+  },
+
   addToPlaylist: async (playlistId: string, trackId: string, segmentId?: string | null) => {
     try {
       const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/items`, {
@@ -2424,7 +2602,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res.ok) {
         try {
           const newItem = await res.json();
-          if (newItem && get().activePlaylistPlayingId === playlistId) {
+          if (newItem && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const isAlreadyInQueue = get().queue.some((it) => it.queueItemId === newItem.id);
             if (!isAlreadyInQueue) {
               const track = newItem.track || get().tracks.find((t) => t.id === trackId);
@@ -2432,18 +2610,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                 const seg = (newItem.segment_id && newItem.segment)
                   ? newItem.segment
                   : createDefaultFullSegment(track);
-                const queueItem = createQueueItem(seg, track, newItem.id);
-                set({
-                  queue: [...get().queue, queueItem],
-                  activePlaylistOriginalQueue: [...get().activePlaylistOriginalQueue, queueItem],
-                });
+                // A playing mix may already hold this song via another source playlist
+                const isSameSongQueued = get().queue.some((it) => it.segment.id === seg.id);
+                if (!isSameSongQueued) {
+                  const queueItem = createQueueItem(seg, track, newItem.id);
+                  set({
+                    queue: [...get().queue, queueItem],
+                    activePlaylistOriginalQueue: [...get().activePlaylistOriginalQueue, queueItem],
+                  });
+                }
               }
             }
           }
         } catch {}
         await get().fetchPlaylists();
-        if (get().activePlaylistId === playlistId) {
-          await get().setActivePlaylist(playlistId, true);
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
+          await get().setActivePlaylist(get().activePlaylistId, true);
         }
         return true;
       }
@@ -2468,9 +2650,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         try {
           const data = await res.json();
           const newItems: PlaylistItemWithDetails[] = Array.isArray(data?.items) ? data.items : [];
-          if (newItems.length > 0 && get().activePlaylistPlayingId === playlistId) {
+          if (newItems.length > 0 && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const currentQueue = get().queue;
             const existingQueueItemIds = new Set(currentQueue.map((it) => it.queueItemId).filter(Boolean));
+            const queuedSegmentIds = new Set(currentQueue.map((it) => it.segment.id));
             const itemsToAdd: QueueItem[] = [];
 
             for (const newItem of newItems) {
@@ -2480,6 +2663,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
                 const seg = newItem.segment_id && newItem.segment
                   ? newItem.segment
                   : createDefaultFullSegment(track);
+                // A playing mix may already hold this song via another source playlist
+                if (queuedSegmentIds.has(seg.id)) continue;
+                queuedSegmentIds.add(seg.id);
                 const queueItem = createQueueItem(seg, track, newItem.id);
                 itemsToAdd.push(queueItem);
                 existingQueueItemIds.add(newItem.id);
@@ -2495,8 +2681,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         } catch {}
         await get().fetchPlaylists();
-        if (get().activePlaylistId === playlistId) {
-          await get().setActivePlaylist(playlistId, true);
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
+          await get().setActivePlaylist(get().activePlaylistId, true);
         }
         return true;
       }
@@ -2619,6 +2805,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         body: JSON.stringify({ ids: segmentIds }),
       });
       if (res.ok) {
+        cachedSegmentsEtag = null;
         useSelectionStore.getState().deselectTracks(segmentIds);
         const delSet = new Set(segmentIds);
         for (const sid of segmentIds) {
@@ -2700,7 +2887,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   removePlaylistItemsBatch: async (playlistId: string, itemIds: string[]) => {
     if (!playlistId || !itemIds || itemIds.length === 0) return false;
     const prevItems = get().activePlaylistItems;
-    if (get().activePlaylistId === playlistId) {
+    if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
       const removeSet = new Set(itemIds);
       set({ activePlaylistItems: prevItems.filter((it) => !removeSet.has(it.id)) });
     }
@@ -2712,7 +2899,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
       if (res.ok) {
         useSelectionStore.getState().deselectTracks(itemIds);
-        if (get().activePlaylistPlayingId === playlistId) {
+        if (showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
           const removeSet = new Set(itemIds);
           const currentItem = get().queue[get().queueIndex];
           const isRemovingActive = currentItem?.queueItemId ? removeSet.has(currentItem.queueItemId) : false;
@@ -2781,18 +2968,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
         await get().fetchPlaylists();
-        if (get().activePlaylistId === playlistId) {
-          await get().setActivePlaylist(playlistId, true);
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
+          await get().setActivePlaylist(get().activePlaylistId, true);
         }
         return true;
       } else {
-        if (get().activePlaylistId === playlistId) {
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
           set({ activePlaylistItems: prevItems });
         }
       }
     } catch (e) {
       console.error("[Store] Failed to batch remove playlist items:", e);
-      if (get().activePlaylistId === playlistId) {
+      if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
         set({ activePlaylistItems: prevItems });
       }
     }
@@ -2801,7 +2988,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   removeFromPlaylist: async (playlistId: string, itemId: string) => {
     const prevItems = get().activePlaylistItems;
-    if (get().activePlaylistId === playlistId) {
+    if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
       set({ activePlaylistItems: prevItems.filter((it) => it.id !== itemId) });
     }
     try {
@@ -2810,7 +2997,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
       if (res.ok) {
         useSelectionStore.getState().deselectTracks([itemId]);
-        if (get().activePlaylistPlayingId === playlistId) {
+        if (showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
           const currentItem = get().queue[get().queueIndex];
           const isRemovingActive = currentItem?.queueItemId === itemId;
           const updatedQ = get().queue.filter((it) => it.queueItemId !== itemId);
@@ -2876,18 +3063,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
         await get().fetchPlaylists();
-        if (get().activePlaylistId === playlistId) {
-          await get().setActivePlaylist(playlistId, true);
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
+          await get().setActivePlaylist(get().activePlaylistId, true);
         }
         return true;
       } else {
-        if (get().activePlaylistId === playlistId) {
+        if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
           set({ activePlaylistItems: prevItems });
         }
       }
     } catch (e) {
       console.error("[Store] Failed to remove item from playlist:", e);
-      if (get().activePlaylistId === playlistId) {
+      if (showsItemsOf(get().activePlaylistId, playlistId, get().playlists)) {
         set({ activePlaylistItems: prevItems });
       }
     }
@@ -2975,7 +3162,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     playlistId: string,
     forceShuffle = false,
     startIndexOrItemId: number | string = 0,
-    keepCurrentTrack = false
+    keepCurrentTrack = false,
+    origin?: QueueOrigin | null
   ) => {
     try {
       let items: PlaylistItemWithDetails[] = [];
@@ -2992,11 +3180,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       );
       if (validItems.length === 0) return;
 
+      let effectiveItems = validItems;
+      if (origin?.type === "search" && origin.query?.trim()) {
+        effectiveItems = searchItems(validItems, origin.query.trim(), (item) => ({
+          title: item.segment?.name || item.track?.title,
+          artist: item.track?.artist,
+          segmentName: item.segment ? item.track?.title : undefined,
+          createdAt: item.added_at,
+        }));
+      }
+      if (effectiveItems.length === 0) return;
+
       const sortMode = get().playlistSortMode;
       const currentPl = get().playlists.find((p) => p.id === playlistId);
       const randomOrder = get().playlistRandomMap[playlistId];
       const sortedValidItems = getSortedPlaylistItems(
-        validItems,
+        effectiveItems,
         sortMode,
         randomOrder,
         currentPl?.is_custom_ordered
@@ -3036,6 +3235,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             isShuffle: forceShuffle,
             activePlaylistPlayingId: playlistId,
             activePlaylistOriginalQueue: rawQueueItems,
+            queueOrigin: origin !== undefined ? origin : { type: "playlist", playlistId },
           });
 
           // If current track and segment are already actively playing, do not call playSegment to avoid restarting audio
@@ -3071,6 +3271,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isShuffle: forceShuffle,
         activePlaylistPlayingId: playlistId,
         activePlaylistOriginalQueue: rawQueueItems,
+        queueOrigin: origin !== undefined ? origin : { type: "playlist", playlistId },
       });
 
       if (queueItems.length > 0) {
@@ -3092,10 +3293,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (modeItems.length === 0) {
         let segments: Segment[] = [];
         if (mode !== "original_only") {
-          try {
-            const res = await fetch("/api/segments");
-            if (res.ok) segments = await res.json();
-          } catch {}
+          const segRes = await fetchAllSegmentsWithEtag();
+          if (segRes.success) segments = segRes.segments;
         }
         modeItems = generateModeQueueItems(mode, segments, get().tracks);
       }
@@ -3113,6 +3312,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isShuffle: forceShuffle,
         playbackMode: mode,
         activePlaylistPlayingId: null,
+        queueOrigin: { type: "system", mode },
         queuesByMode: {
           ...get().queuesByMode,
           [mode]: queueItems,
@@ -3136,17 +3336,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     segment: Segment,
     track: Track,
     customQueue?: QueueItem[],
-    customIndex?: number
+    customIndex?: number,
+    origin?: QueueOrigin | null
   ) => {
     try {
       let modeItems = customQueue && customQueue.length > 0 ? customQueue : (get().queuesByMode[mode] || []);
       if (modeItems.length === 0) {
         let segments: Segment[] = [];
         if (mode !== "original_only") {
-          try {
-            const res = await fetch("/api/segments");
-            if (res.ok) segments = await res.json();
-          } catch {}
+          const segRes = await fetchAllSegmentsWithEtag();
+          if (segRes.success) segments = segRes.segments;
         }
         modeItems = generateModeQueueItems(mode, segments, get().tracks);
       }
@@ -3183,6 +3382,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         queueIndex: idx,
         playbackMode: mode,
         activePlaylistPlayingId: null,
+        queueOrigin: origin !== undefined ? origin : { type: "system", mode },
         queuesByMode: {
           ...get().queuesByMode,
           [mode]: modeItems,

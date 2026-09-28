@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Badge Hàng Đợi Tìm Kiếm (Search Queue Origin) - 24-09-2026</title>
+  <link rel="stylesheet" href="./visual-core.css">
+
+  <style>
+    /* CSS Mockup đặc thù cho PlayerBar & Search Queue Badge */
+    .player-mockup-wrapper {
+      background: #0f0f13;
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.6);
+      width: 100%;
+      user-select: none;
+    }
+    .mock-playerbar {
+      display: grid;
+      grid-template-columns: 1.3fr 1.6fr 1.1fr;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    @media (max-width: 960px) {
+      .mock-playerbar {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+    }
+    /* Info bên trái */
+    .mock-track-col {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      min-width: 0;
+    }
+    .mock-thumb {
+      width: 2.85rem;
+      height: 2.85rem;
+      border-radius: 0.45rem;
+      background: #1c1c24;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      border: 1px solid #2e2e38;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .mock-thumb-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 0.22rem;
+      background: #4385be;
+    }
+    .mock-track-meta {
+      min-width: 0;
+      flex: 1;
+    }
+    .mock-track-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .mock-track-title {
+      font-weight: 700;
+      font-size: 0.84rem;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 170px;
+    }
+    .mock-track-sub {
+      font-size: 0.72rem;
+      color: #60a5fa;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 0.15rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .mock-track-sub span.time {
+      color: #8b9bb4;
+    }
+
+    /* Style cho các loại badge */
+    .player-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .badge-old-mix {
+      background: rgba(59, 130, 246, 0.12);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+    .badge-search-opt-a {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+    }
+    .badge-search-opt-b {
+      background: rgba(234, 179, 8, 0.15);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.35);
+    }
+    .badge-search-opt-c {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.35);
+    }
+    .player-badge:hover {
+      filter: brightness(1.15);
+      transform: translateY(-1px);
+    }
+    .dot-indicator {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-green {
+      background: #22c55e;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+      animation: pulseGreen 1.5s infinite;
+    }
+    @keyframes pulseGreen {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    /* Controls ở giữa */
+    .mock-center-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .mock-btn-row {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+    .mock-icon-btn {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: transparent;
+      border: none;
+      color: #a1a1aa;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      transition: all 0.15s ease;
+    }
+    .mock-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+    }
+    .mock-icon-btn.shuffle-active {
+      color: #22c55e;
+      background: rgba(34, 197, 94, 0.15);
+    }
+    .mock-play-circle {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 50%;
+      background: #3b82f6;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      transition: all 0.15s ease;
+    }
+    .mock-play-circle:hover {
+      transform: scale(1.05);
+      background: #2563eb;
+    }
+    .mock-progress-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      width: 100%;
+      max-width: 320px;
+    }
+    .mock-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      color: #71717a;
+    }
+    .mock-bar {
+      flex: 1;
+      height: 0.25rem;
+      background: #27272a;
+      border-radius: 999px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .mock-bar-fill {
+      height: 100%;
+      background: #3b82f6;
+      border-radius: 999px;
+      width: 45%;
+    }
+
+    /* Info bên phải (Queue & Volume) */
+    .mock-right-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.75rem;
+    }
+    .mock-queue-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.6rem;
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 0.35rem;
+      font-size: 0.72rem;
+      color: #d4d4d8;
+    }
+    .mock-queue-count {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      font-weight: 700;
+      padding: 0.05rem 0.35rem;
+      border-radius: 0.25rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Queue list preview box */
+    .queue-preview-box {
+      margin-top: 1rem;
+      background: #0a0a0d;
+      border: 1px dashed var(--border);
+      border-radius: 0.5rem;
+      padding: 0.85rem 1rem;
+    }
+    .queue-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      font-weight: 600;
+    }
+    .queue-items-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .queue-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 0.35rem;
+      background: #141418;
+      border: 1px solid #202026;
+      transition: all 0.15s ease;
+    }
+    .queue-item-row.active {
+      border-color: rgba(34, 197, 94, 0.4);
+      background: rgba(34, 197, 94, 0.08);
+      font-weight: 600;
+      color: #4ade80;
+    }
+
+    /* Search Bar preview */
+    .mock-search-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.5rem 0.85rem;
+      background: #141418;
+      border: 1px solid #27272a;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      font-size: 0.8rem;
+    }
+    .mock-search-input {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      outline: none;
+      font-size: 0.8rem;
+      flex: 1;
+    }
+    .mock-search-badge {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border-radius: 0.3rem;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- STICKY TOPBAR -->
+  <header class="nav-header">
+    <div class="brand-title">
+      <span>⚡</span> BẢN THIẾT KẾ: BADGE HÀNG ĐỢI TÌM KIẾM TRÊN PLAYERBAR
+    </div>
+    <nav class="tab-group" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược &amp; 3 Phương Án</button>
+      <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Giải Thích Chi Tiết (Zoom-In)</button>
+    </nav>
+  </header>
+
+  <div class="container">
+    <!-- =================================================================
+         TAB 1: TÓM LƯỢC & VISUAL COMPARISON
+         ================================================================= -->
+    <main id="tab-summarize" class="tab-pane active" role="tabpanel">
+      <section class="callout">
+        <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+        <p>Khi phát nhạc từ kết quả tìm kiếm, thay thế hoàn toàn chữ <code>Mix</code> thành badge ngữ cảnh tìm kiếm (icon kính lúp <code>🔍 Search: "từ_khóa"</code> hoặc <code>🔍 Search (3)</code>) kèm tooltip chi tiết và trạng thái shuffle, giúp user hiểu ngay queue này được lọc từ đâu mà đéo bị nhầm với toàn bộ playlist Mix.</p>
+      </section>
+
+      <!-- Sub-tabs chọn Phương án -->
+      <div style="margin-top: 1.5rem; margin-bottom: 0.5rem;">
+        <span style="font-size: 0.82rem; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;">
+          CHỌN BIẾN THỂ PHƯƠNG ÁN ĐỂ SOI VISUAL:
+        </span>
+        <nav class="tab-group sub-tabs" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('variant-a', this)">
+            ✨ Phương Án A (Kính Lúp + Query: 🔍 "đen")
+          </button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('variant-b', this)">
+            🔢 Phương Án B (Kính Lúp + Số Lượng: 🔍 Search (3))
+          </button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('variant-c', this)">
+            🏷️ Phương Án C (Context Kết Hợp: Mix • 🔍)
+          </button>
+        </nav>
+      </div>
+
+      <!-- =================================================================
+           SUB-PANE: PHƯƠNG ÁN A
+           ================================================================= -->
+      <div id="tab-variant-a" class="tab-pane active" data-tab-pane="variant-a" role="tabpanel">
+        
+        <!-- CARD 1: COMPARISON SLIDER -->
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">CARD 1: COMPARISON SLIDER (KÉO TRƯỢT SO SÁNH)</span>
+            <span style="font-size: 0.85rem; color: var(--text-main);">Kéo thanh trượt để so sánh Trước (Hiện trạng lỗi) vs Sau (Phương án A)</span>
+          </div>
+
+          <div class="slider-viewport" style="min-height: 28rem;">
+            <!-- BEFORE LAYER (CŨ) -->
+            <div class="slider-layer slider-before">
+              <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation red">HIỆN TRẠNG CŨ: DỄ GÂY HIỂU NHẦM LÀ PLAYLIST MIX TỔNG</span>
+                
+                <div class="mock-search-banner">
+                  <span style="color: #60a5fa;">🔍</span>
+                  <span style="color: #ffffff; font-weight: 600;">đen</span>
+                  <span class="mock-search-badge">Tìm thấy 3 bài hát</span>
+                </div>
+
+                <div class="player-mockup-wrapper">
+                  <div class="mock-playerbar">
+                    <!-- Left info -->
+                    <div class="mock-track-col">
+                      <div class="mock-thumb">
+                        🌲
+                        <div class="mock-thumb-bar"></div>
+                      </div>
+                      <div class="mock-track-meta">
+                        <div class="mock-track-title-row">
+                          <span class="mock-track-title" title="Đen – một triệu like ft. Thành Đồng">Đen – một triệu like ft. Thành Đ...</span>
+                          <span class="player-badge badge-old-mix" style="border: 2px dashed #ef4444;" title="Lỗi: Gây hiểu nhầm đang phát cả playlist Mix">
+                            <span class="dot-indicator dot-green"></span>
+                            <span>Mix</span>
+                          </span>
+                        </div>
+                        <div class="mock-track-sub">
+                          <span>Full Track</span>
+                          <span class="time">[00:00.0 → 04:21.4]</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Center controls -->
+                    <div class="mock-center-controls">
+                      <div class="mock-btn-row">
+                        <button class="mock-icon-btn shuffle-active" title="Đang bật shuffle 3 bài">🔀</button>
+                        <button class="mock-icon-btn">⏮</button>
+                        <button class="mock-play-circle">⏸</button>
+                        <button class="mock-icon-btn">⏭</button>
+                        <button class="mock-icon-btn">🔁</button>
+                      </div>
+                      <div class="mock-progress-row">
+                        <span class="mock-time">01:55.7</span>
+                        <div class="mock-bar"><div class="mock-bar-fill"></div></div>
+                        <span class="mock-time">04:21.4</span>
+                      </div>
+                    </div>
+
+                    <!-- Right controls -->
+                    <div class="mock-right-controls">
+                      <div class="mock-queue-pill">
+                        <span>Hàng đợi:</span>
+                        <span class="mock-queue-count">3</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="queue-preview-box" style="opacity: 0.85;">
+                  <div class="queue-header-row">
+                    <span>HÀNG ĐỢI PHÁT THỰC TẾ (CHỈ CÓ 3 BÀI TỪ SEARCH):</span>
+                    <span style="color: #ef4444; font-weight: 700;">⚠️ Badge lại ghi "Mix"</span>
+                  </div>
+                  <div class="queue-items-list">
+                    <div class="queue-item-row active"><span>1. Đen – một triệu like (Đang phát)</span><span>04:21</span></div>
+                    <div class="queue-item-row"><span>2. Đen – Bài này chill phết</span><span>04:36</span></div>
+                    <div class="queue-item-row"><span>3. Đen – Nấu ăn cho em</span><span>04:02</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AFTER LAYER (MỚI - OPTION A) -->
+            <div class="slider-layer slider-after">
+              <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation green">PHƯƠNG ÁN A: BIỂU TƯỢNG KÍNH LÚP KÈM TỪ KHÓA TÌM KIẾM</span>
+                
+                <div class="mock-search-banner">
+                  <span style="color: #4ade80;">🔍</span>
+                  <span style="color: #ffffff; font-weight: 600;">đen</span>
+                  <span class="mock-search-badge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">Tìm thấy 3 bài hát</span>
+                </div>
+
+                <div class="player-mockup-wrapper">
+                  <div class="mock-playerbar">
+                    <!-- Left info -->
+                    <div class="mock-track-col">
+                      <div class="mock-thumb">
+                        🌲
+                        <div class="mock-thumb-bar"></div>
+                      </div>
+                      <div class="mock-track-meta">
+                        <div class="mock-track-title-row">
+                          <span class="mock-track-title" title="Đen – một triệu like ft. Thành Đồng">Đen – một triệu like ft. Thành Đ...</span>
+                          <span class="player-badge badge-search-opt-a" style="border: 2px dashed #22c55e;" title="Đang phát từ tìm kiếm: &quot;đen&quot; (3 bài) - Bấm để cuộn lên tìm kiếm">
+                            <span class="dot-indicator dot-green"></span>
+                            <span>🔀</span>
+                            <span>🔍 "đen"</span>
+                          </span>
+                        </div>
+                        <div class="mock-track-sub">
+                          <span>Full Track</span>
+                          <span class="time">[00:00.0 → 04:21.4]</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Center controls -->
+                    <div class="mock-center-controls">
+                      <div class="mock-btn-row">
+                        <button class="mock-icon-btn shuffle-active" title="Đang bật shuffle kết quả tìm kiếm">🔀</button>
+                        <button class="mock-icon-btn">⏮</button>
+                        <button class="mock-play-circle">⏸</button>
+                        <button class="mock-icon-btn">⏭</button>
+                        <button class="mock-icon-btn">🔁</button>
+                      </div>
+                      <div class="mock-progress-row">
+                        <span class="mock-time">01:55.7</span>
+                        <div class="mock-bar"><div class="mock-bar-fill"></div></div>
+                        <span class="mock-time">04:21.4</span>
+                      </div>
+                    </div>
+
+                    <!-- Right controls -->
+                    <div class="mock-right-controls">
+                      <div class="mock-queue-pill">
+                        <span>Hàng đợi:</span>
+                        <span class="mock-queue-count" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">3</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="queue-preview-box">
+                  <div class="queue-header-row">
+                    <span>HÀNG ĐỢI PHÁT (TỪ KẾT QUẢ TÌM KIẾM "ĐEN"):</span>
+                    <span style="color: #4ade80; font-weight: 700;">✅ Badge đồng bộ 100% ngữ cảnh</span>
+                  </div>
+                  <div class="queue-items-list">
+                    <div class="queue-item-row active"><span>1. Đen – một triệu like (Đang phát)</span><span>04:21</span></div>
+                    <div class="queue-item-row"><span>2. Đen – Bài này chill phết</span><span>04:36</span></div>
+                    <div class="queue-item-row"><span>3. Đen – Nấu ăn cho em</span><span>04:02</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Divider & Knob -->
+            <div class="slider-divider">
+              <div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div>
+            </div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+          </div>
+        </article>
+
+        <!-- CARD 2: BEFORE ONLY -->
+        <article class="card-wrapper card-before">
+          <div class="card-header-bar">
+            <span class="card-badge badge-red">CARD 2: BEFORE ONLY (HIỆN TRẠNG LỖI)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-red);">Nhược điểm: Mất dấu vết ngữ cảnh khi phát từ Search</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(239, 68, 68, 0.04);">
+            <span class="mock-annotation red">BLOCKER UX</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <span class="diff-tag del">- CŨ</span>
+              <span style="font-size: 0.95rem; font-weight: 700; color: var(--accent-red);">PlayerBar hiển thị cứng badge "Mix"</span>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+              Khi người dùng tìm kiếm từ khóa, danh sách lọc ra 3 bài và queue chứa đúng 3 bài. Tuy nhiên PlayerBar chỉ đọc <code>playbackMode</code> nên hiện badge là <code>Mix</code>. Khi bật Shuffle, user hoàn toàn đéo biết là đang shuffle 3 bài của search hay đang shuffle cả thư viện Mix.
+            </p>
+            <div class="player-badge badge-old-mix" style="padding: 0.4rem 0.8rem; font-size: 0.82rem;">
+              <span class="dot-indicator dot-green"></span>
+              <span>• Mix (Gây hiểu nhầm là playlist Mix đầy đủ)</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- CARD 3: AFTER ONLY (INTERACTIVE) -->
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge badge-green">CARD 3: AFTER ONLY (TƯƠNG TÁC THẬT BẤM THỬ)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-green);">Bấm nút Shuffle, Next bài hoặc click vào Badge để test!</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; border-radius: 0.5rem; background: rgba(34, 197, 94, 0.04);">
+            <span class="mock-annotation green">ĐÃ TỐI ƯU</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <span class="diff-tag add">+ PHƯƠNG ÁN A</span>
+              <span style="font-size: 0.95rem; font-weight: 700; color: var(--accent-green);">Kính lúp + Từ khóa (🔍 "đen")</span>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+              Badge thể hiện chính xác từ khóa đang lọc. Tooltip nêu rõ số lượng bài trong queue. Bấm vào badge sẽ focus lại ô tìm kiếm.
+            </p>
+
+            <!-- Interactive PlayerBar Demo -->
+            <div class="player-mockup-wrapper">
+              <div class="mock-playerbar">
+                <div class="mock-track-col">
+                  <div class="mock-thumb">
+                    <span id="demo-art">🌲</span>
+                    <div class="mock-thumb-bar"></div>
+                  </div>
+                  <div class="mock-track-meta">
+                    <div class="mock-track-title-row">
+                      <span class="mock-track-title" id="demo-title">Đen – một triệu like ft. Thành Đ...</span>
+                      <button type="button" class="player-badge badge-search-opt-a" id="demo-badge-a" onclick="handleBadgeClick('đen', 3)" title="Đang phát từ tìm kiếm: &quot;đen&quot; (3 bài) - Bấm để cuộn lên tìm kiếm">
+                        <span class="dot-indicator dot-green"></span>
+                        <span id="demo-shuffle-icon">🔀</span>
+                        <span id="demo-badge-text">🔍 "đen"</span>
+                      </button>
+                    </div>
+                    <div class="mock-track-sub">
+                      <span>Full Track</span>
+                      <span class="time" id="demo-time">[00:00.0 → 04:21.4]</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mock-center-controls">
+                  <div class="mock-btn-row">
+                    <button type="button" class="mock-icon-btn shuffle-active" id="demo-shuffle-btn" onclick="toggleDemoShuffle()" title="Bật/Tắt Shuffle 3 bài này">🔀</button>
+                    <button type="button" class="mock-icon-btn" onclick="demoPrevTrack()" title="Bài trước">⏮</button>
+                    <button type="button" class="mock-play-circle" id="demo-play-btn" onclick="toggleDemoPlay()" title="Phát / Tạm dừng">⏸</button>
+                    <button type="button" class="mock-icon-btn" onclick="demoNextTrack()" title="Bài kế tiếp">⏭</button>
+                    <button type="button" class="mock-icon-btn" title="Lặp lại">🔁</button>
+                  </div>
+                  <div class="mock-progress-row">
+                    <span class="mock-time" id="demo-cur-time">01:55.7</span>
+                    <div class="mock-bar"><div class="mock-bar-fill" id="demo-bar-fill"></div></div>
+                    <span class="mock-time" id="demo-dur-time">04:21.4</span>
+                  </div>
+                </div>
+
+                <div class="mock-right-controls">
+                  <div class="mock-queue-pill">
+                    <span>Hàng đợi:</span>
+                    <span class="mock-queue-count" style="background: rgba(34, 197, 94, 0.2); color: #4ade80;">3 bài</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Demo action buttons -->
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem;">
+              <button type="button" class="tab-btn active" style="background: var(--accent-green); color: #000000; font-weight: 700;" onclick="toggleDemoShuffle()">
+                ⚡ Bấm Đổi Trạng Thái Shuffle (Toggle Shuffle)
+              </button>
+              <button type="button" class="tab-btn" style="border: 1px solid var(--border);" onclick="demoNextTrack()">
+                ⏭️ Bấm Chuyển Bài Kế Tiếp
+              </button>
+              <button type="button" class="tab-btn" style="border: 1px solid var(--border);" onclick="showToast('🔍 Đã click Badge: Tự động focus và cuộn tới thanh tìm kiếm &quot;đen&quot;!', 'info')">
+                🔍 Thử Click Vào Badge
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- =================================================================
+           SUB-PANE: PHƯƠNG ÁN B
+           ================================================================= -->
+      <div id="tab-variant-b" class="tab-pane" data-tab-pane="variant-b" role="tabpanel" style="display: none;">
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">CARD 1: SO SÁNH PHƯƠNG ÁN B</span>
+            <span style="font-size: 0.85rem; color: var(--text-main);">Phương án B: 🔍 Search (3) - Đập thẳng số lượng bài vào mắt user</span>
+          </div>
+          <div class="slider-viewport" style="min-height: 24rem;">
+            <div class="slider-layer slider-before">
+              <div style="padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation red">CŨ: GHI MIX NHƯNG THỰC RA CHỈ CÓ 3 BÀI</span>
+                <div class="player-mockup-wrapper" style="margin-top: 1rem;">
+                  <div class="mock-track-col">
+                    <div class="mock-thumb">🌲<div class="mock-thumb-bar"></div></div>
+                    <div class="mock-track-meta">
+                      <div class="mock-track-title-row">
+                        <span class="mock-track-title">Đen – một triệu like...</span>
+                        <span class="player-badge badge-old-mix"><span class="dot-indicator dot-green"></span> Mix</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-layer slider-after">
+              <div style="padding: 1.5rem; background: rgba(234, 179, 8, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation yellow">MỚI: HIỂN THỊ RÕ SỐ LƯỢNG KẾT QUẢ TÌM KIẾM</span>
+                <div class="player-mockup-wrapper" style="margin-top: 1rem;">
+                  <div class="mock-track-col">
+                    <div class="mock-thumb">🌲<div class="mock-thumb-bar"></div></div>
+                    <div class="mock-track-meta">
+                      <div class="mock-track-title-row">
+                        <span class="mock-track-title">Đen – một triệu like...</span>
+                        <span class="player-badge badge-search-opt-b" onclick="showToast('🔍 Đang phát từ 3 kết quả tìm kiếm!', 'info')">
+                          <span class="dot-indicator dot-green"></span>
+                          <span>🔍 Search (3)</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-divider"><div class="slider-knob">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1">
+          </div>
+        </article>
+
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4);">ƯU / NHƯỢC ĐIỂM PHƯƠNG ÁN B</span>
+          </div>
+          <div style="padding: 1.5rem;">
+            <ul style="color: var(--text-sub); font-size: 0.88rem; line-height: 1.8; margin-left: 1.25rem;">
+              <li><strong style="color: #facc15;">Ưu điểm:</strong> Độ dài ngắn gọn cố định, vừa khít giới hạn <code>max-w-[140px]</code>. User nhìn số <code>(3)</code> là hiểu ngay queue hiện tại chỉ có 3 bài.</li>
+              <li><strong style="color: #facc15;">Nhược điểm:</strong> Không hiển thị trực tiếp từ khóa tìm kiếm (phải hover xem tooltip mới biết từ khóa).</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+      <!-- =================================================================
+           SUB-PANE: PHƯƠNG ÁN C
+           ================================================================= -->
+      <div id="tab-variant-c" class="tab-pane" data-tab-pane="variant-c" role="tabpanel" style="display: none;">
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">CARD 1: SO SÁNH PHƯƠNG ÁN C</span>
+            <span style="font-size: 0.85rem; color: var(--text-main);">Phương án C: Mix • 🔍 Filtered - Giữ danh mục gốc kèm icon lọc</span>
+          </div>
+          <div class="slider-viewport" style="min-height: 24rem;">
+            <div class="slider-layer slider-before">
+              <div style="padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation red">CŨ: GHI MIX ĐƠN ĐỘC</span>
+                <div class="player-mockup-wrapper" style="margin-top: 1rem;">
+                  <span class="player-badge badge-old-mix"><span class="dot-indicator dot-green"></span> Mix</span>
+                </div>
+              </div>
+            </div>
+            <div class="slider-layer slider-after">
+              <div style="padding: 1.5rem; background: rgba(168, 85, 247, 0.04); border-radius: 0.5rem;">
+                <span class="mock-annotation purple">MỚI: KẾT HỢP TÊN TAB GỐC VỚI ICON KÍNH LÚP</span>
+                <div class="player-mockup-wrapper" style="margin-top: 1rem;">
+                  <span class="player-badge badge-search-opt-c" onclick="showToast('🔍 Đang phát lọc trong tab Mix!', 'info')">
+                    <span class="dot-indicator dot-green"></span>
+                    <span>Mix • 🔍 Filter</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="slider-divider"><div class="slider-knob">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1">
+          </div>
+        </article>
+
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">ƯU / NHƯỢC ĐIỂM PHƯƠNG ÁN C</span>
+          </div>
+          <div style="padding: 1.5rem;">
+            <ul style="color: var(--text-sub); font-size: 0.88rem; line-height: 1.8; margin-left: 1.25rem;">
+              <li><strong style="color: #c084fc;">Ưu điểm:</strong> Cho biết đang search trong tab nào (ví dụ: đang ở tab Mix, tab Slices hay tab Playlist riêng).</li>
+              <li><strong style="color: #c084fc;">Nhược điểm:</strong> Nếu tên Playlist dài (ví dụ "Nhạc Học Bài 2026 • 🔍 Filter") sẽ bị cắt chữ te tua vì không đủ chỗ.</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+
+    </main>
+
+    <!-- =================================================================
+         TAB 2: GIẢI THÍCH CHI TIẾT (ZOOM-IN PRINCIPLE 4 TẦNG)
+         ================================================================= -->
+    <section id="tab-explain" class="tab-pane" role="tabpanel" style="display: none;">
+
+      <!-- TẦNG 1: VĨ MÔ & STATE ARCHITECTURE -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 1/4 • VĨ MÔ &amp; STATE</div>
+            <h3>📁 1. Kiến Trúc State: Bổ Sung queueOrigin</h3>
+            <p>
+              Hiện tại Store <code>usePlayerStore</code> chỉ lưu <code>playbackMode</code> và <code>activePlaylistPlayingId</code>. Khi phát từ kết quả search, app đéo ghi nhớ ngữ cảnh tìm kiếm.
+            </p>
+            <p>
+              Giải pháp kiến trúc: Bổ sung trường <code>queueOrigin</code> để lưu vết nguồn gốc của Queue (Search / Playlist / System Category).
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">State</span>
+              <span class="meta-tag blue">Zustand</span>
+              <span class="meta-tag yellow">Metadata</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <div class="code-dots">
+                  <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                </div>
+                <div class="file-dropdown-wrapper">
+                  <button class="file-dropdown-trigger" type="button" onclick="toggleFileDropdown(this)">
+                    <span>📁 src/client/src/store/usePlayerStore.ts</span><span class="chevron">▼</span>
+                  </button>
+                  <div class="file-dropdown-menu">
+                    <div class="file-dropdown-header"><span>TẬP TIN</span><span>DIR</span></div>
+                    <button class="file-dropdown-item path" type="button" onclick="copyFilePath('src/client/src/store/usePlayerStore.ts')">Sao chép đường dẫn</button>
+                  </div>
+                </div>
+              </div>
+              <div class="code-actions">
+                <span class="diff-stat"><span class="stat-add">+10</span> <span class="stat-del">-0</span></span>
+                <span class="code-lang-badge"><span class="lang-dot ts"></span> TS</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">export type</span> <span class="prop">QueueOrigin</span> =</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  | { <span class="prop">type</span>: <span class="str">"search"</span>; <span class="prop">query</span>: <span class="kwd">string</span>; <span class="prop">count</span>: <span class="kwd">number</span>; <span class="prop">category</span>?: <span class="prop">PlaybackMode</span> }</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  | { <span class="prop">type</span>: <span class="str">"playlist"</span>; <span class="prop">playlistId</span>: <span class="kwd">string</span> }</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  | { <span class="prop">type</span>: <span class="str">"system"</span>; <span class="prop">mode</span>: <span class="prop">PlaybackMode</span> };</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">interface</span> <span class="prop">PlayerState</span> {</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="prop">queue</span>: <span class="prop">QueueItem</span>[];</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="prop">queueOrigin</span>: <span class="prop">QueueOrigin</span> | <span class="kwd">null</span>;</span><span class="c-comment"># Lưu nguồn gốc sinh ra queue</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">setQueueOrigin</span>: (<span class="prop">origin</span>: <span class="prop">QueueOrigin</span> | <span class="kwd">null</span>) =&gt; <span class="kwd">void</span>;</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 2: COMPONENT & UI LEVEL -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 2/4 • COMPONENT UI</div>
+            <h3>📄 2. PlayerBar.tsx: Badge Rendering Logic</h3>
+            <p>
+              Tại <code>PlayerBar.tsx</code>, kiểm tra nếu <code>queueOrigin?.type === "search"</code> thì render badge Kính Lúp với nhãn tương ứng thay vì fallback về <code>"Mix"</code>.
+            </p>
+            <p>
+              Khi bấm vào badge, gọi hàm focus/scroll tới thanh search để user tiếp tục duyệt danh sách lọc.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">UI Component</span>
+              <span class="meta-tag purple">PlayerBar</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <div class="code-dots">
+                  <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                </div>
+                <div class="file-dropdown-wrapper">
+                  <button class="file-dropdown-trigger" type="button" onclick="toggleFileDropdown(this)">
+                    <span>📄 src/client/src/components/PlayerBar.tsx</span><span class="chevron">▼</span>
+                  </button>
+                  <div class="file-dropdown-menu">
+                    <button class="file-dropdown-item path" type="button" onclick="copyFilePath('src/client/src/components/PlayerBar.tsx')">Sao chép đường dẫn</button>
+                  </div>
+                </div>
+              </div>
+              <div class="code-actions">
+                <span class="diff-stat"><span class="stat-add">+14</span> <span class="stat-del">-2</span></span>
+                <span class="code-lang-badge"><span class="lang-dot tsx"></span> TSX</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+
+            <div class="code-body">
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">playingPlaylistName</span> = <span class="prop">React</span>.<span class="fn">useMemo</span>(() =&gt; {</span></div>
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text">    <span class="kwd">return</span> <span class="prop">playbackMode</span> === <span class="str">"mixed"</span> ? <span class="fn">t</span>(<span class="str">"categories.mixed"</span>) : ...;</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">queueOrigin</span> = <span class="fn">usePlayerStore</span>((<span class="prop">s</span>) =&gt; <span class="prop">s</span>.<span class="prop">queueOrigin</span>);</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">const</span> <span class="prop">playingBadge</span> = <span class="prop">React</span>.<span class="fn">useMemo</span>(() =&gt; {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="kwd">if</span> (<span class="prop">queueOrigin</span>?.<span class="prop">type</span> === <span class="str">"search"</span>) {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      <span class="kwd">return</span> {</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="prop">label</span>: <span class="str">`🔍 "${queueOrigin.query}"`</span>, <span class="c-comment"># hoặc `🔍 Search (${queueOrigin.count})`</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="prop">tooltip</span>: <span class="str">`Đang phát từ tìm kiếm: "${queueOrigin.query}" (${queueOrigin.count} bài)`</span>,</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="prop">isSearch</span>: <span class="kwd">true</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      };</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    }</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="kwd">return</span> { <span class="prop">label</span>: <span class="prop">playingPlaylistName</span>, <span class="prop">tooltip</span>: <span class="str">`Phát từ ${playingPlaylistName}`</span> };</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  }, [<span class="prop">queueOrigin</span>, <span class="prop">playingPlaylistName</span>]);</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 3: CALL TREE LEVEL -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 3/4 • CALL TREE</div>
+            <h3>🌳 3. Luồng Gọi Hàm (Runtime Call Flow)</h3>
+            <p>
+              Từ hành động người dùng gõ từ khóa trên Navbar cho tới lúc bấm Shuffle trên PlayerBar:
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag blue">Call Tree</span>
+              <span class="meta-tag yellow">Runtime</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">🌳 runtime-call-tree.txt</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot flow"></span> CALL FLOW</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">User types "đen" in Navbar</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  App.tsx: deferredQuery = "đen"</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    filterTracks(originalTracks, "đen") → [track1, track2, track3]</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    mixedQueue = [3 items]</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">User clicks Play on track1</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  playSegmentInMode("mixed", seg, trk, mixedQueue)</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    usePlayerStore.set({ queue: mixedQueue, queueOrigin: { type: "search", query: "đen", count: 3 } })</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">PlayerBar re-renders</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  Reads queueOrigin.type === "search"</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  Renders badge: 🔍 "đen" (thay vì "Mix")</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">User clicks Shuffle button</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  toggleShuffle() → shuffles 3 items in queue</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  Badge displays: 🔀 🔍 "đen" (User hiểu ngay: đang shuffle 3 kết quả tìm kiếm!)</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 4: ALGORITHM & PSEUDOCODE -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 4/4 • LOGIC &amp; ALGORITHM</div>
+            <h3>⚙️ 4. Pseudocode Quyết Định Badge</h3>
+            <p>
+              Thuật toán xác định text và icon cho badge tại PlayerBar: Đảm bảo khi xóa search hoặc bấm chọn playlist khác thì badge tự động hoàn nguyên.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Algorithm</span>
+              <span class="meta-tag yellow">Logic</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot yellow"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">⚙️ badge-decision-algorithm.pseudo</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot logic"></span> PSEUDO</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">function</span> <span class="fn">getBadgeConfig</span>(<span class="prop">state</span>):</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> <span class="prop">state.queueOrigin</span>?.<span class="prop">type</span> == <span class="str">"search"</span>:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">let</span> <span class="prop">query</span> = <span class="prop">state.queueOrigin.query</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">let</span> <span class="prop">count</span> = <span class="prop">state.queueOrigin.count</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">let</span> <span class="prop">prefix</span> = <span class="prop">state.isShuffle</span> ? <span class="str">"🔀 🔍"</span> : <span class="str">"🔍"</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> {</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="prop">label</span>: <span class="str">`${prefix} "${query}"`</span>,</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="prop">tooltip</span>: <span class="str">`Đang phát từ tìm kiếm: "${query}" (${count} bài)`</span>,</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="prop">style</span>: <span class="str">"search-highlight"</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    }</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">else if</span> <span class="prop">state.activePlaylistPlayingId</span>:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> { <span class="prop">label</span>: <span class="prop">state.playlistName</span>, <span class="prop">style</span>: <span class="str">"playlist"</span> }</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">else</span>:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> { <span class="prop">label</span>: <span class="prop">getCategoryName</span>(<span class="prop">state.playbackMode</span>), <span class="prop">style</span>: <span class="str">"default"</span> }</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </div>
+
+  <!-- Nút Inspector Toggle Fixed -->
+  <button id="inspector-toggle" onclick="toggleDiff()">
+    <span>🔍 Check Diff</span>
+    <span id="diffStatusTag">[BẬT]</span>
+  </button>
+
+  <script src="./visual-core.js"></script>
+
+  <!-- Script logic riêng cho phần Interactive của demo PlayerBar -->
+  <script>
+    const sampleQueue = [
+      { title: "Đen – một triệu like ft. Thành Đồng", duration: "04:21.4", time: "01:55.7", art: "🌲", percent: 45 },
+      { title: "Đen – Bài này chill phết ft. MIN", duration: "04:36.0", time: "00:45.0", art: "☕", percent: 16 },
+      { title: "Đen – Nấu ăn cho em ft. PiaLinh", duration: "04:02.8", time: "02:10.5", art: "🍲", percent: 54 }
+    ];
+    let currentIdx = 0;
+    let isShuffleOn = true;
+    let isPlayingState = true;
+
+    function updateDemoUI() {
+      const cur = sampleQueue[currentIdx];
+      document.getElementById('demo-title').textContent = cur.title;
+      document.getElementById('demo-art').textContent = cur.art;
+      document.getElementById('demo-dur-time').textContent = cur.duration;
+      document.getElementById('demo-cur-time').textContent = cur.time;
+      document.getElementById('demo-bar-fill').style.width = cur.percent + '%';
+      document.getElementById('demo-time').textContent = `[00:00.0 → ${cur.duration}]`;
+
+      const shuffleBtn = document.getElementById('demo-shuffle-btn');
+      const shuffleIcon = document.getElementById('demo-shuffle-icon');
+      if (isShuffleOn) {
+        shuffleBtn.classList.add('shuffle-active');
+        shuffleIcon.style.display = 'inline';
+      } else {
+        shuffleBtn.classList.remove('shuffle-active');
+        shuffleIcon.style.display = 'none';
+      }
+
+      const playBtn = document.getElementById('demo-play-btn');
+      playBtn.textContent = isPlayingState ? "⏸" : "▶";
+    }
+
+    function toggleDemoShuffle() {
+      isShuffleOn = !isShuffleOn;
+      updateDemoUI();
+      if (isShuffleOn) {
+        showToast('🔀 Đã BẬT Shuffle 3 bài trong kết quả tìm kiếm "đen"!', 'success');
+      } else {
+        showToast('➡️ Đã TẮT Shuffle: Phát theo thứ tự tìm kiếm!', 'info');
+      }
+    }
+
+    function toggleDemoPlay() {
+      isPlayingState = !isPlayingState;
+      updateDemoUI();
+      showToast(isPlayingState ? '▶ Đang tiếp tục phát bài' : '⏸ Đã tạm dừng phát', 'info');
+    }
+
+    function demoNextTrack() {
+      currentIdx = (currentIdx + 1) % sampleQueue.length;
+      updateDemoUI();
+      showToast(`⏭️ Đang phát bài: ${sampleQueue[currentIdx].title}`, 'success');
+    }
+
+    function demoPrevTrack() {
+      currentIdx = (currentIdx - 1 + sampleQueue.length) % sampleQueue.length;
+      updateDemoUI();
+      showToast(`⏮️ Đang phát bài: ${sampleQueue[currentIdx].title}`, 'success');
+    }
+
+    function handleBadgeClick(query, count) {
+      showToast(`🔍 Badge Click: Cuộn lên và focus ô tìm kiếm "${query}" (${count} bài)!`, 'success');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      updateDemoUI();
+    });
+  </script>
+</body>
+</html>

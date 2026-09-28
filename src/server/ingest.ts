@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { basename, resolve, extname, join } from "node:path";
 import { createTrack, updateTrack, getTrack, getDb, reconcileTrackSegments } from "./db";
 import { generatePeaks, isWaveformBusy, abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
+import { extractAudioFromVideo } from "./audioExtractor";
+import { killProcessSafely } from "./processUtils";
 import { serverEvents } from "./events";
 import { logEvent } from "./logger";
 import type { Track } from "./types";
@@ -63,32 +65,7 @@ let activeMetadataCount = 0;
 const metadataWaitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 let activeLocalIngests = 0;
 
-async function killProcessSafely(proc: ReturnType<typeof Bun.spawn> | null): Promise<void> {
-  if (!proc || proc.exitCode !== null || proc.killed || typeof proc.pid !== "number" || proc.pid <= 0) return;
-  try {
-    if (process.platform === "win32") {
-      const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      await killProc.exited;
-    } else {
-      try {
-        const pkill = Bun.spawn(["pkill", "-9", "-P", String(proc.pid)], {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        await pkill.exited;
-      } catch {}
-      try {
-        process.kill(-proc.pid, "SIGKILL");
-      } catch {
-        proc.kill();
-      }
-    }
-    try { await proc.exited; } catch {}
-  } catch {}
-}
+export { killProcessSafely } from "./processUtils";
 
 const MAX_METADATA_QUEUE_DEPTH = 20;
 async function acquireMetadataSlot(signal?: AbortSignal): Promise<void> {
@@ -162,7 +139,7 @@ export async function purgeTrackCacheFiles(audioDir: string, trackId: string, pr
   } catch {}
 }
 
-export const SUPPORTED_AUDIO_EXTENSIONS = [".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac"] as const;
+export const SUPPORTED_AUDIO_EXTENSIONS = [".m4a", ".mp3", ".opus", ".webm", ".ogg", ".flac", ".wav", ".aac", ".mp4"] as const;
 
 export function validateSafeLocalAudioPath(rawPath: string): { ok: boolean; message?: string } {
   if (typeof rawPath !== "string" || !rawPath.trim()) {
@@ -1129,6 +1106,7 @@ async function processDownloadQueue() {
  */
 export async function ingestLocalFile(rawPath: string, preferredTitle?: string): Promise<IngestResult> {
   activeLocalIngests++;
+  let newlyExtractedPath: string | null = null;
   try {
     const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
     logEvent("info", "download", `Bắt đầu nạp file từ máy: ${basename(cleanedPath)}`);
@@ -1151,10 +1129,17 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
       return { success: false, message: `File không tồn tại hoặc không phải là file hợp lệ: ${fullPath}` };
     }
 
-    const metadata = await parseFile(fullPath);
-    let duration = Number(metadata.format.duration) || 0;
+    const normalizedPath = process.platform === "win32" ? fullPath.toLowerCase() : fullPath;
+    const hash = createHash("md5").update(normalizedPath).digest("hex").slice(0, 12);
+    const trackId = `loc_${hash}`;
 
-    // Fallback probe via ffprobe if container duration is missing
+    // Probe duration before heavy extraction to avoid extracting oversized or invalid files
+    let duration = 0;
+    try {
+      const initialMeta = await parseFile(fullPath);
+      duration = Number(initialMeta?.format?.duration) || 0;
+    } catch {}
+
     if (duration <= 0) {
       let probeProc: ReturnType<typeof Bun.spawn> | null = null;
       let probeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1188,17 +1173,43 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
       };
     }
 
+    let effectiveAudioPath = fullPath;
+    if (ext === ".mp4") {
+      const audioCacheDir = resolve("./data/cache/audio");
+      mkdirSync(audioCacheDir, { recursive: true });
+      const extractedPath = join(audioCacheDir, `${trackId}.m4a`);
+      if (!existsSync(extractedPath) || statSync(extractedPath).size === 0) {
+        const extractRes = await extractAudioFromVideo(fullPath, extractedPath);
+        if (!extractRes.success) {
+          return {
+            success: false,
+            message: extractRes.message || "Không thể trích xuất âm thanh từ file MP4.",
+          };
+        }
+        newlyExtractedPath = extractedPath;
+      }
+      effectiveAudioPath = extractedPath;
+    }
+
+    let metadata: any;
+    try {
+      metadata = await parseFile(effectiveAudioPath);
+    } catch {
+      try {
+        metadata = await parseFile(fullPath);
+      } catch {
+        metadata = { format: {}, common: {} };
+      }
+    }
+
     duration = Math.min(MAX_DURATION_SECONDS, Number(duration.toFixed(2)));
 
-    const normalizedPath = process.platform === "win32" ? fullPath.toLowerCase() : fullPath;
-    const hash = createHash("md5").update(normalizedPath).digest("hex").slice(0, 12);
-    const trackId = `loc_${hash}`;
-    const title = metadata.common.title || preferredTitle?.trim() || basename(fullPath, extname(fullPath));
-    const artist = metadata.common.artist || "Unknown Artist";
+    const title = metadata?.common?.title || preferredTitle?.trim() || basename(fullPath, extname(fullPath));
+    const artist = metadata?.common?.artist || "Unknown Artist";
 
     // Extract cover art if present (bounded to 4MB and magic byte verified)
     let thumbUrl = "";
-    if (metadata.common.picture && metadata.common.picture.length > 0) {
+    if (metadata?.common?.picture && metadata.common.picture.length > 0) {
       const pic = metadata.common.picture[0];
       if (pic.data && pic.data.length >= 4 && pic.data.length <= 4 * 1024 * 1024) {
         const isJpeg = pic.data[0] === 0xff && pic.data[1] === 0xd8 && pic.data[2] === 0xff;
@@ -1237,7 +1248,7 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
     }
 
     // Generate peaks
-    const peaks = await generatePeaks(fullPath, 1000);
+    const peaks = await generatePeaks(effectiveAudioPath, 1000);
 
     let existing = getTrack(trackId);
     const isExisting = !!existing;
@@ -1257,7 +1268,7 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
         title,
         artist,
         duration,
-        file_path: fullPath,
+        file_path: effectiveAudioPath,
         thumbnail_url: thumbUrl || existing.thumbnail_url,
         peaks_json: JSON.stringify(peaks),
         status: "ready",
@@ -1272,7 +1283,7 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
         artist,
         duration,
         thumbnail_url: thumbUrl,
-        file_path: fullPath,
+        file_path: effectiveAudioPath,
         peaks_json: JSON.stringify(peaks),
         status: "ready",
       });
@@ -1291,6 +1302,9 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
       message: `Đã nạp file local "${title}" thành công.`,
     };
   } catch (err: unknown) {
+    if (newlyExtractedPath && existsSync(newlyExtractedPath)) {
+      await unlinkWithRetry(newlyExtractedPath);
+    }
     const msg = err instanceof Error ? err.message : String(err);
     logEvent("error", "download", `Lỗi nạp file local: ${msg}`);
     return { success: false, message: `Lỗi đọc file local: ${msg}` };
@@ -1403,14 +1417,29 @@ export async function ingestUploadedFile(file: File, fallbackName?: string): Pro
       hash.update(chunk);
     }
     const contentHash = hash.digest("hex").slice(0, 12);
-    const finalFileName = `loc_${contentHash}${ext}`;
-    finalPath = join(audioCacheDir, finalFileName);
-
-    alreadyExists = existsSync(finalPath);
-    if (!alreadyExists) {
-      await renameWithRetry(tempPath, finalPath);
+    if (ext === ".mp4") {
+      const finalFileName = `loc_${contentHash}.m4a`;
+      finalPath = join(audioCacheDir, finalFileName);
+      alreadyExists = existsSync(finalPath);
+      if (!alreadyExists) {
+        const extractRes = await extractAudioFromVideo(tempPath, finalPath);
+        await unlinkWithRetry(tempPath);
+        if (!extractRes.success) {
+          return { success: false, message: extractRes.message || "Lỗi trích xuất audio từ file MP4" };
+        }
+      } else {
+        await unlinkWithRetry(tempPath);
+      }
     } else {
-      await unlinkWithRetry(tempPath);
+      const finalFileName = `loc_${contentHash}${ext}`;
+      finalPath = join(audioCacheDir, finalFileName);
+
+      alreadyExists = existsSync(finalPath);
+      if (!alreadyExists) {
+        await renameWithRetry(tempPath, finalPath);
+      } else {
+        await unlinkWithRetry(tempPath);
+      }
     }
 
     const preferredTitle = basename(lastDot !== -1 ? originalName.slice(0, lastDot) : originalName);

@@ -77,10 +77,10 @@ if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
 
 if defined EDGE_PATH (
     echo Dang mo giao dien MS Edge App Mode...
-    start "" "%EDGE_PATH%" --app=http://127.0.0.1:%PORT_NUM% --user-data-dir="%~dp0data\edge_profile" --autoplay-policy=no-user-gesture-required --window-size=1280,850
+    start "" "%EDGE_PATH%" --app=http://127.0.0.1:%PORT_NUM% --user-data-dir="%~dp0data\edge_profile" --autoplay-policy=no-user-gesture-required --start-maximized
 ) else (
     echo Dang mo trinh duyet mac dinh...
-    start http://127.0.0.1:%PORT_NUM%
+    start /MAX http://127.0.0.1:%PORT_NUM%
 )
 
 echo ===================================================

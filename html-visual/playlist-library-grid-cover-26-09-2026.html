@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Playlist Hết Lẩn Trốn - 26-09-2026</title>
+  <link rel="stylesheet" href="./visual-core.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+  <style>
+    /* ===== Mock app: Flexoki Dark, khớp DESIGN.md của Slice Player ===== */
+    .app{background:#100F0F;color:#CECDC3;border:1px solid #343331;border-radius:.75rem;padding:1rem;font-family:'Plus Jakarta Sans',Inter,sans-serif;font-size:.8rem;position:relative;user-select:none}
+    .strip{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-bottom:.85rem;border-bottom:1px solid #282726;margin-bottom:1rem}
+    .pill{display:inline-flex;gap:.3rem;align-items:center;padding:.3rem .65rem;border-radius:999px;font-size:.64rem;font-weight:500;background:rgba(40,39,38,.6);border:1px solid rgba(64,62,60,.7);color:#B7B5AC;white-space:nowrap;cursor:pointer}
+    .pill.on{background:#4385BE;color:#FFFCF0;font-weight:700;border-color:transparent}
+    .pill .n{font-family:'JetBrains Mono',monospace;opacity:.85;font-size:.58rem}
+    .pill.ico{width:1.55rem;height:1.55rem;justify-content:center;padding:0}
+    .pill.dash{background:none;border:1px dashed rgba(67,133,190,.6);color:#4385BE}
+    .pill.big{font-size:.74rem;padding:.4rem .85rem}
+    .sep{width:1px;height:1rem;background:#403E3C}
+    .tiny-link{font-size:.6rem;color:#9F9D96;margin-left:auto;cursor:pointer}
+    .row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.7rem;font-size:.72rem;color:#E6E4D9;font-weight:700}
+    .row-head .sort{font-size:.62rem;font-weight:500;color:#B7B5AC;border:1px solid #343331;border-radius:.4rem;padding:.2rem .5rem}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(6.6rem,1fr));gap:.7rem}
+    .tc,.pc{background:#1C1B1A;border:1px solid #282726;border-radius:.6rem;overflow:hidden;position:relative;cursor:pointer;transition:border-color .15s,transform .15s}
+    .tc:hover,.pc:hover{border-color:#575653;transform:translateY(-2px)}
+    .tc.playing{border-color:#879A39;box-shadow:0 0 0 1px #879A39}
+    .art{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:rgba(255,252,240,.85);position:relative}
+    .art::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),transparent 60%)}
+    .g1{background:linear-gradient(135deg,#D14D41,#DA702C)} .g2{background:linear-gradient(135deg,#4385BE,#8B7EC8)}
+    .g3{background:linear-gradient(135deg,#879A39,#3AA99F)} .g4{background:linear-gradient(135deg,#CE5D97,#8B7EC8)}
+    .g5{background:linear-gradient(135deg,#D0A215,#DA702C)} .g6{background:linear-gradient(135deg,#3AA99F,#4385BE)}
+    .g7{background:linear-gradient(135deg,#AF3029,#5E409D)} .g8{background:linear-gradient(135deg,#66800B,#D0A215)}
+    .g0{background:#282726;color:#878580}
+    .mosaic{display:grid;grid-template-columns:1fr 1fr;aspect-ratio:1}
+    .mosaic .art{aspect-ratio:auto;font-size:.8rem}
+    .t{padding:.45rem .55rem .1rem;font-weight:700;font-size:.66rem;color:#E6E4D9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .a{font-size:.58rem;color:#B7B5AC;padding:0 .55rem .5rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .slice-tag{position:absolute;top:.3rem;left:.3rem;font-size:.52rem;font-weight:700;background:rgba(16,15,15,.8);color:#DA702C;padding:.1rem .35rem;border-radius:.3rem;z-index:2}
+    .ov{position:absolute;right:.35rem;top:calc(100% - 3.9rem);display:flex;gap:.3rem;opacity:0;transform:translateY(4px);transition:all .15s;z-index:3}
+    .pc:hover .ov,.pc.show .ov{opacity:1;transform:none}
+    .rb{width:1.7rem;height:1.7rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.72rem;border:none;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.6)}
+    .rb.play{background:#4385BE;color:#FFFCF0} .rb.shuf{background:#1C1B1A;color:#879A39;border:1px solid #403E3C}
+    .newcard{border:1.5px dashed #403E3C;border-radius:.6rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;color:#4385BE;font-size:.66rem;font-weight:700;min-height:8rem;cursor:pointer}
+    .newcard b{font-size:1.4rem}
+    .pin{position:absolute;top:.3rem;right:.3rem;font-size:.5rem;font-weight:800;background:#D0A215;color:#100F0F;padding:.1rem .35rem;border-radius:.3rem;z-index:2}
+    /* dropdown ⋯ cũ */
+    .dd{position:absolute;top:2.1rem;left:0;background:#1C1B1A;border:1px solid #343331;border-radius:.45rem;padding:.25rem;min-width:8rem;z-index:40;box-shadow:0 10px 24px rgba(0,0,0,.7);display:none}
+    .dd.open{display:block}
+    .dd div{font-size:.6rem;padding:.25rem .45rem;border-radius:.3rem;color:#B7B5AC;cursor:pointer;white-space:nowrap}
+    .dd div:hover{background:#282726;color:#E6E4D9}
+    /* drawer cũ */
+    .drawer{max-width:17rem;background:#1C1B1A;border-right:1px solid #343331;padding:.8rem;border-radius:.6rem}
+    .drawer h5{font-size:.55rem;letter-spacing:.08em;text-transform:uppercase;color:#B7B5AC;margin:.3rem .3rem .5rem;display:flex;justify-content:space-between}
+    .drow{display:flex;justify-content:space-between;align-items:center;padding:.45rem .6rem;border-radius:.45rem;background:rgba(40,39,38,.35);font-size:.66rem;color:#B7B5AC;margin-bottom:.3rem;cursor:pointer;gap:.4rem}
+    .drow:hover{background:#282726;color:#E6E4D9}
+    .drow .acts{opacity:0;font-size:.6rem;display:flex;gap:.35rem} .drow:hover .acts{opacity:1}
+    .drow.on{background:rgba(67,133,190,.12);border:1px solid #4385BE;color:#E6E4D9}
+    /* hero header */
+    .hero{display:flex;gap:1.1rem;align-items:flex-end;flex-wrap:wrap;padding:1rem;border-radius:.75rem;margin-bottom:1rem;background:linear-gradient(180deg,rgba(218,112,44,.28),rgba(16,15,15,0) 95%)}
+    .hero .cover{width:7.5rem;flex-shrink:0;border-radius:.55rem;overflow:hidden;box-shadow:0 12px 28px rgba(0,0,0,.7)}
+    .hero .lbl{font-size:.55rem;font-weight:800;letter-spacing:.14em;color:#DA702C}
+    .hero h4{font-size:1.65rem;font-weight:800;color:#FFFCF0;letter-spacing:-.025em;line-height:1.1;margin:.15rem 0 .35rem}
+    .hero .meta{font-size:.62rem;color:#CECDC3;font-family:'JetBrains Mono',monospace}
+    .hero .btns{display:flex;gap:.5rem;align-items:center;margin-top:.7rem}
+    .hero .btns.side{margin-left:auto;margin-top:0;align-self:flex-end}
+    .hero .rb.play{width:2.3rem;height:2.3rem;font-size:.9rem}
+    .hero .rb.shuf{width:2rem;height:2rem}
+    .crumb{font-size:.62rem;color:#4385BE;font-weight:700;cursor:pointer;margin-bottom:1.2rem;display:inline-block}
+    /* cover picker demo */
+    .picker{display:grid;grid-template-columns:9rem minmax(0,1fr);gap:1.2rem;align-items:start}
+    @media (max-width:40rem){.picker{grid-template-columns:1fr}}
+    .picker .cover{border-radius:.6rem;overflow:hidden;box-shadow:0 10px 24px rgba(0,0,0,.6)}
+    .chip{display:flex;align-items:center;gap:.55rem;padding:.35rem;border-radius:.5rem;background:#1C1B1A;border:1px solid #282726;margin-bottom:.4rem}
+    .chip .art{width:2.2rem;font-size:.7rem;border-radius:.35rem;overflow:hidden}
+    .chip .nm{flex:1;min-width:0;font-size:.64rem;color:#E6E4D9;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chip button{font:inherit;font-size:.58rem;font-weight:700;background:#282726;color:#E6E4D9;border:1px solid #403E3C;border-radius:.35rem;padding:.25rem .5rem;cursor:pointer}
+    .chip button:hover{border-color:#D0A215;color:#D0A215}
+    .chip.cur{border-color:#D0A215}
+    .ctx{position:absolute;left:55%;top:40%;background:#1C1B1A;border:1px solid #403E3C;border-radius:.45rem;padding:.25rem;z-index:10;box-shadow:0 10px 24px rgba(0,0,0,.8);min-width:8.5rem}
+    .ctx div{font-size:.58rem;padding:.3rem .5rem;border-radius:.3rem;color:#B7B5AC;white-space:nowrap}
+    .ctx div.hot{background:rgba(208,162,21,.15);color:#D0A215;font-weight:700}
+    .edge{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:1rem}
+    .edge figure{width:5rem;text-align:center;font-size:.55rem;color:#B7B5AC}
+    .edge figure>div{border-radius:.4rem;overflow:hidden;margin-bottom:.3rem}
+    .two{display:grid;grid-template-columns:minmax(0,17rem) minmax(0,1fr);gap:1rem}
+    @media (max-width:48rem){.two{grid-template-columns:1fr}}
+    /* annotation nhỏ ghim mép viền */
+    .hl{position:relative;border-radius:.6rem;padding:.3rem}
+    .hl.r{border:2px dashed #ef4444} .hl.g{border:2px dashed #22c55e}
+    .mock-annotation.edge-l{top:-.85rem;left:.5rem;right:auto;font-size:.56rem;padding:.2rem .55rem;white-space:nowrap}
+    .mock-annotation.edge-r{top:-.85rem;right:.5rem;left:auto;font-size:.56rem;padding:.2rem .55rem;white-space:nowrap}
+    .inl{display:inline-flex;align-items:center;gap:.4rem}
+    .sum-tabs{margin:0 auto 2rem;flex-wrap:wrap}
+    .code-body .c-text{white-space:pre-wrap}
+  </style>
+</head>
+<body>
+
+<header class="nav-header">
+  <div class="brand-title"><span>🎧</span> PLAYLIST HẾT LẨN TRỐN</div>
+  <nav class="tab-group" role="tablist">
+    <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược</button>
+    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Giải Thích Chi Tiết</button>
+  </nav>
+</header>
+
+<div class="container">
+
+<!-- ================================================================ TAB TÓM LƯỢC -->
+<main id="tab-summarize" class="tab-pane active" role="tabpanel">
+  <section class="callout">
+    <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+    <p>Cho playlist 1 tab riêng đứng đầu, hiện thành card to có ảnh bìa (tự ghép 4 bài hoặc chọn tay), vào trong thì có header lớn. Nhạc vẫn chiếm phần lớn màn hình.</p>
+  </section>
+
+  <nav class="tab-group sub-tabs sum-tabs" role="tablist">
+    <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('s1', this)">1️⃣ Tab Playlists (card to)</button>
+    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('s2', this)">2️⃣ Ảnh bìa playlist</button>
+    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('s3', this)">3️⃣ Header khi vào playlist</button>
+  </nav>
+
+  <div>
+  <!-- ================= SUB 1: TAB PLAYLISTS ================= -->
+  <section id="tab-s1" class="tab-pane active" role="tabpanel">
+
+    <article class="card-wrapper card-slider">
+      <div class="card-header-bar">
+        <span class="card-badge badge-white">CARD 1: KÉO SO SÁNH</span>
+        <span style="font-size:.85rem">⬅️ Trước · Sau ➡️</span>
+      </div>
+      <div class="slider-viewport">
+        <div class="slider-layer slider-before">
+          <div class="app">
+            <div class="strip">
+              <span class="pill on">🔀 Mixed <span class="n">(42)</span></span>
+              <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+              <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+              <span class="pill">⏳ Downloading <span class="n">(0)</span></span>
+              <span class="pill">⚠️ Errors <span class="n">(1)</span></span>
+              <span class="pill ico">‹</span><span class="sep"></span>
+              <span class="hl r diff-highlight inl" data-diff="annotation"><span class="mock-annotation red edge-l">🙈 playlist trốn ở đây</span>
+                <span class="pill">› 📁 <span class="n">7</span></span><span class="pill ico">⋯</span></span>
+              <span class="sep"></span>
+              <span class="pill dash">＋ New playlist</span>
+              <span class="tiny-link">All playlists</span>
+            </div>
+            <div class="grid">
+              <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+              <div class="tc"><div class="art g3">♪</div><div class="t">Nơi Này Có Anh</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+              <div class="tc"><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+              <div class="tc"><div class="art g6">♪</div><div class="t">Shape of You</div><div class="a">Ed Sheeran</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-layer slider-after">
+          <div class="app">
+            <div class="strip">
+              <span class="hl g diff-highlight inl" data-diff="annotation"><span class="mock-annotation green edge-l">🆕 tab riêng, đứng đầu</span>
+                <span class="pill on big">▦ Playlists <span class="n">7</span></span></span>
+              <span class="pill">🔀 Mixed <span class="n">(42)</span></span>
+              <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+              <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+              <span class="pill">⏳ Downloading <span class="n">(0)</span></span>
+              <span class="pill">⚠️ Errors <span class="n">(1)</span></span>
+            </div>
+            <div class="row-head"><span>📁 Playlist của m · 7</span><span class="sort">Mới cập nhật ▾</span></div>
+            <div class="hl g diff-highlight" data-diff="annotation"><span class="mock-annotation green edge-r">card to + ảnh bìa + nút phát</span>
+            <div class="grid">
+              <div class="pc show"><div class="mosaic"><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g7">♪</div><div class="art g2">♪</div></div><div class="ov"><span class="rb shuf">⤮</span><span class="rb play">▶</span></div><div class="t">Gym Hype</div><div class="a">24 bài · 6 slice</div></div>
+              <div class="pc"><div class="mosaic"><div class="art g2">♪</div><div class="art g6">♪</div><div class="art g4">♪</div><div class="art g3">♪</div></div><div class="ov"><span class="rb shuf">⤮</span><span class="rb play">▶</span></div><div class="t">Chill Đêm</div><div class="a">9 bài</div></div>
+              <div class="pc"><span class="pin">📌 BÌA</span><div class="art g5">🚗</div><div class="ov"><span class="rb shuf">⤮</span><span class="rb play">▶</span></div><div class="t">Drive</div><div class="a">31 bài · 12 slice</div></div>
+              <div class="pc"><div class="mosaic"><div class="art g4">♪</div><div class="art g1">♪</div><div class="art g8">♪</div><div class="art g6">♪</div></div><div class="ov"><span class="rb shuf">⤮</span><span class="rb play">▶</span></div><div class="t">Điệp khúc đỉnh</div><div class="a">18 slice</div></div>
+              <div class="pc"><div class="mosaic"><div class="art g3">♪</div><div class="art g6">♪</div><div class="art g2">♪</div><div class="art g8">♪</div></div><div class="ov"><span class="rb shuf">⤮</span><span class="rb play">▶</span></div><div class="t">Lofi học bài</div><div class="a">12 bài</div></div>
+              <div class="newcard"><b>＋</b>Playlist mới</div>
+            </div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-divider"><div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div></div>
+        <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+      </div>
+    </article>
+
+    <article class="card-wrapper card-before">
+      <div class="card-header-bar">
+        <span class="card-badge badge-red">CARD 2: TRƯỚC</span>
+        <span style="font-size:.85rem;color:var(--accent-red)">👉 Thử tìm playlist "Drive" đi</span>
+      </div>
+      <div class="app" data-demo="before1">
+        <div class="strip">
+          <span class="pill on" data-pill>🔀 Mixed <span class="n">(42)</span></span>
+          <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+          <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+          <span class="pill">⏳ Downloading <span class="n">(0)</span></span>
+          <span class="pill">⚠️ Errors <span class="n">(1)</span></span>
+          <span class="pill ico">‹</span><span class="sep"></span>
+          <span class="hl r diff-highlight inl" data-diff="annotation" style="position:relative"><span class="mock-annotation red edge-l">🙈 bấm cái ⋯ bé tí</span>
+            <span class="pill" data-act="toast" data-msg="Mở ra rồi… vẫn chỉ là 1 cục đếm số 7 😩">› 📁 <span class="n">7</span></span>
+            <span class="pill ico" data-act="dd">⋯</span>
+            <div class="dd" data-dd>
+              <div data-act="pick" data-name="Gym Hype">Gym Hype (24)</div>
+              <div data-act="pick" data-name="Chill Đêm">Chill Đêm (9)</div>
+              <div data-act="pick" data-name="Drive">Drive (31)</div>
+              <div data-act="pick" data-name="Điệp khúc đỉnh">Điệp khúc đỉnh (18)</div>
+              <div data-act="pick" data-name="Lofi học bài">Lofi học bài (12)</div>
+              <div data-act="pick" data-name="Rap Việt">Rap Việt (7)</div>
+              <div data-act="pick" data-name="Acoustic">Acoustic (2)</div>
+            </div>
+          </span>
+          <span class="sep"></span>
+          <span class="pill dash" data-act="toast" data-msg="＋ tạo playlist mới">＋ New playlist</span>
+          <span class="tiny-link" data-act="toast" data-msg="Mở drawer bên trái: 7 dòng chữ giống hệt nhau 😐">All playlists</span>
+        </div>
+        <div class="grid">
+          <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+          <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+          <div class="tc"><div class="art g3">♪</div><div class="t">Nơi Này Có Anh</div><div class="a">Sơn Tùng M-TP</div></div>
+          <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+          <div class="tc"><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+          <div class="tc"><div class="art g6">♪</div><div class="t">Shape of You</div><div class="a">Ed Sheeran</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card-wrapper card-after">
+      <div class="card-header-bar">
+        <span class="card-badge badge-green">CARD 3: SAU</span>
+        <span style="font-size:.85rem;color:var(--accent-green)">👉 Hover card, bấm ▶ / ⤮, đổi tab</span>
+      </div>
+      <div class="app" data-demo="after1">
+        <div class="strip">
+          <span class="hl g diff-highlight inl" data-diff="annotation"><span class="mock-annotation green edge-l">🆕 tab riêng, đứng đầu</span>
+            <span class="pill on big" data-act="view" data-view="pl">▦ Playlists <span class="n">7</span></span></span>
+          <span class="pill" data-act="view" data-view="mix">🔀 Mixed <span class="n">(42)</span></span>
+          <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+          <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+          <span class="pill">⏳ Downloading <span class="n">(0)</span></span>
+          <span class="pill">⚠️ Errors <span class="n">(1)</span></span>
+        </div>
+        <div data-view-pane="pl">
+          <div class="row-head"><span>📁 Playlist của m · 7</span><span class="sort">Mới cập nhật ▾</span></div>
+          <div class="hl g diff-highlight" data-diff="annotation"><span class="mock-annotation green edge-r">card to + ảnh bìa + nút phát</span>
+          <div class="grid">
+            <div class="pc" data-act="open" data-name="Gym Hype"><div class="mosaic"><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g7">♪</div><div class="art g2">♪</div></div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Gym Hype">⤮</button><button class="rb play" data-act="play" data-name="Gym Hype">▶</button></div><div class="t">Gym Hype</div><div class="a">24 bài · 6 slice</div></div>
+            <div class="pc" data-act="open" data-name="Chill Đêm"><div class="mosaic"><div class="art g2">♪</div><div class="art g6">♪</div><div class="art g4">♪</div><div class="art g3">♪</div></div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Chill Đêm">⤮</button><button class="rb play" data-act="play" data-name="Chill Đêm">▶</button></div><div class="t">Chill Đêm</div><div class="a">9 bài</div></div>
+            <div class="pc" data-act="open" data-name="Drive"><span class="pin">📌 BÌA</span><div class="art g5">🚗</div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Drive">⤮</button><button class="rb play" data-act="play" data-name="Drive">▶</button></div><div class="t">Drive</div><div class="a">31 bài · 12 slice</div></div>
+            <div class="pc" data-act="open" data-name="Điệp khúc đỉnh"><div class="mosaic"><div class="art g4">♪</div><div class="art g1">♪</div><div class="art g8">♪</div><div class="art g6">♪</div></div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Điệp khúc đỉnh">⤮</button><button class="rb play" data-act="play" data-name="Điệp khúc đỉnh">▶</button></div><div class="t">Điệp khúc đỉnh</div><div class="a">18 slice</div></div>
+            <div class="pc" data-act="open" data-name="Lofi học bài"><div class="mosaic"><div class="art g3">♪</div><div class="art g6">♪</div><div class="art g2">♪</div><div class="art g8">♪</div></div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Lofi học bài">⤮</button><button class="rb play" data-act="play" data-name="Lofi học bài">▶</button></div><div class="t">Lofi học bài</div><div class="a">12 bài</div></div>
+            <div class="pc" data-act="open" data-name="Rap Việt"><div class="mosaic"><div class="art g7">♪</div><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g4">♪</div></div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Rap Việt">⤮</button><button class="rb play" data-act="play" data-name="Rap Việt">▶</button></div><div class="t">Rap Việt</div><div class="a">7 bài</div></div>
+            <div class="pc" data-act="open" data-name="Acoustic"><div class="art g8">♪</div><div class="ov"><button class="rb shuf" data-act="shuf" data-name="Acoustic">⤮</button><button class="rb play" data-act="play" data-name="Acoustic">▶</button></div><div class="t">Acoustic</div><div class="a">2 bài</div></div>
+            <div class="newcard" data-act="toast" data-msg="＋ Tạo playlist mới"><b>＋</b>Playlist mới</div>
+          </div>
+          </div>
+        </div>
+        <div data-view-pane="mix" style="display:none">
+          <div class="grid">
+            <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+            <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+            <div class="tc"><div class="art g3">♪</div><div class="t">Nơi Này Có Anh</div><div class="a">Sơn Tùng M-TP</div></div>
+            <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+            <div class="tc"><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+            <div class="tc"><div class="art g6">♪</div><div class="t">Shape of You</div><div class="a">Ed Sheeran</div></div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ================= SUB 2: ẢNH BÌA ================= -->
+  <section id="tab-s2" class="tab-pane" role="tabpanel" style="display:none">
+
+    <article class="card-wrapper card-slider">
+      <div class="card-header-bar">
+        <span class="card-badge badge-white">CARD 1: KÉO SO SÁNH</span>
+        <span style="font-size:.85rem">⬅️ Trước · Sau ➡️</span>
+      </div>
+      <div class="slider-viewport">
+        <div class="slider-layer slider-before">
+          <div class="app">
+            <div class="hl r diff-highlight drawer" data-diff="annotation" style="max-width:20rem"><span class="mock-annotation red edge-l">😐 7 dòng giống hệt nhau, đéo có mặt mũi</span>
+              <h5><span>Custom playlists</span><span>7</span></h5>
+              <div class="drow"><span>📁 Gym Hype</span><span class="n">24</span></div>
+              <div class="drow"><span>📁 Chill Đêm</span><span class="n">9</span></div>
+              <div class="drow on"><span>📁 Drive</span><span class="n">31</span></div>
+              <div class="drow"><span>📁 Điệp khúc đỉnh</span><span class="n">18</span></div>
+              <div class="drow"><span>📁 Lofi học bài</span><span class="n">12</span></div>
+              <div class="drow"><span>📁 Rap Việt</span><span class="n">7</span></div>
+              <div class="drow"><span>📁 Acoustic</span><span class="n">2</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-layer slider-after">
+          <div class="app">
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr))">
+              <div class="hl g diff-highlight" data-diff="annotation"><span class="mock-annotation green edge-l">🧩 tự ghép 4 bài đầu</span>
+                <div class="pc"><div class="mosaic"><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g7">♪</div><div class="art g2">♪</div></div><div class="t">Gym Hype</div><div class="a">24 bài</div></div></div>
+              <div class="hl g diff-highlight" data-diff="annotation"><span class="mock-annotation green edge-l">📌 m tự chọn 1 bài</span>
+                <div class="pc"><span class="pin">📌 BÌA</span><div class="art g5">🚗</div><div class="t">Drive</div><div class="a">31 bài</div></div></div>
+              <div class="pc"><div class="mosaic"><div class="art g2">♪</div><div class="art g6">♪</div><div class="art g4">♪</div><div class="art g3">♪</div></div><div class="t">Chill Đêm</div><div class="a">9 bài</div></div>
+              <div class="pc"><div class="mosaic"><div class="art g4">♪</div><div class="art g1">♪</div><div class="art g8">♪</div><div class="art g6">♪</div></div><div class="t">Điệp khúc đỉnh</div><div class="a">18 slice</div></div>
+            </div>
+            <div class="row-head" style="margin-top:1.2rem"><span>Bên trong "Drive" · chuột phải 1 bài</span></div>
+            <div class="grid" style="position:relative">
+              <div class="tc"><div class="art g5">🚗</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+              <div class="tc"><div class="art g6">♪</div><div class="t">Shape of You</div><div class="a">Ed Sheeran</div></div>
+              <div class="tc"><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+              <div class="tc"><div class="art g3">♪</div><div class="t">Nơi Này Có Anh</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><div class="art g8">♪</div><div class="t">Viva La Vida</div><div class="a">Coldplay</div></div>
+              <div class="ctx diff-highlight" data-diff="annotation" style="border:2px dashed #22c55e"><div>▶ Phát</div><div>✂️ Mở Slice Studio</div><div class="hot">🖼️ Đặt làm ảnh bìa</div><div>🗑 Xóa khỏi playlist</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-divider"><div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div></div>
+        <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+      </div>
+    </article>
+
+    <article class="card-wrapper card-before">
+      <div class="card-header-bar">
+        <span class="card-badge badge-red">CARD 2: TRƯỚC</span>
+        <span style="font-size:.85rem;color:var(--accent-red)">👉 Nhìn 1 giây, playlist nào là "Drive"?</span>
+      </div>
+      <div class="app">
+        <div class="hl r diff-highlight drawer" data-diff="annotation" style="max-width:20rem"><span class="mock-annotation red edge-l">😐 phải đọc từng chữ mới tìm ra</span>
+          <h5><span>Custom playlists</span><span>7</span></h5>
+          <div class="drow" data-act="pick2" data-name="Gym Hype"><span>📁 Gym Hype</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Chill Đêm"><span>📁 Chill Đêm</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Drive"><span>📁 Drive</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Điệp khúc đỉnh"><span>📁 Điệp khúc đỉnh</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Lofi học bài"><span>📁 Lofi học bài</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Rap Việt"><span>📁 Rap Việt</span><span class="acts">✎ 🗑</span></div>
+          <div class="drow" data-act="pick2" data-name="Acoustic"><span>📁 Acoustic</span><span class="acts">✎ 🗑</span></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card-wrapper card-after">
+      <div class="card-header-bar">
+        <span class="card-badge badge-green">CARD 3: SAU</span>
+        <span style="font-size:.85rem;color:var(--accent-green)">👉 Bấm "🖼️ Làm bìa" ở từng bài</span>
+      </div>
+      <div class="app" data-demo="cover">
+        <div class="picker">
+          <div class="hl g diff-highlight" data-diff="annotation"><span class="mock-annotation green edge-l" data-cover-label>🧩 mosaic tự sinh</span>
+            <div class="pc" style="cursor:default"><div class="cover" data-cover><div class="mosaic"><div class="art g5">🚗</div><div class="art g2">♪</div><div class="art g6">♪</div><div class="art g4">♪</div></div></div><div class="t">Drive</div><div class="a">31 bài · 12 slice</div></div>
+          </div>
+          <div>
+            <div class="row-head"><span>Bài trong "Drive"</span><button class="chip" style="margin:0;padding:.25rem .55rem;font:inherit;font-size:.6rem;color:#E6E4D9;cursor:pointer" data-act="reset">↺ Về mosaic</button></div>
+            <div class="chip" data-chip="g5"><div class="art g5">🚗</div><span class="nm">Chạy Ngay Đi · Sơn Tùng M-TP</span><button data-act="setcover" data-g="g5" data-i="🚗">🖼️ Làm bìa</button></div>
+            <div class="chip" data-chip="g2"><div class="art g2">♪</div><span class="nm">Blinding Lights · The Weeknd</span><button data-act="setcover" data-g="g2" data-i="♪">🖼️ Làm bìa</button></div>
+            <div class="chip" data-chip="g6"><div class="art g6">♪</div><span class="nm">Shape of You · Ed Sheeran</span><button data-act="setcover" data-g="g6" data-i="♪">🖼️ Làm bìa</button></div>
+            <div class="chip" data-chip="g4"><div class="art g4">♪</div><span class="nm">Levitating (✂ Drop) · Dua Lipa</span><button data-act="setcover" data-g="g4" data-i="♪">🖼️ Làm bìa</button></div>
+          </div>
+        </div>
+        <div class="row-head" style="margin-top:1.3rem"><span>🧪 Ca biên: playlist ít bài thì sao?</span></div>
+        <div class="edge">
+          <figure><div class="art g0">📁</div>0 bài → icon</figure>
+          <figure><div class="art g8">♪</div>1–3 bài → ảnh bài đầu</figure>
+          <figure><div class="mosaic"><div class="art g3">♪</div><div class="art g6">♪</div><div class="art g2">♪</div><div class="art g8">♪</div></div>4+ bài → ghép 2×2</figure>
+          <figure><div class="art g0" style="font-size:.8rem">📁</div>xóa bài bìa → tự về mosaic</figure>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ================= SUB 3: HEADER ================= -->
+  <section id="tab-s3" class="tab-pane" role="tabpanel" style="display:none">
+
+    <article class="card-wrapper card-slider">
+      <div class="card-header-bar">
+        <span class="card-badge badge-white">CARD 1: KÉO SO SÁNH</span>
+        <span style="font-size:.85rem">⬅️ Trước · Sau ➡️</span>
+      </div>
+      <div class="slider-viewport">
+        <div class="slider-layer slider-before">
+          <div class="app">
+            <div class="strip">
+              <span class="pill">🔀 Mixed <span class="n">(42)</span></span>
+              <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+              <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+              <span class="pill ico">‹</span><span class="sep"></span>
+              <span class="hl r diff-highlight inl" data-diff="annotation"><span class="mock-annotation red edge-l">🤔 đang ở playlist nào? chỉ có cái này</span>
+                <span class="pill on">📁 Gym Hype <span class="n">(24)</span></span></span>
+              <span class="pill ico">⋯</span>
+            </div>
+            <div class="row-head"><span></span><span class="sort">Mới nhất ▾</span></div>
+            <div class="grid">
+              <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+              <div class="tc"><div class="art g7">♪</div><div class="t">Lose Yourself</div><div class="a">Eminem</div></div>
+              <div class="tc"><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+              <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+              <div class="tc"><div class="art g3">♪</div><div class="t">Till I Collapse</div><div class="a">Eminem</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-layer slider-after">
+          <div class="app">
+            <span class="crumb">‹ Playlists</span>
+            <div class="hl g diff-highlight" data-diff="annotation" style="margin-bottom:.4rem"><span class="mock-annotation green edge-l">🎯 header ~140px: bìa + tên to + nút phát</span>
+              <div class="hero" style="margin:0">
+                <div class="cover"><div class="mosaic"><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g7">♪</div><div class="art g2">♪</div></div></div>
+                <div><div class="lbl">PLAYLIST</div><h4>Gym Hype</h4><div class="meta">24 bài · 6 slice · 1h 12m</div></div>
+                <div class="btns side"><span class="sort" style="font-size:.6rem;color:#B7B5AC;border:1px solid #343331;border-radius:.4rem;padding:.2rem .5rem">Mới nhất ▾</span><span class="rb shuf">⤮</span><span class="rb play">▶</span></div>
+              </div>
+            </div>
+            <div class="hl g diff-highlight" data-diff="annotation" style="margin-top:1rem"><span class="mock-annotation green edge-r">🎵 nhạc vẫn là chính</span>
+            <div class="grid">
+              <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+              <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+              <div class="tc"><div class="art g7">♪</div><div class="t">Lose Yourself</div><div class="a">Eminem</div></div>
+              <div class="tc"><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+              <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+              <div class="tc"><div class="art g3">♪</div><div class="t">Till I Collapse</div><div class="a">Eminem</div></div>
+            </div>
+            </div>
+          </div>
+        </div>
+        <div class="slider-divider"><div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div></div>
+        <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+      </div>
+    </article>
+
+    <article class="card-wrapper card-before">
+      <div class="card-header-bar">
+        <span class="card-badge badge-red">CARD 2: TRƯỚC</span>
+        <span style="font-size:.85rem;color:var(--accent-red)">👉 Scroll xuống 1 tí là quên mình đang ở đâu</span>
+      </div>
+      <div class="app">
+        <div class="strip">
+          <span class="pill">🔀 Mixed <span class="n">(42)</span></span>
+          <span class="pill">✂️ Slices <span class="n">(18)</span></span>
+          <span class="pill">💿 Tracks <span class="n">(24)</span></span>
+          <span class="pill ico">‹</span><span class="sep"></span>
+          <span class="hl r diff-highlight inl" data-diff="annotation"><span class="mock-annotation red edge-l">🤔 danh tính playlist = 1 pill 0.64rem</span>
+            <span class="pill on" data-act="toast" data-msg="Muốn phát cả playlist? Đéo có nút nào ở đây cả 🙃">📁 Gym Hype <span class="n">(24)</span></span></span>
+          <span class="pill ico">⋯</span>
+        </div>
+        <div class="row-head"><span></span><span class="sort">Mới nhất ▾</span></div>
+        <div class="grid">
+          <div class="tc"><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+          <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+          <div class="tc"><div class="art g7">♪</div><div class="t">Lose Yourself</div><div class="a">Eminem</div></div>
+          <div class="tc"><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+          <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+          <div class="tc"><div class="art g3">♪</div><div class="t">Till I Collapse</div><div class="a">Eminem</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card-wrapper card-after">
+      <div class="card-header-bar">
+        <span class="card-badge badge-green">CARD 3: SAU</span>
+        <span style="font-size:.85rem;color:var(--accent-green)">👉 Bấm ▶, ⤮, "‹ Playlists"</span>
+      </div>
+      <div class="app" data-demo="hero">
+        <span class="crumb" data-act="toast" data-msg="‹ Quay về grid Playlists">‹ Playlists</span>
+        <div class="hl g diff-highlight" data-diff="annotation" style="margin-bottom:.4rem"><span class="mock-annotation green edge-l">🎯 header ~140px: bìa + tên to + nút phát</span>
+          <div class="hero" style="margin:0">
+            <div class="cover"><div class="mosaic"><div class="art g1">♪</div><div class="art g5">♪</div><div class="art g7">♪</div><div class="art g2">♪</div></div></div>
+            <div><div class="lbl">PLAYLIST</div><h4>Gym Hype</h4><div class="meta">24 bài · 6 slice · 1h 12m</div></div>
+            <div class="btns side"><span class="sort" style="font-size:.6rem;color:#B7B5AC;border:1px solid #343331;border-radius:.4rem;padding:.2rem .5rem">Mới nhất ▾</span><button class="rb shuf" data-act="shuf" data-name="Gym Hype">⤮</button><button class="rb play" data-act="heroplay">▶</button></div>
+          </div>
+        </div>
+        <div class="hl g diff-highlight" data-diff="annotation" style="margin-top:1rem"><span class="mock-annotation green edge-r">🎵 nhạc vẫn là chính</span>
+        <div class="grid">
+          <div class="tc" data-first><div class="art g1">♪</div><div class="t">Chạy Ngay Đi</div><div class="a">Sơn Tùng M-TP</div></div>
+          <div class="tc"><span class="slice-tag">✂ Điệp khúc</span><div class="art g5">♪</div><div class="t">See Tình</div><div class="a">Hoàng Thùy Linh</div></div>
+          <div class="tc"><div class="art g7">♪</div><div class="t">Lose Yourself</div><div class="a">Eminem</div></div>
+          <div class="tc"><div class="art g2">♪</div><div class="t">Blinding Lights</div><div class="a">The Weeknd</div></div>
+          <div class="tc"><span class="slice-tag">✂ Drop</span><div class="art g4">♪</div><div class="t">Levitating</div><div class="a">Dua Lipa</div></div>
+          <div class="tc"><div class="art g3">♪</div><div class="t">Till I Collapse</div><div class="a">Eminem</div></div>
+        </div>
+        </div>
+      </div>
+    </article>
+  </section>
+  </div>
+</main>
+
+<!-- ================================================================ TAB GIẢI THÍCH -->
+<section id="tab-explain" class="tab-pane" role="tabpanel" style="display:none">
+
+  <!-- TẦNG 1 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 1/4 • FOLDER</div>
+        <h3>📁 Đụng vào file nào</h3>
+        <p>3 component mới cho phía client. Server chỉ thêm 1 cột DB và mở rộng 1 route PATCH có sẵn.</p>
+        <p>🗑️ Fold/unfold custom playlist với nút ⋯ overflow trong <b>App.tsx</b> bị <b>xóa</b>. <b>PlaylistDrawer</b> thu gọn lại hoặc xóa luôn.</p>
+        <div class="meta-tag-group"><span class="meta-tag green">+3 file</span><span class="meta-tag yellow">~6 file sửa</span><span class="meta-tag blue">0 dependency mới</span></div>
+      </div>
+      <div class="code-container">
+        <div class="code-topbar"><div class="code-topbar-left"><div class="code-dots"><span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span></div><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📁 slice-player/src</span></div>
+          <div class="code-actions"><span class="code-lang-badge"><span class="lang-dot structure"></span> STRUCTURE</span></div></div>
+        <div class="code-body">
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 <span class="prop">client/src/</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  📄 <span class="fn">App.tsx</span></span><span class="c-comment"># + tab Playlists · − fold/⋯</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  📁 <span class="prop">components/</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    📄 <span class="fn">PlaylistGrid.tsx</span></span><span class="c-comment"># grid card + card "New"</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    📄 <span class="fn">PlaylistCover.tsx</span></span><span class="c-comment"># mosaic / bìa đơn / icon</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    📄 <span class="fn">PlaylistHeader.tsx</span></span><span class="c-comment"># header lớn trong playlist</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    📄 <span class="fn">PlaylistItemCard.tsx</span></span><span class="c-comment"># + menu "Đặt làm ảnh bìa"</span></div>
+          <div class="c-line del"><span class="c-sign">-</span><span class="c-text">    📄 <span class="fn">PlaylistDrawer.tsx</span></span><span class="c-comment"># thu gọn / xóa</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  📁 <span class="prop">store/</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    📄 <span class="fn">usePlayerStore.ts</span></span><span class="c-comment"># + setPlaylistCover()</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 <span class="prop">server/</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  📄 <span class="fn">db.ts</span></span><span class="c-comment"># migration cover_track_id · listPlaylists()</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  📄 <span class="fn">index.ts</span></span><span class="c-comment"># PATCH /api/playlists/:id nhận cover</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 2 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 2/4 • COMPONENT</div>
+        <h3>🧱 Cây component</h3>
+        <p>Tab <b>Playlists</b> đứng đầu dãy tab. Đang ở trong 1 playlist thì dãy tab chỉ hiện đúng pill của playlist đó.</p>
+        <p>⚠️ <b>Quyết định còn mở:</b> "đang xem grid Playlists" lưu bằng cách nào. Nhét <code>"playlists"</code> vào <code>SystemCategory</code> thì phải sửa mấy chỗ đang dùng <code>isPlaybackMode</code> để guard. Còn tách ra 1 flag riêng thì code sạch hơn nhưng store có thêm 1 state.</p>
+        <div class="meta-tag-group"><span class="meta-tag yellow">Cần chốt</span><span class="meta-tag green">Tái dùng grid nhạc</span></div>
+      </div>
+      <div class="code-container">
+        <div class="code-topbar"><div class="code-topbar-left"><div class="code-dots"><span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span></div><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📄 App.tsx</span></div>
+          <div class="code-actions"><span class="diff-stat"><span class="stat-add">+6</span> <span class="stat-del">-3</span></span><span class="code-lang-badge"><span class="lang-dot tsx"></span> TSX</span></div></div>
+        <div class="code-body">
+          <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="punc">&lt;</span><span class="tag">App</span><span class="punc">&gt;</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">CategoryTabs</span><span class="punc">&gt;</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">Tab</span> <span class="attr">id</span>=<span class="str">"playlists"</span><span class="punc">/&gt;</span></span><span class="c-comment"># đứng đầu</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">Tab</span><span class="punc">&gt;</span> Mixed · Slices · Tracks · …</span></div>
+          <div class="c-line del"><span class="c-sign">-</span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">FoldedCustomPlaylists</span><span class="punc">/&gt;</span></span><span class="c-comment"># chevron + ⋯</span></div>
+          <div class="c-line del"><span class="c-sign">-</span><span class="c-text">    {<span class="fn">renderMorePlaylistsMenu</span>()}</span></div>
+          <div class="c-line del"><span class="c-sign">-</span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">button</span><span class="punc">&gt;</span>All playlists<span class="punc">&lt;/</span><span class="tag">button</span><span class="punc">&gt;</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    {<span class="prop">activePlaylistId</span> &amp;&amp; <span class="punc">&lt;</span><span class="tag">ActivePlaylistPill</span><span class="punc">/&gt;</span>}</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="punc">&lt;</span><span class="tag">main-library-panel</span><span class="punc">&gt;</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    {<span class="prop">isPlaylistsView</span> &amp;&amp; <span class="punc">&lt;</span><span class="tag">PlaylistGrid</span><span class="punc">&gt;</span>}</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="punc">&lt;</span><span class="tag">PlaylistCard</span><span class="punc">&gt;</span> → <span class="punc">&lt;</span><span class="tag">PlaylistCover</span><span class="punc">/&gt;</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    {<span class="prop">activePlaylistId</span> &amp;&amp; <span class="punc">&lt;</span><span class="tag">PlaylistHeader</span><span class="punc">&gt;</span>}</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="punc">&lt;</span><span class="tag">PlaylistCover</span> <span class="attr">size</span>=<span class="str">"lg"</span><span class="punc">/&gt;</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">VirtualizedCardGrid</span><span class="punc">&gt;</span> | <span class="punc">&lt;</span><span class="tag">PlaylistTableView</span><span class="punc">&gt;</span></span><span class="c-comment"># giữ nguyên</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 3 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 3/4 • CALL TREE</div>
+        <h3>🔁 2 luồng chính</h3>
+        <p><b>Mở playlist:</b> dùng lại <code>setActivePlaylist(id)</code> có sẵn trong store, chỉ thêm chỗ gọi từ card.</p>
+        <p><b>Đặt bìa:</b> gọi 1 action store mới → PATCH lên route có sẵn → server UPDATE → client refetch danh sách playlist.</p>
+        <div class="meta-tag-group"><span class="meta-tag green">Tái dùng setActivePlaylist</span><span class="meta-tag blue">1 action mới</span></div>
+      </div>
+      <div class="code-container">
+        <div class="code-topbar"><div class="code-topbar-left"><div class="code-dots"><span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span></div><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">🔁 flow</span></div>
+          <div class="code-actions"><span class="code-lang-badge"><span class="lang-dot flow"></span> FLOW</span></div></div>
+        <div class="code-body">
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">🖱️ click <span class="tag">PlaylistCard</span></span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="fn">setActivePlaylist</span>(<span class="prop">id</span>)</span><span class="c-comment"># có sẵn</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    GET <span class="str">/api/playlists/:id/items</span></span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  render <span class="tag">PlaylistHeader</span> + grid nhạc</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text"> </span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">🖱️ click ▶ trên card</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">setActivePlaylist</span>(<span class="prop">id</span>) → <span class="fn">playPlaylistItemAtIndex</span>(<span class="num">0</span>)</span><span class="c-comment"># cả 2 có sẵn</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text"> </span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">🖱️ menu "🖼️ Đặt làm ảnh bìa"</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="fn">setPlaylistCover</span>(<span class="prop">plId</span>, <span class="prop">trackId</span>)</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">    PATCH <span class="str">/api/playlists/:id</span> { <span class="prop">cover_track_id</span> }</span></div>
+          <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      <span class="kwd">UPDATE</span> playlists <span class="kwd">SET</span> cover_track_id = ?</span></div>
+          <div class="c-line"><span class="c-sign"></span><span class="c-text">    GET <span class="str">/api/playlists</span></span><span class="c-comment"># refetch, card đổi bìa</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 4 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 4/4 • LOGIC &amp; SQL</div>
+        <h3>🧮 Chọn ảnh bìa + truy vấn</h3>
+        <p>Server trả sẵn 2 thứ cho client: <code>cover_url</code> (bìa m chọn tay) và <code>mosaic_urls</code> (tối đa 4 ảnh, mỗi bài chỉ lấy 1 lần, nên 1 bài bị cắt 3 slice đéo chiếm 3 ô).</p>
+        <p>✅ <code>db.ts:166</code> đã bật <code>PRAGMA foreign_keys = ON</code>, nên <code>ON DELETE SET NULL</code> chạy thật: xóa bài đang làm bìa thì playlist tự quay về mosaic.</p>
+        <nav class="tab-group sub-tabs" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('l-pseudo', this)">🧠 Pseudocode</button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('l-sql', this)">🗄️ SQL</button>
+        </nav>
+        <div class="meta-tag-group"><span class="meta-tag green">1 cột mới</span><span class="meta-tag blue">0 bảng mới</span></div>
+      </div>
+      <div style="min-width:0;width:100%">
+        <div id="tab-l-pseudo" class="tab-pane active" role="tabpanel">
+          <div class="code-container">
+            <div class="code-topbar"><div class="code-topbar-left"><span class="code-dot green"></span><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📄 PlaylistCover.tsx</span></div>
+              <div class="code-actions"><span class="code-lang-badge"><span class="lang-dot logic"></span> LOGIC</span></div></div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="fn">PlaylistCover</span>(<span class="prop">playlist</span>)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> playlist.<span class="prop">cover_url</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> 1 ảnh full</span><span class="c-comment"># 📌 m chọn tay</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="prop">urls</span> = playlist.<span class="prop">mosaic_urls</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> urls.length &gt;= <span class="num">4</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> lưới 2×2</span><span class="c-comment"># 🧩</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> urls.length &gt;= <span class="num">1</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">return</span> urls[<span class="num">0</span>] full</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">return</span> icon 📁 trên nền xám</span><span class="c-comment"># playlist rỗng</span></div>
+            </div>
+          </div>
+        </div>
+        <div id="tab-l-sql" class="tab-pane" role="tabpanel" style="display:none">
+          <div class="code-container">
+            <div class="code-topbar"><div class="code-topbar-left"><span class="code-dot yellow"></span><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📄 src/server/db.ts</span></div>
+              <div class="code-actions"><span class="diff-stat"><span class="stat-add">+9</span></span><span class="code-lang-badge"><span class="lang-dot ts"></span> SQL</span><button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button></div></div>
+            <div class="code-body">
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">-- migration mới (user_version tiếp theo)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="kwd">ALTER TABLE</span> playlists <span class="kwd">ADD COLUMN</span> cover_track_id <span class="kwd">TEXT</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  <span class="kwd">REFERENCES</span> tracks(id) <span class="kwd">ON DELETE SET NULL</span>;</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"> </span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">-- listPlaylists(): giữ query cũ, thêm 2 cột</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">SELECT</span> p.id, p.name, …, <span class="fn">COUNT</span>(pi.id) <span class="kwd">AS</span> item_count,</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  (<span class="kwd">SELECT</span> thumbnail_url <span class="kwd">FROM</span> tracks <span class="kwd">WHERE</span> id = p.cover_track_id) <span class="kwd">AS</span> cover_url,</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  (<span class="kwd">SELECT</span> <span class="fn">json_group_array</span>(u) <span class="kwd">FROM</span> (</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">     <span class="kwd">SELECT</span> t.thumbnail_url u <span class="kwd">FROM</span> playlist_items x <span class="kwd">JOIN</span> tracks t <span class="kwd">ON</span> t.id = x.track_id</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">     <span class="kwd">WHERE</span> x.playlist_id = p.id <span class="kwd">AND</span> t.thumbnail_url &lt;&gt; <span class="str">''</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">     <span class="kwd">GROUP BY</span> t.id <span class="kwd">ORDER BY</span> <span class="fn">MIN</span>(x.sort_order) <span class="kwd">LIMIT</span> <span class="num">4</span>)) <span class="kwd">AS</span> mosaic_urls</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">FROM</span> playlists p <span class="kwd">LEFT JOIN</span> playlist_items pi <span class="kwd">ON</span> p.id = pi.playlist_id</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">GROUP BY</span> p.id <span class="kwd">ORDER BY</span> p.updated_at <span class="kwd">DESC</span>, p.created_at <span class="kwd">DESC</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+</div>
+
+<button id="inspector-toggle" onclick="toggleDiff()">
+  <span>🔍 Check Diff</span>
+  <span id="diffStatusTag">[BẬT]</span>
+</button>
+
+<script src="./visual-core.js"></script>
+<script>
+  // Tương tác mock (chỉ Card 2/3, Card 1 slider đéo tương tác)
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-act]');
+    if (!el || el.closest('.slider-viewport')) return;
+    var app = el.closest('.app');
+    var act = el.dataset.act, name = el.dataset.name;
+    if (act === 'toast') return showToast(el.dataset.msg, 'info', 2200);
+    if (act === 'dd') { app.querySelector('[data-dd]').classList.toggle('open'); return; }
+    if (act === 'pick') {
+      app.querySelector('[data-dd]').classList.remove('open');
+      return showToast('📁 ' + name + ': tìm dc r… sau 2 cú click vào cái ⋯ bé tí 😩', 'error', 2600);
+    }
+    if (act === 'pick2') return showToast('📁 ' + name + ': đọc hết từng dòng mới thấy 😐', 'error', 2200);
+    if (act === 'view') {
+      app.querySelectorAll('[data-act="view"]').forEach(function (p) { p.classList.toggle('on', p === el); });
+      app.querySelectorAll('[data-view-pane]').forEach(function (p) { p.style.display = p.dataset.viewPane === el.dataset.view ? '' : 'none'; });
+      return;
+    }
+    if (act === 'play') { e.stopPropagation(); return showToast('▶ Phát "' + name + '" từ bài đầu', 'success'); }
+    if (act === 'shuf') { e.stopPropagation(); return showToast('⤮ Shuffle "' + name + '"', 'success'); }
+    if (act === 'open') return showToast('📂 Mở "' + name + '" → xem tab 3️⃣', 'info');
+    if (act === 'setcover') {
+      var cov = app.querySelector('[data-cover]');
+      cov.innerHTML = '<div class="art ' + el.dataset.g + '" style="font-size:2rem">' + el.dataset.i + '</div>';
+      app.querySelector('[data-cover-label]').textContent = '📌 bìa tự chọn';
+      app.querySelectorAll('[data-chip]').forEach(function (c) { c.classList.toggle('cur', c.dataset.chip === el.dataset.g); });
+      return showToast('🖼️ Đã đặt làm ảnh bìa', 'success');
+    }
+    if (act === 'reset') {
+      app.querySelector('[data-cover]').innerHTML = '<div class="mosaic"><div class="art g5">🚗</div><div class="art g2">♪</div><div class="art g6">♪</div><div class="art g4">♪</div></div>';
+      app.querySelector('[data-cover-label]').textContent = '🧩 mosaic tự sinh';
+      app.querySelectorAll('[data-chip]').forEach(function (c) { c.classList.remove('cur'); });
+      return showToast('↺ Về mosaic tự sinh', 'info');
+    }
+    if (act === 'heroplay') {
+      var on = el.textContent === '▶';
+      el.textContent = on ? '⏸' : '▶';
+      app.querySelector('[data-first]').classList.toggle('playing', on);
+      return showToast(on ? '▶ Đang phát Gym Hype · bài 1/24' : '⏸ Tạm dừng', 'success');
+    }
+  });
+</script>
+</body>
+</html>

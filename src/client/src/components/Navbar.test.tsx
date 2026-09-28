@@ -592,4 +592,20 @@ describe("Navbar YouTube Ingestion Queue", () => {
 
     await i18n.changeLanguage("en");
   });
+
+  it("should accept .mp4 files in the local audio file picker", async () => {
+    await act(async () => {
+      root.render(
+        <Navbar
+          onSearchChange={() => {}}
+          searchQuery=""
+        />
+      );
+    });
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toBeDefined();
+    expect(fileInput.accept).toContain(".mp4");
+    expect(fileInput.accept).toContain("video/mp4");
+  });
 });

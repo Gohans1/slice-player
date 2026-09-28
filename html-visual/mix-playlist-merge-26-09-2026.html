@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Gộp Playlist (Mix) - 26-09-2026</title>
+  <link rel="stylesheet" href="./visual-core.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+  <style>
+    /* ===== Mock app: Flexoki Dark, khớp DESIGN.md của Slice Player ===== */
+    .app{background:#100F0F;color:#CECDC3;border:1px solid #343331;border-radius:.75rem;padding:1rem;font-family:'Plus Jakarta Sans',Inter,sans-serif;font-size:.8rem;position:relative;user-select:none;min-height:24rem;overflow:hidden}
+    .row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.7rem;font-size:.72rem;color:#E6E4D9;font-weight:700}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(6.4rem,1fr));gap:.7rem}
+    .pc{background:#1C1B1A;border:1px solid #282726;border-radius:.6rem;overflow:hidden;position:relative;cursor:pointer;transition:border-color .15s,transform .15s}
+    .pc:hover{border-color:#575653;transform:translateY(-2px)}
+    .pc.fresh{border-color:#879A39;box-shadow:0 0 0 1px #879A39}
+    .art{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:rgba(255,252,240,.9);position:relative}
+    .art::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.18),transparent 60%)}
+    .g1{background:linear-gradient(135deg,#D14D41,#DA702C)} .g2{background:linear-gradient(135deg,#4385BE,#8B7EC8)}
+    .g3{background:linear-gradient(135deg,#879A39,#3AA99F)} .g4{background:linear-gradient(135deg,#CE5D97,#8B7EC8)}
+    .mosaic{display:grid;grid-template-columns:1fr 1fr;aspect-ratio:1}
+    .mosaic .art{aspect-ratio:auto;font-size:.75rem}
+    .t{padding:.45rem .55rem .1rem;font-weight:700;font-size:.66rem;color:#E6E4D9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .a{font-size:.58rem;color:#B7B5AC;padding:0 .55rem .5rem;font-family:'JetBrains Mono',monospace}
+    .newcard{border:1.5px dashed #403E3C;border-radius:.6rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;color:#4385BE;font-size:.64rem;font-weight:700;min-height:8rem;cursor:pointer;text-align:center;padding:.4rem;background:none;font-family:inherit}
+    .newcard b{font-size:1.3rem}
+    .newcard.mix{color:#CE5D97;border-color:rgba(206,93,151,.55)}
+    .newcard.mix:hover{background:rgba(206,93,151,.08);border-color:#CE5D97}
+    .newcard:hover{background:rgba(67,133,190,.06)}
+    .newcard.pulse{animation:pulse 1.6s ease-in-out infinite}
+    @keyframes pulse{50%{box-shadow:0 0 0 4px rgba(206,93,151,.25)}}
+    /* modal */
+    .overlay{position:absolute;inset:0;background:rgba(16,15,15,.72);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:.8rem;z-index:20}
+    .modal{width:100%;max-width:23rem;background:#1C1B1A;border:1px solid #403E3C;border-radius:.8rem;padding:1rem;box-shadow:0 20px 50px rgba(0,0,0,.8)}
+    .modal h5{font-size:.9rem;color:#FFFCF0;font-weight:800;margin:0 0 .15rem}
+    .modal .sub{font-size:.62rem;color:#CECDC3;margin-bottom:.8rem}
+    .lbl{font-size:.55rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#B7B5AC;margin:.7rem 0 .35rem}
+    .pick{display:flex;align-items:center;gap:.55rem;padding:.35rem;border-radius:.5rem;border:1px solid #282726;margin-bottom:.3rem;cursor:pointer;background:#100F0F}
+    .pick:hover{border-color:#575653}
+    .pick.on{border-color:#CE5D97;background:rgba(206,93,151,.08)}
+    .pick .art{width:2rem;border-radius:.35rem;font-size:.7rem;overflow:hidden;flex-shrink:0}
+    .pick .nm{flex:1;min-width:0;font-size:.66rem;font-weight:700;color:#E6E4D9}
+    .pick .ct{font-size:.56rem;color:#B7B5AC;font-family:'JetBrains Mono',monospace}
+    .num{width:1.25rem;height:1.25rem;border-radius:50%;border:1.5px solid #575653;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:800;color:transparent;flex-shrink:0}
+    .pick.on .num{background:#CE5D97;border-color:#CE5D97;color:#100F0F}
+    .ord{display:flex;gap:.3rem;flex-shrink:0}
+    .ord button{font:inherit;font-size:.6rem;width:1.35rem;height:1.35rem;border-radius:.3rem;border:1px solid #403E3C;background:#282726;color:#E6E4D9;cursor:pointer}
+    .ord button:disabled{opacity:.3;cursor:default}
+    .bar{display:flex;height:.5rem;border-radius:999px;overflow:hidden;background:#282726;margin:.4rem 0 .3rem}
+    .bar span{display:block;height:100%}
+    .pv{font-size:.6rem;color:#E6E4D9;font-family:'JetBrains Mono',monospace}
+    .pv .dup{color:#D0A215}
+    .inp{width:100%;box-sizing:border-box;background:#100F0F;border:1px solid #403E3C;border-radius:.45rem;padding:.45rem .6rem;color:#FFFCF0;font:inherit;font-size:.7rem}
+    .inp:focus{outline:none;border-color:#4385BE}
+    .actions{display:flex;justify-content:flex-end;gap:.45rem;margin-top:.9rem}
+    .btn{font:inherit;font-size:.66rem;font-weight:700;border-radius:.45rem;padding:.45rem .8rem;cursor:pointer;border:1px solid #403E3C;background:#282726;color:#E6E4D9}
+    .btn.pri{background:#CE5D97;border-color:#CE5D97;color:#100F0F}
+    .btn.pri:disabled{opacity:.35;cursor:not-allowed}
+    /* playlist view */
+    .crumb{font-size:.62rem;color:#4385BE;font-weight:700;cursor:pointer;margin-bottom:.7rem;display:inline-block}
+    .hero{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;padding:.9rem;border-radius:.75rem;margin-bottom:.8rem;background:linear-gradient(180deg,rgba(206,93,151,.28),rgba(16,15,15,0) 95%)}
+    .hero .cover{width:5.5rem;flex-shrink:0;border-radius:.5rem;overflow:hidden;box-shadow:0 12px 28px rgba(0,0,0,.7)}
+    .hero .kick{font-size:.52rem;font-weight:800;letter-spacing:.14em;color:#CE5D97}
+    .hero h4{font-size:1.25rem;font-weight:800;color:#FFFCF0;letter-spacing:-.02em;line-height:1.15;margin:.15rem 0 .3rem}
+    .hero .meta{font-size:.58rem;color:#CECDC3;font-family:'JetBrains Mono',monospace}
+    .sortsel{display:inline-flex;border:1px solid #343331;background:rgba(28,27,26,.6);border-radius:.5rem;padding:.12rem;gap:.1rem;flex-wrap:wrap}
+    .sortsel button{font:inherit;font-size:.6rem;font-weight:600;padding:.28rem .55rem;border-radius:.38rem;border:none;background:none;color:#B7B5AC;cursor:pointer}
+    .sortsel button.on{background:#282726;color:#4385BE;font-weight:800}
+    .rows{margin-top:.6rem}
+    .r{display:grid;grid-template-columns:1.1rem 1.9rem minmax(0,1fr) auto;gap:.55rem;align-items:center;padding:.35rem .4rem;border-radius:.45rem;transition:background .15s}
+    .r:hover{background:#1C1B1A}
+    .r .i{font-size:.58rem;color:#B7B5AC;font-family:'JetBrains Mono',monospace;text-align:right}
+    .r .art{width:1.9rem;border-radius:.3rem;font-size:.65rem;overflow:hidden}
+    .r .tt{font-size:.66rem;font-weight:700;color:#E6E4D9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .r .ar{font-size:.56rem;color:#B7B5AC}
+    .r .dt{font-size:.56rem;color:#CECDC3;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:.35rem}
+    .dot{width:.5rem;height:.5rem;border-radius:50%;display:inline-block;flex-shrink:0}
+    .slc{font-size:.5rem;font-weight:800;color:#DA702C;margin-left:.3rem}
+    .legend{font-size:.55rem;color:#D0A215;margin-top:.45rem;border:1px dashed rgba(208,162,21,.5);border-radius:.4rem;padding:.3rem .5rem;display:inline-block}
+    /* before hint */
+    .steps{margin-top:.9rem;display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;font-size:.6rem;color:#E6E4D9}
+    .steps span.s{background:#1C1B1A;border:1px solid #403E3C;border-radius:.4rem;padding:.25rem .45rem}
+    .steps span.x{color:#D14D41;font-weight:800}
+    /* annotation wrappers */
+    .hl{position:relative;border-radius:.6rem;padding:.3rem}
+    .hl.r{border:2px dashed #ef4444} .hl.g{border:2px dashed #22c55e}
+    .mock-annotation.edge-l{top:-.85rem;left:.5rem;right:auto;font-size:.56rem;padding:.2rem .55rem;white-space:nowrap}
+    /* explain visuals */
+    .vs{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:1rem}
+    .box{background:var(--card-bg);border:1px solid var(--border);border-radius:.7rem;padding:1rem;font-size:.82rem;color:var(--text-main)}
+    .box.ok{border-color:var(--accent-green)} .box.no{border-color:var(--accent-red)}
+    .box h4{margin:0 0 .6rem;font-size:.95rem}
+    .flow{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin:.5rem 0 .8rem}
+    .tag{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .55rem;border-radius:.4rem;font-weight:700;font-size:.72rem;color:#100F0F}
+    .tag.A{background:#DA702C} .tag.B{background:#4385BE;color:#FFFCF0} .tag.C{background:#CE5D97}
+    .box ul{margin:.3rem 0 0;padding-left:1.1rem;line-height:1.6;color:var(--text-sub)}
+    .box li b{color:var(--text-main)}
+    .tbl{width:100%;border-collapse:collapse;font-size:.74rem;color:var(--text-main)}
+    .tbl th,.tbl td{border-bottom:1px solid var(--border);padding:.45rem .4rem;text-align:left;vertical-align:top}
+    .tbl th{color:var(--text-sub);font-size:.66rem;text-transform:uppercase;letter-spacing:.06em}
+    .seq{display:flex;gap:.25rem;flex-wrap:wrap}
+    .seq span{font-family:'JetBrains Mono',monospace;font-size:.66rem;font-weight:700;padding:.12rem .38rem;border-radius:.3rem;color:#100F0F}
+    .seq .A{background:#DA702C} .seq .B{background:#4385BE;color:#FFFCF0}
+    .toggle{display:inline-flex;border:1px solid var(--border);border-radius:.5rem;padding:.15rem;gap:.15rem;margin-bottom:.8rem}
+    .toggle button{font:inherit;font-size:.72rem;padding:.3rem .7rem;border-radius:.35rem;border:none;background:none;color:var(--text-sub);cursor:pointer}
+    .toggle button.on{background:#282726;color:var(--text-main);font-weight:700}
+    .edgecase{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:.7rem}
+    .edgecase div{background:var(--card-bg);border:1px solid var(--border);border-radius:.6rem;padding:.7rem;font-size:.76rem;color:var(--text-sub)}
+    .edgecase b{display:block;color:var(--text-main);margin-bottom:.25rem}
+    .bulk{position:absolute;left:50%;bottom:.8rem;transform:translateX(-50%);display:flex;gap:.4rem;align-items:center;background:#1C1B1A;border:1px solid #403E3C;border-radius:999px;padding:.35rem .5rem .35rem .8rem;font-size:.62rem;color:#E6E4D9;box-shadow:0 10px 24px rgba(0,0,0,.7);white-space:nowrap}
+    .chk{position:absolute;top:.3rem;left:.3rem;width:1rem;height:1rem;border-radius:.25rem;background:#CE5D97;color:#100F0F;font-size:.6rem;font-weight:900;display:flex;align-items:center;justify-content:center;z-index:2}
+    .menu{position:absolute;right:1rem;top:5.2rem;background:#1C1B1A;border:1px solid #403E3C;border-radius:.45rem;padding:.25rem;min-width:9rem;z-index:5;box-shadow:0 10px 24px rgba(0,0,0,.8)}
+    .menu div{font-size:.6rem;padding:.32rem .5rem;border-radius:.3rem;color:#B7B5AC}
+    .menu div.hot{background:rgba(206,93,151,.15);color:#CE5D97;font-weight:700}
+    .rec{display:inline-block;font-size:.62rem;font-weight:800;background:var(--accent-green);color:#000;border-radius:.3rem;padding:.1rem .4rem;margin-left:.3rem}
+  </style>
+</head>
+<body>
+
+<header class="nav-header">
+  <div class="brand-title"><span>🔀</span> BẢN THIẾT KẾ: GỘP PLAYLIST (MIX)</div>
+  <nav class="tab-group" role="tablist">
+    <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược</button>
+    <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Giải Thích Chi Tiết</button>
+  </nav>
+</header>
+
+<div class="container">
+
+<!-- ================================================================ TAB 1 -->
+<main id="tab-summarize" class="tab-pane active" role="tabpanel">
+  <section class="callout" style="max-width:40rem;margin-left:auto;margin-right:auto;text-align:center">
+    <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+    <p>Thêm ô <b>"🔀 Gộp playlist"</b> cạnh ô "Tạo playlist": tick A rồi B (thứ tự tick = thứ tự nối) → ra playlist C <b>độc lập</b> (bản sao, A/B còn nguyên), C giữ <b>ngày thêm gốc</b> của từng bài nên 4 kiểu sort vẫn có nghĩa.</p>
+  </section>
+
+  <!-- CARD 1: SLIDER -->
+  <article class="card-wrapper card-slider">
+    <div class="card-header-bar">
+      <span class="card-badge badge-white">CARD 1: SO SÁNH TRƯỚC / SAU</span>
+      <span style="font-size:.85rem;color:var(--text-main)">Kéo thanh giữa để so sánh</span>
+    </div>
+    <div class="slider-viewport">
+      <div class="slider-layer slider-before">
+        <div class="app">
+          <div class="row-head"><span>📚 Playlist của m</span></div>
+          <div class="grid">
+            <div class="pc"><div class="art g1">🌙</div><div class="t">Chill Night</div><div class="a">3 bài</div></div>
+            <div class="pc"><div class="art g2">⚡</div><div class="t">Gym Pump</div><div class="a">3 bài</div></div>
+            <div class="pc"><div class="art g3">🎧</div><div class="t">Deep Focus</div><div class="a">2 bài</div></div>
+            <div class="hl r" style="padding:0"><span class="mock-annotation red edge-l" data-diff="annotation">CHỈ CÓ TẠO MỚI</span><div class="newcard" style="height:100%"><b>+</b>Tạo playlist</div></div>
+          </div>
+          <div class="steps"><span class="s">Mở A</span>→<span class="s">Chọn tất</span>→<span class="s">Thêm vào C</span>→<span class="s">Mở B</span>→<span class="s">Lặp lại</span><span class="x">😩 + mất ngày thêm gốc</span></div>
+        </div>
+      </div>
+      <div class="slider-layer slider-after">
+        <div class="app">
+          <div class="row-head"><span>📚 Playlist của m</span></div>
+          <div class="grid">
+            <div class="pc"><div class="art g1">🌙</div><div class="t">Chill Night</div><div class="a">3 bài</div></div>
+            <div class="pc"><div class="art g2">⚡</div><div class="t">Gym Pump</div><div class="a">3 bài</div></div>
+            <div class="pc"><div class="art g3">🎧</div><div class="t">Deep Focus</div><div class="a">2 bài</div></div>
+            <div class="newcard"><b>+</b>Tạo playlist</div>
+          </div>
+          <div class="overlay">
+            <div class="modal hl g" style="padding:1rem">
+              <span class="mock-annotation green edge-l" data-diff="annotation">MODAL GỘP MỚI</span>
+              <h5>🔀 Gộp playlist</h5>
+              <div class="sub">Tạo playlist mới. Playlist gốc giữ nguyên.</div>
+              <div class="pick on"><span class="num">1</span><div class="art g1">🌙</div><span class="nm">Chill Night</span><span class="ct">3</span></div>
+              <div class="pick on"><span class="num">2</span><div class="art g2">⚡</div><span class="nm">Gym Pump</span><span class="ct">3</span></div>
+              <div class="pick"><span class="num"></span><div class="art g3">🎧</div><span class="nm">Deep Focus</span><span class="ct">2</span></div>
+              <div class="bar"><span style="width:50%;background:#DA702C"></span><span style="width:33%;background:#4385BE"></span></div>
+              <div class="pv">6 bài → <b>5 bài</b> · <span class="dup">bỏ 1 trùng</span></div>
+              <div class="actions"><span class="btn">Hủy</span><span class="btn pri">Tạo playlist gộp</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slider-divider"><div class="slider-knob" role="slider" aria-label="So sánh Trước và Sau" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" tabindex="0">⇄</div></div>
+      <input type="range" class="slider-input-range" min="0" max="100" value="50" tabindex="-1" aria-hidden="true">
+    </div>
+  </article>
+
+  <!-- CARD 2: BEFORE -->
+  <article class="card-wrapper card-before">
+    <div class="card-header-bar">
+      <span class="card-badge badge-red">CARD 2: BEFORE (HIỆN TẠI)</span>
+      <span style="font-size:.85rem;color:var(--accent-red)">Không có cách gộp, phải làm tay</span>
+    </div>
+    <div class="app">
+      <div class="row-head"><span>📚 Playlist của m</span></div>
+      <div class="grid">
+        <div class="pc" onclick="showToast('Mở Chill Night… giờ chọn tất rồi thêm vào playlist khác 😩','error')"><div class="art g1">🌙</div><div class="t">Chill Night</div><div class="a">3 bài</div></div>
+        <div class="pc" onclick="showToast('Mở Gym Pump… lặp lại y chang bước trên 😩','error')"><div class="art g2">⚡</div><div class="t">Gym Pump</div><div class="a">3 bài</div></div>
+        <div class="pc" onclick="showToast('Mở Deep Focus…','error')"><div class="art g3">🎧</div><div class="t">Deep Focus</div><div class="a">2 bài</div></div>
+        <div class="hl r" style="padding:0"><span class="mock-annotation red edge-l" data-diff="annotation">CHỈ CÓ TẠO MỚI</span><button class="newcard" style="height:100%;width:100%" onclick="showToast('Tạo playlist rỗng. Gộp? Đéo có.','error')"><b>+</b>Tạo playlist</button></div>
+      </div>
+      <div class="diff-highlight" data-diff="annotation" style="position:relative;margin-top:1.2rem;padding:.8rem;border-radius:.5rem">
+        <span class="mock-annotation red">WORKAROUND ĐAU KHỔ</span>
+        <div class="steps" style="margin-top:0"><span class="s">Mở A</span>→<span class="s">Chọn tất</span>→<span class="s">Thêm vào C</span>→<span class="s">Mở B</span>→<span class="s">Lặp lại</span></div>
+        <div class="steps"><span class="x">⚠️ added_at = lúc thêm → C sort "Mới nhất/Cũ nhất" gần như vô nghĩa (cả lố cùng 1 giây)</span></div>
+      </div>
+    </div>
+  </article>
+
+  <!-- CARD 3: AFTER (INTERACTIVE) -->
+  <article class="card-wrapper card-after">
+    <div class="card-header-bar">
+      <span class="card-badge badge-green">CARD 3: AFTER (BẤM THỬ)</span>
+      <span style="font-size:.85rem;color:var(--accent-green)">Bấm ô 🔀 → tick → tạo → đổi sort</span>
+    </div>
+    <div class="app" id="mixApp"></div>
+  </article>
+</main>
+
+<!-- ================================================================ TAB 2 -->
+<section id="tab-explain" class="tab-pane" role="tabpanel" style="display:none">
+
+  <!-- TẦNG 1 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 1/4 • HÀNH VI</div>
+        <h3>🧬 1. Bản sao (Snapshot) hay Liên kết sống (Live)?</h3>
+        <p>M sủa "playlist riêng, A B còn nguyên" → bú <b>Snapshot</b>: C là playlist thường, copy item của A rồi B vào. Sau đó C sống độc lập.</p>
+        <p>Live (C tự cập nhật theo A, B) nghe sang nhưng kéo thả Manual trong C thành vô nghĩa + phải thêm bảng mới. Đéo đáng lúc này.</p>
+        <div class="meta-tag-group"><span class="meta-tag green">Snapshot ✅</span><span class="meta-tag red">Live ❌ (YAGNI)</span></div>
+      </div>
+      <div class="vs">
+        <div class="box ok">
+          <h4>✅ Snapshot <span class="rec">ĐỀ XUẤT</span></h4>
+          <div class="flow"><span class="tag A">A 🌙</span>+<span class="tag B">B ⚡</span>→ copy →<span class="tag C">C 🔀</span></div>
+          <ul>
+            <li><b>0 bảng mới</b>: C là playlist bình thường</li>
+            <li>Sửa / xóa A → <b>C không đổi</b></li>
+            <li>Kéo thả, xóa bài, đổi cover trong C: y như playlist khác</li>
+            <li>4 kiểu sort dùng lại code có sẵn</li>
+          </ul>
+        </div>
+        <div class="box no">
+          <h4>❌ Live link</h4>
+          <div class="flow"><span class="tag C">C</span>= view của<span class="tag A">A</span>∪<span class="tag B">B</span></div>
+          <ul>
+            <li>Cần bảng <b>playlist_sources</b> mới</li>
+            <li>Kéo thả Manual ở C: lưu vào đâu? 🤔</li>
+            <li>Xóa bài ở C = xóa ở A? Rối não</li>
+            <li>Xóa A → C mất nửa bài</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 2 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 2/4 • SORT</div>
+        <h3>📅 2. 4 kiểu sort chạy trên C thế nào</h3>
+        <p><b>Thủ công</b> = đúng thứ tự nối: hết A (theo thứ tự Thủ công của A) rồi tới B. C bật sẵn <code>is_custom_ordered</code>.</p>
+        <p><b>Mới / Cũ nhất</b> xếp theo <code>added_at</code>. Mấu chốt: copy luôn <b>ngày thêm gốc</b>, không reset về lúc gộp. Bấm toggle bên phải để thấy khác biệt.</p>
+        <p><b>Ngẫu nhiên</b>: như cũ, bấm lại để xáo lại.</p>
+        <div class="meta-tag-group"><span class="meta-tag yellow">added_at gốc</span><span class="meta-tag blue">0 code sort mới</span></div>
+      </div>
+      <div class="box">
+        <div class="toggle" id="agToggle">
+          <button class="on" onclick="setAg('keep',this)">✅ Giữ ngày thêm gốc</button>
+          <button onclick="setAg('now',this)">❌ Reset = lúc gộp</button>
+        </div>
+        <table class="tbl"><thead><tr><th>Sort</th><th>Thứ tự trong C (🟧 = từ A, 🟦 = từ B)</th></tr></thead><tbody id="agBody"></tbody></table>
+        <p id="agNote" style="font-size:.76rem;margin:.7rem 0 0"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 3 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 3/4 • CỬA VÀO (VARIANTS)</div>
+        <h3>🚪 3. Bấm ở đâu để gộp?</h3>
+        <p>3 cửa vào, cùng mở <b>1 modal</b> duy nhất.</p>
+        <nav class="tab-group sub-tabs" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('sub-a', this)">A · Ô trong grid</button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('sub-b', this)">B · Multi-select</button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('sub-c', this)">C · Từ header</button>
+        </nav>
+        <p style="margin-top:.8rem">Đề xuất: <b>A</b> (bắt buộc) + <b>C</b> (rẻ, bú lại modal, tick sẵn playlist đang mở). <b>B</b> để sau vì grid playlist chưa có chế độ chọn.</p>
+        <div class="meta-tag-group"><span class="meta-tag green">A + C</span><span class="meta-tag yellow">B: để sau</span></div>
+      </div>
+      <div style="min-width:0;width:100%">
+        <div id="tab-sub-a" class="tab-pane active" data-tab-pane="sub-a" role="tabpanel">
+          <div class="app" style="min-height:14rem">
+            <div class="row-head"><span>📚 Playlist của m</span></div>
+            <div class="grid">
+              <div class="pc"><div class="art g1">🌙</div><div class="t">Chill Night</div><div class="a">3 bài</div></div>
+              <div class="pc"><div class="art g2">⚡</div><div class="t">Gym Pump</div><div class="a">3 bài</div></div>
+              <div class="newcard"><b>+</b>Tạo playlist</div>
+              <div class="hl g" style="padding:0"><span class="mock-annotation green edge-l">MỚI</span><div class="newcard mix pulse" style="height:100%"><b>🔀</b>Gộp playlist</div></div>
+            </div>
+            <p style="font-size:.62rem;color:#E6E4D9;margin:.8rem 0 0">✅ Dễ thấy, đứng cạnh "Tạo playlist" = cùng họ "tạo ra playlist mới". Ẩn khi &lt; 2 playlist.</p>
+          </div>
+        </div>
+        <div id="tab-sub-b" class="tab-pane" data-tab-pane="sub-b" role="tabpanel" style="display:none">
+          <div class="app" style="min-height:14rem">
+            <div class="row-head"><span>📚 Playlist của m</span></div>
+            <div class="grid">
+              <div class="pc" style="border-color:#CE5D97"><span class="chk">1</span><div class="art g1">🌙</div><div class="t">Chill Night</div><div class="a">3 bài</div></div>
+              <div class="pc" style="border-color:#CE5D97"><span class="chk">2</span><div class="art g2">⚡</div><div class="t">Gym Pump</div><div class="a">3 bài</div></div>
+              <div class="pc"><div class="art g3">🎧</div><div class="t">Deep Focus</div><div class="a">2 bài</div></div>
+            </div>
+            <div class="bulk">Đã chọn 2 <span class="btn pri" style="padding:.3rem .6rem">🔀 Gộp</span> <span class="btn" style="padding:.3rem .6rem">🗑</span></div>
+            <p style="font-size:.62rem;color:#D0A215;margin:.8rem 0 2.6rem">⚠️ Đẹp nhưng phải xây chế độ chọn cho grid playlist (Ctrl+click, bulk bar riêng). Tốn gấp 3 mà chỉ phục vụ 1 action.</p>
+          </div>
+        </div>
+        <div id="tab-sub-c" class="tab-pane" data-tab-pane="sub-c" role="tabpanel" style="display:none">
+          <div class="app" style="min-height:14rem">
+            <div class="hero" style="background:linear-gradient(180deg,rgba(218,112,44,.28),rgba(16,15,15,0) 95%)">
+              <div class="cover"><div class="art g1">🌙</div></div>
+              <div style="flex:1;min-width:0"><div class="kick" style="color:#DA702C">PLAYLIST</div><h4>Chill Night</h4><div class="meta">3 bài · 1 slice · 11:24</div></div>
+              <span class="btn" style="align-self:flex-end">⋯</span>
+            </div>
+            <div class="menu"><div>✏️ Đổi tên</div><div>🖼 Đổi cover</div><div class="hot">🔀 Gộp với playlist khác…</div><div>🗑 Xóa</div></div>
+            <p style="font-size:.62rem;color:#E6E4D9;margin:.4rem 0 0">✅ Mở modal với <b>Chill Night tick sẵn là ①</b>. Chỉ cần tick thêm B.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 3.5: edge cases -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 3/4 • EDGE CASE</div>
+        <h3>🧨 Mấy ca dễ toang</h3>
+        <p>Toàn là quyết định UX, chốt trước cho khỏi cãi lúc code.</p>
+      </div>
+      <div class="edgecase">
+        <div><b>🔁 Bài trùng (A và B cùng có)</b>Giữ 1 bản, ở vị trí xuất hiện đầu tiên (trong A). Preview trong modal báo "bỏ N trùng". DB đã có unique index <code>(playlist, track, segment)</code> lo sẵn.</div>
+        <div><b>✂️ Slice vs bài gốc</b>Slice "Điệp khúc" và bài gốc là 2 item khác nhau → giữ cả 2 (đúng luật unique index hiện tại).</div>
+        <div><b>1️⃣ Chọn &lt; 2 playlist</b>Nút "Tạo" disabled. Playlist rỗng vẫn cho tick nhưng hiện "0 bài".</div>
+        <div><b>🏷 Tên</b>Tự điền "A + B" (≥ 3 cái: "A + B + 1"). Sửa được. Để trống thì bú lại tên tự điền.</div>
+        <div><b>🖼 Cover</b>Không set gì: mosaic 2x2 tự lấy 4 thumbnail đầu như playlist thường.</div>
+        <div><b>🧾 Nhớ "gộp từ A, B"?</b>Bỏ (YAGNI). Snapshot rồi, A bị xóa thì dòng này thành rác. Cần thì thêm sau.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TẦNG 4 -->
+  <section class="explain-section">
+    <div class="explain-layout">
+      <div class="explain-text-col">
+        <div class="zoom-tier-badge">TẦNG 4/4 • CODE SHAPE</div>
+        <h3>🧱 4. Đụng file nào, logic ra sao</h3>
+        <p>1 endpoint, 1 hàm DB trong transaction, 1 modal. Không migration, không bảng mới.</p>
+        <nav class="tab-group sub-tabs" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('sub-files', this)">📁 File</button>
+          <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('sub-logic', this)">🧠 Logic</button>
+        </nav>
+        <div class="meta-tag-group"><span class="meta-tag green">0 migration</span><span class="meta-tag blue">bun:sqlite transaction</span></div>
+      </div>
+      <div style="min-width:0;width:100%">
+        <div id="tab-sub-files" class="tab-pane active" data-tab-pane="sub-files" role="tabpanel">
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left"><span class="code-dot green"></span><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📁 src/</span></div>
+              <div class="code-actions"><span class="code-lang-badge"><span class="lang-dot structure"></span> STRUCTURE</span></div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 <span class="prop">server</span>/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 db.ts            <span class="fn">mixPlaylists</span>(name, sourceIds)</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 index.ts         <span class="kwd">POST</span> <span class="str">/api/playlists/mix</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">📁 <span class="prop">client/src</span>/</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 components/<span class="tag">MixPlaylistModal</span>.tsx</span><span class="c-comment"># tick + thứ tự + tên + preview</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 components/<span class="tag">PlaylistGrid</span>.tsx   ô 🔀 Gộp playlist</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 components/<span class="tag">PlaylistHeader</span>.tsx ⋯ Gộp với…</span><span class="c-comment"># variant C</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 store/usePlayerStore.ts <span class="fn">mixPlaylists</span>()</span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">  📄 locales/en.json, vi.json</span></div>
+            </div>
+          </div>
+        </div>
+        <div id="tab-sub-logic" class="tab-pane" data-tab-pane="sub-logic" role="tabpanel" style="display:none">
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left"><span class="code-dot yellow"></span><span style="font-size:.78rem;font-weight:700;color:#e4e4e7">📄 db.ts · mixPlaylists (pseudocode)</span></div>
+              <div class="code-actions"><span class="code-lang-badge"><span class="lang-dot logic"></span> LOGIC</span></div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="fn">mixPlaylists</span>(name, sourceIds)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">transaction</span></span><span class="c-comment"># lỗi giữa chừng = rollback sạch</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    c = <span class="fn">createPlaylist</span>(name), is_custom_ordered = <span class="num">1</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    order = <span class="num">0</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="kwd">for</span> id <span class="kwd">in</span> sourceIds</span><span class="c-comment"># thứ tự tick</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="kwd">for</span> item <span class="kwd">in</span> <span class="fn">getPlaylistItems</span>(id)</span><span class="c-comment"># = thứ tự Thủ công của nguồn</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">        <span class="kwd">INSERT OR IGNORE</span> item → c</span><span class="c-comment"># trùng thì bỏ</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">          sort_order = order++</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">          added_at   = item.added_at</span><span class="c-comment"># giữ ngày gốc</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">return</span> <span class="fn">getPlaylist</span>(c.id)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</section>
+</div>
+
+<button id="inspector-toggle" onclick="toggleDiff()"><span>🔍 Check Diff</span><span id="diffStatusTag">[BẬT]</span></button>
+
+<script src="./visual-core.js"></script>
+<script>
+  // ---------- Mock data ----------
+  var PL = {
+    A: { name: 'Chill Night', g: 'g1', ico: '🌙', color: '#DA702C', items: [
+      { k: 'lofi', t: 'Lofi Rain', ar: 'Kupla', d: 10, ico: '🌧', g: 'g1' },
+      { k: 'moon-s', t: 'Moonlight', ar: 'Ali Gatie', d: 14, ico: '🌙', g: 'g4', slice: 'Điệp khúc' },
+      { k: 'sunset', t: 'Sunset Drive', ar: 'Kavinsky', d: 20, ico: '🌇', g: 'g1' }
+    ] },
+    B: { name: 'Gym Pump', g: 'g2', ico: '⚡', color: '#4385BE', items: [
+      { k: 'power', t: 'Power Up', ar: 'NEFFEX', d: 12, ico: '⚡', g: 'g2' },
+      { k: 'sunset', t: 'Sunset Drive', ar: 'Kavinsky', d: 18, ico: '🌇', g: 'g1' },
+      { k: 'run', t: 'Run Boy Run', ar: 'Woodkid', d: 22, ico: '🏃', g: 'g2' }
+    ] },
+    D: { name: 'Deep Focus', g: 'g3', ico: '🎧', color: '#879A39', items: [
+      { k: 'weight', t: 'Weightless', ar: 'Marconi Union', d: 5, ico: '🎧', g: 'g3' },
+      { k: 'lofi', t: 'Lofi Rain', ar: 'Kupla', d: 16, ico: '🌧', g: 'g1' }
+    ] }
+  };
+  var st = { view: 'lib', modal: false, picked: [], name: '', nameTouched: false, mixes: [], openMix: null, sort: 'manual', rnd: null };
+
+  function merge(ids) {
+    var seen = {}, out = [], total = 0, dups = [];
+    ids.forEach(function (id) {
+      PL[id].items.forEach(function (it) {
+        total++;
+        if (seen[it.k]) { dups.push(it.t); return; }
+        seen[it.k] = 1;
+        out.push(Object.assign({ src: id, order: out.length }, it));
+      });
+    });
+    return { items: out, total: total, dups: dups };
+  }
+  function autoName(ids) {
+    if (ids.length <= 2) return ids.map(function (i) { return PL[i].name; }).join(' + ');
+    return PL[ids[0]].name + ' + ' + PL[ids[1]].name + ' + ' + (ids.length - 2);
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function sorted(mix) {
+    var arr = mix.items.slice();
+    if (st.sort === 'newest') arr.sort(function (a, b) { return b.d - a.d; });
+    else if (st.sort === 'oldest') arr.sort(function (a, b) { return a.d - b.d; });
+    else if (st.sort === 'random') {
+      if (!st.rnd) { st.rnd = arr.map(function (x) { return x.k; }).sort(function () { return Math.random() - .5; }); }
+      arr.sort(function (a, b) { return st.rnd.indexOf(a.k) - st.rnd.indexOf(b.k); });
+    }
+    return arr;
+  }
+
+  function renderLib() {
+    var h = '<div class="row-head"><span>📚 Playlist của m</span></div><div class="grid">';
+    Object.keys(PL).forEach(function (id) {
+      h += '<div class="pc" onclick="showToast(\'Mở ' + PL[id].name + '\',\'info\')"><div class="art ' + PL[id].g + '">' + PL[id].ico + '</div><div class="t">' + PL[id].name + '</div><div class="a">' + PL[id].items.length + ' bài</div></div>';
+    });
+    st.mixes.forEach(function (m, i) {
+      var tiles = m.items.slice(0, 4).map(function (it) { return '<div class="art ' + it.g + '">' + it.ico + '</div>'; }).join('');
+      h += '<div class="pc' + (i === st.mixes.length - 1 ? ' fresh' : '') + '" onclick="openMix(' + i + ')"><div class="mosaic">' + tiles + '</div><div class="t">' + esc(m.name) + '</div><div class="a">' + m.items.length + ' bài</div></div>';
+    });
+    h += '<button class="newcard" onclick="showToast(\'Tạo playlist rỗng (như cũ)\',\'info\')"><b>+</b>Tạo playlist</button>';
+    h += '<div class="hl g" style="padding:0"><span class="mock-annotation green edge-l" data-diff="annotation">MỚI: BẤM THỬ</span><button class="newcard mix' + (st.mixes.length ? '' : ' pulse') + '" style="height:100%;width:100%" onclick="openModal()"><b>🔀</b>Gộp playlist</button></div>';
+    h += '</div>';
+    if (st.modal) h += renderModal();
+    return h;
+  }
+
+  function renderModal() {
+    var h = '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" role="dialog" aria-label="Gộp playlist">';
+    h += '<h5>🔀 Gộp playlist</h5><div class="sub">Tạo playlist mới. Playlist gốc giữ nguyên.</div>';
+    h += '<div class="lbl">Chọn theo thứ tự muốn nối</div>';
+    Object.keys(PL).forEach(function (id) {
+      var idx = st.picked.indexOf(id);
+      var on = idx > -1;
+      h += '<div class="pick' + (on ? ' on' : '') + '" onclick="togglePick(\'' + id + '\')"><span class="num">' + (on ? idx + 1 : '') + '</span><div class="art ' + PL[id].g + '">' + PL[id].ico + '</div><span class="nm">' + PL[id].name + '</span><span class="ct">' + PL[id].items.length + ' bài</span>';
+      if (on) {
+        h += '<span class="ord" onclick="event.stopPropagation()"><button title="Lên" ' + (idx === 0 ? 'disabled' : '') + ' onclick="move(\'' + id + '\',-1)">↑</button><button title="Xuống" ' + (idx === st.picked.length - 1 ? 'disabled' : '') + ' onclick="move(\'' + id + '\',1)">↓</button></span>';
+      }
+      h += '</div>';
+    });
+    var m = merge(st.picked);
+    if (st.picked.length) {
+      h += '<div class="lbl">Xem trước</div><div class="bar">';
+      var n = m.total || 1;
+      st.picked.forEach(function (id) {
+        var c = m.items.filter(function (x) { return x.src === id; }).length;
+        h += '<span style="width:' + (c / n * 100) + '%;background:' + PL[id].color + '" title="' + PL[id].name + '"></span>';
+      });
+      h += '</div><div class="pv">' + m.total + ' bài → <b>' + m.items.length + ' bài</b>' + (m.dups.length ? ' · <span class="dup">bỏ ' + m.dups.length + ' trùng (' + esc(m.dups.join(', ')) + ')</span>' : '') + '</div>';
+    }
+    h += '<div class="lbl">Tên</div><input class="inp" id="mixName" value="' + esc(st.name) + '" placeholder="Tự điền khi chọn" oninput="st.name=this.value;st.nameTouched=true">';
+    h += '<div class="actions"><button class="btn" onclick="closeModal()">Hủy</button><button class="btn pri" ' + (st.picked.length < 2 ? 'disabled title="Chọn ít nhất 2 playlist"' : '') + ' onclick="createMix()">Tạo playlist gộp</button></div>';
+    h += '</div></div>';
+    return h;
+  }
+
+  function renderMix() {
+    var m = st.mixes[st.openMix];
+    var list = sorted(m);
+    var slices = m.items.filter(function (x) { return x.slice; }).length;
+    var tiles = m.items.slice(0, 4).map(function (it) { return '<div class="art ' + it.g + '">' + it.ico + '</div>'; }).join('');
+    var h = '<span class="crumb" onclick="backLib()">← Thư viện</span>';
+    h += '<div class="hero"><div class="cover"><div class="mosaic">' + tiles + '</div></div><div style="flex:1;min-width:0"><div class="kick">PLAYLIST</div><h4>' + esc(m.name) + '</h4><div class="meta">' + m.items.length + ' bài · ' + slices + ' slice</div></div></div>';
+    var modes = [['manual', '↕ Thủ công'], ['newest', '↓ Mới nhất'], ['oldest', '↑ Cũ nhất'], ['random', '🔀 Ngẫu nhiên']];
+    h += '<div class="sortsel" role="group">' + modes.map(function (md) {
+      return '<button class="' + (st.sort === md[0] ? 'on' : '') + '" aria-pressed="' + (st.sort === md[0]) + '" onclick="setSort(\'' + md[0] + '\')">' + md[1] + '</button>';
+    }).join('') + '</div>';
+    h += '<div class="rows">' + list.map(function (it, i) {
+      return '<div class="r"><span class="i">' + (i + 1) + '</span><div class="art ' + it.g + '">' + it.ico + '</div><div style="min-width:0"><div class="tt">' + it.t + (it.slice ? '<span class="slc">✂ ' + it.slice + '</span>' : '') + '</div><div class="ar">' + it.ar + '</div></div><span class="dt"><span class="dot" style="background:' + PL[it.src].color + '"></span>thêm ' + it.d + '/09</span></div>';
+    }).join('') + '</div>';
+    h += '<div class="legend">● chấm màu = nguồn (chỉ để m nhìn cho dễ, app thật đéo cần hiện)</div>';
+    return h;
+  }
+
+  function render() {
+    var el = document.getElementById('mixApp');
+    el.innerHTML = st.view === 'lib' ? renderLib() : renderMix();
+  }
+  function openModal() { st.modal = true; st.picked = []; st.name = ''; st.nameTouched = false; render(); }
+  function closeModal() { st.modal = false; render(); }
+  function syncName() { if (!st.nameTouched) st.name = st.picked.length ? autoName(st.picked) : ''; }
+  function togglePick(id) {
+    var i = st.picked.indexOf(id);
+    if (i > -1) st.picked.splice(i, 1); else st.picked.push(id);
+    syncName(); render();
+  }
+  function move(id, dir) {
+    var i = st.picked.indexOf(id), j = i + dir;
+    var tmp = st.picked[j]; st.picked[j] = id; st.picked[i] = tmp;
+    syncName(); render();
+  }
+  function createMix() {
+    var m = merge(st.picked);
+    var name = (st.name || '').trim() || autoName(st.picked);
+    st.mixes.push({ name: name, items: m.items });
+    st.modal = false; st.view = 'mix'; st.openMix = st.mixes.length - 1; st.sort = 'manual'; st.rnd = null;
+    render();
+    showToast('✅ Đã tạo "' + name + '" (' + m.items.length + ' bài). Playlist gốc còn nguyên.', 'success', 2600);
+  }
+  function openMix(i) { st.view = 'mix'; st.openMix = i; st.sort = 'manual'; st.rnd = null; render(); }
+  function backLib() { st.view = 'lib'; render(); }
+  function setSort(s) {
+    if (s === 'random') { st.rnd = null; if (st.sort === 'random') showToast('🔀 Xáo lại', 'info', 1000); }
+    st.sort = s; render();
+  }
+  render();
+
+  // ---------- Explain: added_at toggle ----------
+  function setAg(mode, btn) {
+    document.querySelectorAll('#agToggle button').forEach(function (b) { b.classList.toggle('on', b === btn); });
+    var base = merge(['A', 'B']).items;
+    // Reset mode: every added_at = mix time -> falls back to track.created_at (random-looking to user)
+    var trackCreated = { lofi: 3, 'moon-s': 9, sunset: 1, power: 7, run: 4 };
+    function key(it) { return mode === 'keep' ? it.d : trackCreated[it.k]; }
+    function seq(arr) { return '<div class="seq">' + arr.map(function (it) { return '<span class="' + it.src + '">' + it.t + (mode === 'keep' ? ' · ' + it.d + '/09' : ' · 26/09') + '</span>'; }).join('') + '</div>'; }
+    var rows = [
+      ['↕ Thủ công', base],
+      ['↓ Mới nhất', base.slice().sort(function (a, b) { return key(b) - key(a); })],
+      ['↑ Cũ nhất', base.slice().sort(function (a, b) { return key(a) - key(b); })],
+      ['🔀 Ngẫu nhiên', base.slice().sort(function () { return Math.random() - .5; })]
+    ];
+    document.getElementById('agBody').innerHTML = rows.map(function (r) { return '<tr><td style="white-space:nowrap">' + r[0] + '</td><td>' + seq(r[1]) + '</td></tr>'; }).join('');
+    document.getElementById('agNote').innerHTML = mode === 'keep'
+      ? '✅ Mới/Cũ nhất đan xen A và B theo đúng lúc m thêm bài vào playlist gốc. Có nghĩa.'
+      : '❌ Cả lố cùng ngày 26/09 → code rơi xuống tie-break <code>track.created_at</code> (ngày tải bài) → nhìn như random, m sẽ tưởng bug.';
+  }
+  setAg('keep', document.querySelector('#agToggle button'));
+</script>
+</body>
+</html>

@@ -225,7 +225,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 
 Hệ thống layout được thiết kế cố định theo mô hình Studio Desktop:
 - **Thanh điều hướng trên cùng (Sticky Header)**: Chiều cao gọn gàng (48px - 56px), chứa logo, thanh tìm kiếm tức thời và 3 nút hành động chính (Shuffle đoạn, + File FLAC, + Link YouTube).
-- **Vùng nội dung trung tâm (Main Canvas)**: Khung giới hạn tối đa `max-w-7xl` (1280px) căn giữa, hiển thị lưới thẻ bài hát tự động co giãn từ 1 cột (mobile) đến 4 cột (desktop `lg`).
+- **Vùng nội dung trung tâm (Main Canvas)**: Thiết kế trải dài toàn màn hình (`w-full`) với padding linh hoạt (`px-4 sm:px-6 lg:px-8`), hiển thị lưới thẻ bài hát tự động co giãn từ 1 cột (mobile) lên đến 8+ cột (màn hình lớn / ultrawide / 4K), phản hồi mượt mà theo kích thước resize cửa sổ.
 - **Thanh phát cố định đáy màn hình (Fixed PlayerBar Dock)**: Vị trí `fixed bottom-0 left-0 right-0 z-40`, luôn hiển thị thumbnail bài đang phát, vạch màu lát cắt, cụm nút điều khiển trung tâm và thanh âm lượng.
 - **Hàng đợi kéo trượt (Queue Drawer)**: Bảng trượt từ mép phải (`fixed inset-y-0 right-0 w-full max-w-sm z-50`) cho phép kéo thả reorder và chọn 3 chế độ phát nhạc.
 - **Nhịp điệu khoảng cách (Spacing Rhythm)**: Bước nhảy theo thang bội số 4px/8px chuẩn mực (`4px`, `8px`, `12px`, `16px`, `24px`).

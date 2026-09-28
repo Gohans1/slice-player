@@ -13,10 +13,12 @@ import {
   Repeat1,
   Info,
   Folder,
+  Search,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { VolumeSlider } from "./ui/VolumeSlider";
 import { formatTime } from "../lib/utils";
+import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { usePlayerStore, normalizeTrackVolume, type Segment } from "../store/usePlayerStore";
 import { useTranslation } from "react-i18next";
@@ -284,6 +286,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
+  const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
+  const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
   const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const requestScrollToActiveTrack = usePlayerStore((s) => s.requestScrollToActiveTrack);
@@ -297,6 +301,10 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
     return Boolean(!item || item.segment.id !== s.activeSegment.id);
   });
 
+  const queueOrigin = usePlayerStore((s) => s.queueOrigin);
+  const isFromSearch = queueOrigin?.type === "search";
+  const searchCount = (typeof queueOrigin?.count === "number" ? Math.min(queueOrigin.count, queueLength || queueOrigin.count) : queueLength) || 0;
+
   const playingPlaylistName = React.useMemo(() => {
     if (activePlaylistPlayingId) {
       return activePlaylistPlayingName || t("playlist.customHeader", "Playlists");
@@ -307,6 +315,65 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
       ? t("categories.tracks", "Tracks")
       : t("categories.mixed", "Mix");
   }, [activePlaylistPlayingId, activePlaylistPlayingName, playbackMode, t]);
+
+  const badgeTitle = React.useMemo(() => {
+    if (isFromSearch) {
+      if (isShuffle) {
+        return queueOrigin?.query
+          ? t("player.viewPlayingSearchShuffled", {
+              name: playingPlaylistName,
+              query: queueOrigin.query,
+              count: searchCount,
+              defaultValue: `Playing: ${playingPlaylistName} search "${queueOrigin.query}" (${searchCount} items, Shuffled) - Click to view in main`,
+            })
+          : t("player.viewPlayingSearchGenericShuffled", {
+              name: playingPlaylistName,
+              count: searchCount,
+              defaultValue: `Playing: ${playingPlaylistName} search (${searchCount} items, Shuffled) - Click to view in main`,
+            });
+      }
+      return queueOrigin?.query
+        ? t("player.viewPlayingSearch", {
+            name: playingPlaylistName,
+            query: queueOrigin.query,
+            count: searchCount,
+            defaultValue: `Playing: ${playingPlaylistName} search "${queueOrigin.query}" (${searchCount} items) - Click to view in main`,
+          })
+        : t("player.viewPlayingSearchGeneric", {
+            name: playingPlaylistName,
+            count: searchCount,
+            defaultValue: `Playing: ${playingPlaylistName} search (${searchCount} items) - Click to view in main`,
+          });
+    }
+    if (activePlaylistPlayingId) {
+      return isShuffle
+        ? t("player.viewPlayingPlaylistShuffled", {
+            name: playingPlaylistName,
+            defaultValue: `Playing: ${playingPlaylistName} (Shuffled) - Click to view in main`,
+          })
+        : t("player.viewPlayingPlaylist", {
+            name: playingPlaylistName,
+            defaultValue: `Playing: ${playingPlaylistName} - Click to view in main`,
+          });
+    }
+    return isShuffle
+      ? t("player.playingPlaylistShuffled", {
+          name: playingPlaylistName,
+          defaultValue: `Playing: ${playingPlaylistName} (Shuffled)`,
+        })
+      : t("player.playingPlaylist", {
+          name: playingPlaylistName,
+          defaultValue: `Playing: ${playingPlaylistName}`,
+        });
+  }, [
+    isFromSearch,
+    queueOrigin?.query,
+    searchCount,
+    isShuffle,
+    activePlaylistPlayingId,
+    playingPlaylistName,
+    t,
+  ]);
 
   const activeTrackVolume = activeTrack ? normalizeTrackVolume(activeTrack.volume, 0.5) : 0.5;
   const isMuted = activeTrackVolume === 0;
@@ -361,6 +428,24 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   }, [containingPlaylists, activePlaylistPlayingId, playingPlaylistName]);
 
   const handleActiveTagClick = React.useCallback(async () => {
+    // If the user has a playlist currently open and that playlist contains the active track/slice,
+    // scroll directly to that track in the open playlist rather than navigating away.
+    if ((!activePlaylistPlayingId || activePlaylistPlayingId === activePlaylistId) && activePlaylistId && activePlaylistItems.length > 0) {
+      const activeIdx = findActivePlaylistItemIndex(activePlaylistItems, {
+        activeTrackId: activeTrack?.id,
+        activeSegmentId: activeSegment?.id,
+        isFallbackSegment: !activeSegment || activeSegment.id.startsWith("fallback_"),
+      });
+      if (activeIdx >= 0) {
+        requestScrollToActiveTrack(`playlist:${activePlaylistId}`);
+        return;
+      }
+    }
+
+    const targetKey = activePlaylistPlayingId
+      ? `playlist:${activePlaylistPlayingId}`
+      : `category:${playbackMode || "mixed"}`;
+
     if (activePlaylistPlayingId) {
       await setActivePlaylist(activePlaylistPlayingId);
     } else {
@@ -369,8 +454,18 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
         setActiveSystemCategory(playbackMode);
       }
     }
-    requestScrollToActiveTrack();
-  }, [activePlaylistPlayingId, playbackMode, setActivePlaylist, setActiveSystemCategory, requestScrollToActiveTrack]);
+    requestScrollToActiveTrack(targetKey);
+  }, [
+    activePlaylistId,
+    activePlaylistItems,
+    activeTrack?.id,
+    activeSegment?.id,
+    activePlaylistPlayingId,
+    playbackMode,
+    setActivePlaylist,
+    setActiveSystemCategory,
+    requestScrollToActiveTrack,
+  ]);
 
   const shuffleButtonRef = React.useRef<HTMLButtonElement>(null);
   const shuffleMenuRef = React.useRef<HTMLDivElement>(null);
@@ -470,7 +565,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   }, [lastShufflePlaylistId, containingPlaylists]);
 
   const canQuickShuffleLastPlaylist = Boolean(
-    !activePlaylistPlayingId && matchingLastPlaylist
+    !activePlaylistPlayingId && !isFromSearch && matchingLastPlaylist
   );
 
   const handleShufflePlaylist = React.useCallback(
@@ -533,8 +628,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
 
   if (!activeTrack || !activeSegment) {
     return (
-      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-6 py-3 animate-in fade-in duration-150">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 animate-in fade-in duration-150">
+        <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-3 text-muted-foreground text-xs">
             <Disc className="h-5 w-5 opacity-40" />
             <span>{t("player.noTrack", "No track selected. Click any track or slice to play.")}</span>
@@ -569,8 +664,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   }
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 py-2.5 shadow-2xl animate-in fade-in duration-150">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 shadow-2xl animate-in fade-in duration-150">
+      <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Track & Segment Info */}
         <div className="flex items-center gap-3 w-full sm:flex-1 min-w-0">
           <button
@@ -607,29 +702,19 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               <button
                 type="button"
                 onClick={handleActiveTagClick}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/40 shrink-0 max-w-[140px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-                title={
-                  activePlaylistPlayingId
-                    ? (isShuffle
-                        ? t("player.viewPlayingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled) - Click to view in main` })
-                        : t("player.viewPlayingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} - Click to view in main` }))
-                    : (isShuffle
-                        ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
-                        : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` }))
-                }
-                aria-label={
-                  activePlaylistPlayingId
-                    ? (isShuffle
-                        ? t("player.viewPlayingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled) - Click to view in main` })
-                        : t("player.viewPlayingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} - Click to view in main` }))
-                    : (isShuffle
-                        ? t("player.playingPlaylistShuffled", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName} (Shuffled)` })
-                        : t("player.playingPlaylist", { name: playingPlaylistName, defaultValue: `Playing: ${playingPlaylistName}` }))
-                }
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/40 shrink-0 max-w-[170px] sm:max-w-[220px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                title={badgeTitle}
+                aria-label={badgeTitle}
               >
                 <span className={`h-1.5 w-1.5 rounded-full ${isPlaying ? "bg-flexoki-green animate-pulse" : "bg-muted-foreground/60"} shrink-0`} aria-hidden="true" />
                 {isShuffle && <Shuffle className="h-2.5 w-2.5 text-flexoki-green shrink-0" aria-hidden="true" />}
-                <span className="truncate">{playingPlaylistName}</span>
+                {isFromSearch && <Search className="h-2.5 w-2.5 text-primary/80 shrink-0" aria-hidden="true" />}
+                <span className="truncate min-w-0">{playingPlaylistName}</span>
+                {isFromSearch && (
+                  <span className="font-mono text-2xs opacity-80 shrink-0">
+                    ({searchCount})
+                  </span>
+                )}
               </button>
               {displayPlaylists.length > 0 && (
                 <div className="flex items-center gap-1 flex-wrap" aria-label={t("player.playlistsTagLabel", "Playlists")}>
@@ -639,7 +724,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
                       type="button"
                       onClick={async () => {
                         await setActivePlaylist(pl.id);
-                        requestScrollToActiveTrack();
+                        requestScrollToActiveTrack(`playlist:${pl.id}`);
                       }}
                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-normal bg-secondary/80 text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/40 hover:border-border/80 shrink-0 max-w-[100px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                       title={t("player.openPlaylist", { name: pl.name, defaultValue: `Open playlist: ${pl.name}` })}

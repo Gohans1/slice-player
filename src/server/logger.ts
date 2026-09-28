@@ -5,10 +5,25 @@ const MAX_SERVER_LOGS = 200;
 const logBuffer: LogEntry[] = [];
 let logCounter = 0;
 
+export function sanitizeInternalPaths(text: string): string {
+  if (!text) return text;
+  let sanitized = text;
+  try {
+    const cwd = process.cwd();
+    sanitized = sanitized.split(cwd).join(".");
+    const forwardCwd = cwd.replace(/\\/g, "/");
+    sanitized = sanitized.split(forwardCwd).join(".");
+    const backwardCwd = cwd.replace(/\//g, "\\");
+    sanitized = sanitized.split(backwardCwd).join(".");
+  } catch {}
+  return sanitized.replace(/(?:[a-zA-Z]:)?[\\/](?:Users|home)[\\/][^\\/]+[\\/]/gi, "~/");
+}
+
 export function safeSerializeDetails(details: unknown): unknown {
   if (details === undefined || details === null) return undefined;
   if (typeof details === "string") {
-    return details.length > 5000 ? details.slice(0, 5000) + "... [truncated]" : details;
+    const sanitized = sanitizeInternalPaths(details);
+    return sanitized.length > 5000 ? sanitized.slice(0, 5000) + "... [truncated]" : sanitized;
   }
   if (typeof details === "number" || typeof details === "boolean") return details;
 
@@ -23,13 +38,18 @@ export function safeSerializeDetails(details: unknown): unknown {
         seen.add(value);
       }
       if (value instanceof Error) {
+        const isProd = process.env.NODE_ENV === "production";
         const errorObj: Record<string, unknown> = {
           name: value.name,
-          message: value.message,
-          stack: value.stack,
+          message: sanitizeInternalPaths(value.message),
           cause: value.cause,
           ...(value as unknown as Record<string, unknown>),
         };
+        if (!isProd && value.stack) {
+          errorObj.stack = sanitizeInternalPaths(value.stack);
+        } else {
+          delete errorObj.stack;
+        }
         if ("errors" in value && Array.isArray((value as any).errors)) {
           errorObj.errors = (value as any).errors;
         }

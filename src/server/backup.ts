@@ -1,11 +1,14 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, extname } from "node:path";
 import { getDb, initDatabase, closeDatabase, healTrackFilePaths } from "./db";
-import { abortIngestProcesses } from "./ingest";
+import { abortIngestProcesses, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
 import { logEvent } from "./logger";
+
+export const ALLOWED_THUMB_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"] as const;
+export const MAX_COOKIE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export interface BackupPaths {
   dbPath?: string;
@@ -24,12 +27,20 @@ export interface LibraryManifest {
 }
 
 let isRestoring = false;
+let isExporting = false;
 
 /**
  * Returns true if a library restore operation is currently in progress.
  */
 export function isLibraryRestoring(): boolean {
   return isRestoring;
+}
+
+/**
+ * Returns true if a library export operation is currently in progress.
+ */
+export function isLibraryExporting(): boolean {
+  return isExporting;
 }
 
 const INVALID_WINDOWS_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i;
@@ -48,100 +59,106 @@ export function isSafeArchiveFilename(fileName: string): boolean {
   return true;
 }
 
+export const MAX_TOTAL_EXTRACTED_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
+export const MAX_ARCHIVE_ENTRIES = 10_000;
+export const MAX_AUDIO_FILE_BYTES = 350 * 1024 * 1024; // 350 MB
+export const MAX_THUMB_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+export const MAX_DB_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
+
 /**
  * Export the entire library (music.db, audio cache, thumbs, cookies.txt, manifest) into a gzipped tar archive.
  */
-export async function exportLibraryArchive(paths: BackupPaths = {}): Promise<Uint8Array> {
-  const dbPath = resolve(paths.dbPath || "./data/music.db");
-  const audioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
-  const thumbCacheDir = resolve(paths.thumbCacheDir || "./data/cache/thumbs");
-  const cookiePath = resolve(paths.cookiePath || "./data/cookies.txt");
-
-  const db = getDb();
-  // Checkpoint SQLite WAL to truncate write-ahead log into main database file
-  try {
-    db.run("PRAGMA wal_checkpoint(TRUNCATE);");
-  } catch {}
-
-  const dbFile = Bun.file(dbPath);
-  if (!(await dbFile.exists())) {
-    throw new Error(`Database file not found at: ${dbPath}`);
+export async function exportLibraryArchive(
+  paths: BackupPaths = {},
+  options: { includeCookies?: boolean } = {}
+): Promise<Blob> {
+  if (isExporting) {
+    throw new Error("Một tiến trình xuất thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
   }
+  isExporting = true;
+  try {
+    const dbPath = resolve(paths.dbPath || "./data/music.db");
+    const audioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
+    const thumbCacheDir = resolve(paths.thumbCacheDir || "./data/cache/thumbs");
+    const cookiePath = resolve(paths.cookiePath || "./data/cookies.txt");
 
-  const trackCount = (db.query("SELECT COUNT(*) as count FROM tracks").get() as any)?.count ?? 0;
-  const segmentCount = (db.query("SELECT COUNT(*) as count FROM segments").get() as any)?.count ?? 0;
-  const playlistCount = (db.query("SELECT COUNT(*) as count FROM playlists").get() as any)?.count ?? 0;
-
-  const manifest: LibraryManifest = {
-    version: 1,
-    app: "slice-player",
-    exportedAt: new Date().toISOString(),
-    trackCount,
-    segmentCount,
-    playlistCount,
-  };
-
-  const archiveFiles: Record<string, Uint8Array | string> = {};
-  archiveFiles["manifest.json"] = JSON.stringify(manifest, null, 2);
-  archiveFiles["music.db"] = await dbFile.bytes();
-
-  if (existsSync(cookiePath)) {
+    const db = getDb();
+    // Checkpoint SQLite WAL to truncate write-ahead log into main database file
     try {
-      const cookieFile = Bun.file(cookiePath);
-      if (await cookieFile.exists()) {
-        archiveFiles["cookies.txt"] = await cookieFile.bytes();
-      }
+      db.run("PRAGMA wal_checkpoint(TRUNCATE);");
     } catch {}
-  }
 
-  // Add cached audio files
-  if (existsSync(audioCacheDir)) {
-    const audioFiles = readdirSync(audioCacheDir);
-    for (const f of audioFiles) {
-      if (f.endsWith(".part") || f.endsWith(".ytdl")) continue;
-      if (!isSafeArchiveFilename(f)) continue;
-      const fPath = join(audioCacheDir, f);
+    const dbFile = Bun.file(dbPath);
+    if (!(await dbFile.exists())) {
+      throw new Error(`Database file not found at: ${dbPath}`);
+    }
+
+    const trackCount = (db.query("SELECT COUNT(*) as count FROM tracks").get() as any)?.count ?? 0;
+    const segmentCount = (db.query("SELECT COUNT(*) as count FROM segments").get() as any)?.count ?? 0;
+    const playlistCount = (db.query("SELECT COUNT(*) as count FROM playlists").get() as any)?.count ?? 0;
+
+    const manifest: LibraryManifest = {
+      version: 1,
+      app: "slice-player",
+      exportedAt: new Date().toISOString(),
+      trackCount,
+      segmentCount,
+      playlistCount,
+    };
+
+    const archiveFiles: Record<string, any> = {};
+    archiveFiles["manifest.json"] = JSON.stringify(manifest, null, 2);
+    archiveFiles["music.db"] = await dbFile.bytes();
+
+    // Only include cookies if explicitly requested (prevents session token leaks)
+    if (options.includeCookies && existsSync(cookiePath)) {
       try {
-        const fileObj = Bun.file(fPath);
-        if (await fileObj.exists()) {
-          archiveFiles[`cache/audio/${f}`] = await fileObj.bytes();
+        const cookieFile = Bun.file(cookiePath);
+        if (await cookieFile.exists()) {
+          archiveFiles["cookies.txt"] = cookieFile;
         }
       } catch {}
     }
-  }
 
-  // Add cached thumbnail files
-  if (existsSync(thumbCacheDir)) {
-    const thumbFiles = readdirSync(thumbCacheDir);
-    for (const f of thumbFiles) {
-      if (!isSafeArchiveFilename(f)) continue;
-      const fPath = join(thumbCacheDir, f);
-      try {
-        const fileObj = Bun.file(fPath);
-        if (await fileObj.exists()) {
-          archiveFiles[`cache/thumbs/${f}`] = await fileObj.bytes();
-        }
-      } catch {}
+    // Add cached audio files as lazy file handles to prevent unbounded heap memory buffering
+    if (existsSync(audioCacheDir)) {
+      const audioFiles = readdirSync(audioCacheDir);
+      for (const f of audioFiles) {
+        if (f.endsWith(".part") || f.endsWith(".ytdl")) continue;
+        if (!isSafeArchiveFilename(f)) continue;
+        const fPath = join(audioCacheDir, f);
+        try {
+          const fileObj = Bun.file(fPath);
+          if (await fileObj.exists()) {
+            archiveFiles[`cache/audio/${f}`] = fileObj;
+          }
+        } catch {}
+      }
     }
-  }
 
-  const archive = new (Bun as any).Archive(archiveFiles, { compress: "gzip" });
-  const tempDir = resolve("./data");
-  mkdirSync(tempDir, { recursive: true });
-  const tempPath = join(tempDir, `temp_export_${Date.now()}_${Math.random().toString(36).slice(2)}.tar.gz`);
+    // Add cached thumbnail files as lazy file handles
+    if (existsSync(thumbCacheDir)) {
+      const thumbFiles = readdirSync(thumbCacheDir);
+      for (const f of thumbFiles) {
+        if (!isSafeArchiveFilename(f)) continue;
+        const fPath = join(thumbCacheDir, f);
+        try {
+          const fileObj = Bun.file(fPath);
+          if (await fileObj.exists()) {
+            archiveFiles[`cache/thumbs/${f}`] = fileObj;
+          }
+        } catch {}
+      }
+    }
 
-  let bytes: Uint8Array;
-  try {
-    await Bun.write(tempPath, archive);
-    bytes = await Bun.file(tempPath).bytes();
+    const archive = new (Bun as any).Archive(archiveFiles, { compress: "gzip" });
+    const blob: Blob = await archive.blob();
+
+    logEvent("info", "system", `Xuất thư viện thành công: ${trackCount} bài, ${segmentCount} lát cắt, ${playlistCount} playlist`);
+    return blob;
   } finally {
-    if (existsSync(tempPath)) {
-      try { unlinkSync(tempPath); } catch {}
-    }
+    isExporting = false;
   }
-
-  logEvent("info", "system", `Xuất thư viện thành công: ${trackCount} bài, ${segmentCount} lát cắt, ${playlistCount} playlist`);
-  return bytes;
 }
 
 /**
@@ -149,14 +166,15 @@ export async function exportLibraryArchive(paths: BackupPaths = {}): Promise<Uin
  * atomic database swap, rollback safeguard on corruption/failure, and traversal protection.
  */
 export async function importLibraryArchive(
-  archiveBytes: Uint8Array,
+  archiveInput: Uint8Array | Blob,
   paths: BackupPaths = {}
 ): Promise<{ success: boolean; manifest?: LibraryManifest; message: string }> {
   if (isRestoring) {
     throw new Error("Một tiến trình khôi phục thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
   }
 
-  if (!archiveBytes || archiveBytes.length < 50) {
+  const inputSize = archiveInput instanceof Blob ? archiveInput.size : archiveInput?.byteLength ?? 0;
+  if (!archiveInput || inputSize < 50) {
     throw new Error("Dữ liệu file backup không hợp lệ hoặc quá nhỏ.");
   }
 
@@ -176,7 +194,7 @@ export async function importLibraryArchive(
     let archive: any;
     let files: Map<string, any>;
     try {
-      archive = new (Bun as any).Archive(archiveBytes);
+      archive = new (Bun as any).Archive(archiveInput);
       files = await archive.files();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -186,6 +204,34 @@ export async function importLibraryArchive(
     if (!files.has("music.db")) {
       throw new Error("File backup không hợp lệ: thiếu file music.db cơ sở dữ liệu.");
     }
+
+    if (files.size > MAX_ARCHIVE_ENTRIES) {
+      throw new Error(`File backup vượt quá giới hạn số lượng file cho phép (${files.size} > ${MAX_ARCHIVE_ENTRIES}).`);
+    }
+
+    // Validate all file paths and extensions upfront to reject malicious archives early
+    for (const archivePath of files.keys()) {
+      if (archivePath === "manifest.json" || archivePath === "music.db" || archivePath === "cookies.txt") {
+        continue;
+      }
+      if (archivePath.startsWith("cache/audio/")) {
+        const fileName = archivePath.slice("cache/audio/".length);
+        const ext = extname(fileName).toLowerCase();
+        if (!isSafeArchiveFilename(fileName) || !(SUPPORTED_AUDIO_EXTENSIONS as readonly string[]).includes(ext)) {
+          throw new Error(`File âm thanh không hợp lệ hoặc định dạng không được hỗ trợ: ${fileName}`);
+        }
+      } else if (archivePath.startsWith("cache/thumbs/")) {
+        const fileName = archivePath.slice("cache/thumbs/".length);
+        const ext = extname(fileName).toLowerCase();
+        if (!isSafeArchiveFilename(fileName) || !(ALLOWED_THUMB_EXTENSIONS as readonly string[]).includes(ext)) {
+          throw new Error(`File ảnh bìa không hợp lệ hoặc định dạng không được hỗ trợ: ${fileName}`);
+        }
+      } else {
+        throw new Error(`File không hợp lệ trong gói lưu trữ: ${archivePath}`);
+      }
+    }
+
+    let totalExtractedBytes = 0;
 
     let manifest: LibraryManifest | undefined;
     if (files.has("manifest.json")) {
@@ -198,6 +244,10 @@ export async function importLibraryArchive(
     mkdirSync(dirname(targetDbPath), { recursive: true });
     const dbFile = files.get("music.db");
     const dbBytes = await dbFile.bytes();
+    if (dbBytes.length > MAX_DB_FILE_BYTES) {
+      throw new Error(`File cơ sở dữ liệu vượt quá giới hạn cho phép (${(dbBytes.length / (1024 * 1024)).toFixed(1)}MB > 500MB).`);
+    }
+    totalExtractedBytes += dbBytes.length;
     await Bun.write(incomingTmpPath, dbBytes);
 
     let tempDb: Database | null = null;
@@ -252,23 +302,48 @@ export async function importLibraryArchive(
         try {
           const cookieFile = files.get("cookies.txt");
           const cookieBytes = await cookieFile.bytes();
+          if (cookieBytes.length > MAX_COOKIE_FILE_BYTES) {
+            throw new Error(`File cookies.txt vượt quá giới hạn cho phép (${(cookieBytes.length / (1024 * 1024)).toFixed(1)}MB > 5MB).`);
+          }
+          totalExtractedBytes += cookieBytes.length;
+          if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
+            throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
+          }
           await Bun.write(targetCookiePath, cookieBytes);
-        } catch {}
+        } catch (cookieErr: any) {
+          if (cookieErr?.message?.includes("vượt quá giới hạn")) throw cookieErr;
+        }
       }
 
-      // Write audio and thumbnail files with traversal protection
+      // Write audio and thumbnail files with traversal and decompression limits protection
       for (const [archivePath, file] of files) {
         if (archivePath.startsWith("cache/audio/")) {
           const fileName = archivePath.slice("cache/audio/".length);
           if (isSafeArchiveFilename(fileName)) {
+            const fileBytes = await file.bytes();
+            if (fileBytes.length > MAX_AUDIO_FILE_BYTES) {
+              throw new Error(`File âm thanh ${fileName} vượt quá giới hạn cho phép (${(fileBytes.length / (1024 * 1024)).toFixed(1)}MB > 350MB).`);
+            }
+            totalExtractedBytes += fileBytes.length;
+            if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
+              throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
+            }
             const dest = join(targetAudioCacheDir, fileName);
-            await Bun.write(dest, await file.bytes());
+            await Bun.write(dest, fileBytes);
           }
         } else if (archivePath.startsWith("cache/thumbs/")) {
           const fileName = archivePath.slice("cache/thumbs/".length);
           if (isSafeArchiveFilename(fileName)) {
+            const fileBytes = await file.bytes();
+            if (fileBytes.length > MAX_THUMB_FILE_BYTES) {
+              throw new Error(`File ảnh bìa ${fileName} vượt quá giới hạn cho phép (${(fileBytes.length / (1024 * 1024)).toFixed(1)}MB > 15MB).`);
+            }
+            totalExtractedBytes += fileBytes.length;
+            if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
+              throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
+            }
             const dest = join(targetThumbCacheDir, fileName);
-            await Bun.write(dest, await file.bytes());
+            await Bun.write(dest, fileBytes);
           }
         }
       }

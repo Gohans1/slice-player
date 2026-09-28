@@ -37,6 +37,13 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeTrack?.id === track.id);
 
+  const onPlayRef = React.useRef(onPlay);
+  onPlayRef.current = onPlay;
+  const onDeleteRef = React.useRef(onDelete);
+  onDeleteRef.current = onDelete;
+  const visibleTrackIdsRef = React.useRef(visibleTrackIds);
+  visibleTrackIdsRef.current = visibleTrackIds;
+
   const [segments, setSegments] = React.useState<Segment[] | null>(null);
 
   const handleRetry = async (e?: React.MouseEvent) => {
@@ -54,7 +61,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   const handlePlayFirst = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-      toggleTrack(track.id, visibleTrackIds, e?.shiftKey, createTrackSelectedItem(track));
+      toggleTrack(track.id, visibleTrackIdsRef.current, e?.shiftKey, createTrackSelectedItem(track));
       return;
     }
     if (track.status !== "ready" || track.duration <= 0) return;
@@ -86,8 +93,8 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
     lastPlayInitiatedRef.current = Date.now();
 
     try {
-      if (onPlay) {
-        onPlay();
+      if (onPlayRef.current) {
+        onPlayRef.current();
         return;
       }
       const { activeSystemCategory, playbackMode, playSegmentInMode } = store;
@@ -138,7 +145,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
 
   return (
     <div
-      className={`group relative flex flex-col rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
+      className={`group relative flex flex-col h-full rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
         isSelected
           ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
           : isCurrentPlaying
@@ -184,7 +191,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
           aria-label={t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` })}
           onClick={(e) => {
             e.stopPropagation();
-            toggleTrack(track.id, visibleTrackIds, e.shiftKey, createTrackSelectedItem(track));
+            toggleTrack(track.id, visibleTrackIdsRef.current, e.shiftKey, createTrackSelectedItem(track));
           }}
           className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-[background-color,color,opacity,box-shadow,transform] active:scale-90 motion-reduce:transform-none duration-150 cursor-pointer ${
             isSelected
@@ -286,7 +293,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
 
       {/* Info */}
       <div className="mt-3 flex-1 flex flex-col">
-        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 transition-colors ${
+        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] transition-colors ${
           isCurrentPlaying ? "text-primary" : "text-foreground group-hover:text-primary"
         }`}>
           {track.title}
@@ -298,27 +305,27 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
         )}
 
         {/* Segment badge & actions */}
-        <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
-          <Badge variant="secondary" className="font-mono text-2xs font-normal">
+        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-1.5">
+          <Badge variant="secondary" className="font-mono text-2xs font-normal whitespace-nowrap shrink-0">
             {t("trackCard.slicesCount", {
               count: track.segment_count ?? segments?.length ?? 0,
               defaultValue: `${track.segment_count ?? segments?.length ?? 0} slices`,
             })}
           </Badge>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {track.status === "error" ? (
-              <Badge variant="destructive" className="h-8 text-xs gap-1.5 border-destructive/40 font-normal">
+              <Badge variant="destructive" className="h-8 text-xs gap-1.5 border-destructive/40 font-normal shrink-0">
                 <AlertCircle className="h-3.5 w-3.5" />
                 <span>{t("table.downloadError", "Error")}</span>
               </Badge>
             ) : track.status === "downloading" ? (
-              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 text-primary px-2.5 font-normal">
+              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 text-primary px-2.5 font-normal shrink-0">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span>{t("table.downloading", "Downloading...")}</span>
               </Badge>
             ) : track.status === "queued" ? (
-              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-border text-muted-foreground px-2.5 font-normal">
+              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-border text-muted-foreground px-2.5 font-normal shrink-0">
                 <Clock className="h-3.5 w-3.5 text-primary/80" />
                 <span>{t("table.queued", "Queued...")}</span>
               </Badge>
@@ -328,21 +335,30 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
                 size="sm"
                 onClick={() => openSliceStudio(track)}
                 disabled={!isReady}
-                className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer"
+                className="h-8 text-xs gap-1 px-2 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer shrink-0"
               >
                 <Scissors className="h-3.5 w-3.5" />
                 <span>{t("trackCard.slice", "Slice")}</span>
               </Button>
             )}
 
-            <div className="flex items-center gap-1 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150">
-              {isReady && <AddToPlaylistPopover trackId={track.id} disabled={!isReady} />}
+            <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
+              {isReady && (
+                <AddToPlaylistPopover
+                  trackId={track.id}
+                  disabled={!isReady}
+                  variant="ghost"
+                  size="icon"
+                  buttonClassName="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
+                  showText={false}
+                />
+              )}
 
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={() => onDelete(track.id)}
+                onClick={() => onDeleteRef.current(track.id)}
                 className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer focus-visible:ring-1 focus-visible:ring-destructive focus-visible:opacity-100"
                 title={deleteTitle || t("trackCard.delete", "Delete track")}
                 aria-label={deleteTitle || t("trackCard.delete", "Delete track")}
@@ -357,4 +373,18 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   );
 }
 
-export const TrackCard = React.memo(TrackCardComponent);
+export const TrackCard = React.memo(TrackCardComponent, (prev, next) => {
+  return (
+    prev.track.id === next.track.id &&
+    prev.track.title === next.track.title &&
+    prev.track.artist === next.track.artist &&
+    prev.track.status === next.track.status &&
+    prev.track.duration === next.track.duration &&
+    prev.track.thumbnail_url === next.track.thumbnail_url &&
+    prev.track.segment_count === next.track.segment_count &&
+    prev.deleteTitle === next.deleteTitle &&
+    prev.onPlay === next.onPlay &&
+    prev.onDelete === next.onDelete &&
+    prev.visibleTrackIds === next.visibleTrackIds
+  );
+});

@@ -197,7 +197,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
     setIsLocalModalOpen(true);
     setLocalError(null);
 
-    const ALLOWED_EXTS = [".flac", ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".webm", ".aac"];
+    const ALLOWED_EXTS = [".flac", ".mp3", ".m4a", ".wav", ".ogg", ".opus", ".webm", ".aac", ".mp4"];
     const validFiles: File[] = [];
     const invalidNames: string[] = [];
 
@@ -434,14 +434,14 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
 
   return (
     <>
-      <header ref={navbarRef} className="sticky top-0 z-40 w-full border-b border-border bg-card/80 backdrop-blur-md px-6 py-3">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <header ref={navbarRef} className="sticky top-0 z-40 w-full border-b border-border bg-card/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3">
+      <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
         {/* Logo & Brand */}
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/30 text-primary">
             <Music2 className="h-5 w-5" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center gap-2">
               <span className="font-bold text-base tracking-tight text-foreground">{t("app.title")}</span>
               <span className="text-2xs uppercase font-mono px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
@@ -507,7 +507,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {onTogglePlaylistDrawer && (
             <Button
               variant="outline"
@@ -562,7 +562,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
             name="audioFiles"
             type="file"
             multiple
-            accept=".flac,audio/flac,.mp3,.m4a,.wav,.ogg,.opus,.webm,.aac"
+            accept=".flac,audio/flac,.mp3,.m4a,.wav,.ogg,.opus,.webm,.aac,.mp4,video/mp4"
             className="hidden"
             onChange={handleFileInputChange}
           />
@@ -588,7 +588,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
               onClick={onOpenShortcuts}
               aria-label={t("nav.shortcutsAria", "Keyboard Shortcuts (?)")}
               title={t("nav.shortcuts", "Shortcuts (?)")}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+              className="hidden sm:inline-flex h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
             >
               <Keyboard className="h-4 w-4" />
             </Button>
@@ -626,7 +626,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
             aria-label={t("nav.switchLanguage")}
             className="h-8 px-2 text-xs font-mono font-semibold gap-1 text-muted-foreground hover:text-foreground shrink-0 border border-border/60 hover:bg-secondary/60 transition-colors"
           >
-            <Languages className="h-3.5 w-3.5 text-primary" />
+            <Languages className="hidden sm:block h-3.5 w-3.5 text-primary" />
             <span className="uppercase">{currentLang}</span>
           </Button>
 
@@ -649,7 +649,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
           id="mobile-search-bar"
           role="search"
           className={cn(
-            "pt-2.5 pb-0.5 max-w-7xl mx-auto md:hidden duration-100 ease-out",
+            "pt-2.5 pb-0.5 w-full md:hidden duration-100 ease-out",
             isMobileSearchExiting
               ? "animate-out fade-out slide-out-to-top-2 pointer-events-none"
               : "animate-in fade-in slide-in-from-top-2"

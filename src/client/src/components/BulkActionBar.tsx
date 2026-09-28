@@ -2,7 +2,7 @@ import * as React from "react";
 import { FolderPlus, Trash2, X, Check, CheckSquare, Square, Plus } from "lucide-react";
 import { Button } from "./ui/button";
 import { ConfirmModal } from "./ui/ConfirmModal";
-import { CreatePlaylistModal } from "./CreatePlaylistModal";
+const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { cn } from "../lib/utils";
@@ -36,7 +36,9 @@ function BulkAddToPlaylistMenu({
   onOpenCreateModal?: () => void;
 }) {
   const { t } = useTranslation();
-  const playlists = usePlayerStore((s) => s.playlists);
+  const allPlaylists = usePlayerStore((s) => s.playlists);
+  // A mix owns no items, so it can never be a destination
+  const playlists = React.useMemo(() => allPlaylists.filter((pl) => !pl.is_mix), [allPlaylists]);
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
   const [addedFeedback, setAddedFeedback] = React.useState<string | null>(null);
   const feedbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,6 +159,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   const removePlaylistItemsBatch = usePlayerStore((s) => s.removePlaylistItemsBatch);
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
+  const isMixView = usePlayerStore((s) => Boolean(s.playlists.find((p) => p.id === s.activePlaylistId)?.is_mix));
 
   const [isPlaylistOpen, setIsPlaylistOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
@@ -363,16 +366,18 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         </div>
 
         {/* Delete selected */}
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="h-8 text-xs gap-1.5 px-2.5 cursor-pointer shadow-xs"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{t("bulkActions.delete", "Delete")}</span>
-        </Button>
+        {!isMixView && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="h-8 text-xs gap-1.5 px-2.5 cursor-pointer shadow-xs"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("bulkActions.delete", "Delete")}</span>
+          </Button>
+        )}
 
         {/* Clear selection */}
         <Button
@@ -407,15 +412,20 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     )}
 
     {/* Create Playlist Modal */}
-    <CreatePlaylistModal
-      isOpen={isCreateModalOpen}
-      onClose={() => setIsCreateModalOpen(false)}
-      onCreated={async (newId) => {
-        setIsCreateModalOpen(false);
-        const payload = mapItemsToBatchPayload(Array.from(selectedItems.values()));
-        await addTracksToPlaylistBatch(newId, payload);
-      }}
-    />
+    {isCreateModalOpen && (
+      <React.Suspense fallback={null}>
+        <CreatePlaylistModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreated={async (newId) => {
+            setIsCreateModalOpen(false);
+            const payload = mapItemsToBatchPayload(Array.from(selectedItems.values()));
+            await addTracksToPlaylistBatch(newId, payload);
+          }}
+        />
+      </React.Suspense>
+    )}
     </>
+
   );
 }

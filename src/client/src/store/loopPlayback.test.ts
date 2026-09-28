@@ -344,4 +344,57 @@ describe("Loop Playback Features", () => {
       audioEngine.setOnSegmentEnd = origSetEnd;
     }
   });
+
+  it("initial default state has both isLoopQueue and isLoopTrack set to false", () => {
+    // Zustand stores provide getInitialState() in v4+
+    const initial = typeof (usePlayerStore as any).getInitialState === "function"
+      ? (usePlayerStore as any).getInitialState()
+      : null;
+    expect(initial).toBeDefined();
+    expect(initial?.isLoopQueue).toBe(false);
+    expect(initial?.isLoopTrack).toBe(false);
+  });
+
+  it("when isLoopQueue is true but queue has only 1 track and isLoopTrack is false, nextSegment stops and does not repeat single track", () => {
+    usePlayerStore.setState({
+      queue: [{ segment: dummySegments[0], track: dummyTrack }],
+      queueIndex: 0,
+      activeSegment: dummySegments[0],
+      activeTrack: dummyTrack,
+      isLoopQueue: true, // Loop queue active
+      isLoopTrack: false, // Individual track loop is OFF
+      isPlaying: true,
+    });
+
+    usePlayerStore.getState().nextSegment(true);
+
+    const state = usePlayerStore.getState();
+    expect(state.isPlaying).toBe(false);
+    expect(state.queueIndex).toBe(0);
+  });
+
+  it("when isLoopTrack is true with queue of 1 track, nextSegment repeats that individual track", () => {
+    let playedSegmentId = "";
+    const origStorePlaySegment = usePlayerStore.getState().playSegment;
+    usePlayerStore.setState({
+      queue: [{ segment: dummySegments[0], track: dummyTrack }],
+      queueIndex: 0,
+      activeSegment: dummySegments[0],
+      activeTrack: dummyTrack,
+      isLoopQueue: false,
+      isLoopTrack: true, // Individual track loop is ON
+      isPlaying: true,
+      playSegment: ((seg: Segment) => {
+        playedSegmentId = seg.id;
+        return Promise.resolve();
+      }) as any,
+    });
+
+    try {
+      usePlayerStore.getState().nextSegment(true);
+      expect(playedSegmentId).toBe("seg_loop_0");
+    } finally {
+      usePlayerStore.setState({ playSegment: origStorePlaySegment });
+    }
+  });
 });

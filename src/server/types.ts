@@ -38,6 +38,13 @@ export interface Playlist {
   updated_at: number;
   item_count?: number;
   is_custom_ordered?: boolean;
+  cover_track_id?: string | null;
+  // Resolved by listPlaylists(): chosen cover thumbnail, else up to 4 thumbnails for a 2x2 mosaic
+  cover_url?: string | null;
+  mosaic_urls?: string[];
+  // Mix playlists own no items: they show their source playlists' items live, in source order
+  is_mix?: boolean;
+  source_ids?: string[];
 }
 
 export interface PlaylistItem {

@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản Thiết Kế: Xử Lý Khoảng Trống Playlist Header - 27-09-2026</title>
+  <link rel="stylesheet" href="./visual-core.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+  <style>
+    /* ===== Slice Player Theme: Flexoki Dark ===== */
+    .app {
+      background: #100F0F;
+      color: #CECDC3;
+      border: 1px solid #282726;
+      border-radius: 1rem;
+      padding: 1.25rem;
+      font-family: 'Plus Jakarta Sans', Inter, -apple-system, sans-serif;
+      font-size: 0.85rem;
+      position: relative;
+      user-select: none;
+      min-height: 25rem;
+      overflow: visible;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Playlist Header Container */
+    .pl-header {
+      background: linear-gradient(180deg, rgba(40, 39, 38, 0.7) 0%, rgba(20, 19, 18, 0.3) 100%);
+      border: 1px solid #343331;
+      border-radius: 1.2rem;
+      padding: 1.2rem 1.4rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    /* 4-in-1 Mosaic Cover */
+    .mosaic-cover {
+      width: 6.5rem;
+      height: 6.5rem;
+      border-radius: 0.85rem;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.8);
+      flex-shrink: 0;
+      position: relative;
+      background: #1C1B1A;
+      border: 1px solid #343331;
+    }
+    .mosaic-cell {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.8);
+      font-weight: 700;
+    }
+    .mosaic-cell.c1 { background: linear-gradient(135deg, #1e3a8a, #3b82f6); }
+    .mosaic-cell.c2 { background: linear-gradient(135deg, #78350f, #f59e0b); }
+    .mosaic-cell.c3 { background: linear-gradient(135deg, #374151, #9ca3af); }
+    .mosaic-cell.c4 { background: linear-gradient(135deg, #831843, #ec4899); }
+    .cover-hover-btn {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(2px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.2rem;
+      opacity: 0;
+      transition: opacity 0.15s;
+      color: #fff;
+      font-size: 0.62rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .mosaic-cover:hover .cover-hover-btn {
+      opacity: 1;
+    }
+
+    /* Meta Left Info */
+    .pl-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+    .pl-title-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pl-title {
+      font-size: 1.65rem;
+      font-weight: 800;
+      color: #FFFCF0;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin: 0;
+    }
+    .pl-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: #878580;
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    /* Buttons */
+    .btn-circle {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.15s, background-color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-circle:hover {
+      transform: scale(1.06);
+    }
+    .btn-circle.play {
+      background: #3B82F6;
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+    }
+    .btn-circle.shuffle {
+      background: #1C1B1A;
+      border: 1px solid #343331;
+      color: #879A39;
+    }
+    .btn-circle.shuffle:hover {
+      background: #282726;
+      border-color: #403E3C;
+    }
+
+    /* Mock Cards Grid below header */
+    .tracks-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.9rem;
+    }
+    .t-card {
+      background: #181716;
+      border: 1px solid #282726;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      padding: 0.55rem;
+    }
+    .t-thumb {
+      aspect-ratio: 16/9;
+      border-radius: 0.5rem;
+      background: #242220;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      color: #878580;
+      overflow: hidden;
+    }
+    .t-badge {
+      position: absolute;
+      top: 0.35rem;
+      left: 0.35rem;
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.3rem;
+      background: rgba(135, 154, 57, 0.25);
+      color: #A0B24F;
+      border: 1px solid rgba(135, 154, 57, 0.4);
+    }
+    .t-time {
+      position: absolute;
+      bottom: 0.35rem;
+      right: 0.35rem;
+      font-size: 0.58rem;
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.8);
+      color: #E6E4D9;
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.25rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .t-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #E6E4D9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 0.45rem;
+    }
+    .t-sub {
+      font-size: 0.62rem;
+      color: #878580;
+      margin-top: 0.15rem;
+    }
+    .t-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid #222120;
+      font-size: 0.65rem;
+      color: #878580;
+    }
+    .t-play-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 0.3rem;
+      background: #242220;
+      color: #E6E4D9;
+      border: 1px solid #343331;
+      font-size: 0.62rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Variant-specific elements */
+    .icon-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #1C1B1A;
+      border: 1px solid #343331;
+      border-radius: 0.5rem;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #CECDC3;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .icon-action-btn:hover {
+      background: #282726;
+      border-color: #575653;
+      color: #FFFCF0;
+    }
+    .icon-action-btn.danger:hover {
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .chip-filter-group {
+      display: inline-flex;
+      background: #181716;
+      border: 1px solid #343331;
+      border-radius: 0.6rem;
+      padding: 0.2rem;
+      gap: 0.2rem;
+    }
+    .chip-filter-btn {
+      background: none;
+      border: none;
+      padding: 0.3rem 0.65rem;
+      border-radius: 0.45rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #878580;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .chip-filter-btn.active {
+      background: #282726;
+      color: #3B82F6;
+      font-weight: 700;
+    }
+    .chip-filter-btn:hover:not(.active) {
+      color: #E6E4D9;
+    }
+
+    .mini-search-box {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #181716;
+      border: 1px solid #343331;
+      border-radius: 0.55rem;
+      padding: 0.35rem 0.6rem;
+      width: 12rem;
+      color: #CECDC3;
+      font-size: 0.72rem;
+    }
+    .mini-search-box input {
+      background: none;
+      border: none;
+      outline: none;
+      color: #FFFCF0;
+      font-size: 0.72rem;
+      width: 100%;
+      font-family: inherit;
+    }
+    .mini-search-box input::placeholder {
+      color: #666461;
+    }
+
+    .stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(40, 39, 38, 0.6);
+      border: 1px solid #343331;
+      padding: 0.25rem 0.55rem;
+      border-radius: 0.4rem;
+      font-size: 0.68rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: #B7B5AC;
+    }
+
+    .hl { position: relative; border-radius: 0.75rem; }
+    .hl.r { border: 2px dashed #ef4444; }
+    .hl.g { border: 2px dashed #22c55e; }
+    .mock-annotation.edge-l { top: -0.9rem; left: 0.75rem; font-size: 0.62rem; padding: 0.2rem 0.55rem; }
+    .mock-annotation.edge-r { top: -0.9rem; right: 0.75rem; font-size: 0.62rem; padding: 0.2rem 0.55rem; }
+
+    .sum-tabs { margin: 0 auto 2rem; flex-wrap: wrap; justify-content: center; }
+  </style>
+</head>
+<body>
+
+  <!-- STICKY TOPBAR -->
+  <header class="nav-header">
+    <div class="brand-title"><span>🎨</span> BẢN THIẾT KẾ: KHOẢNG TRỐNG PLAYLIST HEADER</div>
+    <nav class="tab-group" role="tablist">
+      <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('summarize', this)">📌 Tóm Lược &amp; Các Hướng</button>
+      <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('explain', this)">🔍 Phân Tích Kỹ Thuật (4 Tầng)</button>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <!-- =================================================================
+         TAB 1: TÓM LƯỢC & 4 HƯỚNG THIẾT KẾ
+         ================================================================= -->
+    <main id="tab-summarize" class="tab-pane active" role="tabpanel">
+
+      <section class="callout" style="max-width: 44rem; margin: 0 auto 2rem; text-align: center;">
+        <h2>🗣️ TÓM LƯỢC &amp; Ý CHÍNH 🗣️</h2>
+        <p>Khoảng trống ở giữa là do <code>flex-1</code> kéo dãn tên playlist ngắn khiến nút Play/Shuffle bị dạt tít sang phải; bố m đã vẽ trọn vẹn <b>4 hướng giải pháp</b> (Toolbar quản lý trực diện, Bộ lọc Slice/Track, Chuẩn Spotify, và Hybrid tổng hợp) để m chọn gu phù hợp nhất!</p>
+      </section>
+
+      <!-- SUB-TABS: 4 VARIANTS -->
+      <nav class="tab-group sub-tabs sum-tabs" role="tablist">
+        <button class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab('var-a', this)">🛠️ Hướng A: Toolbar Quản Lý (Khuyên bú)</button>
+        <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('var-b', this)">✂️ Hướng B: Lọc Slice/Track &amp; Search</button>
+        <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('var-c', this)">🎧 Hướng C: Chuẩn Spotify Hiện Đại</button>
+        <button class="tab-btn" role="tab" aria-selected="false" onclick="switchTab('var-d', this)">⚡ Hướng D: Powerhouse All-in-One</button>
+      </nav>
+
+      <!-- =========================================================
+           SUB-PANE A: TOOLBAR QUẢN LÝ (KHUYÊN BÚ)
+           ========================================================= -->
+      <section id="tab-var-a" class="tab-pane active" role="tabpanel">
+        
+        <!-- CARD 1: SLIDER -->
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">HƯỚNG A • SO SÁNH TRƯỚC / SAU</span>
+            <span style="font-size: 0.85rem;">Kéo thanh trượt để so sánh khoảng trống</span>
+          </div>
+          <div class="slider-viewport">
+            <!-- BEFORE LAYER -->
+            <div class="slider-layer slider-before">
+              <div class="app">
+                <div class="pl-header">
+                  <div class="mosaic-cover">
+                    <div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div>
+                    <div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div>
+                  </div>
+                  <div class="pl-info" style="flex: 1;">
+                    <div class="pl-title-row"><h2 class="pl-title">very low</h2></div>
+                    <div class="pl-meta">4 items · 15:55</div>
+                  </div>
+                  <!-- KHOẢNG TRỐNG LỖI -->
+                  <div class="hl r" style="flex: 1; height: 3.5rem; display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.05);">
+                    <span class="mock-annotation edge-l red">TRỐNG HOÁC (LÃNG PHÍ MẶT BẰNG)</span>
+                    <span style="color: #ef4444; font-size: 0.72rem; font-weight: 700;">⚠️ Trống trơn, muốn sửa tên/xóa phải chui vào Sidebar</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <button class="btn-circle shuffle" title="Trộn bài">🔀</button>
+                    <button class="btn-circle play" title="Phát playlist">▶</button>
+                  </div>
+                </div>
+
+                <!-- 4 CARDS BÊN DƯỚI -->
+                <div class="tracks-grid">
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #1</span><span class="t-time">4:02</span>🖼️ Video</div>
+                    <div class="t-title">Yêu Từ Đâu Mà Ra - Lil ZPOET</div>
+                    <div class="t-sub">Meens</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #2</span><span class="t-time">3:55</span>🖼️ Live</div>
+                    <div class="t-title">SONG LUÂN - ĐỔI HẠNH PHÚC LẤY...</div>
+                    <div class="t-sub">Song Luân Official</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #3</span><span class="t-time">4:05</span>🖼️ Visual</div>
+                    <div class="t-title">ORANGE - 'CHÚNG TA CÒN Ở ĐÓ...</div>
+                    <div class="t-sub">Orange Singer Official</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #4</span><span class="t-time">3:52</span>🖼️ Sunset</div>
+                    <div class="t-title">Phố Cũ Còn Anh - Quinn ft Chilly</div>
+                    <div class="t-sub">Meens</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AFTER LAYER -->
+            <div class="slider-layer slider-after">
+              <div class="app">
+                <div class="pl-header">
+                  <!-- Cover có hover đổi bìa -->
+                  <div class="mosaic-cover">
+                    <div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div>
+                    <div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div>
+                    <div class="cover-hover-btn">📷<span>Đổi bìa</span></div>
+                  </div>
+                  <div class="pl-info" style="min-width: 9rem;">
+                    <div class="pl-title-row">
+                      <h2 class="pl-title">very low</h2>
+                      <span class="icon-action-btn" style="padding: 0.2rem 0.4rem; font-size: 0.65rem;" title="Sửa tên playlist">✏️</span>
+                    </div>
+                    <div class="pl-meta">
+                      <span class="stat-pill">4 mục</span>
+                      <span class="stat-pill">15:55</span>
+                    </div>
+                  </div>
+
+                  <!-- THANH CÔNG CỤ TRỰC DIỆN Ở GIỮA -->
+                  <div class="hl g" style="flex: 1; display: flex; align-items: center; gap: 0.5rem; justify-content: center; background: rgba(34, 197, 94, 0.04); padding: 0.5rem 0.8rem;">
+                    <span class="mock-annotation edge-l green">TOOLBAR QUẢN LÝ TẠI CHỖ</span>
+                    <button class="icon-action-btn">✏️ Sửa tên</button>
+                    <button class="icon-action-btn">🖼️ Đổi bìa</button>
+                    <button class="icon-action-btn">➕ Thêm bài</button>
+                    <button class="icon-action-btn danger">🗑️ Xóa</button>
+                  </div>
+
+                  <!-- CỤM PLAY & SHUFFLE -->
+                  <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <button class="btn-circle shuffle" title="Trộn bài">🔀</button>
+                    <button class="btn-circle play" title="Phát toàn bộ">▶</button>
+                  </div>
+                </div>
+
+                <!-- 4 CARDS BÊN DƯỚI -->
+                <div class="tracks-grid">
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #1</span><span class="t-time">4:02</span>🖼️ Video</div>
+                    <div class="t-title">Yêu Từ Đâu Mà Ra - Lil ZPOET</div>
+                    <div class="t-sub">Meens</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #2</span><span class="t-time">3:55</span>🖼️ Live</div>
+                    <div class="t-title">SONG LUÂN - ĐỔI HẠNH PHÚC LẤY...</div>
+                    <div class="t-sub">Song Luân Official</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #3</span><span class="t-time">4:05</span>🖼️ Visual</div>
+                    <div class="t-title">ORANGE - 'CHÚNG TA CÒN Ở ĐÓ...</div>
+                    <div class="t-sub">Orange Singer Official</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                  <div class="t-card">
+                    <div class="t-thumb"><span class="t-badge">Full Track #4</span><span class="t-time">3:52</span>🖼️ Sunset</div>
+                    <div class="t-title">Phố Cũ Còn Anh - Quinn ft Chilly</div>
+                    <div class="t-sub">Meens</div>
+                    <div class="t-actions"><span class="t-play-btn">▶ Play</span><span>✂️ ➕ 📁 🗑️</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SLIDER DIVIDER -->
+            <div class="slider-divider"><div class="slider-knob" role="slider" aria-valuenow="50">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50">
+          </div>
+        </article>
+
+        <!-- CARD 2: BEFORE ONLY -->
+        <article class="card-wrapper card-before">
+          <div class="card-header-bar">
+            <span class="card-badge badge-red">CARD 2 • HIỆN TRẠNG (BEFORE)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-red);">Khoảng trống vô dụng, tính năng bị giấu</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(239, 68, 68, 0.04); border-radius: 0.75rem;">
+            <span class="mock-annotation red">BẤT CÔNG THÁI HỌC</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem;">
+              <span class="diff-tag del">- KHUYẾT TẬT UX</span>
+              <span style="font-weight: 700; color: #ef4444; font-size: 0.95rem;">Không gian trống hơn 50% màn hình nhưng không có nút thao tác nào</span>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6;">
+              Người dùng đang đứng ngay trong playlist của mình nhưng muốn <b>đổi tên</b>, <b>chọn ảnh bìa đại diện</b> hay <b>xóa playlist</b> thì bắt buộc phải mở Drawer bên hông. Cụm nút Play/Shuffle dạt tít sang mép phải khiến chuột phải lia một quãng rất dài.
+            </p>
+          </div>
+        </article>
+
+        <!-- CARD 3: AFTER ONLY (INTERACTIVE) -->
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge badge-green">CARD 3 • HƯỚNG A (AFTER • BẤM TƯƠNG TÁC THẬT)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-green);">Đầy đủ công cụ quản lý tại chỗ</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+            <span class="mock-annotation green">GIẢI PHÁP ĐỀ XUẤT A</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem;">
+              <span class="diff-tag add">+ THIẾT THỰC</span>
+              <span style="font-weight: 700; color: #22c55e; font-size: 0.95rem;">Biến khoảng trống thành Toolbar Quản Lý Playlist trực tiếp</span>
+            </div>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1.25rem;">
+              Đưa trực tiếp các hàm <code>renamePlaylist</code>, <code>setPlaylistCover</code>, <code>deletePlaylist</code> từ Store lên Header. Bấm thử các nút bên dưới để xem phản hồi:
+            </p>
+
+            <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+              <button type="button" class="icon-action-btn" onclick="showToast('✏️ Đã bật chế độ gõ sửa tên trực tiếp!', 'info')">
+                ✏️ Bấm thử: Đổi tên (Inline Rename)
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('🖼️ Đã mở modal chọn ảnh bìa từ danh sách track!', 'success')">
+                🖼️ Bấm thử: Chọn ảnh bìa
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('➕ Mở popover chọn thêm bài hát/slice vào playlist!', 'info')">
+                ➕ Bấm thử: Thêm bài vào playlist
+              </button>
+              <button type="button" class="icon-action-btn danger" onclick="showToast('🗑️ Bật popup xác nhận: Bạn có chắc muốn xóa playlist này?', 'error')">
+                🗑️ Bấm thử: Xóa playlist
+              </button>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- =========================================================
+           SUB-PANE B: FILTER SLICE/TRACK & SEARCH NỘI BỘ
+           ========================================================= -->
+      <section id="tab-var-b" class="tab-pane" role="tabpanel" style="display: none;">
+        
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">HƯỚNG B • SO SÁNH TRƯỚC / SAU</span>
+            <span style="font-size: 0.85rem;">Kéo để thấy Bộ Lọc &amp; Ô Tìm Kiếm</span>
+          </div>
+          <div class="slider-viewport">
+            <!-- BEFORE -->
+            <div class="slider-layer slider-before">
+              <div class="app">
+                <div class="pl-header">
+                  <div class="mosaic-cover"><div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div><div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div></div>
+                  <div class="pl-info" style="flex: 1;"><h2 class="pl-title">very low</h2><div class="pl-meta">4 items · 15:55</div></div>
+                  <div class="hl r" style="flex: 1; height: 3.2rem; display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.05);">
+                    <span class="mock-annotation edge-l red">KHÔNG LỌC DC SLICE TRONG PLAYLIST</span>
+                    <span style="color: #ef4444; font-size: 0.72rem; font-weight: 700;">⚠️ Muốn tìm bài phải dùng search tổng toàn bộ app</span>
+                  </div>
+                  <div style="display: flex; gap: 0.6rem;"><button class="btn-circle shuffle">🔀</button><button class="btn-circle play">▶</button></div>
+                </div>
+              </div>
+            </div>
+            <!-- AFTER -->
+            <div class="slider-layer slider-after">
+              <div class="app">
+                <div class="pl-header">
+                  <div class="mosaic-cover"><div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div><div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div></div>
+                  <div class="pl-info" style="min-width: 8rem;"><h2 class="pl-title">very low</h2><div class="pl-meta">4 mục · 15:55</div></div>
+                  
+                  <!-- KHOẢNG TRỮ BỘ LỌC + SEARCH -->
+                  <div class="hl g" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.8rem; background: rgba(34, 197, 94, 0.04); padding: 0.4rem;">
+                    <span class="mock-annotation edge-l green">LỌC ĐẶC SẢN SLICE VS TRACK</span>
+                    <div class="chip-filter-group">
+                      <button class="chip-filter-btn active">Tất cả (4)</button>
+                      <button class="chip-filter-btn">✂️ Slices (3)</button>
+                      <button class="chip-filter-btn">💿 Tracks (1)</button>
+                    </div>
+                    <div class="mini-search-box">
+                      <span>🔍</span>
+                      <input type="text" placeholder="Tìm bài trong playlist...">
+                    </div>
+                  </div>
+
+                  <div style="display: flex; gap: 0.6rem;"><button class="btn-circle shuffle">🔀</button><button class="btn-circle play">▶</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-divider"><div class="slider-knob">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50">
+          </div>
+        </article>
+
+        <!-- CARD 3: INTERACTIVE FOR B -->
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge badge-green">CARD 3 • HƯỚNG B (TƯƠNG TÁC THỬ BỘ LỌC)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-green);">Đặc trị playlist có hàng chục slice và full track lẫn lộn</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+            <span class="mock-annotation green">ĐẶC SẢN SLICE PLAYER</span>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+              Bấm thử các nút lọc để xem cách danh sách bên dưới phản hồi tức thì mà không cần load lại trang:
+            </p>
+            <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+              <button type="button" class="icon-action-btn" onclick="showToast('🔥 Hiển thị đầy đủ cả 4 mục trong playlist!', 'info')">
+                🔥 Xem Tất cả (4)
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('✂️ Đã lọc: Chỉ hiển thị 3 đoạn cắt Slices!', 'success')">
+                ✂️ Chỉ xem Slices (3)
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('💿 Đã lọc: Chỉ hiển thị 1 bài hát gốc Full Track!', 'success')">
+                💿 Chỉ xem Full Track (1)
+              </button>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- =========================================================
+           SUB-PANE C: CHUẨN SPOTIFY HIỆN ĐẠI
+           ========================================================= -->
+      <section id="tab-var-c" class="tab-pane" role="tabpanel" style="display: none;">
+        
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">HƯỚNG C • SO SÁNH TRƯỚC / SAU</span>
+            <span style="font-size: 0.85rem;">Cụm nút điều khiển gom dưới Title</span>
+          </div>
+          <div class="slider-viewport">
+            <div class="slider-layer slider-before">
+              <div class="app">
+                <div class="pl-header">
+                  <div class="mosaic-cover"><div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div><div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div></div>
+                  <div class="pl-info" style="flex: 1;"><h2 class="pl-title">very low</h2><div class="pl-meta">4 items · 15:55</div></div>
+                  <div class="hl r" style="flex: 1; height: 3.2rem; display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.05);">
+                    <span class="mock-annotation edge-l red">NÚT PLAY NẰM TẬN GÓC PHẢI</span>
+                    <span style="color: #ef4444; font-size: 0.72rem; font-weight: 700;">⚠️ Trái mắt, khó bấm trên màn hình lớn</span>
+                  </div>
+                  <div style="display: flex; gap: 0.6rem;"><button class="btn-circle shuffle">🔀</button><button class="btn-circle play">▶</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-layer slider-after">
+              <div class="app">
+                <!-- SPOTIFY STYLE HEADER -->
+                <div class="pl-header" style="flex-direction: column; align-items: stretch; gap: 1rem;">
+                  <!-- ROW 1: COVER + TIÊU ĐỀ + METADATA -->
+                  <div style="display: flex; align-items: flex-end; gap: 1.25rem;">
+                    <div class="mosaic-cover" style="width: 7.5rem; height: 7.5rem;">
+                      <div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div>
+                      <div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div>
+                    </div>
+                    <div class="pl-info">
+                      <span style="font-size: 0.65rem; text-transform: uppercase; font-weight: 800; color: #3B82F6; letter-spacing: 0.08em;">Danh Sách Phát</span>
+                      <h2 class="pl-title" style="font-size: 2.2rem; margin: 0.2rem 0;">very low</h2>
+                      <div class="pl-meta">Tạo bởi Bạn · 4 bài hát · 15 phút 55 giây</div>
+                    </div>
+                  </div>
+
+                  <!-- ROW 2: CONTROLS NẰM LIỀN DƯỚI TITLE -->
+                  <div class="hl g" style="display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; border-top: 1px solid #282726; background: rgba(34, 197, 94, 0.03);">
+                    <span class="mock-annotation edge-l green">CHUẨN SPOTIFY / APPLE MUSIC</span>
+                    <div style="display: flex; align-items: center; gap: 0.85rem;">
+                      <button class="btn-circle play" style="width: 3rem; height: 3rem; font-size: 1.1rem;">▶</button>
+                      <button class="btn-circle shuffle">🔀</button>
+                      <button class="icon-action-btn" title="Thêm vào danh sách yêu thích">🤍</button>
+                      <button class="icon-action-btn" title="Tùy chọn khác">⋯</button>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                      <div class="mini-search-box"><span>🔍</span><input type="text" placeholder="Tìm kiếm..."></div>
+                      <span class="icon-action-btn">Sắp xếp: Mới nhất ▾</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-divider"><div class="slider-knob">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50">
+          </div>
+        </article>
+
+        <!-- CARD 3: INTERACTIVE FOR C -->
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge badge-green">CARD 3 • HƯỚNG C (TƯƠNG TÁC THỬ MENU SPOTIFY)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-green);">Menu 3 chấm gom gọn mọi chức năng nâng cao</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+            <span class="mock-annotation green">CÔNG THÁI HỌC TỐI ĐA</span>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+              Bấm vào nút <b>⋯ Tùy chọn</b> để mở popover chứa tất cả các thao tác mà không làm vỡ layout:
+            </p>
+            <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+              <button type="button" class="icon-action-btn" onclick="showToast('▶ Bắt đầu phát bài đầu tiên trong playlist!', 'success')">
+                ▶ Bấm thử nút Play
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('🤍 Đã ghim playlist này vào danh sách yêu thích!', 'success')">
+                🤍 Thích / Ghim Playlist
+              </button>
+              <button type="button" class="icon-action-btn" onclick="showToast('⋯ Menu: [Sửa tên] [Đổi bìa] [Nhân bản] [Xuất file] [Xóa]', 'info')">
+                ⋯ Bấm thử: Menu Tùy chọn khác
+              </button>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <!-- =========================================================
+           SUB-PANE D: POWERHOUSE ALL-IN-ONE
+           ========================================================= -->
+      <section id="tab-var-d" class="tab-pane" role="tabpanel" style="display: none;">
+        
+        <article class="card-wrapper card-slider">
+          <div class="card-header-bar">
+            <span class="card-badge badge-white">HƯỚNG D • POWERHOUSE HYBRID</span>
+            <span style="font-size: 0.85rem;">Kết hợp đầy đủ cả 3 hướng: Sửa + Lọc + Play</span>
+          </div>
+          <div class="slider-viewport">
+            <div class="slider-layer slider-before">
+              <div class="app">
+                <div class="pl-header">
+                  <div class="mosaic-cover"><div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div><div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div></div>
+                  <div class="pl-info" style="flex: 1;"><h2 class="pl-title">very low</h2><div class="pl-meta">4 items · 15:55</div></div>
+                  <div class="hl r" style="flex: 1; height: 3.2rem; display: flex; align-items: center; justify-content: center; background: rgba(239, 68, 68, 0.05);">
+                    <span class="mock-annotation edge-l red">HIỆN TRẠNG</span>
+                    <span style="color: #ef4444; font-size: 0.72rem; font-weight: 700;">⚠️ Trống trải và đơn điệu</span>
+                  </div>
+                  <div style="display: flex; gap: 0.6rem;"><button class="btn-circle shuffle">🔀</button><button class="btn-circle play">▶</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-layer slider-after">
+              <div class="app">
+                <div class="pl-header" style="flex-wrap: wrap; gap: 1rem;">
+                  <!-- BÊN TRÁI: COVER + INFO + NÚT SỬA -->
+                  <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="mosaic-cover" style="width: 5.5rem; height: 5.5rem;">
+                      <div class="mosaic-cell c1">🎵</div><div class="mosaic-cell c2">🎤</div>
+                      <div class="mosaic-cell c3">📻</div><div class="mosaic-cell c4">🌆</div>
+                      <div class="cover-hover-btn">📷</div>
+                    </div>
+                    <div class="pl-info">
+                      <div class="pl-title-row">
+                        <h2 class="pl-title" style="font-size: 1.5rem;">very low</h2>
+                        <button class="icon-action-btn" style="padding: 0.15rem 0.35rem; font-size: 0.65rem;">✏️</button>
+                        <button class="icon-action-btn danger" style="padding: 0.15rem 0.35rem; font-size: 0.65rem;">🗑️</button>
+                      </div>
+                      <div class="pl-meta">4 mục · 15:55 · <span style="color: #A0B24F;">Tự do sắp xếp</span></div>
+                    </div>
+                  </div>
+
+                  <!-- GIỮA: BỘ LỌC CHIP -->
+                  <div class="hl g" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(34, 197, 94, 0.04); padding: 0.3rem 0.6rem;">
+                    <span class="mock-annotation edge-l green">BỘ LỌC CHIPS</span>
+                    <button class="chip-filter-btn active" style="background:#282726; color:#3B82F6;">Tất cả</button>
+                    <button class="chip-filter-btn">✂️ Slices</button>
+                    <button class="chip-filter-btn">💿 Tracks</button>
+                  </div>
+
+                  <!-- BÊN PHẢI: SEARCH + PLAY/SHUFFLE -->
+                  <div style="display: flex; align-items: center; gap: 0.6rem; margin-left: auto;">
+                    <div class="mini-search-box" style="width: 10rem;"><span>🔍</span><input type="text" placeholder="Tìm..."></div>
+                    <button class="btn-circle shuffle">🔀</button>
+                    <button class="btn-circle play">▶</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="slider-divider"><div class="slider-knob">⇄</div></div>
+            <input type="range" class="slider-input-range" min="0" max="100" value="50">
+          </div>
+        </article>
+
+        <!-- CARD 3: INTERACTIVE FOR D -->
+        <article class="card-wrapper card-after">
+          <div class="card-header-bar">
+            <span class="card-badge badge-green">CARD 3 • HƯỚNG D (TRẢI NGHIỆM ĐẦY ĐỦ NHẤT)</span>
+            <span style="font-size: 0.85rem; color: var(--accent-green);">Đỉnh cao tiện dụng cho power-user</span>
+          </div>
+          <div class="diff-highlight" data-diff="annotation" style="position: relative; padding: 1.5rem; background: rgba(34, 197, 94, 0.04); border-radius: 0.75rem;">
+            <span class="mock-annotation green">ALL-IN-ONE POWERHOUSE</span>
+            <p style="font-size: 0.88rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 1rem;">
+              Không bỏ sót bất kỳ tính năng nào: vừa có inline rename, vừa có bộ lọc slice, vừa có ô tìm kiếm nội bộ, vừa có đầy đủ nút điều khiển.
+            </p>
+            <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+              <button type="button" class="icon-action-btn" onclick="showToast('⚡ Hướng D cân bằng hoàn hảo giữa thẩm mỹ và công năng!', 'success')">
+                ⚡ Kích hoạt chế độ Powerhouse
+              </button>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+    </main>
+
+    <!-- =================================================================
+         TAB 2: GIẢI THÍCH CHI TIẾT (4 TẦNG ZOOM-IN)
+         ================================================================= -->
+    <section id="tab-explain" class="tab-pane" role="tabpanel" style="display: none;">
+
+      <!-- TẦNG 1: VĨ MÔ & KIẾN TRÚC -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 1/4 • KIẾN TRÚC VĨ MÔ</div>
+            <h3>📁 1. Ranh Giới Module &amp; Luồng Dữ Liệu</h3>
+            <p>
+              Hiện tại tính năng quản lý playlist (đổi tên, đổi bìa, xóa) đang bị giam cầm trong <code>PlaylistDrawer.tsx</code>. Khi chuyển lên <code>PlaylistHeader.tsx</code>, chúng ta chỉ cần kết nối trực tiếp với <code>usePlayerStore</code> mà không làm ảnh hưởng tới server hay database schema!
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag green">Store Ready</span>
+              <span class="meta-tag blue">Client Only</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot red"></span><span class="code-dot yellow"></span><span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📁 Kiến trúc luồng State</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot structure"></span> FLOW</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">src/client/src/</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">├── </span>📁 <span class="prop">store</span>/</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">│   └── </span>📄 <span class="prop">usePlayerStore.ts</span> <span class="c-comment"># renamePlaylist, deletePlaylist, setPlaylistCover (Đã có sẵn!)</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">├── </span>📁 <span class="prop">components</span>/</span></div>
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text"><span class="tg">│   ├── </span>📄 <span class="prop">PlaylistDrawer.tsx</span> <span class="c-comment"># Độc quyền sửa/xóa playlist</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text"><span class="tg">│   ├── </span>📄 <span class="prop">PlaylistHeader.tsx</span> <span class="c-comment"># Bú trực tiếp các hàm từ Store để sửa/xóa tại chỗ!</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="tg">│   └── </span>📄 <span class="prop">PlaylistCover.tsx</span> <span class="c-comment"># Hỗ trợ hover đổi ảnh bìa</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 2: COMPONENT & LAYOUT DIFF -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 2/4 • COMPONENT LAYOUT</div>
+            <h3>🧩 2. Thay Đổi Cấu Trúc PlaylistHeader.tsx</h3>
+            <p>
+              Bỏ <code>flex-1</code> vô tội vạ ở khối title. Thay vào đó, chèn một khu vực trung tâm (Actions Toolbar hoặc Chip Filters) để lấp kín khoảng trống công thái học.
+            </p>
+            <div class="meta-tag-group">
+              <span class="meta-tag yellow">Flexbox Fix</span>
+              <span class="meta-tag green">JSX Update</span>
+            </div>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 src/client/src/components/PlaylistHeader.tsx</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot tsx"></span> TSX</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">return</span> <span class="punc">(</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;</span><span class="tag">section</span> <span class="attr">className</span>=<span class="str">"mb-6 flex flex-wrap items-center gap-5 rounded-2xl ..."</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="punc">&lt;</span><span class="tag">PlaylistCover</span> <span class="attr">playlist</span>=<span class="punc">{</span><span class="prop">playlist</span><span class="punc">}</span> <span class="attr">onPickCover</span>=<span class="punc">{</span><span class="prop">handlePickCover</span><span class="punc">}</span> <span class="punc">/&gt;</span></span></div>
+              <div class="c-line del"><span class="c-sign">-</span><span class="c-text">      <span class="punc">&lt;</span><span class="tag">div</span> <span class="attr">className</span>=<span class="str">"min-w-0 flex-1"</span><span class="punc">&gt;</span> <span class="c-comment"># Kéo dãn tạo hố đen ở giữa</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      <span class="punc">&lt;</span><span class="tag">div</span> <span class="attr">className</span>=<span class="str">"min-w-0"</span><span class="punc">&gt;</span> <span class="c-comment"># Giữ độ rộng vừa vặn với nội dung</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">        <span class="punc">&lt;</span><span class="tag">h2</span> <span class="attr">className</span>=<span class="str">"text-2xl font-bold"</span><span class="punc">&gt;</span><span class="punc">{</span><span class="prop">playlist</span>.<span class="prop">name</span><span class="punc">}</span><span class="punc">&lt;/</span><span class="tag">h2</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">        <span class="punc">&lt;</span><span class="tag">InlineRenameButton</span> <span class="attr">onRename</span>=<span class="punc">{</span><span class="prop">handleRename</span><span class="punc">}</span> <span class="punc">/&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="punc">&lt;/</span><span class="tag">div</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      <span class="c-comment"># KHU VỰC TRUNG TÂM MỚI (LẤP ĐẦY KHOẢNG TRỐNG)</span></span></div>
+              <div class="c-line add"><span class="c-sign">+</span><span class="c-text">      <span class="punc">&lt;</span><span class="tag">PlaylistActionCenter</span> <span class="attr">playlist</span>=<span class="punc">{</span><span class="prop">playlist</span><span class="punc">}</span> <span class="attr">onDelete</span>=<span class="punc">{</span><span class="prop">handleDelete</span><span class="punc">}</span> <span class="punc">/&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="punc">&lt;</span><span class="tag">div</span> <span class="attr">className</span>=<span class="str">"flex items-center gap-2.5 ml-auto"</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">        <span class="punc">&lt;</span><span class="tag">ShuffleButton</span> <span class="punc">/&gt;</span> <span class="punc">&lt;</span><span class="tag">PlayButton</span> <span class="punc">/&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">      <span class="punc">&lt;/</span><span class="tag">div</span><span class="punc">&gt;</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    <span class="punc">&lt;/</span><span class="tag">section</span><span class="punc">&gt;</span></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 3: CALL TREE & STATE -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 3/4 • CALL TREE</div>
+            <h3>⚡ 3. Luồng Gọi Hàm Khi Thao Tác</h3>
+            <p>
+              Mọi hành động Đổi tên, Đổi bìa hay Xóa playlist đều tận dụng 100% API và Socket sync sẵn có. Khi xóa xong, hệ thống tự động fallback về tab trước đó mà không bao giờ bị trắng màn hình.
+            </p>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot yellow"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 Call Tree Hành Động</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot flow"></span> CALL TREE</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="fn">onInlineRename</span>(newName)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  └── <span class="fn">usePlayerStore.getState().renamePlaylist</span>(id, newName)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">        └── <span class="fn">PUT</span> /api/playlists/:id/rename</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">              └── <span class="fn">fetchPlaylists</span>() + Broadcast WS <span class="str">"playlist_updated"</span></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"></span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="fn">onDeletePlaylist</span>(id)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  └── <span class="fn">ConfirmModal.open</span>()</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">        └── <span class="fn">usePlayerStore.getState().deletePlaylist</span>(id)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">              └── <span class="fn">DELETE</span> /api/playlists/:id</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">                    └── <span class="fn">setActivePlaylist</span>(null) -> Chuyển về màn Mixed mượt mà</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TẦNG 4: LOGIC FILTER PSEUDOCODE -->
+      <section class="explain-section">
+        <div class="explain-layout">
+          <div class="explain-text-col">
+            <div class="zoom-tier-badge">TẦNG 4/4 • THUẬT TOÁN &amp; LOGIC</div>
+            <h3>🧠 4. Thuật Toán Lọc Nhanh Trong Playlist</h3>
+            <p>
+              Nếu triển khai Hướng B hoặc Hướng D (Bộ lọc Slice vs Track), logic lọc diễn ra hoàn toàn trên bộ nhớ đệm (in-memory), độ trễ 0ms (instant render).
+            </p>
+          </div>
+
+          <div class="code-container">
+            <div class="code-topbar">
+              <div class="code-topbar-left">
+                <span class="code-dot green"></span>
+                <span style="font-size: 0.78rem; font-weight: 700; color: #e4e4e7;">📄 Pseudocode Bộ Lọc Nhanh</span>
+              </div>
+              <div class="code-actions">
+                <span class="code-lang-badge"><span class="lang-dot logic"></span> LOGIC</span>
+                <button class="btn-copy-code" type="button" onclick="copyCodeBlock(this)">Sao chép</button>
+              </div>
+            </div>
+            <div class="code-body">
+              <div class="c-line"><span class="c-sign"></span><span class="c-text"><span class="kwd">function</span> <span class="fn">getFilteredPlaylistItems</span>(items, filterMode, searchQuery):</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">let</span> result = items</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> filterMode === <span class="str">"slices_only"</span>:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    result = result.<span class="fn">filter</span>(it => it.segment != <span class="kwd">null</span>)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">else if</span> filterMode === <span class="str">"tracks_only"</span>:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    result = result.<span class="fn">filter</span>(it => it.segment == <span class="kwd">null</span>)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">if</span> searchQuery:</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">    result = <span class="fn">fuzzySearch</span>(result, searchQuery)</span></div>
+              <div class="c-line"><span class="c-sign"></span><span class="c-text">  <span class="kwd">return</span> result</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+
+  </div>
+
+  <!-- NÚT INSPECTOR TOGGLE (BẬT/TẮT ANNOTATION DIFF) -->
+  <button id="inspector-toggle" onclick="toggleDiff()">
+    <span>🔍 Check Diff</span>
+    <span id="diffStatusTag">[BẬT]</span>
+  </button>
+
+  <script src="./visual-core.js"></script>
+</body>
+</html>

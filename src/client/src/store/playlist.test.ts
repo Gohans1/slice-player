@@ -416,6 +416,52 @@ describe("usePlayerStore playlist management", () => {
     }
   });
 
+  it("setPlaylistCover saves the chosen track and refreshes the playlist cover", async () => {
+    const origFetch = globalThis.fetch;
+    let savedCoverId: unknown;
+
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = url.toString();
+      if (urlStr === "/api/playlists/pl_1" && init?.method === "PATCH") {
+        savedCoverId = JSON.parse(init.body as string).cover_track_id;
+        return new Response(JSON.stringify({ ...mockPlaylist, cover_track_id: savedCoverId }), { status: 200 });
+      }
+      if (urlStr === "/api/playlists") {
+        return new Response(
+          JSON.stringify([{ ...mockPlaylist, cover_track_id: savedCoverId, cover_url: "https://img/trk_1.jpg" }]),
+          { status: 200 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as any;
+
+    try {
+      const ok = await usePlayerStore.getState().setPlaylistCover("pl_1", "trk_1");
+      expect(ok).toBe(true);
+      expect(savedCoverId).toBe("trk_1");
+      expect(usePlayerStore.getState().playlists[0].cover_url).toBe("https://img/trk_1.jpg");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("setPlaylistCover reports failure when the server rejects the track", async () => {
+    const origFetch = globalThis.fetch;
+    usePlayerStore.setState({ playlists: [mockPlaylist] });
+
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({ error: "Track is not in this playlist" }), { status: 400 })
+    ) as any;
+
+    try {
+      const ok = await usePlayerStore.getState().setPlaylistCover("pl_1", "trk_outsider");
+      expect(ok).toBe(false);
+      expect(usePlayerStore.getState().playlists[0].cover_track_id).toBeUndefined();
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
   it("addToPlaylist sends POST to server", async () => {
     const origFetch = globalThis.fetch;
     let addedTrackId = "";

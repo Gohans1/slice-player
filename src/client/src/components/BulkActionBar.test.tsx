@@ -103,6 +103,34 @@ describe("BulkActionBar Component", () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("offers no delete action while viewing a mix playlist (its songs live in the sources)", () => {
+    const prev = usePlayerStore.getState();
+    usePlayerStore.setState({
+      activePlaylistId: "mix_1",
+      playlists: [{ id: "mix_1", name: "Mix", created_at: 1, updated_at: 1, item_count: 2, is_mix: true, source_ids: ["pl_a", "pl_b"] }],
+    });
+    try {
+      act(() => {
+        useSelectionStore.getState().toggleTrack({
+          id: "item_1",
+          type: "playlist_item",
+          trackId: "track_1",
+          playlistId: "mix_1",
+          title: "Track 1",
+        });
+      });
+      act(() => {
+        root.render(<BulkActionBar visibleTrackIds={["item_1"]} />);
+      });
+
+      const deleteBtn = Array.from(container.querySelectorAll("button")).find((btn) => btn.textContent?.includes("Delete"));
+      expect(container.querySelector("aside")).not.toBeNull();
+      expect(deleteBtn).toBeUndefined();
+    } finally {
+      usePlayerStore.setState({ activePlaylistId: prev.activePlaylistId, playlists: prev.playlists });
+    }
+  });
+
   it("renders New Playlist button in bulk playlist menu and creates playlist with selected items", async () => {
     const originalCreatePlaylist = usePlayerStore.getState().createPlaylist;
     const originalAddBatch = usePlayerStore.getState().addTracksToPlaylistBatch;

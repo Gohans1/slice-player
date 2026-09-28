@@ -1199,16 +1199,20 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       const slider = container.querySelector('[role="slider"]') as HTMLElement | null;
       expect(slider).not.toBeNull();
 
-      slider!.getBoundingClientRect = () => ({
-        left: 0,
-        top: 0,
-        right: 100,
-        bottom: 10,
-        width: 100,
-        height: 10,
-        x: 0,
-        y: 0,
-        toJSON: () => {},
+      Object.defineProperty(slider!, "getBoundingClientRect", {
+        value: () => ({
+          left: 0,
+          top: 0,
+          right: 100,
+          bottom: 10,
+          width: 100,
+          height: 10,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        }),
+        configurable: true,
+        writable: true,
       });
 
       act(() => {

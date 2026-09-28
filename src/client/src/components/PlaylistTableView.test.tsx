@@ -109,6 +109,7 @@ describe("PlaylistTableView", () => {
     (globalThis as any).Element = window.Element;
     (globalThis as any).HTMLElement = window.HTMLElement;
     (globalThis as any).HTMLImageElement = window.HTMLImageElement;
+    (globalThis as any).PointerEvent = window.PointerEvent;
 
     container = window.document.createElement("div");
     window.document.body.appendChild(container);
@@ -1910,6 +1911,7 @@ describe("PlaylistTableView", () => {
         activePlaylistId: "pl_custom_1",
         activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
         playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
         reorderPlaylist: reorderSpy as any,
       });
 
@@ -1923,16 +1925,20 @@ describe("PlaylistTableView", () => {
       expect(table).not.toBeNull();
 
       // Mock getBoundingClientRect for table
-      table!.getBoundingClientRect = () => ({
-        top: 100,
-        bottom: 500,
-        left: 0,
-        right: 800,
-        width: 800,
-        height: 400,
-        x: 0,
-        y: 100,
-        toJSON: () => {},
+      Object.defineProperty(table!, "getBoundingClientRect", {
+        value: () => ({
+          top: 100,
+          bottom: 500,
+          left: 0,
+          right: 800,
+          width: 800,
+          height: 400,
+          x: 0,
+          y: 100,
+          toJSON: () => {},
+        }),
+        configurable: true,
+        writable: true,
       });
 
       // Start drag from row 0
@@ -1967,6 +1973,10 @@ describe("PlaylistTableView", () => {
       // Should have dropped to index 1 (last index) -> ["item_2", "item_1"]
       expect(reorderSpy).toHaveBeenCalledTimes(1);
       expect(reorderSpy).toHaveBeenCalledWith("pl_custom_1", ["item_2", "item_1"]);
+
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
     });
 
     it("renders floating drag preview with track title and index badge during drag", async () => {
@@ -1974,6 +1984,7 @@ describe("PlaylistTableView", () => {
         activePlaylistId: "pl_custom_1",
         activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
         playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
       });
 
       await act(async () => {
@@ -2020,6 +2031,10 @@ describe("PlaylistTableView", () => {
       expect(badge?.textContent).toContain("#1");
       expect(badge?.textContent).toContain(dummyTrack.title);
       expect((badge as HTMLElement).style.position).toBe("fixed");
+
+      await act(async () => {
+        window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
     });
 
     it("calculates FLIP shift transform when dragging over another item", async () => {
@@ -2027,6 +2042,7 @@ describe("PlaylistTableView", () => {
         activePlaylistId: "pl_custom_1",
         activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
         playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
         reorderPlaylist: mock(() => Promise.resolve(true)) as any,
       });
 
@@ -2096,6 +2112,7 @@ describe("PlaylistTableView", () => {
         activePlaylistId: "pl_custom_1",
         activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
         playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
         reorderPlaylist: reorderSpy as any,
       });
 
@@ -2362,6 +2379,42 @@ describe("PlaylistTableView", () => {
 
       const rows = container.querySelectorAll(".group[role='row']");
       expect(rows[0].getAttribute("draggable")).toBe("false");
+    });
+
+    it("disables dragging in a mix playlist, whose order comes from its sources", async () => {
+      const mixPlaylist = { ...dummyPlaylist, id: "pl_mix_1", is_mix: true, source_ids: ["pl_custom_1", "pl_other"] };
+      usePlayerStore.setState({
+        activePlaylistId: "pl_mix_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist, mixPlaylist],
+        playlistSortMode: "manual",
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      expect(container.querySelectorAll('[data-drag-handle="true"]').length).toBe(0);
+      const rows = container.querySelectorAll(".group[role='row']");
+      expect(rows[0].getAttribute("draggable")).toBe("false");
+    });
+
+    it("offers no remove button in a mix playlist (songs are removed from their source)", async () => {
+      const mixPlaylist = { ...dummyPlaylist, id: "pl_mix_1", is_mix: true, source_ids: ["pl_custom_1", "pl_other"] };
+      usePlayerStore.setState({
+        activePlaylistId: "pl_mix_1",
+        activePlaylistItems: [dummyPlaylistItem1],
+        playlists: [dummyPlaylist, mixPlaylist],
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const removeButtons = container.querySelectorAll(
+        "button[title='Remove from Playlist'], button[title='Xóa khỏi danh sách phát']"
+      );
+      expect(removeButtons.length).toBe(0);
     });
 
     it("sorts newest items first when in newest mode", async () => {

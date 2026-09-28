@@ -55,6 +55,27 @@ describe("AddToPlaylistPopover Component", () => {
     container.remove();
   });
 
+  it("does not offer a mix playlist as a destination (mixes only mirror their sources)", async () => {
+    globalThis.fetch = mock(async () => new Response("[]", { status: 200 })) as any;
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_1", name: "Playlist One", created_at: 1, updated_at: 1, item_count: 1 },
+        { id: "mix_1", name: "Mix Of Both", created_at: 3, updated_at: 3, item_count: 1, is_mix: true, source_ids: ["pl_1", "pl_2"] },
+      ],
+    });
+
+    act(() => {
+      root.render(<AddToPlaylistPopover trackId="trk_1" />);
+    });
+    await act(async () => {
+      container.querySelector('button[title="Add to Playlist"]').click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(container.textContent).toContain("Playlist One");
+    expect(container.textContent).not.toContain("Mix Of Both");
+  });
+
   it("does not fetch memberships while closed, fetches on open, and marks existing playlist with checkmark", async () => {
     let fetchCalls = 0;
     globalThis.fetch = mock(async (url: any) => {

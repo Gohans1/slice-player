@@ -4,7 +4,7 @@ import {
   listTracks, createSegment, listSegmentsByTrack, updateSegment, deleteSegment, deleteSegmentsBatch, validateVolume,
   createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist,
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
-  getPlaylistMemberships
+  getPlaylistMemberships, setPlaylistCover
 } from "./db";
 import { unlinkSync, existsSync } from "node:fs";
 
@@ -218,8 +218,9 @@ describe("Database layer (bun:sqlite)", () => {
     expect(customTrack?.volume).toBe(0.9);
 
     const versionRow = finalDb.query("PRAGMA user_version;").get() as { user_version: number };
-    expect(versionRow.user_version).toBe(4);
+    expect(versionRow.user_version).toBe(8);
   });
+
 
   describe("Playlist operations", () => {
     it("should create, get, list, update and delete a playlist", () => {
@@ -486,6 +487,96 @@ describe("Database layer (bun:sqlite)", () => {
       const itemsAfterReorder = getPlaylistItems(pl.id);
       expect(itemsAfterReorder[0].id).toBe(i1.id);
       expect(itemsAfterReorder[1].id).toBe(i2.id);
+    });
+  });
+
+  describe("Playlist cover art", () => {
+    const makeTrack = (id: string, thumbnail_url: string) =>
+      createTrack({ id, title: id, duration: 100, source_type: "local", source_uri: `local://${id}`, thumbnail_url, status: "ready" });
+
+    it("lists up to 4 mosaic thumbnails in playlist order, one per track, skipping tracks without thumbnails", () => {
+      const pl = createPlaylist("Mosaic");
+      const ids = ["m1", "m2", "m3", "m4", "m5"];
+      const itemIds = ids.map((id) => addPlaylistItem(pl.id, makeTrack(id, `https://img/${id}.jpg`).id).id);
+      makeTrack("m-nothumb", "");
+      const noThumbItem = addPlaylistItem(pl.id, "m-nothumb");
+      createSegment({ id: "m1-slice", track_id: "m1", name: "Chorus", start_time: 0, end_time: 10 });
+      const sliceItem = addPlaylistItem(pl.id, "m1", "m1-slice");
+      reorderPlaylistItems(pl.id, [noThumbItem.id, itemIds[0], sliceItem.id, itemIds[1], itemIds[2], itemIds[3], itemIds[4]]);
+
+      const listed = listPlaylists().find((p) => p.id === pl.id);
+
+      expect(listed?.mosaic_urls).toEqual([
+        "https://img/m1.jpg",
+        "https://img/m2.jpg",
+        "https://img/m3.jpg",
+        "https://img/m4.jpg",
+      ]);
+    });
+
+    it("returns an empty mosaic and no cover for an empty playlist", () => {
+      const pl = createPlaylist("Empty");
+
+      const listed = listPlaylists().find((p) => p.id === pl.id);
+
+      expect(listed?.mosaic_urls).toEqual([]);
+      expect(listed?.cover_url).toBeNull();
+    });
+
+    it("sets a playlist cover from one of its own tracks", () => {
+      const pl = createPlaylist("Drive");
+      addPlaylistItem(pl.id, makeTrack("c1", "https://img/c1.jpg").id);
+      addPlaylistItem(pl.id, makeTrack("c2", "https://img/c2.jpg").id);
+
+      const updated = setPlaylistCover(pl.id, "c2");
+
+      expect(updated?.cover_track_id).toBe("c2");
+      expect(listPlaylists().find((p) => p.id === pl.id)?.cover_url).toBe("https://img/c2.jpg");
+    });
+
+    it("rejects a cover track that is not in the playlist", () => {
+      const pl = createPlaylist("Drive");
+      makeTrack("outsider", "https://img/outsider.jpg");
+
+      expect(() => setPlaylistCover(pl.id, "outsider")).toThrow("Track is not in this playlist");
+    });
+
+    it("returns null when setting a cover on a missing playlist", () => {
+      expect(setPlaylistCover("pl_missing", null)).toBeNull();
+    });
+
+    it("clears the cover when passed null", () => {
+      const pl = createPlaylist("Drive");
+      addPlaylistItem(pl.id, makeTrack("c1", "https://img/c1.jpg").id);
+      setPlaylistCover(pl.id, "c1");
+
+      setPlaylistCover(pl.id, null);
+
+      expect(listPlaylists().find((p) => p.id === pl.id)?.cover_url).toBeNull();
+    });
+
+    it("falls back to the mosaic when the cover track is deleted from the library", () => {
+      const pl = createPlaylist("Drive");
+      addPlaylistItem(pl.id, makeTrack("c1", "https://img/c1.jpg").id);
+      addPlaylistItem(pl.id, makeTrack("c2", "https://img/c2.jpg").id);
+      setPlaylistCover(pl.id, "c1");
+
+      deleteTrack("c1");
+
+      const listed = listPlaylists().find((p) => p.id === pl.id);
+      expect(listed?.cover_track_id).toBeNull();
+      expect(listed?.cover_url).toBeNull();
+    });
+
+    it("ignores the cover when its track was removed from the playlist", () => {
+      const pl = createPlaylist("Drive");
+      const item = addPlaylistItem(pl.id, makeTrack("c1", "https://img/c1.jpg").id);
+      addPlaylistItem(pl.id, makeTrack("c2", "https://img/c2.jpg").id);
+      setPlaylistCover(pl.id, "c1");
+
+      removePlaylistItem(pl.id, item.id);
+
+      expect(listPlaylists().find((p) => p.id === pl.id)?.cover_url).toBeNull();
     });
   });
 });

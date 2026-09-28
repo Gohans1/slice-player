@@ -65,10 +65,10 @@ describe("Library Backup & Restore (Export / Import)", () => {
       audioCacheDir: TEST_AUDIO_DIR,
       thumbCacheDir: TEST_THUMB_DIR,
       cookiePath: TEST_COOKIE,
-    });
+    }, { includeCookies: true });
 
-    expect(archiveBytes).toBeInstanceOf(Uint8Array);
-    expect(archiveBytes.length).toBeGreaterThan(100);
+    expect(archiveBytes).toBeInstanceOf(Blob);
+    expect(archiveBytes.size).toBeGreaterThan(100);
 
     const archive = new (Bun as any).Archive(archiveBytes);
     const files = await archive.files();
