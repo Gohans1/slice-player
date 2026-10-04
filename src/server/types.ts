@@ -45,6 +45,8 @@ export interface Playlist {
   // Mix playlists own no items: they show their source playlists' items live, in source order
   is_mix?: boolean;
   source_ids?: string[];
+  // Sub-playlists (1-level nesting): id of the parent playlist if this is a sub-playlist
+  parent_id?: string | null;
 }
 
 export interface PlaylistItem {

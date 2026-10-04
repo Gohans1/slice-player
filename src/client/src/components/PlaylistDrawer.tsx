@@ -7,6 +7,7 @@ import {
   Check,
   Folder,
   FolderPlus,
+  FolderTree,
   Shuffle,
   Music,
   Scissors,
@@ -18,8 +19,10 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { DeletePlaylistModal } from "./DeletePlaylistModal";
+import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 import { cn } from "../lib/utils";
+import type { Playlist } from "@/server/types";
 
 interface PlaylistDrawerProps {
   isOpen: boolean;
@@ -79,7 +82,7 @@ function PlaylistDrawerContent({
 
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editingName, setEditingName] = React.useState("");
-  const [playlistToDelete, setPlaylistToDelete] = React.useState<{ id: string; name: string } | null>(null);
+  const [playlistToDelete, setPlaylistToDelete] = React.useState<Playlist | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
 
   React.useEffect(() => {
@@ -112,16 +115,16 @@ function PlaylistDrawerContent({
     setEditingId(null);
   };
 
-  const handleDelete = (id: string, name: string, e: React.MouseEvent) => {
+  const handleDelete = (pl: Playlist, e: React.MouseEvent) => {
     e.stopPropagation();
-    setPlaylistToDelete({ id, name });
+    setPlaylistToDelete(pl);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = async (keepChildren: boolean) => {
     if (!playlistToDelete || isDeleting) return;
     setIsDeleting(true);
     try {
-      await deletePlaylist(playlistToDelete.id);
+      await deletePlaylist(playlistToDelete.id, keepChildren);
       setPlaylistToDelete(null);
     } finally {
       setIsDeleting(false);
@@ -134,6 +137,10 @@ function PlaylistDrawerContent({
     await buildPlaylistQueue(id, true);
     onClose();
   };
+
+  const orderedPlaylists = React.useMemo(() => {
+    return getHierarchicalPlaylists(playlists);
+  }, [playlists]);
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -319,7 +326,7 @@ function PlaylistDrawerContent({
               </div>
             ) : (
               <div className="space-y-1.5">
-                {playlists.map((pl) => {
+                {orderedPlaylists.map(({ playlist: pl, isChild }) => {
                   const isActive = activePlaylistId === pl.id;
                   const isEditing = editingId === pl.id;
 
@@ -343,6 +350,8 @@ function PlaylistDrawerContent({
                         }
                       }}
                       className={`group relative flex items-center justify-between p-2.5 rounded-lg border text-left transition-[border-color,background-color,color,box-shadow] duration-150 cursor-pointer ${
+                        isChild ? "ml-3.5 pl-3 border-l-2 border-border/70" : ""
+                      } ${
                         isActive
                           ? "bg-primary/10 border-primary text-foreground font-medium shadow-xs"
                           : "border-transparent bg-secondary/30 hover:bg-secondary text-muted-foreground hover:text-foreground"
@@ -392,7 +401,11 @@ function PlaylistDrawerContent({
                       ) : (
                         <>
                           <div className="flex items-center gap-2.5 truncate flex-1 min-w-0 pr-2">
-                            <Music className="h-4 w-4 shrink-0 text-flexoki-yellow" />
+                            {isChild ? (
+                              <FolderTree className="h-4 w-4 shrink-0 text-flexoki-blue" />
+                            ) : (
+                              <Music className="h-4 w-4 shrink-0 text-flexoki-yellow" />
+                            )}
                             <span className="truncate text-sm font-medium">
                               {pl.name}
                             </span>
@@ -436,7 +449,7 @@ function PlaylistDrawerContent({
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={(e) => handleDelete(pl.id, pl.name, e)}
+                              onClick={(e) => handleDelete(pl, e)}
                               className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                               title={t("playlist.delete")}
                               aria-label={t("playlist.delete")}
@@ -455,19 +468,11 @@ function PlaylistDrawerContent({
         </div>
       </div>
       {playlistToDelete && (
-        <ConfirmModal
-          isOpen={!!playlistToDelete}
+        <DeletePlaylistModal
+          isOpen={Boolean(playlistToDelete)}
           onClose={() => !isDeleting && setPlaylistToDelete(null)}
+          playlist={playlistToDelete}
           onConfirm={handleConfirmDelete}
-          isLoading={isDeleting}
-          title={t("playlist.deletePlaylistTitle", "Delete playlist?")}
-          description={t("playlist.confirmDelete", {
-            name: playlistToDelete.name,
-            defaultValue: `Delete playlist "${playlistToDelete.name}"?`,
-          })}
-          confirmText={t("common.delete", "Delete")}
-          cancelText={t("common.cancel", "Cancel")}
-          variant="destructive"
         />
       )}
     </div>

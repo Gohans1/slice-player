@@ -269,7 +269,15 @@
     "sliceCount_one": "{{count}} slice",
     "sliceCount_other": "{{count}} slices",
     "setCover": "Set as playlist cover",
-    "clearCover": "Remove playlist cover"
+    "clearCover": "Remove playlist cover",
+    "subPlaylists": "Sub-playlists",
+    "newSubPlaylist": "New Sub-playlist",
+    "subPlaylistOf": "Sub-playlist of {{name}}",
+    "deleteParentPrompt": "This playlist contains {{count}} sub-playlist(s). How would you like to proceed?",
+    "deleteCascadeOption": "Delete parent and all sub-playlists",
+    "deleteKeepOption": "Keep sub-playlists as standalone playlists",
+    "selectParentPrompt": "Parent playlist (optional)",
+    "noParent": "None (Root playlist)"
   },
   "studio": {
     "title": "Slice Studio",

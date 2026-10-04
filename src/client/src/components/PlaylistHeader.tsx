@@ -1,10 +1,11 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Combine, ImageIcon, Pencil, Play, Shuffle, Trash2, X } from "lucide-react";
+import { Check, Combine, FolderTree, ImageIcon, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, cn } from "../lib/utils";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { DeletePlaylistModal } from "./DeletePlaylistModal";
+const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./ui/modal";
 import { Button } from "./ui/button";
 import type { Playlist, PlaylistItemWithDetails } from "@/server/types";
@@ -21,8 +22,10 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const setPlaylistCover = usePlayerStore((s) => s.setPlaylistCover);
+  const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
 
   const allPlaylists = usePlayerStore((s) => s.playlists);
+
   const sourceNames = React.useMemo(() => {
     if (!playlist.is_mix || !playlist.source_ids) return "";
     return playlist.source_ids
@@ -36,6 +39,17 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
   const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isCoverModalOpen, setIsCoverModalOpen] = React.useState(false);
+  const [isCreateSubModalOpen, setIsCreateSubModalOpen] = React.useState(false);
+
+  const parentPlaylist = React.useMemo(() => {
+    if (!playlist.parent_id) return null;
+    return allPlaylists.find((p) => p.id === playlist.parent_id) || null;
+  }, [playlist.parent_id, allPlaylists]);
+
+  const childPlaylists = React.useMemo(() => {
+    if (playlist.is_mix || playlist.parent_id) return [];
+    return allPlaylists.filter((p) => p.parent_id === playlist.id);
+  }, [playlist.id, playlist.is_mix, playlist.parent_id, allPlaylists]);
 
   // Sync editing name when playlist changes
   React.useEffect(() => {
@@ -80,16 +94,21 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
     }
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = async (keepChildren: boolean) => {
     if (isDeleting) return;
     setIsDeleting(true);
     try {
-      await deletePlaylist(playlist.id);
+      if (keepChildren) {
+        await deletePlaylist(playlist.id, true);
+      } else {
+        await deletePlaylist(playlist.id);
+      }
       setIsDeleteModalOpen(false);
     } finally {
       setIsDeleting(false);
     }
   };
+
 
   // Distinct tracks from playlist items available to pick as cover
   const distinctTracks = React.useMemo(() => {
@@ -131,9 +150,26 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
           </div>
 
           <div className="min-w-0 flex-1">
-            <span className="text-2xs uppercase tracking-wider font-bold text-primary mb-1 block">
-              {playlist.is_mix ? t("mixPlaylist.badge", "Mix Playlist") : t("playlist.customBadge", "Playlist")}
-            </span>
+            {parentPlaylist ? (
+              <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1.5 flex-wrap">
+                <FolderTree className="h-3.5 w-3.5 text-flexoki-purple shrink-0" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => setActivePlaylist(parentPlaylist.id)}
+                  className="hover:text-foreground hover:underline transition-colors cursor-pointer truncate max-w-[200px]"
+                >
+                  {parentPlaylist.name}
+                </button>
+                <span className="text-muted-foreground/60 select-none">/</span>
+                <span className="text-foreground truncate font-semibold" aria-current="page">
+                  {playlist.name}
+                </span>
+              </nav>
+            ) : (
+              <span className="text-2xs uppercase tracking-wider font-bold text-primary mb-1 block">
+                {playlist.is_mix ? t("mixPlaylist.badge", "Mix Playlist") : t("playlist.customBadge", "Playlist")}
+              </span>
+            )}
 
             {isEditingName ? (
               <form onSubmit={handleSaveRename} className="flex items-center gap-2 max-w-md my-1">
@@ -291,20 +327,80 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
             </Button>
           </div>
         </div>
+
+        {/* Sub-Playlists Navigation Bar (Parent View) */}
+        {!playlist.is_mix && !playlist.parent_id && (
+          <div
+            data-testid="sub-playlists-bar"
+            className="pt-3 border-t border-border/40 flex flex-col gap-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <FolderTree className="h-3.5 w-3.5 text-flexoki-purple" aria-hidden="true" />
+                {t("playlist.subPlaylists", "Sub-playlists")}
+                {childPlaylists.length > 0 && (
+                  <span className="text-2xs rounded-full bg-secondary px-1.5 py-0.5 text-muted-foreground font-mono">
+                    {childPlaylists.length}
+                  </span>
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsCreateSubModalOpen(true)}
+                data-testid="create-sub-playlist-btn"
+                className="h-7 px-2 text-xs text-flexoki-purple hover:text-flexoki-purple hover:bg-flexoki-purple/10 gap-1 cursor-pointer font-medium"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{t("playlist.newSubPlaylist", "New Sub-playlist")}</span>
+              </Button>
+            </div>
+
+            {childPlaylists.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {childPlaylists.map((child) => (
+                  <button
+                    key={child.id}
+                    type="button"
+                    onClick={() => setActivePlaylist(child.id)}
+                    data-testid={`sub-playlist-pill-${child.id}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary/80 hover:bg-secondary border border-border text-foreground hover:border-flexoki-purple/50 transition-colors cursor-pointer group"
+                  >
+                    <FolderTree className="h-3 w-3 text-flexoki-purple group-hover:scale-110 transition-transform" aria-hidden="true" />
+                    <span className="truncate max-w-[150px]">{child.name}</span>
+                    {child.item_count !== undefined && (
+                      <span className="text-2xs font-mono text-muted-foreground group-hover:text-foreground">
+                        {child.item_count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Delete Confirmation Modal */}
-      <ConfirmModal
+      <DeletePlaylistModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
+        playlist={playlist}
         onConfirm={handleConfirmDelete}
-        title={t("playlist.deletePlaylistTitle", "Xóa danh sách phát?")}
-        description={t("playlist.confirmDelete", { name: playlist.name })}
-        confirmText={t("common.delete", "Xóa")}
-        cancelText={t("common.cancel", "Hủy")}
-        variant="destructive"
-        isLoading={isDeleting}
       />
+
+      {/* Create Sub-Playlist Modal */}
+      {isCreateSubModalOpen && (
+        <React.Suspense fallback={null}>
+          <CreatePlaylistModal
+            isOpen={isCreateSubModalOpen}
+            onClose={() => setIsCreateSubModalOpen(false)}
+            initialParentId={playlist.id}
+            onCreated={(newId) => setActivePlaylist(newId)}
+          />
+        </React.Suspense>
+      )}
 
       {/* Cover Picker Modal */}
       <Modal

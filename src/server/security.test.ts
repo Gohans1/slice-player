@@ -80,8 +80,9 @@ describe("Security Controls & Boundary Enforcement", () => {
   });
 
   it("should sanitize internal server paths and strip stack traces in production logs", () => {
-    const err = new Error("Database connection failed at C:\\Users\\ADMIN\\Desktop\\slice-player\\src\\server\\db.ts:42");
-    err.stack = "Error: Database connection failed\n    at C:\\Users\\ADMIN\\Desktop\\slice-player\\src\\server\\db.ts:42:15";
+    const cwdPath = resolve(process.cwd(), "src/server/db.ts");
+    const err = new Error(`Database connection failed at ${cwdPath}:42`);
+    err.stack = `Error: Database connection failed\n    at ${cwdPath}:42:15`;
 
     const prevEnv = process.env.NODE_ENV;
     try {
@@ -89,14 +90,14 @@ describe("Security Controls & Boundary Enforcement", () => {
       process.env.NODE_ENV = "production";
       const prodSerialized = safeSerializeDetails(err) as Record<string, unknown>;
       expect(prodSerialized.stack).toBeUndefined();
-      expect(String(prodSerialized.message)).not.toContain("C:\\Users\\ADMIN");
+      expect(String(prodSerialized.message)).not.toContain(process.cwd());
 
-      // In non-production: stack paths must be sanitized (. instead of C:\Users\ADMIN\Desktop\slice-player)
+      // In non-production: stack paths must be sanitized (. instead of full path)
       process.env.NODE_ENV = "development";
       const devSerialized = safeSerializeDetails(err) as Record<string, unknown>;
       expect(devSerialized.stack).toBeDefined();
-      expect(String(devSerialized.stack)).not.toContain("C:\\Users\\ADMIN");
-      expect(String(devSerialized.stack)).toContain(".\\src\\server\\db.ts");
+      expect(String(devSerialized.stack)).not.toContain(process.cwd());
+      expect(String(devSerialized.stack)).toContain(join(".", "src", "server", "db.ts"));
 
       // Verify arbitrary user profile path is masked to ~/
       const userPathErr = new Error("Failed at C:\\Users\\SomeoneElse\\private\\token.txt");

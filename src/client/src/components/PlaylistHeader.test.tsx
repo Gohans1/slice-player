@@ -90,12 +90,14 @@ describe("PlaylistHeader Component (TDD)", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    container.remove();
     usePlayerStore.setState({
       playlists: original.playlists,
       buildPlaylistQueue: original.buildPlaylistQueue,
       renamePlaylist: original.renamePlaylist,
       deletePlaylist: original.deletePlaylist,
       setPlaylistCover: original.setPlaylistCover,
+      setActivePlaylist: original.setActivePlaylist,
     });
   });
 
@@ -221,10 +223,9 @@ describe("PlaylistHeader Component (TDD)", () => {
     // Confirm modal should be open in document.body
     const dialog = document.body.querySelector("[role='dialog']");
     expect(dialog).not.toBeNull();
-    const confirmBtn = Array.from(dialog?.querySelectorAll("button") || []).find(
-      (b) => b.textContent?.trim() === "Delete" || b.textContent?.trim() === "Xóa"
-    ) as HTMLButtonElement | undefined;
-    expect(confirmBtn).toBeDefined();
+    const confirmBtn = (dialog?.querySelector("[data-testid='delete-playlist-submit-btn']") ||
+      dialog?.querySelector("button[type='submit']")) as HTMLButtonElement | null;
+    expect(confirmBtn).not.toBeNull();
 
     await act(async () => {
       confirmBtn?.click();
@@ -340,4 +341,81 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(playBtn.disabled).toBe(true);
     expect(shuffleBtn.disabled).toBe(true);
   });
+
+  it("renders breadcrumb for child playlist and allows navigating to parent", async () => {
+    const setActivePlaylist = mock(async () => {});
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_parent", name: "Rock Parent", created_at: 1, updated_at: 1, item_count: 5 },
+        { id: "pl_child", name: "Guitar Solos", parent_id: "pl_parent", created_at: 2, updated_at: 2, item_count: 2 },
+      ],
+      setActivePlaylist,
+    } as any);
+
+    const childPlaylist: Playlist & { item_count: number } = {
+      id: "pl_child",
+      name: "Guitar Solos",
+      parent_id: "pl_parent",
+      created_at: 2,
+      updated_at: 2,
+      item_count: 2,
+    };
+
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={childPlaylist} items={mockItems} />);
+    });
+
+    const breadcrumb = container.querySelector("[aria-label='Breadcrumb']");
+    expect(breadcrumb).not.toBeNull();
+    expect(breadcrumb?.textContent).toContain("Rock Parent");
+    expect(breadcrumb?.textContent).toContain("Guitar Solos");
+
+    const parentLink = breadcrumb?.querySelector("button");
+    expect(parentLink).not.toBeNull();
+
+    await act(async () => {
+      parentLink?.click();
+    });
+
+    expect(setActivePlaylist).toHaveBeenCalledWith("pl_parent");
+  });
+
+  it("renders sub-playlists pill bar on root playlist and allows switching to child", async () => {
+    const setActivePlaylist = mock(async () => {});
+    const parentPlaylist: Playlist & { item_count: number } = {
+      id: "pl_root",
+      name: "Parent List",
+      created_at: 1,
+      updated_at: 1,
+      item_count: 10,
+    };
+
+    usePlayerStore.setState({
+      playlists: [
+        parentPlaylist,
+        { id: "pl_c1", name: "Sub 1", parent_id: "pl_root", created_at: 2, updated_at: 2, item_count: 3 },
+        { id: "pl_c2", name: "Sub 2", parent_id: "pl_root", created_at: 3, updated_at: 3, item_count: 7 },
+      ],
+      setActivePlaylist,
+    } as any);
+
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={parentPlaylist} items={mockItems} />);
+    });
+
+    const pillBar = container.querySelector("[data-testid='sub-playlists-bar']");
+    expect(pillBar).not.toBeNull();
+    expect(pillBar?.textContent).toContain("Sub 1");
+    expect(pillBar?.textContent).toContain("Sub 2");
+
+    const pill1 = container.querySelector("[data-testid='sub-playlist-pill-pl_c1']") as HTMLButtonElement;
+    expect(pill1).not.toBeNull();
+
+    await act(async () => {
+      pill1.click();
+    });
+
+    expect(setActivePlaylist).toHaveBeenCalledWith("pl_c1");
+  });
 });
+

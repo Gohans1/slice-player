@@ -269,7 +269,15 @@
     "sliceCount_one": "{{count}} lát cắt",
     "sliceCount_other": "{{count}} lát cắt",
     "setCover": "Đặt làm ảnh bìa playlist",
-    "clearCover": "Bỏ ảnh bìa playlist"
+    "clearCover": "Bỏ ảnh bìa playlist",
+    "subPlaylists": "Danh sách con",
+    "newSubPlaylist": "Tạo danh sách con mới",
+    "subPlaylistOf": "Danh sách con của {{name}}",
+    "deleteParentPrompt": "Danh sách phát này chứa {{count}} danh sách con. Bạn muốn xử lý thế nào?",
+    "deleteCascadeOption": "Xóa cả danh sách phát này và tất cả danh sách con",
+    "deleteKeepOption": "Giữ lại các danh sách con thành danh sách phát độc lập",
+    "selectParentPrompt": "Danh sách phát cha (tùy chọn)",
+    "noParent": "Không có (Danh sách phát gốc)"
   },
   "studio": {
     "title": "Studio Cắt Đoạn",

@@ -7,7 +7,7 @@ import {
   getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listSegmentsByTrackIds, listAllSegments, validateVolume,
   createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist, setPlaylistCover, createMixPlaylist, setMixSources,
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
-  getPlaylistMemberships, getCrossPlatformBasename, getDb
+  getPlaylistMemberships, getCrossPlatformBasename, getDb, getChildPlaylistIds
 } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
@@ -1032,7 +1032,7 @@ const server = serve({
       // 2. Create playlist
       if (url.pathname === "/api/playlists" && req.method === "POST") {
         try {
-          const body = await parseJsonBody<{ name: string }>(req);
+          const body = await parseJsonBody<{ name: string; parent_id?: unknown }>(req);
           if (typeof body.name !== "string") {
             return Response.json({ error: "Tên danh sách phát phải là chuỗi" }, { status: 400, headers: corsHeaders });
           }
@@ -1040,14 +1040,21 @@ const server = serve({
           if (!rawName) {
             return Response.json({ error: "Tên danh sách phát không được để trống" }, { status: 400, headers: corsHeaders });
           }
-          const playlist = createPlaylist(rawName);
+          let parentId: string | null = null;
+          if (body.parent_id !== undefined && body.parent_id !== null) {
+            if (typeof body.parent_id !== "string") {
+              return Response.json({ error: "parent_id phải là chuỗi hoặc null" }, { status: 400, headers: corsHeaders });
+            }
+            const trimmed = body.parent_id.trim();
+            parentId = trimmed ? trimmed : null;
+          }
+          const playlist = createPlaylist(rawName, undefined, parentId);
           serverEvents.emit("playlist_created", { playlist });
           return Response.json(playlist, { status: 201, headers: corsHeaders });
         } catch (e: any) {
-          const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
+          const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("nest beyond 1 level") || e.message.includes("mix playlist") || e.message.includes("Parent playlist") || e.message.includes("not found")));
           return formatError(e, isClientErr);
         }
-
       }
 
       // 2b. Create mix playlist (live view over source playlists)
@@ -1143,11 +1150,15 @@ const server = serve({
         } catch {
           return Response.json({ error: "Malformed URI component" }, { status: 400, headers: corsHeaders });
         }
+        const childIds = getChildPlaylistIds(plId);
         const ok = removePlaylistItem(plId, itemId);
         if (!ok) {
           return Response.json({ error: "Mục không tồn tại trong playlist" }, { status: 404, headers: corsHeaders });
         }
         serverEvents.emit("playlist_items_changed", { playlistId: plId });
+        for (const cId of childIds) {
+          serverEvents.emit("playlist_items_changed", { playlistId: cId });
+        }
         return Response.json({ success: true }, { headers: corsHeaders });
       }
 
@@ -1186,6 +1197,9 @@ const server = serve({
 
           const added = addPlaylistItemsBatch(plId, itemsToAdd);
           serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          if (pl.parent_id) {
+            serverEvents.emit("playlist_items_changed", { playlistId: pl.parent_id });
+          }
           return Response.json({ success: true, count: added.length, items: added }, { status: 200, headers: corsHeaders });
         } catch (e: any) {
           const isClientErr = e instanceof SyntaxError || e instanceof TypeError || Boolean(e?.message?.includes("mix playlist"));
@@ -1216,8 +1230,12 @@ const server = serve({
           if (validIds.length > MAX_BATCH_LIMIT) {
             return Response.json({ error: `Batch size limit exceeded (max ${MAX_BATCH_LIMIT})` }, { status: 400, headers: corsHeaders });
           }
+          const childIds = getChildPlaylistIds(plId);
           const deletedCount = removePlaylistItemsBatch(plId, validIds);
           serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          for (const cId of childIds) {
+            serverEvents.emit("playlist_items_changed", { playlistId: cId });
+          }
           return Response.json({ success: true, deletedCount }, { headers: corsHeaders });
         } catch (e: any) {
           const isClientErr = e instanceof SyntaxError || e instanceof TypeError;
@@ -1260,6 +1278,9 @@ const server = serve({
           }
           const item = addPlaylistItem(plId, cleanTrackId, cleanSegId);
           serverEvents.emit("playlist_items_changed", { playlistId: plId });
+          if (pl.parent_id) {
+            serverEvents.emit("playlist_items_changed", { playlistId: pl.parent_id });
+          }
           return Response.json(item, { status: 201, headers: corsHeaders });
         } catch (e: any) {
           const isClientErr = e instanceof SyntaxError || e instanceof TypeError || (e instanceof Error && (e.message.includes("not found") || e.message.includes("does not belong") || e.message.includes("mix playlist") || e.message.toLowerCase().includes("constraint")));
@@ -1289,7 +1310,10 @@ const server = serve({
         }
         if (req.method === "PATCH") {
           try {
-            const body = await parseJsonBody<{ name: string; cover_track_id?: unknown }>(req);
+            const body = await parseJsonBody<{ name?: string; cover_track_id?: unknown; parent_id?: unknown }>(req);
+            if (body && "parent_id" in body) {
+              return Response.json({ error: "Không được phép thay đổi playlist cha (reparenting is not permitted)" }, { status: 400, headers: corsHeaders });
+            }
             if (body && "cover_track_id" in body) {
               const coverId = body.cover_track_id;
               if (coverId !== null && typeof coverId !== "string") {
@@ -1318,11 +1342,34 @@ const server = serve({
         }
         if (req.method === "DELETE") {
           try {
-            const ok = deletePlaylist(plId);
+            let keepChildren = url.searchParams.get("keep_children") === "true";
+            const rawLen = req.headers.get("content-length");
+            if (rawLen && Number(rawLen) > 0) {
+              try {
+                const body = await parseJsonBody<{ keep_children?: boolean }>(req);
+                if (body && typeof body.keep_children === "boolean") {
+                  keepChildren = body.keep_children;
+                }
+              } catch {}
+            }
+            const childIds = getChildPlaylistIds(plId);
+            const ok = deletePlaylist(plId, keepChildren);
             if (!ok) {
               return Response.json({ error: "Playlist không tồn tại" }, { status: 404, headers: corsHeaders });
             }
             serverEvents.emit("playlist_deleted", { playlistId: plId });
+            if (keepChildren) {
+              for (const cId of childIds) {
+                const promoted = getPlaylist(cId);
+                if (promoted) {
+                  serverEvents.emit("playlist_updated", { playlistId: cId, playlist: promoted });
+                }
+              }
+            } else {
+              for (const cId of childIds) {
+                serverEvents.emit("playlist_deleted", { playlistId: cId });
+              }
+            }
             return Response.json({ success: true }, { headers: corsHeaders });
           } catch (e: any) {
             return Response.json({ error: e.message || "Lỗi xóa playlist" }, { status: 500, headers: corsHeaders });

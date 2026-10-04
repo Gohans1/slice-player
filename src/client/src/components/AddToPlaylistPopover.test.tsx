@@ -300,4 +300,37 @@ describe("AddToPlaylistPopover Component", () => {
     expect(createPlaylistMock).toHaveBeenCalledWith("My Chill Mix");
     expect(addToPlaylistMock).toHaveBeenCalledWith("pl_new_123", "trk_focus", "seg_focus");
   });
+
+  it("renders sub-playlists indented with ↳ connector beneath their parent", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        { id: "pl_root", name: "Root Playlist", created_at: 1, updated_at: 1, item_count: 5 },
+        { id: "pl_child", name: "Child Sub-Playlist", parent_id: "pl_root", created_at: 2, updated_at: 2, item_count: 2 },
+      ] as any,
+    });
+
+    globalThis.fetch = mock(async () => new Response(JSON.stringify([]), { status: 200 })) as any;
+
+    await act(async () => {
+      root.render(<AddToPlaylistPopover trackId="trk_1" />);
+    });
+
+    const triggerBtn = container.querySelector('button[title="Add to Playlist"]');
+    await act(async () => {
+      triggerBtn.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const items = Array.from(container.querySelectorAll("button[role='checkbox']")) as HTMLElement[];
+    expect(items.length).toBe(2);
+
+    const rootItem = items[0];
+    const childItem = items[1];
+
+    expect(rootItem.textContent).toContain("Root Playlist");
+    expect(childItem.textContent).toContain("Child Sub-Playlist");
+    expect(childItem.textContent).toContain("↳");
+    expect(childItem.className).toContain("pl-5");
+  });
 });
+

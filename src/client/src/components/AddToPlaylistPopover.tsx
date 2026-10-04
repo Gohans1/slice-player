@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
+import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 import { cn } from "../lib/utils";
 
 interface AddToPlaylistMenuProps {
@@ -34,8 +35,9 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
   }, [isOpen, isRendered]);
 
   const allPlaylists = usePlayerStore((s) => s.playlists);
-  // A mix owns no items, so it can never be a destination
-  const playlists = React.useMemo(() => allPlaylists.filter((pl) => !pl.is_mix), [allPlaylists]);
+  const orderedPlaylists = React.useMemo(() => {
+    return getHierarchicalPlaylists(allPlaylists, { excludeMixes: true });
+  }, [allPlaylists]);
   const addToPlaylist = usePlayerStore((s) => s.addToPlaylist);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
 
@@ -95,11 +97,7 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
       if (existingItemId) {
         const ok = await removeFromPlaylist(plId, existingItemId);
         if (ok && isMountedRef.current) {
-          setMemberships((prev) => {
-            const next = { ...prev };
-            delete next[plId];
-            return next;
-          });
+          await fetchMemberships();
         }
       } else {
         const ok = await addToPlaylist(plId, trackId, segmentId || null);
@@ -147,18 +145,18 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
         <Plus className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
         <span className="truncate">{t("addToPlaylist.newPlaylist", "New Playlist")}</span>
       </button>
-      {loading && playlists.length === 0 ? (
+      {loading && orderedPlaylists.length === 0 ? (
         <div className="space-y-1.5 p-1">
           <div className="h-6 rounded bg-secondary/50 animate-pulse" />
           <div className="h-6 rounded bg-secondary/40 animate-pulse" />
         </div>
-      ) : playlists.length === 0 ? (
+      ) : orderedPlaylists.length === 0 ? (
         <div className="px-2 py-2 text-xs text-muted-foreground text-center">
           {t("addToPlaylist.empty")}
         </div>
       ) : (
-        <div className="max-h-40 overflow-y-auto space-y-0.5">
-          {playlists.map((pl) => {
+        <div className="max-h-60 overflow-y-auto space-y-0.5">
+          {orderedPlaylists.map(({ playlist: pl, isChild }) => {
             const isMember = Boolean(memberships[pl.id]);
             const isBusy = busyPlaylistId === pl.id;
             return (
@@ -169,13 +167,22 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
                 aria-checked={isMember}
                 onClick={() => handleToggle(pl.id)}
                 disabled={Boolean(busyPlaylistId)}
-                className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs text-left transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`w-full flex items-center justify-between py-1.5 rounded text-xs text-left transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                  isChild ? "pl-5 pr-2" : "px-2"
+                } ${
                   isMember
                     ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
                     : "hover:bg-accent hover:text-accent-foreground text-foreground"
                 }`}
               >
-                <span className="truncate">{pl.name}</span>
+                <span className="truncate flex items-center gap-1">
+                  {isChild && (
+                    <span className="text-muted-foreground/60 select-none font-mono text-2xs mr-0.5" aria-hidden="true">
+                      ↳
+                    </span>
+                  )}
+                  <span className="truncate">{pl.name}</span>
+                </span>
                 {isBusy ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 ml-1 text-muted-foreground" />
                 ) : isMember ? (

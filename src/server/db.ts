@@ -132,6 +132,18 @@ function runMigrations(db: Database): void {
         db.run("PRAGMA user_version = 8;");
       })();
     }
+
+    if (userVersion < 9) {
+      db.transaction(() => {
+        // v9: Support sub-playlists with 1-level hierarchy
+        const cols = db.query("PRAGMA table_info(playlists);").all() as { name: string }[];
+        if (!cols.some((c) => c.name === "parent_id")) {
+          db.run("ALTER TABLE playlists ADD COLUMN parent_id TEXT REFERENCES playlists(id) ON DELETE CASCADE;");
+        }
+        db.run("CREATE INDEX IF NOT EXISTS idx_playlists_parent_id ON playlists(parent_id);");
+        db.run("PRAGMA user_version = 9;");
+      })();
+    }
   } catch (err) {
     console.error("[db] Error executing database migrations:", err);
     throw err;
@@ -569,26 +581,40 @@ export function reconcileTrackSegments(trackId: string, duration: number): { pru
 
 // --- PLAYLIST OPERATIONS ---
 
-export function createPlaylist(name: string, customId?: string): Playlist {
+export function createPlaylist(name: string, customId?: string, parentId?: string | null): Playlist {
   const db = getDb();
   const trimmed = (name || "").trim();
   if (!trimmed) {
     throw new Error("Playlist name cannot be empty");
   }
+  let cleanParentId: string | null = null;
+  if (typeof parentId === "string" && parentId.trim()) {
+    cleanParentId = parentId.trim();
+    const parentPl = db.query("SELECT id, is_mix, parent_id FROM playlists WHERE id = $id").get({ $id: cleanParentId }) as { id: string; is_mix: number; parent_id: string | null } | null;
+    if (!parentPl) {
+      throw new Error(`Parent playlist "${cleanParentId}" not found`);
+    }
+    if (parentPl.is_mix) {
+      throw new Error("A mix playlist cannot be a parent playlist");
+    }
+    if (parentPl.parent_id) {
+      throw new Error("Invalid parent_id: cannot nest beyond 1 level");
+    }
+  }
   const id = customId || `pl_${crypto.randomUUID()}`;
   const query = db.query(`
-    INSERT INTO playlists (id, name, created_at, updated_at, is_custom_ordered)
-    VALUES ($id, $name, unixepoch(), unixepoch(), 0)
+    INSERT INTO playlists (id, name, created_at, updated_at, is_custom_ordered, parent_id)
+    VALUES ($id, $name, unixepoch(), unixepoch(), 0, $parent_id)
     RETURNING *;
   `);
-  const pl = query.get({ $id: id, $name: trimmed }) as any;
-  return { ...pl, item_count: 0, is_custom_ordered: false };
+  const pl = query.get({ $id: id, $name: trimmed, $parent_id: cleanParentId }) as any;
+  return { ...pl, item_count: 0, is_custom_ordered: false, parent_id: pl.parent_id ?? null };
 }
 
 export function getPlaylist(id: string): (Playlist & { item_count: number }) | null {
   const db = getDb();
   const row = db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, COUNT(pi.id) as item_count
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, p.parent_id, COUNT(pi.id) as item_count
     FROM playlists p
     LEFT JOIN playlist_items pi ON p.id = pi.playlist_id
     WHERE p.id = $id
@@ -598,13 +624,20 @@ export function getPlaylist(id: string): (Playlist & { item_count: number }) | n
   if (row.is_mix) {
     return {
       ...row,
+      parent_id: null,
       is_custom_ordered: true,
       is_mix: true,
       item_count: getMixItems(id).length,
       source_ids: getMixSourceIds(id),
     };
   }
-  return { ...row, is_custom_ordered: Boolean(row.is_custom_ordered), is_mix: false };
+  return { ...row, parent_id: row.parent_id ?? null, is_custom_ordered: Boolean(row.is_custom_ordered), is_mix: false };
+}
+
+export function getChildPlaylistIds(parentId: string): string[] {
+  const db = getDb();
+  const rows = db.query("SELECT id FROM playlists WHERE parent_id = $id").all({ $id: parentId }) as { id: string }[];
+  return rows.map((r) => r.id);
 }
 
 function getMixSourceIds(mixId: string): string[] {
@@ -680,7 +713,7 @@ export function listPlaylists(): (Playlist & { item_count: number })[] {
   // Mosaic follows the same item order as getPlaylistItems(); a track sliced several times fills only one tile.
   // Cover only counts while its track is still in the playlist.
   const rows = db.query(`
-    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, p.cover_track_id,
+    SELECT p.id, p.name, p.created_at, p.updated_at, p.is_custom_ordered, p.is_mix, p.cover_track_id, p.parent_id,
       (SELECT COUNT(*) FROM playlist_items pi WHERE pi.playlist_id = p.id) as item_count,
       (SELECT NULLIF(t.thumbnail_url, '') FROM tracks t
         WHERE t.id = p.cover_track_id
@@ -706,6 +739,7 @@ export function listPlaylists(): (Playlist & { item_count: number })[] {
     if (!r.is_mix) {
       return {
         ...r,
+        parent_id: r.parent_id ?? null,
         is_custom_ordered: Boolean(r.is_custom_ordered),
         is_mix: false,
         mosaic_urls: JSON.parse(r.mosaic_urls || "[]"),
@@ -719,6 +753,7 @@ export function listPlaylists(): (Playlist & { item_count: number })[] {
     }
     return {
       ...r,
+      parent_id: null,
       is_custom_ordered: true,
       is_mix: true,
       item_count: items.length,
@@ -763,13 +798,25 @@ export function updatePlaylist(id: string, name: string): Playlist | null {
   if (!row) return null;
   if (row.is_mix) return getPlaylist(id);
   const countRow = db.query("SELECT COUNT(*) as count FROM playlist_items WHERE playlist_id = $id").get({ $id: id }) as { count: number };
-  return { ...row, item_count: countRow?.count ?? 0, is_custom_ordered: Boolean(row.is_custom_ordered) };
+  return { ...row, item_count: countRow?.count ?? 0, is_custom_ordered: Boolean(row.is_custom_ordered), parent_id: row.parent_id ?? null };
 }
 
-export function deletePlaylist(id: string): boolean {
+export function deletePlaylist(id: string, keepChildren = false): boolean {
   const db = getDb();
-  const res = db.query("DELETE FROM playlists WHERE id = $id").run({ $id: id });
-  return res.changes > 0;
+  const childIds = getChildPlaylistIds(id);
+  let success = false;
+  db.transaction(() => {
+    if (keepChildren) {
+      db.query("UPDATE playlists SET parent_id = NULL WHERE parent_id = $id").run({ $id: id });
+    } else {
+      for (const cId of childIds) {
+        db.query("DELETE FROM playlists WHERE id = $id").run({ $id: cId });
+      }
+    }
+    const res = db.query("DELETE FROM playlists WHERE id = $id").run({ $id: id });
+    success = res.changes > 0;
+  })();
+  return success;
 }
 
 export function getPlaylistItems(playlistId: string): PlaylistItemWithDetails[] {
@@ -846,7 +893,7 @@ export function addPlaylistItem(playlistId: string, trackId: string, segmentId?:
   const db = getDb();
 
   db.transaction(() => {
-    const pl = db.query("SELECT id, is_mix FROM playlists WHERE id = $id").get({ $id: playlistId }) as { is_mix: number } | null;
+    const pl = db.query("SELECT id, is_mix, parent_id FROM playlists WHERE id = $id").get({ $id: playlistId }) as { id: string; is_mix: number; parent_id: string | null } | null;
     if (!pl) throw new Error(`Playlist ${playlistId} not found`);
     if (pl.is_mix) throw new Error("Cannot add items to a mix playlist");
 
@@ -859,6 +906,40 @@ export function addPlaylistItem(playlistId: string, trackId: string, segmentId?:
       seg = getSegment(cleanSegId);
       if (!seg || seg.track_id !== trackId) {
         throw new Error(`Segment ${cleanSegId} not found or does not belong to track ${trackId}`);
+      }
+    }
+
+    // Auto-bubble to parent playlist if this is a child playlist
+    if (pl.parent_id) {
+      const existingInParent = db.query(`
+        SELECT id FROM playlist_items 
+        WHERE playlist_id = $playlist_id 
+          AND track_id = $track_id 
+          AND segment_id IS $segment_id
+      `).get({
+        $playlist_id: pl.parent_id,
+        $track_id: trackId,
+        $segment_id: cleanSegId,
+      });
+
+      if (!existingInParent) {
+        db.query(`
+          UPDATE playlist_items 
+          SET sort_order = sort_order + 1 
+          WHERE playlist_id = $playlist_id
+        `).run({ $playlist_id: pl.parent_id });
+
+        const parentItemId = `pli_${crypto.randomUUID()}`;
+        db.query(`
+          INSERT INTO playlist_items (id, playlist_id, track_id, segment_id, sort_order, added_at)
+          VALUES ($id, $playlist_id, $track_id, $segment_id, 0, unixepoch())
+        `).run({
+          $id: parentItemId,
+          $playlist_id: pl.parent_id,
+          $track_id: trackId,
+          $segment_id: cleanSegId,
+        });
+        db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: pl.parent_id });
       }
     }
 
@@ -949,7 +1030,7 @@ export function addPlaylistItemsBatch(
   const results: PlaylistItemWithDetails[] = [];
 
   db.transaction(() => {
-    const pl = db.query("SELECT id, is_mix FROM playlists WHERE id = $id").get({ $id: playlistId }) as { is_mix: number } | null;
+    const pl = db.query("SELECT id, is_mix, parent_id FROM playlists WHERE id = $id").get({ $id: playlistId }) as { id: string; is_mix: number; parent_id: string | null } | null;
     if (!pl) throw new Error(`Playlist ${playlistId} not found`);
     if (pl.is_mix) throw new Error("Cannot add items to a mix playlist");
 
@@ -998,6 +1079,55 @@ export function addPlaylistItemsBatch(
       const placeholders = chunk.map(() => "?").join(",");
       const segs = db.query(`SELECT * FROM segments WHERE id IN (${placeholders})`).all(...chunk) as Segment[];
       for (const s of segs) segMap.set(s.id, s);
+    }
+
+    // Auto-bubble to parent playlist if this is a child playlist
+    if (pl.parent_id) {
+      const parentExisting = db.query(
+        `SELECT track_id, segment_id FROM playlist_items WHERE playlist_id = $parent_id`
+      ).all({ $parent_id: pl.parent_id }) as { track_id: string; segment_id: string | null }[];
+      const parentExistingSet = new Set(parentExisting.map((i) => `${i.track_id}::${i.segment_id || ""}`));
+
+      const parentMaxOrderRow = db.query(`
+        SELECT COALESCE(MAX(sort_order), -1) as max_order 
+        FROM playlist_items 
+        WHERE playlist_id = $playlist_id
+      `).get({ $playlist_id: pl.parent_id }) as { max_order: number };
+      let parentNextOrder = (parentMaxOrderRow?.max_order ?? -1) + 1;
+
+      let parentAdded = false;
+      for (const entry of items) {
+        const trackId = entry.trackId;
+        const cleanSegId = typeof entry.segmentId === "string" && entry.segmentId.trim() ? entry.segmentId.trim() : null;
+
+        const trk = trackMap.get(trackId);
+        if (!trk) continue;
+        if (cleanSegId) {
+          const seg = segMap.get(cleanSegId);
+          if (!seg || seg.track_id !== trackId) continue;
+        }
+
+        const key = `${trackId}::${cleanSegId || ""}`;
+        if (!parentExistingSet.has(key)) {
+          const pItemId = `pli_${crypto.randomUUID()}`;
+          try {
+            insertStmt.run({
+              $id: pItemId,
+              $playlist_id: pl.parent_id,
+              $track_id: trackId,
+              $segment_id: cleanSegId,
+              $sort_order: parentNextOrder++,
+            });
+            parentExistingSet.add(key);
+            parentAdded = true;
+          } catch {
+            // Ignore race conditions
+          }
+        }
+      }
+      if (parentAdded) {
+        db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: pl.parent_id });
+      }
     }
 
     // Pre-fetch existing playlist items for this playlist
@@ -1080,15 +1210,46 @@ export function addPlaylistItemsBatch(
 
 export function removePlaylistItem(playlistId: string, itemId: string): boolean {
   const db = getDb();
-  const res = db.query("DELETE FROM playlist_items WHERE id = $id AND playlist_id = $playlist_id").run({
-    $id: itemId,
-    $playlist_id: playlistId,
-  });
-  if (res.changes > 0) {
-    db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: playlistId });
-    return true;
-  }
-  return false;
+  let success = false;
+  db.transaction(() => {
+    // 1. Get the item to know its track_id and segment_id
+    const item = db.query(`
+      SELECT track_id, segment_id FROM playlist_items WHERE id = $id AND playlist_id = $playlist_id
+    `).get({ $id: itemId, $playlist_id: playlistId }) as { track_id: string; segment_id: string | null } | null;
+
+    if (!item) return;
+
+    // 2. Cascade delete from child playlists if this playlist is a parent
+    const childIds = getChildPlaylistIds(playlistId);
+    if (childIds.length > 0) {
+      const childRes = db.query(`
+        DELETE FROM playlist_items 
+        WHERE playlist_id IN (SELECT id FROM playlists WHERE parent_id = $parent_id)
+          AND track_id = $track_id
+          AND segment_id IS $segment_id
+      `).run({
+        $parent_id: playlistId,
+        $track_id: item.track_id,
+        $segment_id: item.segment_id,
+      });
+      if (childRes.changes > 0) {
+        for (const cId of childIds) {
+          db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: cId });
+        }
+      }
+    }
+
+    // 3. Delete from the playlist itself
+    const res = db.query("DELETE FROM playlist_items WHERE id = $id AND playlist_id = $playlist_id").run({
+      $id: itemId,
+      $playlist_id: playlistId,
+    });
+    if (res.changes > 0) {
+      db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: playlistId });
+      success = true;
+    }
+  })();
+  return success;
 }
 
 export function removePlaylistItemsBatch(playlistId: string, itemIds: string[]): number {
@@ -1097,6 +1258,42 @@ export function removePlaylistItemsBatch(playlistId: string, itemIds: string[]):
   let deletedCount = 0;
   const CHUNK_SIZE = 500;
   db.transaction(() => {
+    // 1. Find items being removed to know their (track_id, segment_id)
+    const itemsToRemove: { track_id: string; segment_id: string | null }[] = [];
+    for (let i = 0; i < itemIds.length; i += CHUNK_SIZE) {
+      const chunk = itemIds.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = db.query(
+        `SELECT track_id, segment_id FROM playlist_items WHERE playlist_id = ? AND id IN (${placeholders})`
+      ).all(playlistId, ...chunk) as { track_id: string; segment_id: string | null }[];
+      itemsToRemove.push(...rows);
+    }
+
+    // 2. Cascade delete from child playlists if this playlist is a parent
+    const childIds = getChildPlaylistIds(playlistId);
+    if (childIds.length > 0 && itemsToRemove.length > 0) {
+      let cascadedAny = false;
+      for (const it of itemsToRemove) {
+        const res = db.query(`
+          DELETE FROM playlist_items 
+          WHERE playlist_id IN (SELECT id FROM playlists WHERE parent_id = $parent_id)
+            AND track_id = $track_id
+            AND segment_id IS $segment_id
+        `).run({
+          $parent_id: playlistId,
+          $track_id: it.track_id,
+          $segment_id: it.segment_id,
+        });
+        if (res.changes > 0) cascadedAny = true;
+      }
+      if (cascadedAny) {
+        for (const cId of childIds) {
+          db.query("UPDATE playlists SET updated_at = unixepoch() WHERE id = $id").run({ $id: cId });
+        }
+      }
+    }
+
+    // 3. Delete from the playlist itself
     for (let i = 0; i < itemIds.length; i += CHUNK_SIZE) {
       const chunk = itemIds.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => "?").join(",");

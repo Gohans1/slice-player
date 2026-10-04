@@ -11,14 +11,24 @@ interface CreatePlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: (id: string) => void;
+  initialParentId?: string | null;
 }
 
-export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlaylistModalProps) {
+export function CreatePlaylistModal({ isOpen, onClose, onCreated, initialParentId }: CreatePlaylistModalProps) {
   const { t } = useTranslation();
   const [name, setName] = React.useState("");
+  const allPlaylists = usePlayerStore((s) => s.playlists);
+  const rootPlaylists = React.useMemo(() => allPlaylists.filter((p) => !p.is_mix && !p.parent_id), [allPlaylists]);
+  const [selectedParentId, setSelectedParentId] = React.useState<string | "">(initialParentId || "");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const createPlaylist = usePlayerStore((s) => s.createPlaylist);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setSelectedParentId(initialParentId || "");
+    }
+  }, [isOpen, initialParentId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,9 +41,12 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlayli
     setIsSubmitting(true);
     setError(null);
     try {
-      const pl = await createPlaylist(trimmed);
+      const pl = selectedParentId
+        ? await createPlaylist(trimmed, selectedParentId)
+        : await createPlaylist(trimmed);
       if (pl) {
         setName("");
+        setSelectedParentId("");
         onClose();
         if (onCreated) {
           onCreated(pl.id);
@@ -51,6 +64,7 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlayli
   const handleClose = () => {
     if (!isSubmitting) {
       setName("");
+      setSelectedParentId("");
       setError(null);
       onClose();
     }
@@ -78,6 +92,27 @@ export function CreatePlaylistModal({ isOpen, onClose, onCreated }: CreatePlayli
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
+
+        {rootPlaylists.length > 0 && (
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              {t("playlist.selectParentPrompt", "Parent playlist (optional)")}
+            </label>
+            <select
+              value={selectedParentId}
+              onChange={(e) => setSelectedParentId(e.target.value)}
+              disabled={isSubmitting}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            >
+              <option value="">{t("playlist.noParent", "None (Root playlist)")}</option>
+              {rootPlaylists.map((rp) => (
+                <option key={rp.id} value={rp.id}>
+                  {rp.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button

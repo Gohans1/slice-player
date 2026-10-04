@@ -218,7 +218,7 @@ describe("Database layer (bun:sqlite)", () => {
     expect(customTrack?.volume).toBe(0.9);
 
     const versionRow = finalDb.query("PRAGMA user_version;").get() as { user_version: number };
-    expect(versionRow.user_version).toBe(8);
+    expect(versionRow.user_version).toBe(9);
   });
 
 

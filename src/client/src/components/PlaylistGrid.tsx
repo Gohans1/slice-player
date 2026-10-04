@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Combine, Play, Plus, Shuffle } from "lucide-react";
+import { Combine, FolderTree, Play, Plus, Shuffle } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -39,12 +39,27 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, onMix }: PlaylistGri
               <span className="mt-0.5 mb-1 px-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                 {isPlayingThis && <NowPlayingEqualizer className="text-flexoki-green" />}
                 {pl.is_mix && (
-                  <span className="flex items-center gap-1 font-semibold text-flexoki-magenta">
+                  <span className="flex items-center gap-1 font-semibold text-flexoki-magenta shrink-0">
                     <Combine className="h-3 w-3" aria-hidden="true" />
                     {t("mixPlaylist.badge")}
                     <span aria-hidden="true">·</span>
                   </span>
                 )}
+                {pl.parent_id && (() => {
+                  const parent = playlists.find((p) => p.id === pl.parent_id);
+                  if (!parent) return null;
+                  return (
+                    <span
+                      className="flex items-center gap-1 font-medium text-flexoki-blue truncate max-w-[120px]"
+                      title={t("playlist.subPlaylistOf", { name: parent.name })}
+                    >
+                      <FolderTree className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="truncate">{parent.name}</span>
+                      <span aria-hidden="true">·</span>
+                      <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
+                    </span>
+                  );
+                })()}
                 <span className="font-mono">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
               </span>
             </button>

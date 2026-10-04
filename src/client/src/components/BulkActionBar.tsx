@@ -5,6 +5,7 @@ import { ConfirmModal } from "./ui/ConfirmModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
+import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 import { cn } from "../lib/utils";
 import {
   useSelectionStore,
@@ -37,8 +38,9 @@ function BulkAddToPlaylistMenu({
 }) {
   const { t } = useTranslation();
   const allPlaylists = usePlayerStore((s) => s.playlists);
-  // A mix owns no items, so it can never be a destination
-  const playlists = React.useMemo(() => allPlaylists.filter((pl) => !pl.is_mix), [allPlaylists]);
+  const orderedPlaylists = React.useMemo(() => {
+    return getHierarchicalPlaylists(allPlaylists, { excludeMixes: true });
+  }, [allPlaylists]);
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
   const [addedFeedback, setAddedFeedback] = React.useState<string | null>(null);
   const feedbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,20 +122,29 @@ function BulkAddToPlaylistMenu({
         <Plus className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
         <span className="truncate">{t("addToPlaylist.newPlaylist", "New Playlist")}</span>
       </button>
-      {playlists.length === 0 ? (
+      {orderedPlaylists.length === 0 ? (
         <div className="px-2 py-2 text-xs text-muted-foreground text-center">
           {t("addToPlaylist.empty", "No playlists yet")}
         </div>
       ) : (
-        <div className="max-h-48 overflow-y-auto space-y-0.5">
-          {playlists.map((pl) => (
+        <div className="max-h-60 overflow-y-auto space-y-0.5">
+          {orderedPlaylists.map(({ playlist: pl, isChild }) => (
             <button
               key={pl.id}
               onClick={() => handleSelect(pl.id)}
               disabled={isSubmitting}
-              className="w-full flex items-center justify-between px-2 py-1.5 rounded text-xs text-left hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer disabled:opacity-50"
+              className={`w-full flex items-center justify-between py-1.5 rounded text-xs text-left hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer disabled:opacity-50 ${
+                isChild ? "pl-5 pr-2" : "px-2"
+              }`}
             >
-              <span className="truncate">{pl.name}</span>
+              <span className="truncate flex items-center gap-1">
+                {isChild && (
+                  <span className="text-muted-foreground/60 select-none font-mono text-2xs mr-0.5" aria-hidden="true">
+                    ↳
+                  </span>
+                )}
+                <span className="truncate">{pl.name}</span>
+              </span>
               {addedFeedback === pl.id && (
                 <Check className="h-3.5 w-3.5 text-flexoki-green shrink-0 ml-1 animate-in zoom-in-75 duration-100 ease-out" />
               )}

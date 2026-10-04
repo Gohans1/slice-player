@@ -288,10 +288,10 @@ interface PlayerState {
   // Playlist Actions
   fetchPlaylists: () => Promise<void>;
   setActivePlaylist: (id: string | null, force?: boolean) => Promise<void>;
-  createPlaylist: (name: string) => Promise<Playlist | null>;
+  createPlaylist: (name: string, parentId?: string | null) => Promise<Playlist | null>;
   createMixPlaylist: (name: string, sourceIds: string[]) => Promise<Playlist | null>;
   setMixSources: (id: string, sourceIds: string[]) => Promise<boolean>;
-  deletePlaylist: (id: string) => Promise<boolean>;
+  deletePlaylist: (id: string, keepChildren?: boolean) => Promise<boolean>;
   renamePlaylist: (id: string, name: string) => Promise<boolean>;
   setPlaylistCover: (id: string, trackId: string | null) => Promise<boolean>;
   addToPlaylist: (playlistId: string, trackId: string, segmentId?: string | null) => Promise<boolean>;
@@ -2458,12 +2458,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  createPlaylist: async (name: string) => {
+  createPlaylist: async (name: string, parentId?: string | null) => {
     try {
+      const payload: { name: string; parent_id?: string | null } = { name };
+      if (parentId) payload.parent_id = parentId;
       const res = await fetch("/api/playlists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         const pl: Playlist = await res.json();
@@ -2514,16 +2516,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return false;
   },
 
-  deletePlaylist: async (id: string) => {
+  deletePlaylist: async (id: string, keepChildren = false) => {
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const childPlaylists = get().playlists.filter((p) => p.parent_id === id);
+      const childIds = childPlaylists.map((p) => p.id);
+      const url = `/api/playlists/${encodeURIComponent(id)}${keepChildren ? "?keep_children=true" : ""}`;
+      const res = await fetch(url, { method: "DELETE" });
       if (res.ok) {
         const updates: Partial<PlayerState> = {};
-        if (get().activePlaylistId === id) {
+        const affectedIds = keepChildren ? [id] : [id, ...childIds];
+
+        if (get().activePlaylistId && affectedIds.includes(get().activePlaylistId!)) {
           updates.activePlaylistId = null;
           updates.activePlaylistItems = [];
         }
-        if (get().activePlaylistPlayingId === id) {
+        if (get().activePlaylistPlayingId && affectedIds.includes(get().activePlaylistPlayingId!)) {
           audioEngine.unload();
           updates.activePlaylistPlayingId = null;
           updates.activePlaylistOriginalQueue = [];
@@ -2543,7 +2550,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           const selState = useSelectionStore.getState();
           const toDeselect: string[] = [];
           for (const [itemId, it] of selState.selectedItems) {
-            if (it.playlistId === id) toDeselect.push(itemId);
+            if (it.playlistId && affectedIds.includes(it.playlistId)) toDeselect.push(itemId);
           }
           if (toDeselect.length > 0) {
             selState.deselectTracks(toDeselect);

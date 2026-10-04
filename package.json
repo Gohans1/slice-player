@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/server/index.ts",
+    "start": "bun run src/server/index.ts",
     "build": "vite build",
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
