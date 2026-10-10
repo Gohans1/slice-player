@@ -608,4 +608,61 @@ describe("Navbar YouTube Ingestion Queue", () => {
     expect(fileInput.accept).toContain(".mp4");
     expect(fileInput.accept).toContain("video/mp4");
   });
+
+  it("controls the global master volume, muting and restoring the previous level", async () => {
+    await i18n.changeLanguage("en");
+    usePlayerStore.setState({ masterVolume: 0.8 });
+    await act(async () => {
+      root.render(
+        <Navbar
+          onSearchChange={() => {}}
+          searchQuery=""
+        />
+      );
+    });
+
+    const slider = container.querySelector<HTMLInputElement>('input[type="range"][aria-label="Master volume"]');
+    expect(slider).not.toBeNull();
+    expect(slider?.getAttribute("aria-valuenow")).toBe("80");
+
+    await act(async () => {
+      slider!.value = "0.35";
+      slider!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(usePlayerStore.getState().masterVolume).toBe(0.35);
+
+    const muteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Mute all audio"]');
+    expect(muteBtn).not.toBeNull();
+    await act(async () => {
+      muteBtn!.click();
+    });
+    expect(usePlayerStore.getState().masterVolume).toBe(0);
+
+    const unmuteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Unmute all audio"]');
+    expect(unmuteBtn).not.toBeNull();
+    await act(async () => {
+      unmuteBtn!.click();
+    });
+    expect(usePlayerStore.getState().masterVolume).toBe(0.35);
+  });
+
+  it("unmutes to the 50% default when the session started muted", async () => {
+    await i18n.changeLanguage("en");
+    usePlayerStore.setState({ masterVolume: 0 });
+    await act(async () => {
+      root.render(
+        <Navbar
+          onSearchChange={() => {}}
+          searchQuery=""
+        />
+      );
+    });
+
+    const unmuteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Unmute all audio"]');
+    expect(unmuteBtn).not.toBeNull();
+    await act(async () => {
+      unmuteBtn!.click();
+    });
+    expect(usePlayerStore.getState().masterVolume).toBe(0.5);
+  });
 });

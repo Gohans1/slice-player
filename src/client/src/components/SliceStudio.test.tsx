@@ -128,6 +128,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     usePlayerStore.setState({
       tracks: [{ ...mockTrack }],
       sliceStudioTrack: null,
+      masterVolume: 1, // unity, so per-track gain assertions are exact
     });
   });
 
@@ -529,6 +530,20 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
 
     // mockTrack has volume: 0.5. With quadratic curve (0.5^2), WaveSurfer should receive 0.25
     expect(mockSetVolume).toHaveBeenCalledWith(0.25);
+  });
+
+  it("scales WaveSurfer preview gain by the global master volume", async () => {
+    usePlayerStore.setState({ masterVolume: 0.5 });
+    await act(async () => {
+      root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+    });
+    // track 0.5 -> 0.25 gain, master 0.5 -> 0.25 gain
+    expect(mockSetVolume.mock.calls.at(-1)?.[0]).toBeCloseTo(0.0625, 6);
+
+    await act(async () => {
+      usePlayerStore.getState().setMasterVolume(1);
+    });
+    expect(mockSetVolume.mock.calls.at(-1)?.[0]).toBeCloseTo(0.25, 6);
   });
 
   it("toggles mute and restores previous volume on second click", async () => {

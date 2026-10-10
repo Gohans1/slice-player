@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { VolumeSlider } from "./ui/VolumeSlider";
 import { formatTime, formatDuration, cn } from "../lib/utils";
-import { volumeToGain } from "../lib/audio";
+import { outputGain } from "../lib/audio";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
@@ -34,6 +34,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const pause = usePlayerStore((s) => s.pause);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
   const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
+  const masterVolume = usePlayerStore((s) => s.masterVolume);
   const isGlobalPlaying = usePlayerStore((s) => s.isPlaying);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
@@ -127,15 +128,15 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     };
   }, [track.id]);
 
-  // Sync WaveSurfer gain whenever track volume changes
+  // Sync WaveSurfer gain whenever track or master volume changes
   React.useEffect(() => {
     if (volume > 0) {
       prevVolumeRef.current = volume;
     }
     if (wavesurferRef.current) {
-      wavesurferRef.current.setVolume(volumeToGain(volume));
+      wavesurferRef.current.setVolume(outputGain(volume, masterVolume));
     }
-  }, [volume]);
+  }, [volume, masterVolume]);
 
   const segmentsRef = React.useRef(segments);
   segmentsRef.current = segments;
@@ -477,7 +478,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       minPxPerSec: zoomLevelRef.current,
     });
 
-    ws.setVolume(volumeToGain(currentVol));
+    ws.setVolume(outputGain(currentVol, usePlayerStore.getState().masterVolume));
     wavesurferRef.current = ws;
     setIsWaveSurferReady(true);
 
@@ -798,7 +799,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       prevVolumeRef.current = safe;
     }
     if (wavesurferRef.current) {
-      wavesurferRef.current.setVolume(volumeToGain(safe));
+      wavesurferRef.current.setVolume(outputGain(safe, masterVolume));
     }
     setTrackVolume(track.id, safe);
   };

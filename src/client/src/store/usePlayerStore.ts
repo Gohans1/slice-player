@@ -219,6 +219,7 @@ interface PlayerState {
   initializedModes: Record<PlaybackMode, boolean>;
   currentTime: number;
   volume: number;
+  masterVolume: number;
   queue: QueueItem[];
   queueIndex: number;
   sliceStudioTrack: Track | null;
@@ -268,6 +269,7 @@ interface PlayerState {
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
   setVolume: (vol: number) => void;
+  setMasterVolume: (vol: number) => void;
   setTrackVolume: (trackId: string, volume: number) => Promise<void>;
   setCurrentTime: (t: number) => void;
   seek: (seconds: number) => void;
@@ -603,6 +605,21 @@ function getStoredViewMode(): "grid" | "list" {
   return "grid";
 }
 
+const MASTER_VOLUME_KEY = "slice_player_master_volume";
+
+function getStoredMasterVolume(): number {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem(MASTER_VOLUME_KEY);
+      if (saved !== null) return normalizeTrackVolume(Number(saved), 0.5);
+    }
+  } catch {}
+  return 0.5;
+}
+
+const initialMasterVolume = getStoredMasterVolume();
+audioEngine.setMasterVolume(initialMasterVolume);
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   tracks: [],
   isLoadingTracks: false,
@@ -631,6 +648,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   currentTime: 0,
   volume: 0.5,
+  masterVolume: initialMasterVolume,
   queue: [],
   queueIndex: -1,
   sliceStudioTrack: null,
@@ -1656,6 +1674,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ volume: safeVol });
       audioEngine.setVolume(safeVol);
     }
+  },
+
+  setMasterVolume: (vol: number) => {
+    const safeVol = normalizeTrackVolume(vol, 0.5);
+    set({ masterVolume: safeVol });
+    audioEngine.setMasterVolume(safeVol);
+    try {
+      window.localStorage.setItem(MASTER_VOLUME_KEY, String(safeVol));
+    } catch {}
   },
 
   setTrackVolume: async (trackId: string, volume: number) => {

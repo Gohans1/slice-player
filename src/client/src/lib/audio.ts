@@ -12,12 +12,18 @@ export function volumeToGain(volume: number): number {
   return Math.pow(safe, 2);
 }
 
+/** Final output gain: per-track level and global master level, each on the perceptual curve. */
+export function outputGain(trackVolume: number, masterVolume: number): number {
+  return volumeToGain(trackVolume) * volumeToGain(masterVolume);
+}
+
 class AudioEngine {
   private audioEl: HTMLAudioElement;
   private audioCtx: AudioContext | null = null;
   private fadeGainNode: GainNode | null = null;
   private volumeGainNode: GainNode | null = null;
   private currentVolume = 0.5;
+  private masterVolume = 0.5;
   private isInitialized = false;
 
   private currentSegmentStart: number | null = null;
@@ -145,7 +151,7 @@ class AudioEngine {
       this.fadeGainNode.gain.value = 1.0;
 
       this.volumeGainNode = this.audioCtx.createGain();
-      this.volumeGainNode.gain.value = volumeToGain(this.currentVolume);
+      this.volumeGainNode.gain.value = outputGain(this.currentVolume, this.masterVolume);
 
       source.connect(this.fadeGainNode);
       this.fadeGainNode.connect(this.volumeGainNode);
@@ -437,7 +443,16 @@ class AudioEngine {
       ? Math.max(0, Math.min(1, volume))
       : 0.5;
     this.currentVolume = vol;
-    const gainVal = volumeToGain(vol);
+    this.applyGain();
+  }
+
+  public setMasterVolume(volume: number) {
+    this.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.5;
+    this.applyGain();
+  }
+
+  private applyGain() {
+    const gainVal = outputGain(this.currentVolume, this.masterVolume);
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
       const now = this.audioCtx.currentTime;
