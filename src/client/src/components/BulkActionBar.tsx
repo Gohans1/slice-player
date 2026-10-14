@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 import { cn } from "../lib/utils";
+import { isDialogOpen } from "../lib/dialog";
 import {
   useSelectionStore,
   useSelectedTrackCount,
@@ -205,7 +206,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
       if (e.key === "Escape" && selectedCount > 0 && !isPlaylistOpen) {
         const target = e.target as HTMLElement | null;
         const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as any).isContentEditable);
-        if (isInput || document.querySelector('[role="dialog"]')) return;
+        if (isInput || isDialogOpen()) return;
         clearSelection();
       }
     };

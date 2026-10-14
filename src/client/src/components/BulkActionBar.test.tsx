@@ -106,6 +106,40 @@ describe("BulkActionBar Component", () => {
     expect(document.querySelectorAll('[role="alertdialog"]').length).toBe(0);
   });
 
+  it("keeps the selection when Escape closes the delete confirmation", async () => {
+    act(() => {
+      useSelectionStore.getState().toggleTrack({ id: "track_1", type: "track", trackId: "track_1", title: "Track 1" });
+      useSelectionStore.getState().toggleTrack({ id: "track_2", type: "track", trackId: "track_2", title: "Track 2" });
+    });
+    act(() => {
+      root.render(<BulkActionBar visibleTrackIds={["track_1", "track_2"]} />);
+    });
+
+    const deleteBtn = Array.from(container.querySelectorAll("button")).find((btn) =>
+      btn.textContent?.includes("Delete")
+    );
+    act(() => {
+      deleteBtn?.click();
+    });
+    // Base UI moves focus into the dialog after it opens
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(document.querySelectorAll('[role="alertdialog"]').length).toBe(1);
+
+    act(() => {
+      (document.activeElement ?? document.body).dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(document.querySelectorAll('[role="alertdialog"]').length).toBe(0);
+    expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+  });
+
   it("offers no delete action while viewing a mix playlist (its songs live in the sources)", () => {
     const prev = usePlayerStore.getState();
     usePlayerStore.setState({

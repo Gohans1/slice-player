@@ -46,6 +46,7 @@ import { ConfirmModal } from "./components/ui/ConfirmModal";
 import { useSelectionStore, type SelectedItem } from "./store/useSelectionStore";
 import { useLogStore } from "./store/useLogStore";
 import { getViewScrollKey } from "./store/usePlayerStore";
+import { isDialogOpen } from "./lib/dialog";
 import type { Playlist, Segment, Track } from "@/server/types";
 
 const getItemEntityId = (item: { id: string }) => item.id;
@@ -373,8 +374,7 @@ export function App() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const otherModalOpen = Boolean(
-        usePlayerStore.getState().sliceStudioTrack ||
-        document.querySelector('[role="dialog"]:not([data-drawer="log-drawer"])')
+        usePlayerStore.getState().sliceStudioTrack || isDialogOpen('[data-drawer="log-drawer"]')
       );
       if (otherModalOpen) return;
 

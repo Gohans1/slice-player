@@ -5,6 +5,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { Kbd } from "../ui/kbd";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "../ui/sidebar";
 import { usePlayerStore } from "../../store/usePlayerStore";
+import { isDialogOpen } from "../../lib/dialog";
 
 interface LibrarySearchProps {
   value: string;
@@ -32,7 +33,7 @@ export function LibrarySearch({ value, onChange }: LibrarySearchProps) {
   // "/" (outside text fields) and Cmd/Ctrl+K focus search, unless a dialog or Slice Studio is open
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || usePlayerStore.getState().sliceStudioTrack || document.querySelector('[role="dialog"]')) return;
+      if (e.defaultPrevented || usePlayerStore.getState().sliceStudioTrack || isDialogOpen()) return;
       const isSlash = e.key === "/" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target);
       const isCmdK = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k";
       if (!isSlash && !isCmdK) return;

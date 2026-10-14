@@ -108,8 +108,8 @@ describe("LibrarySearch", () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it("leaves / alone while typing in another field or with a dialog open", async () => {
-    const input = await renderSearch();
+  it("leaves / alone while typing in another field", async () => {
+    await renderSearch();
     const other = document.createElement("input");
     other.setAttribute("data-test-extra", "");
     document.body.appendChild(other);
@@ -117,15 +117,17 @@ describe("LibrarySearch", () => {
 
     await press(other, { key: "/" });
     expect(document.activeElement).toBe(other);
+  });
 
-    other.blur();
+  it.each(["dialog", "alertdialog"])("leaves / alone with a %s open", async (role) => {
+    const input = await renderSearch();
     const dialog = document.createElement("div");
-    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("role", role);
     dialog.setAttribute("data-test-extra", "");
     document.body.appendChild(dialog);
 
     await press(document.body, { key: "/" });
-    expect(document.activeElement).not.toBe(input);
+    expect(document.activeElement === input).toBe(false);
   });
 
   it("expands a collapsed sidebar to focus the field", async () => {
