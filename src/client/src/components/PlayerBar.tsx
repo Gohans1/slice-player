@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { VolumeSlider } from "./ui/VolumeSlider";
-import { formatTime } from "../lib/utils";
+import { formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { useHeightCssVar } from "../hooks/use-height-css-var";
@@ -248,7 +248,7 @@ function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
             }`}
             style={{
               transform: `scaleX(${Math.max(0, Math.min(100, effectiveProgressPercent)) / 100})`,
-              backgroundColor: activeSegment.color || "#4385BE",
+              backgroundColor: activeSegment.color || DEFAULT_SLICE_COLOR,
             }}
           />
         </div>
@@ -689,7 +689,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             />
             <div
               className="absolute bottom-0 left-0 right-0 h-1"
-              style={{ backgroundColor: activeSegment.color || "#4385BE" }}
+              style={{ backgroundColor: activeSegment.color || DEFAULT_SLICE_COLOR }}
             />
           </button>
 

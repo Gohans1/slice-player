@@ -5,7 +5,7 @@ import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, Volu
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { VolumeSlider } from "./ui/VolumeSlider";
-import { formatTime, formatDuration, cn } from "../lib/utils";
+import { formatTime, formatDuration, cn, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { outputGain } from "../lib/audio";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
@@ -1041,7 +1041,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                     <div className="flex items-center gap-3 flex-1 w-full sm:w-auto">
                       <div
                         className="w-3 h-8 rounded-full shrink-0"
-                        style={{ backgroundColor: seg.color || "#4385BE" }}
+                        style={{ backgroundColor: seg.color || DEFAULT_SLICE_COLOR }}
                       />
 
                       <Button

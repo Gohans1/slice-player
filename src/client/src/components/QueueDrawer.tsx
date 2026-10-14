@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
-import { cn, formatDuration } from "../lib/utils";
+import { cn, formatDuration, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore, type PlaybackMode, type QueueItem } from "../store/usePlayerStore";
@@ -232,7 +232,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
             />
             <div
               className="absolute bottom-0 left-0 right-0 h-0.5"
-              style={{ backgroundColor: item.segment.color || "#4385BE" }}
+              style={{ backgroundColor: item.segment.color || DEFAULT_SLICE_COLOR }}
             />
           </div>
 
