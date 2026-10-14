@@ -978,7 +978,6 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 aria-label={t("studio.trackVolume")}
                 title={t("studio.trackVolumeTooltip", { percent: Math.round(volume * 100) })}
                 className="w-24 sm:w-28"
-                sliderClassName="h-1.5"
               />
               <span className="font-mono text-xs text-muted-foreground w-9 text-right select-none">
                 {Math.round(volume * 100)}%

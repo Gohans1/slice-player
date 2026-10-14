@@ -584,7 +584,8 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     expect(slider).not.toBeNull();
 
     await act(async () => {
-      slider.value = "0.8";
+      // The slider input works in percent; the prototype setter gets past React's value tracking
+      Reflect.set(Object.getPrototypeOf(slider), "value", "80", slider);
       slider.dispatchEvent(new window.Event("input", { bubbles: true }));
       slider.dispatchEvent(new window.Event("change", { bubbles: true }));
     });

@@ -36,7 +36,8 @@ describe("MasterVolume", () => {
     expect(slider?.getAttribute("aria-valuenow")).toBe("80");
 
     await act(async () => {
-      slider!.value = "0.35";
+      // The slider input works in percent; the prototype setter gets past React's value tracking
+      Reflect.set(Object.getPrototypeOf(slider), "value", "35", slider);
       slider!.dispatchEvent(new InputEvent("input", { bubbles: true }));
     });
     expect(usePlayerStore.getState().masterVolume).toBe(0.35);
