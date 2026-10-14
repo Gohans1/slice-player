@@ -1,5 +1,4 @@
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Modal } from "./ui/modal";
@@ -77,7 +76,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
     if (!isSubmitting) onClose();
   };
 
-  const modalElement = (
+  return (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
@@ -178,9 +177,4 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
       </div>
     </Modal>
   );
-
-  if (typeof document !== "undefined" && document.body) {
-    return createPortal(modalElement, document.body);
-  }
-  return modalElement;
 }
