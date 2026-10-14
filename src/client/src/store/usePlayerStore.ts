@@ -596,13 +596,14 @@ function transitionActiveItemOnRemoval(
   }
 }
 
-function getStoredViewMode(): "grid" | "list" {
+// The library opens as an Apple Music style list unless the grid was picked before
+export function getStoredViewMode(): "grid" | "list" {
   try {
     if (typeof window !== "undefined" && window.localStorage) {
-      return window.localStorage.getItem("slice_player_view") === "list" ? "list" : "grid";
+      return window.localStorage.getItem("slice_player_view") === "grid" ? "grid" : "list";
     }
   } catch {}
-  return "grid";
+  return "list";
 }
 
 const MASTER_VOLUME_KEY = "slice_player_master_volume";

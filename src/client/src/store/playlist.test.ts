@@ -23,7 +23,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
   });
 }
 
-const { usePlayerStore, clearDismissedSegments } = await import("./usePlayerStore");
+const { usePlayerStore, clearDismissedSegments, getStoredViewMode } = await import("./usePlayerStore");
 import type { Track, Segment, Playlist, PlaylistItemWithDetails } from "@/server/types";
 
 describe("usePlayerStore playlist management", () => {
@@ -101,11 +101,22 @@ describe("usePlayerStore playlist management", () => {
   });
 
   it("setViewMode updates viewMode state", () => {
+    usePlayerStore.getState().setViewMode("grid");
     expect(usePlayerStore.getState().viewMode).toBe("grid");
     usePlayerStore.getState().setViewMode("list");
     expect(usePlayerStore.getState().viewMode).toBe("list");
+  });
+
+  it("starts in the list view unless grid was chosen before", () => {
+    window.localStorage.removeItem("slice_player_view");
+    expect(getStoredViewMode()).toBe("list");
+
     usePlayerStore.getState().setViewMode("grid");
-    expect(usePlayerStore.getState().viewMode).toBe("grid");
+    expect(getStoredViewMode()).toBe("grid");
+
+    usePlayerStore.getState().setViewMode("list");
+    expect(getStoredViewMode()).toBe("list");
+    window.localStorage.removeItem("slice_player_view");
   });
 
   it("fetchPlaylists retrieves playlists from server", async () => {
