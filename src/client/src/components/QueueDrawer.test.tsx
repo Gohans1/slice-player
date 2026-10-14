@@ -25,7 +25,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
-import { QueueDrawer, getBoundaryDropIndex } from "./QueueDrawer";
+import { QueueDrawer, QueuePanel, getBoundaryDropIndex } from "./QueueDrawer";
 import { PlayerBar } from "./PlayerBar";
 import { usePlayerStore } from "../store/usePlayerStore";
 import type { Track, Segment } from "@/server/types";
@@ -158,7 +158,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
 
   it("QueueDrawer renders playing source badge and active queue items", () => {
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -177,7 +177,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -269,7 +269,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const restoreBtn = container.querySelector('button[aria-label="Khôi phục thứ tự ban đầu"]') as HTMLButtonElement;
@@ -302,7 +302,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const loopBtn = container.querySelector('button[aria-label*="loop queue" i], button[aria-label*="lặp lại hàng đợi" i]') as HTMLButtonElement;
@@ -337,7 +337,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -366,12 +366,11 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
-    const html = container.innerHTML;
-    // Should NOT have the active ring/border or 'Đang phát' label on the item
-    expect(html).not.toContain("border-primary bg-primary/10");
+    // No row is marked as the current one
+    expect(container.querySelectorAll('[aria-current="true"]').length).toBe(0);
   });
 
   it("QueueDrawer does NOT mark item as isCurrent when playing an out-of-mode transitional segment", () => {
@@ -401,12 +400,11 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
-    const html = container.innerHTML;
     // In-queue item (dummySegment) must NOT be marked isCurrent since foreign_slice_999 is playing!
-    expect(html).not.toContain("border-primary bg-primary/10");
+    expect(container.querySelectorAll('[aria-current="true"]').length).toBe(0);
   });
 
   it("header shuffle button calls reshuffleCurrentQueue", () => {
@@ -436,7 +434,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const shuffleBtn = container.querySelector('button[title*="Xáo trộn"]');
@@ -508,7 +506,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const listContainer = container.querySelector('[role="region"][aria-label="Danh sách phát hiện tại"]') as HTMLElement;
@@ -554,7 +552,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       // Find the play button for the item
@@ -602,7 +600,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     // Outer scrollable container should exist
@@ -649,7 +647,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const dragHandle = container.querySelector('[data-drag-handle="true"]');
@@ -675,7 +673,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       root.render(<QueueDrawer isOpen={true} onClose={() => { closed = true; }} />);
     });
 
-    const dialog = container.querySelector('[role="dialog"]');
+    const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
 
     act(() => {
@@ -739,7 +737,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const deleteButtons = container.querySelectorAll('button[aria-label*="Xóa"]');
@@ -781,7 +779,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
@@ -807,64 +805,20 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     }
   });
 
-  it("QueueDrawer traps focus with Tab and Shift+Tab", () => {
-    usePlayerStore.setState({
-      queue: [
-        { segment: dummySegment, track: dummyTrack },
-        { segment: dummySegment2, track: dummyTrack2 },
-      ],
-      queueIndex: 0,
-    });
-
-    act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
-    });
-
-    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
-    expect(dialog).not.toBeNull();
-
-    const focusable = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled]), a[href], input:not([disabled])'
-      )
-    );
-    expect(focusable.length).toBeGreaterThan(1);
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    // Focus last, press Tab -> should wrap to first
-    last.focus();
-    expect(document.activeElement).toBe(last);
-
-    act(() => {
-      dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
-    });
-    expect(document.activeElement).toBe(first);
-
-    // Focus first, press Shift+Tab -> should wrap to last
-    first.focus();
-    expect(document.activeElement).toBe(first);
-
-    act(() => {
-      dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
-    });
-    expect(document.activeElement).toBe(last);
-  });
-
-  it("QueueDrawer restores focus to triggering element on close", () => {
+  it("QueueDrawer restores focus to triggering element on close", async () => {
     const triggerBtn = document.createElement("button");
     document.body.appendChild(triggerBtn);
     triggerBtn.focus();
     expect(document.activeElement).toBe(triggerBtn);
 
-    act(() => {
+    await act(async () => {
       root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
     });
 
     // Close drawer
-    act(() => {
+    await act(async () => {
       root.render(<QueueDrawer isOpen={false} onClose={() => {}} />);
+      await new Promise((resolve) => setTimeout(resolve, 30));
     });
 
     expect(document.activeElement).toBe(triggerBtn);
@@ -885,26 +839,24 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       root.render(<QueueDrawer isOpen={true} onClose={() => { closed = true; }} />);
     });
 
-    const dragHandles = container.querySelectorAll('[data-drag-handle="true"]');
+    const dragHandles = document.body.querySelectorAll('[data-drag-handle="true"]');
     expect(dragHandles.length).toBeGreaterThan(0);
+    const handle = dragHandles[0] as HTMLElement;
 
     // Mouse down on drag handle to initiate dragging
     act(() => {
-      dragHandles[0]?.dispatchEvent(new window.MouseEvent("mousedown", { button: 0, bubbles: true }));
+      handle.dispatchEvent(new window.MouseEvent("mousedown", { button: 0, bubbles: true }));
     });
 
-    // Press Escape on dialog
-    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+    // Escape while dragging only cancels the drag
     act(() => {
-      dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      handle.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     });
-
-    // onClose should NOT have been called because drag was active
     expect(closed).toBe(false);
 
-    // Pressing Escape again now that drag is reset SHOULD call onClose
+    // With the drag reset, Escape closes the sheet
     act(() => {
-      dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      handle.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     });
     expect(closed).toBe(true);
   });
@@ -926,7 +878,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const moveDownBtn = container.querySelector('button[aria-label*="Chuyển"][aria-label*="xuống"]');
@@ -950,11 +902,14 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       root.render(<QueueDrawer isOpen={true} onClose={() => { closed = true; }} />);
     });
 
-    const backdrop = container.querySelector('[aria-hidden="true"]');
+    const backdrop = document.body.querySelector('[data-slot="sheet-overlay"]');
     expect(backdrop).not.toBeNull();
 
     act(() => {
-      backdrop?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        const EventType = type.startsWith("pointer") ? window.PointerEvent : window.MouseEvent;
+        backdrop?.dispatchEvent(new EventType(type, { bubbles: true, cancelable: true, button: 0 }));
+      }
     });
 
     expect(closed).toBe(true);
@@ -977,11 +932,8 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
-
-    const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
-    expect(dialog).not.toBeNull();
 
     const shuffleBtn = container.querySelector('button[title*="Xáo trộn"]') as HTMLElement;
 
@@ -994,10 +946,12 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     lastInLastRow.focus();
 
     // Tab at the edge of the window should advance to the next off-screen row rather than wrapping to the top
+    const tabEvt = new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
     act(() => {
-      dialog.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+      lastInLastRow.dispatchEvent(tabEvt);
     });
 
+    expect(tabEvt.defaultPrevented).toBe(true);
     expect(document.activeElement).not.toBe(shuffleBtn);
   });
 
@@ -1021,7 +975,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const deleteBtns = Array.from(container.querySelectorAll('button[aria-label*="Xóa"]')) as HTMLElement[];
@@ -1061,7 +1015,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
 
     try {
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const restoreBtn = container.querySelector('button[title="Khôi phục thứ tự ban đầu"]') as HTMLButtonElement | null;
@@ -1092,7 +1046,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -1105,13 +1059,111 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
     });
 
-    const dialog = container.querySelector('div[role="dialog"]');
+    const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
-    expect(dialog?.getAttribute("aria-labelledby")).toBe("queue-drawer-title");
+    const titleId = dialog?.getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(titleId)?.textContent).toBe("Hàng Đợi Phát");
+  });
 
-    const titleEl = container.querySelector("#queue-drawer-title");
-    expect(titleEl).not.toBeNull();
-    expect(titleEl?.textContent).toBe("Hàng Đợi Phát");
+  it("QueuePanel is a labelled side panel rather than a modal dialog", () => {
+    act(() => {
+      root.render(<QueuePanel onClose={() => {}} />);
+    });
+
+    const panels = container.querySelectorAll("aside#queue-drawer");
+    expect(panels.length).toBe(1);
+    const titleId = panels[0].getAttribute("aria-labelledby") ?? "";
+    expect(document.getElementById(titleId)?.textContent).toBe("Hàng Đợi Phát");
+    expect(document.body.querySelectorAll('[role="dialog"]').length).toBe(0);
+  });
+
+  it("QueuePanel ignores Escape and closes from its close button", () => {
+    let closeCount = 0;
+    act(() => {
+      root.render(<QueuePanel onClose={() => { closeCount++; }} />);
+    });
+
+    const panel = container.querySelector("aside#queue-drawer") as HTMLElement;
+    act(() => {
+      panel.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(closeCount).toBe(0);
+
+    act(() => {
+      container.querySelector('button[data-action="close-queue"]')?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(closeCount).toBe(1);
+  });
+
+  it("QueuePanel shows the three playback modes with the current one pressed", () => {
+    act(() => {
+      root.render(<QueuePanel onClose={() => {}} />);
+    });
+
+    const group = container.querySelector('[role="group"][aria-label="Chế độ phát"]') as HTMLElement;
+    const modes = Array.from(group.querySelectorAll("button")).map((b) => [b.textContent, b.getAttribute("aria-pressed")]);
+    expect(modes).toEqual([
+      ["Trộn cả 2", "false"],
+      ["Lát cắt", "true"],
+      ["Bài gốc", "false"],
+    ]);
+  });
+
+  it("QueuePanel switches the playback mode from the mode toggle", () => {
+    const requested: string[] = [];
+    const origSetPlaybackMode = usePlayerStore.getState().setPlaybackMode;
+    usePlayerStore.setState({
+      setPlaybackMode: async (mode) => {
+        requested.push(mode);
+        return true;
+      },
+    });
+
+    try {
+      act(() => {
+        root.render(<QueuePanel onClose={() => {}} />);
+      });
+
+      const tracksMode = Array.from(container.querySelectorAll('[role="group"][aria-label="Chế độ phát"] button')).find(
+        (b) => (b as HTMLElement).textContent === "Bài gốc"
+      ) as HTMLElement;
+      act(() => {
+        tracksMode.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(requested).toEqual(["original_only"]);
+    } finally {
+      usePlayerStore.setState({ setPlaybackMode: origSetPlaybackMode });
+    }
+  });
+
+  it("QueuePanel presses no mode while a playlist plays, and picking the current mode leaves the playlist", () => {
+    const requested: string[] = [];
+    const origSetPlaybackMode = usePlayerStore.getState().setPlaybackMode;
+    usePlayerStore.setState({
+      activePlaylistPlayingId: "pl_my_mix",
+      playlists: [{ id: "pl_my_mix", name: "My Awesome Mix", created_at: 1000, updated_at: 1000, item_count: 5 }],
+      setPlaybackMode: async (mode) => {
+        requested.push(mode);
+        return true;
+      },
+    });
+
+    try {
+      act(() => {
+        root.render(<QueuePanel onClose={() => {}} />);
+      });
+
+      const buttons = Array.from(container.querySelectorAll('[role="group"][aria-label="Chế độ phát"] button')) as HTMLElement[];
+      expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
+
+      act(() => {
+        buttons[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+      expect(requested).toEqual(["slices_only"]);
+    } finally {
+      usePlayerStore.setState({ setPlaybackMode: origSetPlaybackMode });
+    }
   });
 
   it("QueueDrawer handles Shift+Tab reverse navigation from first focusable in row", () => {
@@ -1124,7 +1176,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const row1 = container.querySelector('[data-index="1"]') as HTMLElement | null;
@@ -1138,7 +1190,6 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
     expect(document.activeElement).toBe(firstFocusableInRow1);
 
-    const drawer = container.querySelector('div[role="dialog"]') as HTMLElement;
     const shiftTabEvt = new window.KeyboardEvent("keydown", {
       key: "Tab",
       shiftKey: true,
@@ -1147,7 +1198,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      drawer.dispatchEvent(shiftTabEvt);
+      firstFocusableInRow1?.dispatchEvent(shiftTabEvt);
     });
 
     // Event should have called preventDefault() and moved focus or scheduled focus to row 0
@@ -1166,7 +1217,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const restoreBtn = container.querySelector('button[title="Khôi phục thứ tự ban đầu"]');
@@ -1336,7 +1387,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const shuffleBtn = container.querySelector('button[aria-label="Xáo trộn lại hàng đợi"]') as HTMLButtonElement;
@@ -1354,7 +1405,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
 
     act(() => {
       usePlayerStore.setState({ isShuffle: false });
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const offShuffleBtn = container.querySelector('button[aria-label="Xáo trộn hàng đợi"]') as HTMLButtonElement;
@@ -1368,7 +1419,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       usePlayerStore.setState({
         queue: [{ segment: dummySegment, track: dummyTrack }],
       });
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const disabledShuffleBtn = container.querySelector('button[aria-label="Xáo trộn hàng đợi"]') as HTMLButtonElement;
@@ -1416,6 +1467,19 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     expect(activeQueueBtn.getAttribute("aria-haspopup")).toBe("dialog");
     expect(activeQueueBtn.getAttribute("aria-expanded")).toBe("true");
     expect(activeQueueBtn.getAttribute("aria-controls")).toBe("queue-drawer");
+  });
+
+  it("PlayerBar queue toggle only announces a dialog when the queue opens as a sheet", () => {
+    act(() => {
+      root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={true} isQueueDocked />);
+    });
+
+    const queueBtns = Array.from(container.querySelectorAll('button[aria-controls="queue-drawer"]')) as HTMLElement[];
+    expect(queueBtns.length).toBeGreaterThan(0);
+    for (const btn of queueBtns) {
+      expect(btn.hasAttribute("aria-haspopup")).toBe(false);
+      expect(btn.getAttribute("aria-expanded")).toBe("true");
+    }
   });
 
   it("PlayerBar displays subtle shuffle indicator in badge when isShuffle is true", () => {
@@ -1473,7 +1537,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       });
 
       act(() => {
-        root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+        root.render(<QueuePanel onClose={() => {}} />);
       });
 
       const rows = container.querySelectorAll('[data-index]');
@@ -1555,7 +1619,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -1596,7 +1660,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;
@@ -1637,7 +1701,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     act(() => {
-      root.render(<QueueDrawer isOpen={true} onClose={() => {}} />);
+      root.render(<QueuePanel onClose={() => {}} />);
     });
 
     const html = container.innerHTML;

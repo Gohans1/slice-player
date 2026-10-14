@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { cn } from "../lib/utils";
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -21,7 +22,7 @@ function safeCancelRaf(id: number): void {
   }
 }
 
-export function FloatingScrollControls() {
+export function FloatingScrollControls({ className }: { className?: string }) {
   const { t } = useTranslation();
   const [isAtTop, setIsAtTop] = React.useState(true);
   const [isAtBottom, setIsAtBottom] = React.useState(false);
@@ -182,7 +183,10 @@ export function FloatingScrollControls() {
     <aside
       aria-label={t("scroll.navigation", "Quick scroll navigation")}
       role="group"
-      className="fixed z-30 bottom-24 right-4 sm:right-6 md:right-8 flex flex-col items-center bg-card/90 hover:bg-card/95 backdrop-blur-md border border-border/80 shadow-lg hover:shadow-xl rounded-full p-1 transition-all duration-200 gap-0.5 select-none animate-in fade-in zoom-in-95"
+      className={cn(
+        "fixed z-30 bottom-24 right-4 sm:right-6 md:right-8 flex flex-col items-center bg-card/90 hover:bg-card/95 backdrop-blur-md border border-border/80 shadow-lg hover:shadow-xl rounded-full p-1 transition-all duration-200 gap-0.5 select-none animate-in fade-in zoom-in-95",
+        className
+      )}
     >
       <button
         type="button"

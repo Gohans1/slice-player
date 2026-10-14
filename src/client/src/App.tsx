@@ -6,7 +6,7 @@ import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
 const SliceStudio = React.lazy(() => import("./components/SliceStudio").then((m) => ({ default: m.SliceStudio })));
 import { PlayerBar } from "./components/PlayerBar";
-import { QueueDrawer } from "./components/QueueDrawer";
+import { QueueDrawer, QueuePanel } from "./components/QueueDrawer";
 const LogDrawer = React.lazy(() => import("./components/LogDrawer").then((m) => ({ default: m.LogDrawer })));
 const CreatePlaylistModal = React.lazy(() => import("./components/CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 const MixPlaylistModal = React.lazy(() => import("./components/MixPlaylistModal").then((m) => ({ default: m.MixPlaylistModal })));
@@ -39,6 +39,7 @@ import {
 import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 import { AppShell } from "./components/layout/AppShell";
+import { useQueueVisibility } from "./hooks/use-queue-visibility";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { FloatingScrollControls } from "./components/FloatingScrollControls";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -120,7 +121,8 @@ export function App() {
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const deferredQuery = React.useDeferredValue(searchQuery);
-  const [isQueueOpen, setIsQueueOpen] = React.useState(false);
+  const { isDocked: isQueueDocked, isOpen: isQueueOpen, toggle: toggleQueue, close: closeQueue } = useQueueVisibility();
+  const isQueueSheetOpen = isQueueOpen && !isQueueDocked;
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   // null = closed; {} = create a new mix; { mix } = edit that mix's sources
@@ -135,22 +137,23 @@ export function App() {
   const isLogDrawerOpen = useLogStore((s) => s.isDrawerOpen);
   const closeLogDrawer = useLogStore((s) => s.closeDrawer);
 
-  // Mutual exclusion: the log drawer and the queue drawer are never open together
+  // Mutual exclusion: the log drawer and the queue sheet are never open together.
+  // The docked queue panel is part of the layout, so it stays.
   React.useEffect(() => {
-    if (isLogDrawerOpen) {
-      setIsQueueOpen(false);
+    if (isLogDrawerOpen && !isQueueDocked) {
+      closeQueue();
     }
-  }, [isLogDrawerOpen]);
+  }, [isLogDrawerOpen, isQueueDocked, closeQueue]);
 
-  const prevQueueRef = React.useRef(isQueueOpen);
+  const prevQueueSheetRef = React.useRef(isQueueSheetOpen);
   React.useEffect(() => {
-    const queueJustOpened = !prevQueueRef.current && isQueueOpen;
-    prevQueueRef.current = isQueueOpen;
+    const queueSheetJustOpened = !prevQueueSheetRef.current && isQueueSheetOpen;
+    prevQueueSheetRef.current = isQueueSheetOpen;
 
-    if (queueJustOpened && isLogDrawerOpen) {
+    if (queueSheetJustOpened && isLogDrawerOpen) {
       closeLogDrawer();
     }
-  }, [isQueueOpen, isLogDrawerOpen, closeLogDrawer]);
+  }, [isQueueSheetOpen, isLogDrawerOpen, closeLogDrawer]);
 
   // Initial load & WebSocket heartbeat with auto-reconnect
   React.useEffect(() => {
@@ -404,7 +407,7 @@ export function App() {
 
       if (e.key === "q" || e.key === "Q") {
         e.preventDefault();
-        setIsQueueOpen((prev) => !prev);
+        toggleQueue();
         return;
       }
 
@@ -419,7 +422,7 @@ export function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [toggleQueue]);
 
   const handleDeleteTrack = React.useCallback(
     (id: string) => {
@@ -1602,6 +1605,8 @@ export function App() {
         </div>
       </SidebarInset>
 
+      {isQueueDocked && isQueueOpen && <QueuePanel onClose={closeQueue} />}
+
       {/* Bulk Action Floating Bar */}
       <BulkActionBar visibleTrackIds={visibleTrackIds} visibleItems={visibleItems} />
 
@@ -1682,11 +1687,8 @@ export function App() {
         </React.Suspense>
       )}
 
-      {/* Queue Drawer (Right) */}
-      <QueueDrawer
-        isOpen={isQueueOpen}
-        onClose={() => setIsQueueOpen(false)}
-      />
+      {/* Queue sheet for screens too narrow to dock it */}
+      {!isQueueDocked && <QueueDrawer isOpen={isQueueOpen} onClose={closeQueue} />}
 
       {/* Activity & Error Log Drawer (Slide-over) */}
       {isLogDrawerOpen && (
@@ -1709,12 +1711,14 @@ export function App() {
       )}
 
       {/* Quick Scroll Navigation Widget (Floating Controls) */}
-      <FloatingScrollControls />
+      {/* Clear the docked queue panel (w-80) plus the usual right-8 gap */}
+      <FloatingScrollControls className={isQueueDocked && isQueueOpen ? "md:right-88" : undefined} />
 
       {/* Player Bar */}
       <PlayerBar
-        onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+        onToggleQueue={toggleQueue}
         isQueueOpen={isQueueOpen}
+        isQueueDocked={isQueueDocked}
       />
     </AppShell>
   );

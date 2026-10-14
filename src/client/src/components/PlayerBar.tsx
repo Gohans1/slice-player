@@ -27,6 +27,8 @@ import { useTranslation } from "react-i18next";
 interface PlayerBarProps {
   onToggleQueue: () => void;
   isQueueOpen: boolean;
+  // A docked queue is a plain show/hide panel; otherwise the toggle opens a dialog sheet
+  isQueueDocked?: boolean;
 }
 
 interface TrackProgressBarProps {
@@ -266,7 +268,7 @@ function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
   );
 }
 
-export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
+export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }: PlayerBarProps) {
   const { t } = useTranslation();
   const footerRef = useHeightCssVar("--player-bar-height");
   const activeTrack = usePlayerStore((s) => s.activeTrack);
@@ -642,7 +644,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
               variant={isQueueOpen ? "secondary" : "ghost"}
               size="sm"
               onClick={onToggleQueue}
-              aria-haspopup="dialog"
+              aria-haspopup={isQueueDocked ? undefined : "dialog"}
               aria-expanded={isQueueOpen}
               aria-controls="queue-drawer"
               aria-label={
@@ -969,7 +971,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
             variant={isQueueOpen ? "secondary" : "ghost"}
             size="sm"
             onClick={onToggleQueue}
-            aria-haspopup="dialog"
+            aria-haspopup={isQueueDocked ? undefined : "dialog"}
             aria-expanded={isQueueOpen}
             aria-controls="queue-drawer"
             aria-label={

@@ -1,18 +1,33 @@
 import * as React from "react";
-import { X, Play, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, Repeat } from "lucide-react";
+import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, Repeat } from "lucide-react";
 import { useVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
+import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { cn, formatDuration } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
-import { usePlayerStore, type QueueItem } from "../store/usePlayerStore";
+import { usePlayerStore, type PlaybackMode, type QueueItem } from "../store/usePlayerStore";
 
 interface QueueDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  isExiting?: boolean;
 }
+
+interface QueueContentProps {
+  onClose: () => void;
+  // The sheet passes its dialog title so Base UI labels the dialog with it
+  titleAs?: React.ElementType;
+}
+
+const PLAYBACK_MODES = [
+  { mode: "mixed", icon: Shuffle, labelKey: "categories.mixed", fallback: "Mix" },
+  { mode: "slices_only", icon: Scissors, labelKey: "categories.slices", fallback: "Slices" },
+  { mode: "original_only", icon: Disc, labelKey: "categories.tracks", fallback: "Tracks" },
+] as const satisfies readonly { mode: PlaybackMode; icon: typeof Shuffle; labelKey: string; fallback: string }[];
 
 export function getBoundaryDropIndex(
   clientY: number,
@@ -99,15 +114,16 @@ const QueueItemRow = React.memo(function QueueItemRow({
       onDragOver={(e) => onDragOver(e, idx)}
       onDrop={(e) => onDrop(e, idx)}
       onDragEnd={onDragEnd}
-      className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-lg border select-none transition-colors ${
+      className={cn(
+        "group flex items-center justify-between gap-2 rounded-md p-1.5 select-none transition-colors",
         isDragging
-          ? "opacity-40 border-dashed border-primary/60"
+          ? "opacity-40 outline-1 outline-dashed outline-primary/60"
           : isDragTarget
-          ? "border-primary ring-2 ring-primary/60 bg-accent/70 shadow-md"
+          ? "bg-accent ring-2 ring-primary/60"
           : isCurrent
-          ? "border-primary bg-primary/10 shadow-sm"
-          : "border-border/50 bg-background/50 hover:bg-accent/40 hover:border-border"
-      }`}
+          ? "bg-primary/10"
+          : "hover:bg-accent/60"
+      )}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <div
@@ -117,7 +133,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
           aria-label={t("queue.dragHandleAria", { name: itemName, position: idx + 1, total: totalItems, defaultValue: `Reorder ${itemName}, position ${idx + 1} of ${totalItems}` })}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
           aria-description={t("queue.dragHandleDesc", "Press Up/Down arrow or Home/End to change position in queue")}
-          className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/40 hover:text-foreground shrink-0 transition-colors focus:outline-none focus:ring-1 focus:ring-primary rounded"
+          className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/60 hover:text-foreground shrink-0 transition-[color,opacity] [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary rounded"
           title={t("queue.dragHandleTitle", "Drag or press Up/Down arrows, Home/End to reorder")}
           onMouseDown={(e) => {
             if (e.button === 0) onHandleMouseDown();
@@ -203,7 +219,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
           }}
           className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded p-1 -m-1"
         >
-          <div className="relative h-9 w-9 rounded overflow-hidden bg-muted shrink-0 border border-border">
+          <div className="relative size-10 rounded overflow-hidden bg-muted shrink-0">
             <TrackThumbnail
               src={item.track.thumbnail_url}
               alt={item.track.title}
@@ -293,18 +309,12 @@ const QueueItemRow = React.memo(function QueueItemRow({
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
-        <div
-          aria-hidden="true"
-          className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none p-0.5 rounded text-primary"
-        >
-          <Play className="h-3.5 w-3.5 fill-current text-primary" />
-        </div>
       </div>
     </div>
   );
 });
 
-const ESTIMATED_ITEM_HEIGHT = 62;
+const ESTIMATED_ITEM_HEIGHT = 54;
 const INITIAL_DRAWER_RECT = { width: 384, height: 600 };
 const estimateItemSize = () => ESTIMATED_ITEM_HEIGHT;
 
@@ -324,16 +334,16 @@ const safeCancelRaf = (handle: number | null) => {
   }
 };
 
-function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
+function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
   const { t } = useTranslation();
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
-  const activeTrack = usePlayerStore((s) => s.activeTrack);
   const playSegment = usePlayerStore((s) => s.playSegment);
   const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const reorderQueue = usePlayerStore((s) => s.reorderQueue);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const setPlaybackMode = usePlayerStore((s) => s.setPlaybackMode);
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const activePlaylistPlayingName = usePlayerStore((s) => {
     if (!s.activePlaylistPlayingId) return null;
@@ -502,7 +512,6 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
   const shuffleScrollRafRef = React.useRef<number | null>(null);
 
   const itemKeys = React.useMemo(() => {
-    if (!isOpen) return [];
     const usedKeys = new Set<string>();
     return displayQueue.map((item) => {
       let rawKey = item.queueItemId;
@@ -522,7 +531,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
       usedKeys.add(finalKey);
       return finalKey;
     });
-  }, [isOpen, displayQueue]);
+  }, [displayQueue]);
 
   const getItemKey = React.useCallback(
     (index: number) => itemKeys[index] ?? `queue_item_${index}`,
@@ -573,17 +582,13 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
   const prevQueueIndexRef = React.useRef<number>(-1);
   const prevQueueLengthRef = React.useRef(displayQueue.length);
 
-  // Only auto-scroll when drawer opens or active playing track advances
+  // Only auto-scroll when the queue opens or active playing track advances
   React.useEffect(() => {
-    if (!isOpen) {
-      prevIsOpenRef.current = false;
-      return;
-    }
-    const isInitialOpen = !prevIsOpenRef.current && isOpen;
+    const isInitialOpen = !prevIsOpenRef.current;
     const isSegmentChanged = prevSegmentIdRef.current !== activeSegment?.id;
     const isLengthChanged = prevQueueLengthRef.current !== displayQueue.length;
     const isQueueIndexChanged = prevQueueIndexRef.current !== queueIndex && !isLengthChanged;
-    prevIsOpenRef.current = isOpen;
+    prevIsOpenRef.current = true;
     prevSegmentIdRef.current = activeSegment?.id ?? null;
     prevQueueIndexRef.current = queueIndex;
     prevQueueLengthRef.current = displayQueue.length;
@@ -612,7 +617,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
         }
       }
     }
-  }, [isOpen, activeSegment?.id, queueIndex, displayQueue.length]);
+  }, [activeSegment?.id, queueIndex, displayQueue.length]);
 
   const pendingFocusRef = React.useRef<{
     index: number;
@@ -785,36 +790,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
       window.removeEventListener("pointercancel", handleRelease);
       window.removeEventListener("blur", resetDragState);
     };
-  }, [isOpen, resetDragState]);
-
-  const onCloseRef = React.useRef(onClose);
-  React.useLayoutEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  // Focus drawer container upon mount
-  React.useEffect(() => {
-    drawerRef.current?.focus();
-  }, []);
-
-  // Global Escape dismiss (cancels drag first if active)
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (drawerRef.current && drawerRef.current.contains(e.target as Node)) {
-          return;
-        }
-        if (draggedIdxRef.current !== null || isDraggingHandleRef.current) {
-          stopAutoScroll();
-          resetDragState();
-          return;
-        }
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stopAutoScroll, resetDragState]);
+  }, [resetDragState]);
 
   const handlePlayItem = React.useCallback(
     async (item: QueueItem, idx: number) => {
@@ -926,155 +902,122 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
     isDraggingHandleRef.current = true;
   }, []);
 
-  const handleDialogKeyDown = React.useCallback(
+  // Escape mid-drag only cancels the drag; stopping it here keeps the sheet from closing too
+  const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape") {
+      if (e.key !== "Escape") return;
+      if (draggedIdxRef.current !== null || isDraggingHandleRef.current) {
         e.stopPropagation();
-        e.nativeEvent.stopImmediatePropagation();
-        if (draggedIdxRef.current !== null || isDraggingHandleRef.current) {
-          stopAutoScroll();
-          resetDragState();
-          return;
-        }
-        onCloseRef.current();
-        return;
-      }
-
-      if (e.key === "Tab") {
-        if (!drawerRef.current) return;
-        const allFocusable = Array.from(
-          drawerRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])'
-          )
-        ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
-
-        if (allFocusable.length === 0) {
-          e.preventDefault();
-          return;
-        }
-
-        const first = allFocusable[0];
-        const lastInDom = allFocusable[allFocusable.length - 1];
-
-        if (e.shiftKey) {
-          const activeEl = document.activeElement as HTMLElement | null;
-          const currentRowEl = activeEl?.closest<HTMLElement>("[data-index]");
-          const currentRowIdx = currentRowEl ? Number(currentRowEl.getAttribute("data-index")) : -1;
-          const firstFocusableInRow = currentRowEl?.querySelector<HTMLElement>(
-            'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-          );
-
-          if (currentRowEl && !isNaN(currentRowIdx) && activeEl === firstFocusableInRow && currentRowIdx > 0) {
-            e.preventDefault();
-            const prevIdx = currentRowIdx - 1;
-            rowVirtualizerRef.current?.scrollToIndex(prevIdx, { align: "auto" });
-            const prevRow = listRef.current?.querySelector<HTMLElement>(`[data-index="${prevIdx}"]`);
-            const prevFocusables = Array.from(
-              prevRow?.querySelectorAll<HTMLElement>(
-                'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-              ) ?? []
-            ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
-            if (prevFocusables.length > 0) {
-              prevFocusables[prevFocusables.length - 1].focus();
-            } else {
-              pendingFocusRef.current = { index: prevIdx, target: "last", timestamp: Date.now() };
-            }
-          } else if (
-            document.activeElement === first ||
-            document.activeElement === drawerRef.current ||
-            !drawerRef.current.contains(document.activeElement)
-          ) {
-            e.preventDefault();
-            const qLen = displayQueueRef.current.length;
-            if (qLen > 0) {
-              const lastIdx = qLen - 1;
-              rowVirtualizerRef.current?.scrollToIndex(lastIdx, { align: "auto" });
-              const lastRow = listRef.current?.querySelector<HTMLElement>(`[data-index="${lastIdx}"]`);
-              const lastFocusables = Array.from(
-                lastRow?.querySelectorAll<HTMLElement>(
-                  'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-                ) ?? []
-              ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
-              if (lastFocusables.length > 0) {
-                lastFocusables[lastFocusables.length - 1].focus();
-              } else {
-                pendingFocusRef.current = { index: lastIdx, target: "last", timestamp: Date.now() };
-              }
-            } else {
-              lastInDom.focus();
-            }
-          }
-        } else {
-          if (document.activeElement === lastInDom || !drawerRef.current.contains(document.activeElement)) {
-            const activeEl = document.activeElement as HTMLElement | null;
-            const currentRowEl = activeEl?.closest<HTMLElement>("[data-index]");
-            const currentRowIdx = currentRowEl ? Number(currentRowEl.getAttribute("data-index")) : -1;
-            const qLen = displayQueueRef.current.length;
-
-            if (currentRowEl && !isNaN(currentRowIdx) && currentRowIdx < qLen - 1) {
-              e.preventDefault();
-              const nextIdx = currentRowIdx + 1;
-              rowVirtualizerRef.current?.scrollToIndex(nextIdx, { align: "auto" });
-              const nextRow = listRef.current?.querySelector<HTMLElement>(`[data-index="${nextIdx}"]`);
-              const nextFocusable = nextRow?.querySelector<HTMLElement>(
-                'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-              );
-              if (nextFocusable) {
-                nextFocusable.focus();
-              } else {
-                pendingFocusRef.current = { index: nextIdx, target: "any", timestamp: Date.now() };
-              }
-            } else {
-              e.preventDefault();
-              first.focus();
-            }
-          }
-        }
+        stopAutoScroll();
+        resetDragState();
       }
     },
     [stopAutoScroll, resetDragState]
   );
 
-  return (
-    <>
-      <div
-        className={cn(
-          "fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] duration-200",
-          isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
-        )}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        ref={drawerRef}
-        id="queue-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="queue-drawer-title"
-        tabIndex={-1}
-        onKeyDown={handleDialogKeyDown}
-        className={cn(
-          "fixed inset-y-0 right-0 z-50 w-full max-w-sm border-l border-border bg-card/95 backdrop-blur-md p-5 shadow-2xl flex flex-col duration-200",
-          isExiting ? "animate-out slide-out-to-right pointer-events-none" : "animate-in slide-in-from-right"
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-border">
-          <div className="flex items-center gap-2 min-w-0">
-            <Music className="h-5 w-5 text-primary shrink-0" />
-            <h2 id="queue-drawer-title" className="font-bold text-base text-foreground truncate">
-              {t("queue.title", "Now Playing Queue")}
-            </h2>
-            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground shrink-0">
-              {displayQueue.length}
-            </span>
-          </div>
+  // Tab off the last rendered row, or Shift+Tab off a row's first control, walks into rows the
+  // virtualizer has not mounted yet instead of leaving the list
+  const handleListKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const list = listRef.current;
+    if (e.key !== "Tab" || !list) return;
+    const activeEl = document.activeElement as HTMLElement | null;
+    const currentRowEl = activeEl?.closest<HTMLElement>("[data-index]");
+    const currentRowIdx = currentRowEl ? Number(currentRowEl.getAttribute("data-index")) : NaN;
+    if (!currentRowEl || isNaN(currentRowIdx)) return;
+    const focusable = 'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])';
+    const isShown = (el: HTMLElement) => el.offsetParent !== null || el.getClientRects().length > 0;
 
-          <div className="flex items-center gap-1 shrink-0">
+    if (e.shiftKey) {
+      if (currentRowIdx === 0 || activeEl !== currentRowEl.querySelector<HTMLElement>(focusable)) return;
+      e.preventDefault();
+      const prevIdx = currentRowIdx - 1;
+      rowVirtualizerRef.current?.scrollToIndex(prevIdx, { align: "auto" });
+      const prevFocusables = Array.from(
+        list.querySelector(`[data-index="${prevIdx}"]`)?.querySelectorAll<HTMLElement>(focusable) ?? []
+      ).filter(isShown);
+      const lastInPrevRow = prevFocusables[prevFocusables.length - 1];
+      if (lastInPrevRow) lastInPrevRow.focus();
+      else pendingFocusRef.current = { index: prevIdx, target: "last", timestamp: Date.now() };
+      return;
+    }
+
+    const listFocusables = Array.from(list.querySelectorAll<HTMLElement>(focusable)).filter(isShown);
+    if (activeEl !== listFocusables[listFocusables.length - 1] || currentRowIdx >= displayQueueRef.current.length - 1) {
+      return;
+    }
+    e.preventDefault();
+    const nextIdx = currentRowIdx + 1;
+    rowVirtualizerRef.current?.scrollToIndex(nextIdx, { align: "auto" });
+    const nextFocusable = list.querySelector(`[data-index="${nextIdx}"]`)?.querySelector<HTMLElement>(focusable);
+    if (nextFocusable) nextFocusable.focus();
+    else pendingFocusRef.current = { index: nextIdx, target: "any", timestamp: Date.now() };
+  }, []);
+
+  return (
+    <div ref={drawerRef} tabIndex={-1} onKeyDown={handleKeyDown} className="flex min-h-0 flex-1 flex-col p-4 focus:outline-none">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Title id="queue-drawer-title" className="truncate text-base font-bold text-foreground">
+              {t("queue.title", "Now Playing Queue")}
+            </Title>
+            <Badge variant="secondary" className="shrink-0">
+              {displayQueue.length}
+            </Badge>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            data-action="close-queue"
+            aria-label={t("queue.close", "Close queue")}
+            title={t("queue.close", "Close queue")}
+          >
+            <X />
+          </Button>
+        </div>
+
+        <ToggleGroup
+          aria-label={t("queue.playbackMode", "Playback mode")}
+          value={activePlaylistPlayingId ? [] : [playbackMode]}
+          onValueChange={(value) => {
+            // Pressing the active mode again empties the value; keep the mode instead
+            const mode = PLAYBACK_MODES.find((option) => value.includes(option.mode))?.mode;
+            if (mode) void setPlaybackMode(mode);
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          className="mt-3 w-full"
+        >
+          {PLAYBACK_MODES.map(({ mode, icon: Icon, labelKey, fallback }) => (
+            <ToggleGroupItem key={mode} value={mode} className="flex-1">
+              <Icon data-icon="inline-start" />
+              {t(labelKey, fallback)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+
+        {/* Where playback comes from, next to the queue order controls */}
+        <div className="flex items-center justify-between gap-2 border-b border-border/50 py-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs">
+            <span className="shrink-0 text-muted-foreground">{t("queue.playingLabel", "Playing:")}</span>
+            {activePlaylistPlayingId ? (
+              <Folder className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
+            ) : playbackMode === "slices_only" ? (
+              <Scissors className="h-3.5 w-3.5 shrink-0 text-primary" />
+            ) : playbackMode === "original_only" ? (
+              <Disc className="h-3.5 w-3.5 shrink-0 text-flexoki-green" />
+            ) : (
+              <Shuffle className="h-3.5 w-3.5 shrink-0 text-flexoki-blue" />
+            )}
+            <span className="truncate font-semibold text-primary">{playingPlaylistName}</span>
+          </div>
+          <div className="flex shrink-0 items-center">
             {isShuffle && displayQueue.length > 0 && (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 onClick={() => {
                   toggleShuffle();
                   setLiveAnnouncement(t("queue.announcementRestored", "Restored original queue order"));
@@ -1090,18 +1033,17 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                     }
                   });
                 }}
-                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
                 title={t("queue.restoreOrder", "Restore original order")}
                 aria-label={t("queue.restoreOrder", "Restore original order")}
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw />
               </Button>
             )}
 
             <Button
               ref={shuffleBtnRef}
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               onClick={() => {
                 reshuffleCurrentQueue();
                 if (listRef.current) {
@@ -1122,7 +1064,6 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                 });
               }}
               disabled={displayQueue.length <= 1}
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
               title={
                 isShuffle
                   ? t("queue.reshuffle", "Reshuffle queue")
@@ -1139,12 +1080,12 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                   : undefined
               }
             >
-              <Shuffle className="h-4 w-4" />
+              <Shuffle />
             </Button>
 
             <Button
               variant={isLoopQueue ? "secondary" : "ghost"}
-              size="icon"
+              size="icon-sm"
               onClick={() => {
                 toggleLoopQueue();
                 const nextState = !isLoopQueue;
@@ -1153,9 +1094,6 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                   : t("queue.announcementLoopQueueDisabled", "Queue loop disabled");
                 setLiveAnnouncement((prev) => (prev === msg ? `${msg}\u200B` : msg));
               }}
-              className={`h-8 w-8 shrink-0 ${
-                isLoopQueue ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground"
-              } cursor-pointer`}
               title={
                 isLoopQueue
                   ? t("queue.loopQueueActive", "Loop queue enabled")
@@ -1169,56 +1107,8 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                   : undefined
               }
             >
-              <Repeat className="h-4 w-4" />
+              <Repeat />
             </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              data-action="close-queue"
-              aria-label={t("queue.close", "Close queue")}
-              title={t("queue.close", "Close queue")}
-              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Playing Playlist Indicator */}
-        <div className="py-2.5 border-b border-border/50">
-          <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-accent/40 border border-border/40 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-muted-foreground text-2xs shrink-0">{t("queue.playingLabel", "Playing:")}</span>
-              <div className="inline-flex items-center gap-1.5 font-semibold text-primary truncate">
-                {activePlaylistPlayingId ? (
-                  <Folder className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
-                ) : playbackMode === "slices_only" ? (
-                  <Scissors className="h-3.5 w-3.5 shrink-0 text-primary" />
-                ) : playbackMode === "original_only" ? (
-                  <Disc className="h-3.5 w-3.5 shrink-0 text-flexoki-green" />
-                ) : (
-                  <Shuffle className="h-3.5 w-3.5 shrink-0 text-flexoki-blue" />
-                )}
-                <span className="truncate">{playingPlaylistName}</span>
-              </div>
-            </div>
-            {Boolean(activeTrack) && (
-              <span className="inline-flex items-center gap-1 font-mono text-2xs text-flexoki-green shrink-0 ml-2">
-                {isPlaying ? (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-flexoki-green animate-pulse" />
-                    <span>{t("queue.playing", "Playing")}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-                    <span className="text-muted-foreground">{t("queue.paused", "Paused")}</span>
-                  </>
-                )}
-              </span>
-            )}
           </div>
         </div>
 
@@ -1233,6 +1123,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
         role="region"
         aria-label={t("queue.regionAria", "Current playback queue")}
         tabIndex={-1}
+        onKeyDown={handleListKeyDown}
         className="flex-1 min-h-0 overflow-y-auto focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
         onDragOver={(e) => {
           if (draggedIdxRef.current === null) return;
@@ -1323,13 +1214,15 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
         }}
       >
         {displayQueue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center text-muted-foreground p-4 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-            <Music className="h-8 w-8 opacity-30 mb-2" />
-            <p className="text-sm font-medium text-foreground">{t("queue.empty", "Queue is empty")}</p>
-            <p className="text-xs text-muted-foreground/70 mt-1 max-w-[220px]">
-              {t("queue.emptyHint", "Select a playlist or track to begin playback.")}
-            </p>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Music />
+              </EmptyMedia>
+              <EmptyTitle>{t("queue.empty", "Queue is empty")}</EmptyTitle>
+              <EmptyDescription>{t("queue.emptyHint", "Select a playlist or track to begin playback.")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div
             role="list"
@@ -1369,7 +1262,7 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
                     width: "100%",
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
-                  className="pb-2"
+                  className="pb-0.5"
                 >
                   <QueueItemRow
                     item={item}
@@ -1396,66 +1289,29 @@ function QueueDrawerContent({ isOpen, onClose, isExiting }: QueueDrawerProps) {
         )}
       </div>
     </div>
-    </>
   );
 }
 
-export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
-  const triggerElementRef = React.useRef<HTMLElement | null>(null);
-  const prevIsOpenRef = React.useRef(false);
-
-  const [isRendered, setIsRendered] = React.useState(isOpen);
-  const [isExiting, setIsExiting] = React.useState(false);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsRendered(true);
-      setIsExiting(false);
-    } else if (isRendered) {
-      setIsExiting(true);
-      const timer = setTimeout(() => {
-        setIsRendered(false);
-        setIsExiting(false);
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isRendered]);
-
-  React.useLayoutEffect(() => {
-    if (!prevIsOpenRef.current && isOpen && typeof document !== "undefined") {
-      triggerElementRef.current = document.activeElement as HTMLElement | null;
-    } else if (prevIsOpenRef.current && !isOpen) {
-      if (triggerElementRef.current?.isConnected) {
-        triggerElementRef.current.focus();
-      } else if (typeof document !== "undefined") {
-        const queueTrigger = document.querySelector<HTMLElement>(
-          'button[aria-controls="queue-drawer"]'
-        );
-        queueTrigger?.focus();
-      }
-      triggerElementRef.current = null;
-    }
-    prevIsOpenRef.current = isOpen;
-  }, [isOpen]);
-
-  React.useEffect(() => {
-    return () => {
-      if (triggerElementRef.current) {
-        if (triggerElementRef.current.isConnected) {
-          triggerElementRef.current.focus();
-        } else if (typeof document !== "undefined") {
-          const queueTrigger = document.querySelector<HTMLElement>(
-            'button[aria-controls="queue-drawer"]'
-          );
-          queueTrigger?.focus();
-        }
-        triggerElementRef.current = null;
-      }
-    };
-  }, []);
-
-  if (!isOpen && !isRendered) return null;
-
-  return <QueueDrawerContent isOpen={isOpen} onClose={onClose} isExiting={isExiting} />;
+// Docked beside the library on wide screens: a non-modal panel the player bar shows and hides
+export function QueuePanel({ onClose }: QueueContentProps) {
+  return (
+    <aside
+      id="queue-drawer"
+      aria-labelledby="queue-drawer-title"
+      className="sticky top-0 flex h-[calc(100svh-var(--player-bar-height,0px))] w-80 shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+    >
+      <QueueContent onClose={onClose} />
+    </aside>
+  );
 }
 
+// Overlay sheet for narrower screens
+export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
+  return (
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent id="queue-drawer" showCloseButton={false}>
+        <QueueContent onClose={onClose} titleAs={SheetTitle} />
+      </SheetContent>
+    </Sheet>
+  );
+}
