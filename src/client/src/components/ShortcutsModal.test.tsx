@@ -12,13 +12,13 @@ describe("ShortcutsModal Component", () => {
   let root: Root;
 
   beforeEach(async () => {
-    await i18n.changeLanguage("en");
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     happyWindow = new GlobalWindow();
     (globalThis as any).window = happyWindow;
     (globalThis as any).document = happyWindow.document;
     (globalThis as any).KeyboardEvent = happyWindow.KeyboardEvent;
     (globalThis as any).HTMLElement = happyWindow.HTMLElement;
+    await i18n.changeLanguage("en");
 
     container = happyWindow.document.createElement("div") as unknown as HTMLDivElement;
     happyWindow.document.body.appendChild(container);

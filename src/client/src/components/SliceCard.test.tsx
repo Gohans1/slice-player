@@ -13,7 +13,6 @@ describe("SliceCard Component", () => {
   let root: any;
 
   beforeEach(async () => {
-    await i18n.changeLanguage("en");
     window = new GlobalWindow();
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     (globalThis as any).window = window;
@@ -22,6 +21,7 @@ describe("SliceCard Component", () => {
     (globalThis as any).Element = window.Element;
     (globalThis as any).HTMLElement = window.HTMLElement;
     (globalThis as any).HTMLImageElement = window.HTMLImageElement;
+    await i18n.changeLanguage("en");
 
     container = window.document.createElement("div");
     window.document.body.appendChild(container);
