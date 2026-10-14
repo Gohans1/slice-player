@@ -55,8 +55,8 @@
     "viewMode": "Xem dạng:",
     "grid": "Lưới",
     "gridTooltip": "Xem dạng lưới",
-    "table": "Bảng",
-    "tableTooltip": "Xem dạng bảng chi tiết",
+    "table": "Danh sách",
+    "tableTooltip": "Xem dạng danh sách",
     "newPlaylist": "Tạo Playlist Mới",
     "foldBuiltIn": "Thu gọn danh mục hệ thống",
     "unfoldBuiltIn": "Mở rộng danh mục hệ thống (4)",
@@ -342,7 +342,9 @@
     "selectTrack": "Chọn {{title}}",
     "deselectTrack": "Bỏ chọn {{title}}",
     "play": "Phát",
-    "pause": "Tạm dừng"
+    "pause": "Tạm dừng",
+    "copyLink": "Sao chép link YouTube",
+    "copiedLink": "Đã sao chép link!"
   },
   "ytModal": {
     "title": "Thêm nhạc từ YouTube",

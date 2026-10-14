@@ -8,6 +8,7 @@ import { usePlayerStore } from "../store/usePlayerStore";
 import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createSliceSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
 
@@ -226,6 +227,10 @@ export function SliceCardComponent({
           </Button>
 
           <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
+            <CopyTrackLinkButton
+              sourceType={track.source_type}
+              sourceUri={track.source_uri}
+            />
             <AddToPlaylistPopover
               trackId={track.id}
               segmentId={segment.id}
@@ -265,6 +270,8 @@ export const SliceCard = React.memo(SliceCardComponent, (prev, next) => {
     prev.segment.end_time === next.segment.end_time &&
     prev.segment.color === next.segment.color &&
     prev.track.id === next.track.id &&
+    prev.track.source_type === next.track.source_type &&
+    prev.track.source_uri === next.track.source_uri &&
     prev.track.title === next.track.title &&
     prev.track.artist === next.track.artist &&
     prev.track.status === next.track.status &&

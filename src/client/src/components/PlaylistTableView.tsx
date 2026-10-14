@@ -25,6 +25,7 @@ import {
   type SelectedItem,
 } from "../store/useSelectionStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";
@@ -1182,7 +1183,7 @@ export function PlaylistTableView({
             if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
             handleDrop(e, 0);
           }}
-          className={`grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b transition-colors ${
+          className={`grid grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b transition-colors ${
             dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0
               ? "border-primary ring-2 ring-primary/60 bg-accent/70 shadow-md text-foreground"
               : "border-border text-muted-foreground"
@@ -1345,7 +1346,7 @@ export function PlaylistTableView({
                   }
                   handlePlayPlaylistItem(item);
                 }}
-                className={`group grid grid-cols-[72px_1fr_64px_124px] sm:grid-cols-[80px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
+                className={`group grid grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : isDragging
@@ -1530,6 +1531,22 @@ export function PlaylistTableView({
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={!isReady || isReordering}
+                    onClick={() => item.track && openSliceStudio(item.track)}
+                    className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:opacity-30"
+                    title={t("table.openStudio")}
+                    aria-label={t("table.openStudio")}
+                  >
+                    <Scissors className="h-3.5 w-3.5" />
+                  </Button>
+                  <CopyTrackLinkButton
+                    sourceType={item.track?.source_type}
+                    sourceUri={item.track?.source_uri}
+                    size="table"
+                  />
                   <AddToPlaylistPopover
                     trackId={item.track?.id ?? item.track_id}
                     segmentId={isSlice && item.segment ? item.segment.id : undefined}
@@ -1641,7 +1658,7 @@ export function PlaylistTableView({
         aria-rowcount={sliceItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleSliceItemIds.length > 0 && (
               <button
@@ -1718,7 +1735,7 @@ export function PlaylistTableView({
                   }
                   handlePlaySlice(item.segment, item.track);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
+                className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : !isReady
@@ -1804,6 +1821,11 @@ export function PlaylistTableView({
                     <Scissors className="h-3.5 w-3.5" />
                     <span className="hidden md:inline">{t("table.studio")}</span>
                   </Button>
+                  <CopyTrackLinkButton
+                    sourceType={item.track?.source_type}
+                    sourceUri={item.track?.source_uri}
+                    size="table"
+                  />
                   <AddToPlaylistPopover
                     trackId={item.track?.id ?? ""}
                     segmentId={item.segment.id}
@@ -1856,7 +1878,7 @@ export function PlaylistTableView({
         aria-rowcount={mixedItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleMixedItemIds.length > 0 && (
               <button
@@ -1960,7 +1982,7 @@ export function PlaylistTableView({
                   }
                   handlePlayMixed(item);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_180px_90px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
+                className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                   isSelected
                     ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                     : !isReady
@@ -2087,6 +2109,11 @@ export function PlaylistTableView({
                     <Scissors className="h-3.5 w-3.5" />
                     <span className="hidden md:inline">{isSlice ? t("table.studio") : t("table.slice")}</span>
                   </Button>
+                  <CopyTrackLinkButton
+                    sourceType={item.track?.source_type}
+                    sourceUri={item.track?.source_uri}
+                    size="table"
+                  />
                   <AddToPlaylistPopover
                     trackId={item.track?.id ?? ""}
                     segmentId={isSlice ? item.segment.id : undefined}
@@ -2147,7 +2174,7 @@ export function PlaylistTableView({
       aria-rowcount={trackList.length + 1}
     >
       {/* Table Header */}
-      <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_160px_100px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+      <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
         <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
           {visibleTrackIds.length > 0 && (
             <button
@@ -2235,7 +2262,7 @@ export function PlaylistTableView({
                 if (!isReady) return;
                 handlePlayTrack(track);
               }}
-              className={`group grid grid-cols-[44px_1fr_64px_96px] sm:grid-cols-[56px_1fr_160px_100px_130px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
+              className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
                 isSelected
                   ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
                   : !isReady
@@ -2336,19 +2363,26 @@ export function PlaylistTableView({
                 onKeyDown={(e) => e.stopPropagation()}
               >
                 {track.status === "error" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRetrying}
-                    onClick={async () => {
-                      await retryTrack(track.id);
-                    }}
-                    className="h-7 px-2 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={isRetrying ? t("table.retrying") : t("table.retry")}
-                  >
-                    <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
-                    <span className="hidden sm:inline">{isRetrying ? t("table.retrying") : t("table.retry")}</span>
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRetrying}
+                      onClick={async () => {
+                        await retryTrack(track.id);
+                      }}
+                      className="h-7 px-2 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={isRetrying ? t("table.retrying") : t("table.retry")}
+                    >
+                      <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+                      <span className="hidden sm:inline">{isRetrying ? t("table.retrying") : t("table.retry")}</span>
+                    </Button>
+                    <CopyTrackLinkButton
+                      sourceType={track.source_type}
+                      sourceUri={track.source_uri}
+                      size="table"
+                    />
+                  </>
                 ) : (
                   <>
                     <Button
@@ -2362,6 +2396,11 @@ export function PlaylistTableView({
                       <Scissors className="h-3 w-3" />
                       <span className="hidden md:inline">{t("table.slice")}</span>
                     </Button>
+                    <CopyTrackLinkButton
+                      sourceType={track.source_type}
+                      sourceUri={track.source_uri}
+                      size="table"
+                    />
                     <AddToPlaylistPopover
                       trackId={track?.id ?? ""}
                       disabled={!isReady}

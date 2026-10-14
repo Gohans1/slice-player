@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Play, Pause, Trash2, Scissors, Disc, ScissorsLineDashed, Loader2, Clock, AlertCircle, Check, GripVertical, ImageIcon } from "lucide-react";
+import { Play, Pause, Trash2, Scissors, Disc, Loader2, Clock, AlertCircle, Check, GripVertical, ImageIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { formatDuration } from "../lib/utils";
@@ -8,9 +8,18 @@ import { usePlayerStore } from "../store/usePlayerStore";
 import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createPlaylistItemSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { PlaylistItemWithDetails } from "@/server/types";
 import type { CardDragProps } from "./VirtualizedCardGrid";
+
+function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+    </svg>
+  );
+}
 
 interface PlaylistItemCardProps {
   item: PlaylistItemWithDetails;
@@ -112,20 +121,46 @@ export function PlaylistItemCardComponent({
           }
         />
 
-        {/* Kind Badge */}
+        {/* Source / Kind Badge */}
         <div className="absolute top-2 left-2">
           {isSlice && item.segment ? (
             <Badge variant="yellow" className="flex items-center gap-1 text-2xs py-0.5 font-mono shadow-xs">
               <Scissors className="h-3 w-3" />
               <span>{t("table.sliceIndex", { index: index + 1, defaultValue: `Slice #${index + 1}` })}</span>
             </Badge>
+          ) : item.track.source_type === "youtube" ? (
+            <Badge variant="destructive" className="flex items-center gap-1 text-2xs py-0.5">
+              <YoutubeIcon className="h-3 w-3" />
+              <span>YouTube</span>
+            </Badge>
           ) : (
-            <Badge variant="green" className="flex items-center gap-1 text-2xs py-0.5 font-mono shadow-xs">
+            <Badge variant="cyan" className="flex items-center gap-1 text-2xs py-0.5">
               <Disc className="h-3 w-3" />
-              <span>{t("table.fullTrackIndex", { index: index + 1, defaultValue: `Full Track #${index + 1}` })}</span>
+              <span>{t("trackCard.flacLocal", "FLAC Local")}</span>
             </Badge>
           )}
         </div>
+
+        {/* Set as Playlist Cover Button */}
+        {activePlaylistId && (
+          <button
+            type="button"
+            aria-pressed={isCover}
+            aria-label={t("playlist.setCover", "Set as playlist cover")}
+            title={isCover ? t("playlist.clearCover", "Remove playlist cover") : t("playlist.setCover", "Set as playlist cover")}
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaylistCover(activePlaylistId, isCover ? null : item.track.id);
+            }}
+            className={`absolute top-2 ${canDrag ? "right-16" : "right-9"} z-20 flex h-6 w-6 items-center justify-center rounded-md backdrop-blur-xs transition-[background-color,color,opacity,box-shadow,transform] duration-150 active:scale-95 motion-reduce:transform-none cursor-pointer focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
+              isCover
+                ? "bg-black/80 text-flexoki-yellow opacity-100 ring-1 ring-flexoki-yellow/50 shadow-sm"
+                : "bg-black/60 text-white/80 hover:bg-black/80 hover:text-flexoki-yellow opacity-40 sm:opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <ImageIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         {/* Drag Handle */}
         {canDrag && (
@@ -300,7 +335,7 @@ export function PlaylistItemCardComponent({
                 : playTooltip
             }
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-110">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform duration-100 hover:scale-110 active:scale-95">
               {isCurrentPlaying ? (
                 <Pause className="h-6 w-6 fill-current" />
               ) : (
@@ -332,115 +367,105 @@ export function PlaylistItemCardComponent({
 
       {/* Info */}
       <div className="mt-3 flex-1 flex flex-col">
-        <h3 className="font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] text-foreground group-hover:text-primary transition-colors">
+        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] transition-colors ${
+          isCurrentPlaying ? "text-primary" : "text-foreground group-hover:text-primary"
+        }`}>
           {isSlice && item.segment ? item.segment.name : item.track.title}
         </h3>
-        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-          {isSlice ? t("table.from", { title: item.track.title }) : (item.track.artist || t("table.unknownArtist", "Unknown Artist"))}
+        <p className="text-xs text-muted-foreground mt-1 truncate">
+          {isSlice ? item.track.title : (item.track.artist || t("table.unknownArtist", "Unknown Artist"))}
         </p>
 
-        {isSlice && item.segment && (
-          <div className="mt-2 text-2xs font-mono text-flexoki-yellow flex items-center gap-1">
-            <ScissorsLineDashed className="h-3 w-3" />
-            <span>
-              {formatDuration(item.segment.start_time)} - {formatDuration(item.segment.end_time)}
-            </span>
-          </div>
-        )}
-
-        <div className="mt-auto pt-3 flex items-center justify-between border-t border-border/60">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-                toggleTrack(item.id, visibleItemIdsRef.current, e.shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
-                return;
-              }
-              if (isReady) onPlayRef.current(item.id);
-            }}
-            disabled={!isSelectionActive && !isReady}
-            title={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : undefined}
-            aria-label={isSelectionActive ? (isSelected ? t("trackCard.deselectTrack", { title: itemTitle }) : t("trackCard.selectTrack", { title: itemTitle })) : (isCurrentPlaying && isPlaying ? t("trackCard.pause") : t("trackCard.play"))}
-            className="h-8 text-xs gap-1.5 px-3 hover:border-primary/40 hover:text-primary cursor-pointer disabled:opacity-60 shrink-0"
-          >
-            {isSelectionActive ? (
-              <>
-                <Check className={`h-3.5 w-3.5 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
-                <span>{isSelected ? t("bulkActions.deselect", "Deselect") : t("bulkActions.select", "Select")}</span>
-              </>
-            ) : item.track?.status === "downloading" ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                <span className="text-primary">{t("table.downloading", "Downloading")}</span>
-              </>
-            ) : item.track?.status === "queued" ? (
-              <>
-                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>{t("table.queued", "Queued")}</span>
-              </>
-            ) : item.track?.status === "error" ? (
-              <>
-                <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                <span className="text-destructive">{t("table.downloadError", "Error")}</span>
-              </>
-            ) : (
-              <>
-                <Play className="h-3.5 w-3.5 fill-current" />
-                <span>{isCurrentPlaying ? t("player.nowPlaying", "Playing") : t("player.play", "Play")}</span>
-              </>
-            )}
-          </Button>
-
-          <div className="flex items-center gap-1 shrink-0">
+        {/* Segment badge & actions (unified with TrackCard and SliceCard) */}
+        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-1.5">
+          {isSlice && item.segment ? (
             <Button
-              variant="ghost"
-              size="icon"
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => openSliceStudio(item.track)}
-              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+              disabled={!isReady}
               title={t("table.openStudio", "Open Slice Studio")}
+              className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer shrink-0"
             >
               <Scissors className="h-3.5 w-3.5" />
+              <span>{t("table.studio", "Studio")}</span>
             </Button>
+          ) : (
+            <Badge variant="secondary" className="font-mono text-2xs font-normal whitespace-nowrap shrink-0">
+              {t("trackCard.slicesCount", {
+                count: item.track.segment_count ?? 0,
+                defaultValue: `${item.track.segment_count ?? 0} slices`,
+              })}
+            </Badge>
+          )}
 
-            <AddToPlaylistPopover
-              trackId={item.track?.id ?? item.track_id}
-              segmentId={isSlice && item.segment ? item.segment.id : undefined}
-              disabled={!isReady}
-              variant="ghost"
-              size="icon"
-              buttonClassName="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-              showText={false}
-            />
-
-            {activePlaylistId && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-pressed={isCover}
-                onClick={() => setPlaylistCover(activePlaylistId, isCover ? null : item.track.id)}
-                className={`h-8 w-8 hover:bg-flexoki-yellow/10 ${isCover ? "text-flexoki-yellow" : "text-muted-foreground hover:text-flexoki-yellow"}`}
-                title={isCover ? t("playlist.clearCover", "Remove playlist cover") : t("playlist.setCover", "Set as playlist cover")}
-                aria-label={t("playlist.setCover", "Set as playlist cover")}
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-              </Button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!isSlice && (
+              item.track.status === "error" ? (
+                <Badge variant="destructive" className="h-8 text-xs gap-1.5 border-destructive/40 font-normal shrink-0">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  <span>{t("table.downloadError", "Error")}</span>
+                </Badge>
+              ) : item.track.status === "downloading" ? (
+                <Badge variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 text-primary px-2.5 font-normal shrink-0">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>{t("table.downloading", "Downloading...")}</span>
+                </Badge>
+              ) : item.track.status === "queued" ? (
+                <Badge variant="outline" className="h-8 text-xs gap-1.5 border-border text-muted-foreground px-2.5 font-normal shrink-0">
+                  <Clock className="h-3.5 w-3.5 text-primary/80" />
+                  <span>{t("table.queued", "Queued...")}</span>
+                </Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openSliceStudio(item.track)}
+                  disabled={!isReady}
+                  title={t("table.openStudio", "Open Slice Studio")}
+                  className="h-8 text-xs gap-1 px-2 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer shrink-0"
+                >
+                  <Scissors className="h-3.5 w-3.5" />
+                  <span>{t("trackCard.slice", "Slice")}</span>
+                </Button>
+              )
             )}
 
-            {onDelete && (
-              <Button
+            <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
+              <CopyTrackLinkButton
+                sourceType={item.track?.source_type}
+                sourceUri={item.track?.source_uri}
+              />
+
+              <AddToPlaylistPopover
+                trackId={item.track?.id ?? item.track_id}
+                segmentId={isSlice && item.segment ? item.segment.id : undefined}
+                disabled={!isReady}
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  const name = isSlice && item.segment ? item.segment.name : item.track.title;
-                  onDeleteRef.current?.(item.id, name);
-                }}
-                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                title={t("table.removeFromPlaylist", "Remove from Playlist")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
+                buttonClassName="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
+                showText={false}
+              />
+
+              {onDelete && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const name = isSlice && item.segment ? item.segment.name : item.track.title;
+                    onDeleteRef.current?.(item.id, name);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer focus-visible:ring-1 focus-visible:ring-destructive focus-visible:opacity-100"
+                  title={t("table.removeFromPlaylist", "Remove from Playlist")}
+                  aria-label={t("table.removeFromPlaylist", "Remove from Playlist")}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -453,15 +478,19 @@ export const PlaylistItemCard = React.memo(PlaylistItemCardComponent, (prev, nex
     prev.item.id === next.item.id &&
     prev.item.sort_order === next.item.sort_order &&
     prev.item.track?.id === next.item.track?.id &&
+    prev.item.track?.source_type === next.item.track?.source_type &&
+    prev.item.track?.source_uri === next.item.track?.source_uri &&
     prev.item.track?.title === next.item.track?.title &&
     prev.item.track?.artist === next.item.track?.artist &&
     prev.item.track?.status === next.item.track?.status &&
     prev.item.track?.duration === next.item.track?.duration &&
     prev.item.track?.thumbnail_url === next.item.track?.thumbnail_url &&
+    prev.item.track?.segment_count === next.item.track?.segment_count &&
     prev.item.segment?.id === next.item.segment?.id &&
     prev.item.segment?.name === next.item.segment?.name &&
     prev.item.segment?.start_time === next.item.segment?.start_time &&
     prev.item.segment?.end_time === next.item.segment?.end_time &&
+    prev.item.segment?.color === next.item.segment?.color &&
     prev.index === next.index &&
     prev.totalItems === next.totalItems &&
     Boolean(prev.onDelete) === Boolean(next.onDelete) &&

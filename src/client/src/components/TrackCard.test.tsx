@@ -323,5 +323,95 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
     // AddToPlaylistPopover should not show text 'Playlist' to avoid overflowing the footer
     expect(footerEl.textContent).not.toContain("Playlist");
   });
+
+  it("renders Copy YouTube link button for youtube tracks and copies source_uri to clipboard when clicked", async () => {
+    const writeTextSpy = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+
+    const readyTrack: Track = {
+      ...baseTrack,
+      status: "ready",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=test_vid_99",
+    };
+
+    act(() => {
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
+    expect(copyBtn).not.toBeNull();
+
+    await act(async () => {
+      copyBtn!.click();
+    });
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=test_vid_99");
+    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
+  });
+
+  it("does not render Copy YouTube link button for local audio tracks", () => {
+    const localTrack: Track = {
+      ...baseTrack,
+      id: "local_1",
+      source_type: "local",
+      source_uri: "/music/song.flac",
+      status: "ready",
+    };
+
+    act(() => {
+      root.render(<TrackCard track={localTrack} onDelete={() => {}} />);
+    });
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"]');
+    expect(copyBtn).toBeNull();
+  });
+
+  it("falls back to execCommand('copy') and still transitions to Copied state when navigator.clipboard.writeText rejects", async () => {
+    const rejectSpy = mock((_text: string) => Promise.reject(new Error("Write permission denied")));
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: rejectSpy },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText: rejectSpy },
+      configurable: true,
+    });
+    const execCommandSpy = mock((_cmd: string) => true);
+    (window.document as any).execCommand = execCommandSpy;
+    (globalThis.document as any).execCommand = execCommandSpy;
+
+    const readyTrack: Track = {
+      ...baseTrack,
+      status: "ready",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=fallback_vid",
+    };
+
+    act(() => {
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+    });
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
+    expect(copyBtn).not.toBeNull();
+
+    await act(async () => {
+      copyBtn!.click();
+    });
+
+    expect(rejectSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=fallback_vid");
+    expect(execCommandSpy).toHaveBeenCalledWith("copy");
+    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
+    expect(copyBtn!.getAttribute("data-copied")).toBe("true");
+  });
 });
+
 

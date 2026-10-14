@@ -274,12 +274,9 @@ describe("PlaylistItemCardComponent", () => {
     expect(onPlaySpy).toHaveBeenCalledTimes(0);
     expect(pauseSpy).toHaveBeenCalledTimes(0);
 
-    // Click bottom button while still in selection mode -> should deselect!
-    const bottomBtn = container.querySelector("button.h-8.text-xs.gap-1\\.5");
-    expect(bottomBtn).not.toBeNull();
-
+    // Click overlay again while still in selection mode -> should deselect!
     await act(async () => {
-      (bottomBtn as HTMLElement).click();
+      (playOverlayBtn as HTMLElement).click();
     });
 
     // Should be deselected now!
@@ -486,9 +483,57 @@ describe("PlaylistItemCardComponent", () => {
 
     const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
     expect(studioBtn).not.toBeNull();
-    const footerEl = studioBtn?.parentElement?.parentElement as HTMLElement;
+    const footerEl = studioBtn?.closest(".mt-auto") as HTMLElement;
+    expect(footerEl).not.toBeNull();
     expect(footerEl.className).toContain("mt-auto");
     expect(footerEl.textContent).not.toContain("Playlist");
+  });
+
+  it("unifies visual layout with TrackCard for full tracks and SliceCard for slices, and copies original YouTube link", async () => {
+    const writeTextSpy = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+
+    const fullTrackItem: PlaylistItemWithDetails = {
+      id: "pli_full_1",
+      playlist_id: "pl_card_1",
+      track_id: "trk_card_1",
+      segment_id: null,
+      sort_order: 0,
+      added_at: 1000,
+      track: {
+        ...dummyTrack,
+        source_type: "youtube",
+        source_uri: "https://www.youtube.com/watch?v=playlist_yt_1",
+        segment_count: 3,
+      },
+      segment: undefined,
+    };
+
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={fullTrackItem} index={0} onPlay={mock()} onDelete={mock()} />);
+    });
+
+    // Full track should show YouTube source badge and slices count badge (not Full Track #1 or redundant Play button)
+    expect(container.textContent).toContain("YouTube");
+    expect(container.textContent).not.toContain("Full Track #1");
+    expect(container.textContent).toContain("3 slices");
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]') as HTMLButtonElement | null;
+    expect(copyBtn).not.toBeNull();
+
+    await act(async () => {
+      copyBtn!.click();
+    });
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=playlist_yt_1");
   });
 });
 

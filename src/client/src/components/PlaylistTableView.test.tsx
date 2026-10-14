@@ -2481,7 +2481,107 @@ describe("PlaylistTableView", () => {
       expect(reorderSpy).not.toHaveBeenCalled();
     });
   });
+
+  it("renders Copy YouTube link button in table views for youtube tracks and slices, copies original source_uri without playing row, and hides for local tracks", async () => {
+    const writeTextSpy = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+
+    const playSegmentSpy = mock(() => Promise.resolve());
+    const ytTrack: Track = {
+      ...dummyTrack,
+      id: "yt_copy_1",
+      source_type: "youtube",
+      source_uri: "https://www.youtube.com/watch?v=orig_video_abc",
+    };
+    const localTrack: Track = {
+      ...dummyTrack2,
+      id: "local_copy_2",
+      source_type: "local",
+      source_uri: "/path/to/local.mp3",
+    };
+    const sliceFromYt: Segment = {
+      ...dummySegment,
+      id: "seg_from_yt",
+      track_id: ytTrack.id,
+      start_time: 15,
+      end_time: 45,
+    };
+
+    usePlayerStore.setState({
+      activePlaylistId: null,
+      activeSystemCategory: "mixed",
+      playSegmentInMode: playSegmentSpy as any,
+    });
+
+    await act(async () => {
+      root.render(
+        <PlaylistTableView
+          mixedItems={[
+            {
+              type: "slice",
+              id: "slice_seg_from_yt",
+              track: ytTrack,
+              segment: sliceFromYt,
+              createdAt: 1002,
+            },
+            {
+              type: "track",
+              id: "track_local_copy_2",
+              track: localTrack,
+              createdAt: 1001,
+            },
+          ]}
+        />
+      );
+    });
+
+    const copyButtons = container.querySelectorAll(
+      'button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]'
+    );
+    // Only 1 button (for the YouTube slice row; local track row has none)
+    expect(copyButtons.length).toBe(1);
+
+    await act(async () => {
+      (copyButtons[0] as HTMLButtonElement).click();
+    });
+
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=orig_video_abc");
+    // Clicking copy button must NOT trigger row playback
+    expect(playSegmentSpy).not.toHaveBeenCalled();
+
+    // Also verify custom playlist view renders both Open Slice Studio and Copy YouTube link buttons
+    await act(async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [
+          {
+            ...dummyPlaylistItem1,
+            track: ytTrack,
+          },
+        ],
+      });
+      root.render(<PlaylistTableView />);
+    });
+
+    const plCopyBtns = container.querySelectorAll(
+      'button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]'
+    );
+    expect(plCopyBtns.length).toBe(1);
+    const plStudioBtns = container.querySelectorAll(
+      'button[title="Open Slice Studio"], button[title="Mở Studio Cắt Đoạn"]'
+    );
+    expect(plStudioBtns.length).toBe(1);
+  });
 });
+
 
 
 

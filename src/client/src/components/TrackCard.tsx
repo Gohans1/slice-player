@@ -8,6 +8,7 @@ import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
 import { useIsTrackSelected, useSelectionStore, useIsSelectionActive, createTrackSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import { useTranslation } from "react-i18next";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
 
@@ -343,6 +344,10 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
             )}
 
             <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
+              <CopyTrackLinkButton
+                sourceType={track.source_type}
+                sourceUri={track.source_uri}
+              />
               {isReady && (
                 <AddToPlaylistPopover
                   trackId={track.id}
@@ -376,6 +381,8 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
 export const TrackCard = React.memo(TrackCardComponent, (prev, next) => {
   return (
     prev.track.id === next.track.id &&
+    prev.track.source_type === next.track.source_type &&
+    prev.track.source_uri === next.track.source_uri &&
     prev.track.title === next.track.title &&
     prev.track.artist === next.track.artist &&
     prev.track.status === next.track.status &&

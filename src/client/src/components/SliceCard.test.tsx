@@ -330,4 +330,67 @@ describe("SliceCard Component", () => {
     expect(footerEl.className).toContain("mt-auto");
     expect(footerEl.textContent).not.toContain("Playlist");
   });
+
+  it("renders Copy YouTube link button for slices of youtube tracks and copies original video source_uri when clicked", async () => {
+    const writeTextSpy = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText: writeTextSpy },
+      configurable: true,
+    });
+
+    const onPlaySpy = mock(() => {});
+    act(() => {
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={baseTrack}
+          index={0}
+          onPlay={onPlaySpy}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
+    expect(copyBtn).not.toBeNull();
+
+    await act(async () => {
+      copyBtn!.click();
+    });
+
+    // Must copy original video URL without timestamp
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=123");
+    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
+    expect(onPlaySpy).not.toHaveBeenCalled();
+  });
+
+  it("does not render Copy YouTube link button for slices of local audio tracks", () => {
+    const localTrack: Track = {
+      ...baseTrack,
+      id: "local_trk",
+      source_type: "local",
+      source_uri: "/music/local.flac",
+    };
+
+    act(() => {
+      root.render(
+        <SliceCard
+          segment={baseSegment}
+          track={localTrack}
+          index={0}
+          onPlay={() => {}}
+          onOpenStudio={() => {}}
+        />
+      );
+    });
+
+    const copyBtn = container.querySelector('button[title="Copy YouTube link"]');
+    expect(copyBtn).toBeNull();
+  });
 });
+

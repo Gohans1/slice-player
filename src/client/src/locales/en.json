@@ -55,8 +55,8 @@
     "viewMode": "View:",
     "grid": "Grid",
     "gridTooltip": "Grid view",
-    "table": "Table",
-    "tableTooltip": "Detailed table view",
+    "table": "List",
+    "tableTooltip": "List view",
     "newPlaylist": "New Playlist",
     "foldBuiltIn": "Collapse system filters",
     "unfoldBuiltIn": "Expand system filters (4)",
@@ -342,7 +342,9 @@
     "selectTrack": "Select {{title}}",
     "deselectTrack": "Deselect {{title}}",
     "play": "Play",
-    "pause": "Pause"
+    "pause": "Pause",
+    "copyLink": "Copy YouTube link",
+    "copiedLink": "Copied link!"
   },
   "ytModal": {
     "title": "Add YouTube Audio",
