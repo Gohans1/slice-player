@@ -15,7 +15,18 @@ import {
   Folder,
   Search,
 } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "./ui/context-menu";
+import { Spinner } from "./ui/spinner";
 import { VolumeSlider } from "./ui/VolumeSlider";
 import { formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
@@ -471,11 +482,6 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
     requestScrollToActiveTrack,
   ]);
 
-  const shuffleButtonRef = React.useRef<HTMLButtonElement>(null);
-  const shuffleMenuRef = React.useRef<HTMLDivElement>(null);
-  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPressTriggeredRef = React.useRef(false);
-
   React.useEffect(() => {
     if (!activeTrack?.id) {
       setContainingPlaylists([]);
@@ -526,43 +532,6 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
     };
   }, [activeTrack?.id, playlists]);
 
-  React.useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  React.useEffect(() => {
-    if (!isShuffleMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
-      if (
-        shuffleMenuRef.current &&
-        !shuffleMenuRef.current.contains(e.target as Node) &&
-        shuffleButtonRef.current &&
-        !shuffleButtonRef.current.contains(e.target as Node)
-      ) {
-        setIsShuffleMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsShuffleMenuOpen(false);
-        shuffleButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("pointerdown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("pointerdown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isShuffleMenuOpen]);
-
   const matchingLastPlaylist = React.useMemo(() => {
     if (!lastShufflePlaylistId) return null;
     return containingPlaylists.find((p) => p.id === lastShufflePlaylistId) ?? null;
@@ -589,10 +558,6 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
   );
 
   const handleShuffleClick = React.useCallback(() => {
-    if (isLongPressTriggeredRef.current) {
-      isLongPressTriggeredRef.current = false;
-      return;
-    }
     if (canQuickShuffleLastPlaylist && matchingLastPlaylist) {
       handleShufflePlaylist(matchingLastPlaylist.id);
       return;
@@ -600,30 +565,6 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
     toggleShuffle();
     setIsShuffleMenuOpen(false);
   }, [canQuickShuffleLastPlaylist, matchingLastPlaylist, handleShufflePlaylist, toggleShuffle]);
-
-  const handleShuffleContextMenu = React.useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    if (isLongPressTriggeredRef.current) {
-      return;
-    }
-    setIsShuffleMenuOpen((prev) => !prev);
-  }, []);
-
-  const handleShufflePointerDown = React.useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    isLongPressTriggeredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      isLongPressTriggeredRef.current = true;
-      setIsShuffleMenuOpen(true);
-    }, 500);
-  }, []);
-
-  const handleShufflePointerUpOrCancel = React.useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
 
   const handleShuffleCurrentQueue = React.useCallback(() => {
     toggleShuffle();
@@ -763,113 +704,77 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
         {/* Center Controls & Progress */}
         <div className="flex flex-col items-center gap-1.5 w-full sm:flex-1 sm:max-w-xl min-w-0">
           <div className="flex items-center gap-3">
-            {/* Shuffle Button with Context Menu (Left of Previous) */}
-            <div className="relative">
-              <Button
-                ref={shuffleButtonRef}
-                variant={isShuffle ? "secondary" : "ghost"}
-                size="icon"
-                onClick={handleShuffleClick}
-                onContextMenu={handleShuffleContextMenu}
-                onPointerDown={handleShufflePointerDown}
-                onPointerUp={handleShufflePointerUpOrCancel}
-                onPointerCancel={handleShufflePointerUpOrCancel}
-                onPointerLeave={handleShufflePointerUpOrCancel}
-                disabled={queueLength === 0}
-                aria-label={t("player.shuffle", "Shuffle")}
-                aria-pressed={isShuffle}
-                aria-haspopup="menu"
-                aria-expanded={isShuffleMenuOpen}
-                className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
-                  isShuffle ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                } disabled:opacity-40 disabled:transform-none`}
-                title={
-                  canQuickShuffleLastPlaylist && matchingLastPlaylist
-                    ? t("player.shuffleQuickTooltip", {
-                        name: matchingLastPlaylist.name,
-                        defaultValue: `Click to shuffle playlist "${matchingLastPlaylist.name}" (recent), right-click to choose playlist`,
-                      })
-                    : t("player.shuffleTooltip", "Click to toggle shuffle, right-click to choose playlist")
+            {/* Shuffle: click toggles it; right-click or a long press offers playlists to shuffle */}
+            <ContextMenu open={isShuffleMenuOpen} onOpenChange={setIsShuffleMenuOpen}>
+              <ContextMenuTrigger
+                render={
+                  <Button
+                    variant={isShuffle ? "secondary" : "ghost"}
+                    size="icon"
+                    onClick={handleShuffleClick}
+                    disabled={queueLength === 0}
+                    aria-label={t("player.shuffle", "Shuffle")}
+                    aria-pressed={isShuffle}
+                    className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
+                      isShuffle ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    } disabled:opacity-40 disabled:transform-none`}
+                    title={
+                      canQuickShuffleLastPlaylist && matchingLastPlaylist
+                        ? t("player.shuffleQuickTooltip", {
+                            name: matchingLastPlaylist.name,
+                            defaultValue: `Click to shuffle playlist "${matchingLastPlaylist.name}" (recent), right-click to choose playlist`,
+                          })
+                        : t("player.shuffleTooltip", "Click to toggle shuffle, right-click to choose playlist")
+                    }
+                  />
                 }
               >
                 <Shuffle className="h-4 w-4" />
-              </Button>
-
-              {isShuffleMenuOpen && (
-                <div
-                  ref={shuffleMenuRef}
-                  role="menu"
-                  aria-label={t("player.shuffleMenuHeader", "Shuffle Options")}
-                  className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 z-50 min-w-[220px] max-w-[280px] rounded-lg border border-border bg-popover/95 p-1.5 text-popover-foreground shadow-xl backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100"
-                >
-                  <div className="px-2 py-1 text-2xs font-semibold text-muted-foreground border-b border-border/50 mb-1 flex items-center justify-between">
-                    <span>{t("player.shuffleMenuHeader", "Shuffle Options")}</span>
-                  </div>
-
-                  {/* Current Queue option */}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={handleShuffleCurrentQueue}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md text-foreground hover:bg-accent text-left transition-colors group cursor-pointer"
-                  >
-                    <Shuffle className="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true" />
-                    <span className="truncate flex-1 font-medium">
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-64">
+                <ContextMenuGroup>
+                  <ContextMenuLabel>{t("player.shuffleMenuHeader", "Shuffle Options")}</ContextMenuLabel>
+                  <ContextMenuItem onClick={handleShuffleCurrentQueue}>
+                    <Shuffle />
+                    <span className="truncate">
                       {t("player.shuffleCurrentQueue", {
                         name: playingPlaylistName,
                         defaultValue: `Current Queue (${playingPlaylistName})`,
                       })}
                     </span>
-                    <span className="font-mono text-2xs text-muted-foreground">{queueLength}</span>
-                  </button>
-
-                  <div className="h-px bg-border/50 my-1" />
-
-                  {/* Playlists Containing Current Track */}
-                  <div className="px-2 py-1 text-2xs font-medium text-muted-foreground uppercase tracking-wider">
-                    {t("player.playlistsContainingTrack", "Playlists containing this song")}
-                  </div>
-
+                    <span className="ml-auto font-mono text-muted-foreground">{queueLength}</span>
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+                <ContextMenuSeparator />
+                <ContextMenuGroup>
+                  <ContextMenuLabel>{t("player.playlistsContainingTrack", "Playlists containing this song")}</ContextMenuLabel>
                   {isLoadingMemberships ? (
-                    <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>{t("common.loading", "Loading...")}</span>
-                    </div>
+                    <ContextMenuItem disabled>
+                      <Spinner />
+                      {t("common.loading", "Loading...")}
+                    </ContextMenuItem>
                   ) : containingPlaylists.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground italic flex items-center gap-1.5">
-                      <Info className="h-3.5 w-3.5 opacity-60 shrink-0" />
-                      <span>{t("player.noPlaylistsForTrack", "Not in any custom playlists")}</span>
-                    </div>
+                    <ContextMenuItem disabled>
+                      <Info />
+                      {t("player.noPlaylistsForTrack", "Not in any custom playlists")}
+                    </ContextMenuItem>
                   ) : (
-                    <div className="max-h-44 overflow-y-auto space-y-0.5">
-                      {containingPlaylists.map((pl) => {
-                        const isRecent = pl.id === lastShufflePlaylistId;
-                        return (
-                          <button
-                            key={pl.id}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => handleShufflePlaylist(pl.id)}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md text-foreground hover:bg-accent text-left transition-colors group cursor-pointer"
-                          >
-                            <Folder className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary shrink-0" aria-hidden="true" />
-                            <span className="truncate flex-1">{pl.name}</span>
-                            {isRecent && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-primary/15 text-primary border border-primary/25 shrink-0">
-                                {t("player.lastUsed", "Recent")}
-                              </span>
-                            )}
-                            {typeof pl.item_count === "number" && (
-                              <span className="font-mono text-2xs text-muted-foreground">{pl.item_count}</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    containingPlaylists.map((pl) => (
+                      <ContextMenuItem key={pl.id} onClick={() => void handleShufflePlaylist(pl.id)}>
+                        <Folder />
+                        <span className="truncate">{pl.name}</span>
+                        <span className="ml-auto flex items-center gap-1.5">
+                          {pl.id === lastShufflePlaylistId && <Badge variant="secondary">{t("player.lastUsed", "Recent")}</Badge>}
+                          {typeof pl.item_count === "number" && (
+                            <span className="font-mono text-muted-foreground">{pl.item_count}</span>
+                          )}
+                        </span>
+                      </ContextMenuItem>
+                    ))
                   )}
-                </div>
-              )}
-            </div>
+                </ContextMenuGroup>
+              </ContextMenuContent>
+            </ContextMenu>
 
             <Button
               variant="ghost"

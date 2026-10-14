@@ -11,6 +11,18 @@ describe("PlayerBar Component", () => {
   let root: Root;
   let originalStoreState: ReturnType<typeof usePlayerStore.getState> | null = null;
 
+  // The shuffle menu renders in a portal, so look for it on the whole page
+  const shuffleMenus = () => document.querySelectorAll('[role="menu"]');
+  const rightClick = (target: Element | null) =>
+    target?.dispatchEvent(
+      new (globalThis as any).window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 10, clientY: 10 })
+    );
+  // Menus unmount once their exit animation finishes
+  const settle = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     const happyWindow = new GlobalWindow();
@@ -388,15 +400,14 @@ describe("PlayerBar Component", () => {
 
       // Right-click opens menu
       await act(async () => {
-        shuffleBtn?.dispatchEvent(new (globalThis as any).Event("contextmenu", { bubbles: true, cancelable: true }));
+        rightClick(shuffleBtn);
       });
 
-      const menu = container.querySelector('div[role="menu"]');
-      expect(menu).not.toBeNull();
+      const menu = document.querySelector('[role="menu"]');
       expect(menu?.textContent).toContain("Nhạc Vui Tươi");
 
       // Click on playlist in menu
-      const plBtn = Array.from(menu?.querySelectorAll('button[role="menuitem"]') || []).find((btn) =>
+      const plBtn = Array.from(menu?.querySelectorAll('[role="menuitem"]') || []).find((btn) =>
         btn.textContent?.includes("Nhạc Vui Tươi")
       ) as HTMLButtonElement | undefined;
       expect(plBtn).toBeDefined();
@@ -412,13 +423,14 @@ describe("PlayerBar Component", () => {
       });
 
       // Menu should be closed after selection
-      expect(container.querySelector('div[role="menu"]')).toBeNull();
+      await settle();
+      expect(shuffleMenus().length).toBe(0);
     } finally {
       globalThis.fetch = origFetch;
     }
   });
 
-  it("opens shuffle menu on long-press and closes on outside click", async () => {
+  it("opens shuffle menu on a touch long-press and closes on outside click", async () => {
     const mockTrack: Track = {
       id: "track-longpress",
       source_type: "local",
@@ -451,11 +463,12 @@ describe("PlayerBar Component", () => {
     ) as HTMLButtonElement | null;
     expect(shuffleBtn).not.toBeNull();
 
-    // Trigger pointerdown with button 0
+    // Press and hold with a finger
     await act(async () => {
-      const pointerDownEvent = new (globalThis as any).Event("pointerdown", { bubbles: true });
-      (pointerDownEvent as any).button = 0;
-      shuffleBtn?.dispatchEvent(pointerDownEvent);
+      const touch = { identifier: 1, target: shuffleBtn, clientX: 10, clientY: 10, pageX: 10, pageY: 10, screenX: 10, screenY: 10 };
+      shuffleBtn?.dispatchEvent(
+        new (globalThis as any).window.TouchEvent("touchstart", { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] })
+      );
     });
 
     // Advance for long-press timer
@@ -464,20 +477,23 @@ describe("PlayerBar Component", () => {
     });
 
     // Menu should be open
-    expect(container.querySelector('div[role="menu"]')).not.toBeNull();
+    expect(shuffleMenus().length).toBe(1);
 
     // Browser dispatches contextmenu right after touch long-press - ensure it does not close the menu
     await act(async () => {
-      shuffleBtn?.dispatchEvent(new (globalThis as any).Event("contextmenu", { bubbles: true, cancelable: true }));
+      rightClick(shuffleBtn);
     });
-    expect(container.querySelector('div[role="menu"]')).not.toBeNull();
+    expect(shuffleMenus().length).toBe(1);
 
-    // Click outside on document body closes menu
+    // Clicking outside closes the menu
     await act(async () => {
-      const outsideEvent = new (globalThis as any).Event("mousedown", { bubbles: true });
-      (globalThis as any).document.body.dispatchEvent(outsideEvent);
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+        const EventType = type.startsWith("pointer") ? (globalThis as any).window.PointerEvent : (globalThis as any).window.MouseEvent;
+        document.body.dispatchEvent(new EventType(type, { bubbles: true, cancelable: true, button: 0 }));
+      }
     });
-    expect(container.querySelector('div[role="menu"]')).toBeNull();
+    await settle();
+    expect(shuffleMenus().length).toBe(0);
   });
 
   it("renders interactive playlist tags next to track title and closes menu on Escape", async () => {
@@ -565,17 +581,18 @@ describe("PlayerBar Component", () => {
         'button[aria-label*="shuffle" i], button[aria-label*="ngẫu nhiên" i]'
       ) as HTMLButtonElement | null;
       await act(async () => {
-        shuffleBtn?.dispatchEvent(new (globalThis as any).Event("contextmenu", { bubbles: true, cancelable: true }));
+        rightClick(shuffleBtn);
       });
-      expect(container.querySelector('div[role="menu"]')).not.toBeNull();
+      expect(shuffleMenus().length).toBe(1);
 
       // Press Escape to close menu
       await act(async () => {
-        const escEvent = new (globalThis as any).Event("keydown", { bubbles: true });
-        (escEvent as any).key = "Escape";
-        (globalThis as any).document.dispatchEvent(escEvent);
+        (document.activeElement ?? document.body).dispatchEvent(
+          new (globalThis as any).window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+        );
       });
-      expect(container.querySelector('div[role="menu"]')).toBeNull();
+      await settle();
+      expect(shuffleMenus().length).toBe(0);
     } finally {
       globalThis.fetch = origFetch;
     }
@@ -778,15 +795,14 @@ describe("PlayerBar Component", () => {
 
       // Open context menu and verify Recent badge is displayed
       await act(async () => {
-        shuffleBtn?.dispatchEvent(new (globalThis as any).Event("contextmenu", { bubbles: true, cancelable: true }));
+        rightClick(shuffleBtn);
       });
 
-      const menu = container.querySelector('div[role="menu"]');
-      expect(menu).not.toBeNull();
+      const menu = document.querySelector('[role="menu"]');
       expect(menu?.textContent).toMatch(/Recent|Gần nhất/);
 
       // Now click on Chill Night in menu to switch the preference
-      const menuButtons = Array.from(menu?.querySelectorAll('button[role="menuitem"]') || []);
+      const menuButtons = Array.from(menu?.querySelectorAll('[role="menuitem"]') || []);
       const chillBtn = menuButtons.find((btn) => btn.textContent?.includes("Chill Night"));
       expect(chillBtn).not.toBeUndefined();
 
