@@ -42,6 +42,10 @@ describe("AddToPlaylistPopover Component", () => {
     });
   });
 
+  const menuItems = (role: string) => Array.from(document.querySelectorAll<HTMLElement>(`[role="${role}"]`));
+  const playlistItem = (name: string) => menuItems("menuitemcheckbox").find((item) => item.textContent?.includes(name))!;
+  const newPlaylistItem = () => menuItems("menuitem").find((item) => item.textContent?.toLowerCase().includes("new playlist"));
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
     usePlayerStore.setState({
@@ -72,8 +76,8 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    expect(container.textContent).toContain("Playlist One");
-    expect(container.textContent).not.toContain("Mix Of Both");
+    expect(window.document.body.textContent).toContain("Playlist One");
+    expect(window.document.body.textContent).not.toContain("Mix Of Both");
   });
 
   it("does not fetch memberships while closed, fetches on open, and marks existing playlist with checkmark", async () => {
@@ -103,15 +107,14 @@ describe("AddToPlaylistPopover Component", () => {
 
     // Network request is only fired when popover is actually opened
     expect(fetchCalls).toBe(1);
-    expect(container.textContent).toContain("Playlist One");
-    expect(container.textContent).toContain("Playlist Two");
+    expect(window.document.body.textContent).toContain("Playlist One");
+    expect(window.document.body.textContent).toContain("Playlist Two");
 
-    const buttons = container.querySelectorAll("button");
-    const pl1Button = Array.from(buttons).find((b: any) => b.textContent.includes("Playlist One")) as HTMLButtonElement;
-    const pl2Button = Array.from(buttons).find((b: any) => b.textContent.includes("Playlist Two")) as HTMLButtonElement;
+    const pl1Button = playlistItem("Playlist One");
+    const pl2Button = playlistItem("Playlist Two");
 
-    expect(pl1Button.querySelector("svg.lucide-check")).not.toBeNull();
-    expect(pl2Button.querySelector("svg.lucide-check")).toBeNull();
+    expect(pl1Button.getAttribute("aria-checked")).toBe("true");
+    expect(pl2Button.getAttribute("aria-checked")).toBe("false");
   });
 
   it("calls addToPlaylist when unchecked playlist is clicked", async () => {
@@ -135,9 +138,8 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    const buttons = container.querySelectorAll("button");
-    const pl2Button = Array.from(buttons).find((b: any) => b.textContent.includes("Playlist Two")) as HTMLButtonElement;
-    expect(pl2Button).not.toBeNull();
+    const pl2Button = playlistItem("Playlist Two");
+    expect(pl2Button).not.toBeUndefined();
 
     await act(async () => {
       pl2Button.click();
@@ -168,9 +170,8 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    const buttons = container.querySelectorAll("button");
-    const pl1Button = Array.from(buttons).find((b: any) => b.textContent.includes("Playlist One")) as HTMLButtonElement;
-    expect(pl1Button.querySelector("svg.lucide-check")).not.toBeNull();
+    const pl1Button = playlistItem("Playlist One");
+    expect(pl1Button.getAttribute("aria-checked")).toBe("true");
 
     await act(async () => {
       pl1Button.click();
@@ -215,16 +216,13 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Find the New Playlist button
-    const buttons = container.querySelectorAll("button");
-    const newPlaylistBtn = Array.from(buttons).find((b: any) =>
-      b.textContent.toLowerCase().includes("new playlist")
-    ) as HTMLButtonElement;
-    expect(newPlaylistBtn).not.toBeNull();
+    // Find the New Playlist item
+    const newPlaylistBtn = newPlaylistItem();
+    expect(newPlaylistBtn).not.toBeUndefined();
 
     // Click New Playlist button
     await act(async () => {
-      newPlaylistBtn.click();
+      newPlaylistBtn?.click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -259,12 +257,10 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    const newPlaylistBtn = Array.from(container.querySelectorAll("button")).find((b: any) =>
-      b.textContent.toLowerCase().includes("new playlist")
-    ) as HTMLButtonElement;
+    const newPlaylistBtn = newPlaylistItem();
 
     await act(async () => {
-      newPlaylistBtn.click();
+      newPlaylistBtn?.click();
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -321,7 +317,7 @@ describe("AddToPlaylistPopover Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    const items = Array.from(container.querySelectorAll("button[role='checkbox']")) as HTMLElement[];
+    const items = menuItems("menuitemcheckbox");
     expect(items.length).toBe(2);
 
     const rootItem = items[0];
@@ -330,7 +326,8 @@ describe("AddToPlaylistPopover Component", () => {
     expect(rootItem.textContent).toContain("Root Playlist");
     expect(childItem.textContent).toContain("Child Sub-Playlist");
     expect(childItem.textContent).toContain("↳");
-    expect(childItem.className).toContain("pl-5");
+    expect(rootItem.hasAttribute("data-inset")).toBe(false);
+    expect(childItem.hasAttribute("data-inset")).toBe(true);
   });
 });
 

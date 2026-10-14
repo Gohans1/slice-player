@@ -1,46 +1,26 @@
 import * as React from "react";
-import { FolderPlus, Check, Loader2, Plus } from "lucide-react";
-import { Button } from "./ui/button";
+import { FolderPlus, Loader2, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { usePlayerStore } from "../store/usePlayerStore";
-const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
-import { cn } from "../lib/utils";
+const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 
-interface AddToPlaylistMenuProps {
-  trackId: string;
-  segmentId?: string | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onOpenCreateModal?: () => void;
-}
-
-function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateModal }: AddToPlaylistMenuProps) {
-  const { t } = useTranslation();
-  const [isRendered, setIsRendered] = React.useState(isOpen);
-  const [isExiting, setIsExiting] = React.useState(false);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsRendered(true);
-      setIsExiting(false);
-    } else if (isRendered) {
-      setIsExiting(true);
-      const timer = setTimeout(() => {
-        setIsRendered(false);
-        setIsExiting(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isRendered]);
-
-  const allPlaylists = usePlayerStore((s) => s.playlists);
-  const orderedPlaylists = React.useMemo(() => {
-    return getHierarchicalPlaylists(allPlaylists, { excludeMixes: true });
-  }, [allPlaylists]);
+// Which playlists already hold this track or slice, as playlist id -> playlist item id. It fetches on
+// mount, and menu content only mounts while open, so closed menus never hit the network.
+function usePlaylistMemberships(trackId: string, segmentId?: string | null) {
   const addToPlaylist = usePlayerStore((s) => s.addToPlaylist);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
-
   const [memberships, setMemberships] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
   const [busyPlaylistId, setBusyPlaylistId] = React.useState<string | null>(null);
@@ -65,8 +45,8 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
         }
         setMemberships(map);
       }
-    } catch (e: any) {
-      if (e?.name !== "AbortError") {
+    } catch (e) {
+      if (!(e instanceof Error && e.name === "AbortError")) {
         console.error("Failed to fetch playlist memberships:", e);
       }
     } finally {
@@ -78,32 +58,24 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
 
   React.useEffect(() => {
     isMountedRef.current = true;
-    if (!isOpen) return;
-
     const abortController = new AbortController();
-    fetchMemberships(abortController.signal);
-
+    void fetchMemberships(abortController.signal);
     return () => {
       isMountedRef.current = false;
       abortController.abort();
     };
-  }, [isOpen, fetchMemberships]);
+  }, [fetchMemberships]);
 
-  const handleToggle = async (plId: string) => {
+  const toggle = async (playlistId: string) => {
     if (busyPlaylistId) return;
-    setBusyPlaylistId(plId);
+    setBusyPlaylistId(playlistId);
     try {
-      const existingItemId = memberships[plId];
-      if (existingItemId) {
-        const ok = await removeFromPlaylist(plId, existingItemId);
-        if (ok && isMountedRef.current) {
-          await fetchMemberships();
-        }
-      } else {
-        const ok = await addToPlaylist(plId, trackId, segmentId || null);
-        if (ok && isMountedRef.current) {
-          await fetchMemberships();
-        }
+      const existingItemId = memberships[playlistId];
+      const ok = existingItemId
+        ? await removeFromPlaylist(playlistId, existingItemId)
+        : await addToPlaylist(playlistId, trackId, segmentId || null);
+      if (ok && isMountedRef.current) {
+        await fetchMemberships();
       }
     } catch (e) {
       console.error("Failed to toggle playlist item:", e);
@@ -114,88 +86,93 @@ function AddToPlaylistMenu({ trackId, segmentId, isOpen, onClose, onOpenCreateMo
     }
   };
 
-  if (!isOpen && !isRendered) return null;
+  return { memberships, loading, busyPlaylistId, toggle };
+}
+
+interface AddToPlaylistItemsProps {
+  trackId: string;
+  segmentId?: string | null;
+  onCreatePlaylist: () => void;
+}
+
+// Menu items for adding a track or slice to playlists, for this menu and for row action submenus
+export function AddToPlaylistItems({ trackId, segmentId, onCreatePlaylist }: AddToPlaylistItemsProps) {
+  const { t } = useTranslation();
+  const allPlaylists = usePlayerStore((s) => s.playlists);
+  const orderedPlaylists = React.useMemo(
+    () => getHierarchicalPlaylists(allPlaylists, { excludeMixes: true }),
+    [allPlaylists]
+  );
+  const { memberships, loading, busyPlaylistId, toggle } = usePlaylistMemberships(trackId, segmentId);
 
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          onClose();
-        }
-        e.stopPropagation();
-      }}
-      className={cn(
-        "absolute bottom-full right-0 mb-1.5 w-52 origin-bottom-right rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 duration-100",
-        isExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
-      )}
-    >
-      <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1 flex items-center justify-between">
-        <span>{t("addToPlaylist.title")}</span>
-        {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          onClose();
-          onOpenCreateModal?.();
-        }}
-        className="w-full flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded text-xs text-left font-medium text-primary hover:bg-primary/10 transition-colors cursor-pointer border-b border-border/50"
-      >
-        <Plus className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
-        <span className="truncate">{t("addToPlaylist.newPlaylist", "New Playlist")}</span>
-      </button>
-      {loading && orderedPlaylists.length === 0 ? (
-        <div className="space-y-1.5 p-1">
-          <div className="h-6 rounded bg-secondary/50 animate-pulse" />
-          <div className="h-6 rounded bg-secondary/40 animate-pulse" />
-        </div>
-      ) : orderedPlaylists.length === 0 ? (
-        <div className="px-2 py-2 text-xs text-muted-foreground text-center">
-          {t("addToPlaylist.empty")}
-        </div>
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>
+          {t("addToPlaylist.title")}
+          {loading && <Loader2 className="ml-1.5 inline animate-spin" />}
+        </DropdownMenuLabel>
+        <DropdownMenuItem onClick={onCreatePlaylist}>
+          <Plus />
+          {t("addToPlaylist.newPlaylist", "New Playlist")}
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      {orderedPlaylists.length === 0 ? (
+        <DropdownMenuLabel>{t("addToPlaylist.empty")}</DropdownMenuLabel>
       ) : (
-        <div className="max-h-60 overflow-y-auto space-y-0.5">
-          {orderedPlaylists.map(({ playlist: pl, isChild }) => {
-            const isMember = Boolean(memberships[pl.id]);
-            const isBusy = busyPlaylistId === pl.id;
-            return (
-              <button
-                key={pl.id}
-                type="button"
-                role="checkbox"
-                aria-checked={isMember}
-                onClick={() => handleToggle(pl.id)}
-                disabled={Boolean(busyPlaylistId)}
-                className={`w-full flex items-center justify-between py-1.5 rounded text-xs text-left transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                  isChild ? "pl-5 pr-2" : "px-2"
-                } ${
-                  isMember
-                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                    : "hover:bg-accent hover:text-accent-foreground text-foreground"
-                }`}
-              >
-                <span className="truncate flex items-center gap-1">
-                  {isChild && (
-                    <span className="text-muted-foreground/60 select-none font-mono text-2xs mr-0.5" aria-hidden="true">
-                      ↳
-                    </span>
-                  )}
-                  <span className="truncate">{pl.name}</span>
+        <DropdownMenuGroup className="max-h-60 overflow-y-auto">
+          {orderedPlaylists.map(({ playlist, isChild }) => (
+            <DropdownMenuCheckboxItem
+              key={playlist.id}
+              // data-inset styles on presence, so leave it off rather than false
+              inset={isChild || undefined}
+              checked={Boolean(memberships[playlist.id])}
+              onCheckedChange={() => void toggle(playlist.id)}
+              disabled={Boolean(busyPlaylistId)}
+            >
+              {isChild && (
+                <span aria-hidden="true" className="text-muted-foreground">
+                  ↳
                 </span>
-                {isBusy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 ml-1 text-muted-foreground" />
-                ) : isMember ? (
-                  <Check className="h-3.5 w-3.5 text-primary shrink-0 ml-1 stroke-[2.5] animate-in zoom-in-75 duration-100 ease-out" />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+              )}
+              <span className="truncate">{playlist.name}</span>
+              {busyPlaylistId === playlist.id && <Loader2 className="animate-spin" />}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
       )}
-    </div>
+    </>
   );
 }
+
+interface CreatePlaylistAndAddModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  trackId: string;
+  segmentId?: string | null;
+}
+
+// "New Playlist" from an add-to-playlist menu: create the playlist, then add the track or slice to it
+export function CreatePlaylistAndAddModal({ isOpen, onClose, trackId, segmentId }: CreatePlaylistAndAddModalProps) {
+  const addToPlaylist = usePlayerStore((s) => s.addToPlaylist);
+  if (!isOpen) return null;
+  return (
+    <React.Suspense fallback={null}>
+      <CreatePlaylistModal
+        isOpen
+        onClose={onClose}
+        onCreated={async (newId) => {
+          onClose();
+          await addToPlaylist(newId, trackId, segmentId || null);
+        }}
+      />
+    </React.Suspense>
+  );
+}
+
+// Menu events bubble through the React tree out of the portal; keep them from reaching the card or row
+const stopPropagation = (e: React.SyntheticEvent) => e.stopPropagation();
 
 export interface AddToPlaylistPopoverProps {
   trackId: string;
@@ -217,30 +194,7 @@ export const AddToPlaylistPopover = React.memo(function AddToPlaylistPopover({
   showText = true,
 }: AddToPlaylistPopoverProps) {
   const { t } = useTranslation();
-  const [isOpen, setIsOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
-  const addToPlaylist = usePlayerStore((s) => s.addToPlaylist);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
 
   const defaultClasses =
     variant === "ghost"
@@ -248,49 +202,33 @@ export const AddToPlaylistPopover = React.memo(function AddToPlaylistPopover({
       : "h-8 text-xs gap-1 border-primary/20 text-primary hover:bg-primary/10 cursor-pointer";
 
   return (
-    <div className="relative inline-flex" ref={containerRef}>
-      <Button
-        variant={variant}
-        size={size}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen((prev) => !prev);
-        }}
-        disabled={disabled}
-        className={buttonClassName || defaultClasses}
-        title={t("addToPlaylist.title")}
-        aria-label={t("addToPlaylist.title")}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-      >
-        <FolderPlus className="h-3.5 w-3.5" />
-        {showText && <span className="hidden xl:inline">{t("addToPlaylist.buttonText", "Playlist")}</span>}
-      </Button>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={disabled}
+          onClick={stopPropagation}
+          title={t("addToPlaylist.title")}
+          aria-label={t("addToPlaylist.title")}
+          render={<Button variant={variant} size={size} className={buttonClassName || defaultClasses} />}
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          {showText && <span className="hidden xl:inline">{t("addToPlaylist.buttonText", "Playlist")}</span>}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56" onClick={stopPropagation} onKeyDown={stopPropagation}>
+          <AddToPlaylistItems
+            trackId={trackId}
+            segmentId={segmentId}
+            onCreatePlaylist={() => setIsCreateModalOpen(true)}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      <AddToPlaylistMenu
+      <CreatePlaylistAndAddModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
         trackId={trackId}
         segmentId={segmentId}
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        onOpenCreateModal={() => {
-          setIsOpen(false);
-          setIsCreateModalOpen(true);
-        }}
       />
-
-      {isCreateModalOpen && (
-        <React.Suspense fallback={null}>
-          <CreatePlaylistModal
-            isOpen={isCreateModalOpen}
-            onClose={() => setIsCreateModalOpen(false)}
-            onCreated={async (newId) => {
-              setIsCreateModalOpen(false);
-              await addToPlaylist(newId, trackId, segmentId || null);
-            }}
-          />
-        </React.Suspense>
-      )}
-    </div>
+    </>
   );
 });
-
