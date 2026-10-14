@@ -20,6 +20,7 @@ import { VolumeSlider } from "./ui/VolumeSlider";
 import { formatTime } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
+import { useHeightCssVar } from "../hooks/use-height-css-var";
 import { usePlayerStore, normalizeTrackVolume, type Segment } from "../store/usePlayerStore";
 import { useTranslation } from "react-i18next";
 
@@ -267,6 +268,7 @@ function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
 
 export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   const { t } = useTranslation();
+  const footerRef = useHeightCssVar("--player-bar-height");
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -628,7 +630,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
 
   if (!activeTrack || !activeSegment) {
     return (
-      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 animate-in fade-in duration-150">
+      <footer ref={footerRef} className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 animate-in fade-in duration-150">
         <div className="w-full flex items-center justify-between">
           <div className="flex items-center gap-3 text-muted-foreground text-xs">
             <Disc className="h-5 w-5 opacity-40" />
@@ -664,7 +666,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen }: PlayerBarProps) {
   }
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 shadow-2xl animate-in fade-in duration-150">
+    <footer ref={footerRef} className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 shadow-2xl animate-in fade-in duration-150">
       <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Track & Segment Info */}
         <div className="flex items-center gap-3 w-full sm:flex-1 min-w-0">

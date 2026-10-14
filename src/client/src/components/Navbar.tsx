@@ -24,6 +24,7 @@ interface UploadQueueItem {
 }
 
 import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
+import { useHeightCssVar } from "../hooks/use-height-css-var";
 
 interface NavbarProps {
   searchQuery: string;
@@ -85,30 +86,7 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
     }
   }, [isMobileSearchOpen, isMobileSearchRendered, isTestOrReducedMotion]);
 
-  const navbarRef = React.useRef<HTMLElement>(null);
-
-  React.useEffect(() => {
-    const el = navbarRef.current;
-    if (!el || typeof window === "undefined") return;
-    const updateHeight = () => {
-      const h = el.offsetHeight;
-      if (h > 0 && typeof document !== "undefined") {
-        document.documentElement.style.setProperty("--navbar-height", `${h}px`);
-      }
-    };
-    updateHeight();
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(updateHeight);
-      ro.observe(el);
-    }
-    return () => {
-      ro?.disconnect();
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty("--navbar-height");
-      }
-    };
-  }, []);
+  const navbarRef = useHeightCssVar("--navbar-height");
 
   const [isYtModalOpen, setIsYtModalOpen] = React.useState(false);
   const [isProcessingYtQueue, setIsProcessingYtQueue] = React.useState(false);
