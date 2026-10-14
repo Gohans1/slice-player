@@ -1,11 +1,9 @@
 import * as React from "react";
-import { useMediaQuery } from "./use-media-query";
+import { useMediaQuery, WIDE_LAYOUT_QUERY } from "./use-media-query";
 
-// From this width the queue docks beside the library; below it, it opens as an overlay sheet
-const QUEUE_DOCK_QUERY = "(min-width: 1280px)";
-
+// On wide screens the queue docks beside the library; below that it opens as an overlay sheet
 export function useQueueVisibility() {
-  const isDocked = useMediaQuery(QUEUE_DOCK_QUERY);
+  const isDocked = useMediaQuery(WIDE_LAYOUT_QUERY);
   const [isPanelOpen, setIsPanelOpen] = React.useState(true);
   const [isSheetOpen, setIsSheetOpen] = React.useState(false);
 
