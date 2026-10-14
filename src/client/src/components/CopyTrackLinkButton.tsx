@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
+import { copyToClipboard } from "../lib/clipboard";
 import type { Track } from "@/server/types";
 
 interface CopyTrackLinkButtonProps {
@@ -33,31 +34,7 @@ export function CopyTrackLinkButton({
 
   const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    let didCopy = false;
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(sourceUri);
-        didCopy = true;
-      } catch {
-        didCopy = false;
-      }
-    }
-    if (!didCopy) {
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = sourceUri;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-        didCopy = true;
-      } catch {
-        // Ignore clipboard errors silently
-      }
-    }
-    if (didCopy) {
+    if (await copyToClipboard(sourceUri)) {
       setCopied(true);
       if (timerRef.current) {
         clearTimeout(timerRef.current);
