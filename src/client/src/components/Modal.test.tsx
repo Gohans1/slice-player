@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { Modal } from "./modal";
-import i18n from "../../i18n";
+import { Modal } from "./Modal";
+import i18n from "../i18n";
 
 describe("Modal", () => {
   let container: HTMLDivElement;

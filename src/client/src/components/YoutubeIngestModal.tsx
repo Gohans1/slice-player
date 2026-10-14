@@ -1,8 +1,8 @@
 import * as React from "react";
 import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Modal } from "./ui/modal";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { Modal } from "./Modal";
+import { ConfirmModal } from "./ConfirmModal";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 

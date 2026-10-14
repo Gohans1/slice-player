@@ -2,7 +2,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
-import { VolumeSlider } from "./ui/VolumeSlider";
+import { VolumeSlider } from "./VolumeSlider";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { cn } from "../lib/utils";
 

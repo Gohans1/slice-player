@@ -6,7 +6,7 @@ import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, cn } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
-import { Modal } from "./ui/modal";
+import { Modal } from "./Modal";
 import { Button } from "./ui/button";
 import type { Playlist, PlaylistItemWithDetails } from "@/server/types";
 

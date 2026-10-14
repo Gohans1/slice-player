@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { ConfirmModal } from "./ConfirmModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";

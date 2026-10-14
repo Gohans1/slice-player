@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ConfirmModal } from "./ConfirmModal";
-import i18n from "../../i18n";
+import i18n from "../i18n";
 
 describe("ConfirmModal Component", () => {
   let container: HTMLDivElement;

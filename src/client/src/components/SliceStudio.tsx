@@ -4,7 +4,7 @@ import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
 import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { VolumeSlider } from "./ui/VolumeSlider";
+import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, formatDuration, cn, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { outputGain } from "../lib/audio";
 import { useTranslation } from "react-i18next";

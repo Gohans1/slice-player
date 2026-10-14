@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../lib/utils";
-import { Slider } from "./slider";
+import { cn } from "../lib/utils";
+import { Slider } from "./ui/slider";
 
 interface VolumeSliderProps {
   // Volume from 0 to 1

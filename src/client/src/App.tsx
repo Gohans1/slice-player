@@ -42,7 +42,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { useQueueVisibility } from "./hooks/use-queue-visibility";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { FloatingScrollControls } from "./components/FloatingScrollControls";
-import { ConfirmModal } from "./components/ui/ConfirmModal";
+import { ConfirmModal } from "./components/ConfirmModal";
 import { useSelectionStore, type SelectedItem } from "./store/useSelectionStore";
 import { useLogStore } from "./store/useLogStore";
 import { getViewScrollKey } from "./store/usePlayerStore";

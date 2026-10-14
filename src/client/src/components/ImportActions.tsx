@@ -2,7 +2,7 @@ import * as React from "react";
 import { FolderPlus, AlertCircle, Loader2, UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { Modal } from "./ui/modal";
+import { Modal } from "./Modal";
 import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
 import { usePlayerStore } from "../store/usePlayerStore";
 

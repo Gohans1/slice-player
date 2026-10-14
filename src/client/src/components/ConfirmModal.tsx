@@ -11,8 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "./alert-dialog";
-import { Spinner } from "./spinner";
+} from "./ui/alert-dialog";
+import { Spinner } from "./ui/spinner";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -56,8 +56,8 @@ export function ConfirmModal({
       <AlertDialogContent initialFocus={cancelRef}>
         <AlertDialogHeader>
           {variant === "destructive" && (
-            <AlertDialogMedia className="bg-destructive/10 text-destructive">
-              <AlertTriangle />
+            <AlertDialogMedia>
+              <AlertTriangle className="text-destructive" />
             </AlertDialogMedia>
           )}
           <AlertDialogTitle>{title}</AlertDialogTitle>

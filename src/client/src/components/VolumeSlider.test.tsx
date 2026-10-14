@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { VolumeSlider } from "./VolumeSlider";
-import i18n from "../../i18n";
+import i18n from "../i18n";
 
 describe("VolumeSlider", () => {
   let container: HTMLDivElement;

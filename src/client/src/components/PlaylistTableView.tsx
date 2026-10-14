@@ -25,7 +25,7 @@ import {
   type SelectedItem,
 } from "../store/useSelectionStore";
 import { RowActionsMenu } from "./RowActionsMenu";
-import { ConfirmModal } from "./ui/ConfirmModal";
+import { ConfirmModal } from "./ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { TrackThumbnail } from "./TrackThumbnail";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";

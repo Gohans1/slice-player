@@ -27,7 +27,7 @@ import {
   ContextMenuTrigger,
 } from "./ui/context-menu";
 import { Spinner } from "./ui/spinner";
-import { VolumeSlider } from "./ui/VolumeSlider";
+import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";

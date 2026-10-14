@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Modal } from "./ui/modal";
+import { Modal } from "./Modal";
 import { Button } from "./ui/button";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";

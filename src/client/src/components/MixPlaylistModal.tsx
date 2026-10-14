@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { Modal } from "./ui/modal";
+import { Modal } from "./Modal";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { PlaylistCover } from "./PlaylistCover";

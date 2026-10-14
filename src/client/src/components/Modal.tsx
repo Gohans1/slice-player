@@ -1,9 +1,9 @@
 import * as React from "react";
 import { XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "../../lib/utils";
-import { Button } from "./button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog";
+import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 interface ModalProps {
   isOpen: boolean;
@@ -27,7 +27,8 @@ export function Modal({ isOpen, onClose, title, description, children, className
       }}
     >
       <DialogContent showCloseButton={false} className={cn("max-h-[90svh] overflow-y-auto sm:max-w-lg", className)}>
-        <DialogHeader className="pr-8">
+        {/* The margin keeps long titles clear of the close button */}
+        <DialogHeader className="mr-6">
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
