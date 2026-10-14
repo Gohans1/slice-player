@@ -28,51 +28,36 @@ export interface VirtualizedCardGridProps<T> {
   getItemThumbnail?: (item: T) => string | undefined;
 }
 
+const MIN_CARD_WIDTH = 240;
+const GRID_GAP = 16;
+const MAX_COLUMNS = 8;
+
+// As many cards of at least MIN_CARD_WIDTH as fit the grid's own width (gap-4 between them)
+export function columnsForWidth(width: number): number {
+  const fit = Math.floor((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP));
+  return Math.min(MAX_COLUMNS, Math.max(1, fit));
+}
+
 /**
- * Hook to track responsive column count matching responsive breakpoints:
- * - default (<640px): 1 column
- * - sm (640px - 767px): 2 columns
- * - md (768px - 1023px): 3 columns
- * - lg (1024px - 1365px): 4 columns
- * - xl (1366px - 1679px): 5 columns
- * - 2xl / 1080p full screen (1680px - 2047px): 6 columns
- * - 3xl / Ultrawide (2048px - 2559px): 7 columns
- * - 4K / 2K large (>= 2560px): 8 columns
+ * Column count for a card grid, measured from the grid element rather than the window,
+ * so it adapts when the sidebar expands, collapses to icons or hides.
  */
-export function useGridColumnCount(): number {
-  const getCols = React.useCallback(() => {
-    if (typeof window === "undefined") return 4;
-    const w = window.innerWidth > 0 ? window.innerWidth : 1024;
-    if (w >= 2560) return 8;
-    if (w >= 2048) return 7;
-    if (w >= 1680) return 6;
-    if (w >= 1366) return 5;
-    if (w >= 1024) return 4;
-    if (w >= 768) return 3;
-    if (w >= 640) return 2;
-    return 1;
-  }, []);
+export function useGridColumnCount(ref: React.RefObject<HTMLElement | null>): number {
+  const [cols, setCols] = React.useState(4);
 
-  const [cols, setCols] = React.useState<number>(getCols);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    let rafId: number | null = null;
-    const handleResize = () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        setCols(getCols());
-      });
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      // 0 means no layout yet (or a test DOM); keep the current count
+      if (el.clientWidth > 0) setCols(columnsForWidth(el.clientWidth));
     };
-
-    window.addEventListener("resize", handleResize, { passive: true });
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [getCols]);
+    update();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
 
   return cols;
 }
@@ -92,8 +77,8 @@ export function VirtualizedCardGrid<T>({
   getItemName,
   getItemThumbnail,
 }: VirtualizedCardGridProps<T>) {
-  const cols = useGridColumnCount();
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const cols = useGridColumnCount(containerRef);
   const [scrollMargin, setScrollMargin] = React.useState(0);
 
   // Drag & drop state and refs

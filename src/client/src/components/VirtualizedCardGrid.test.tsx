@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
-import { VirtualizedCardGrid, useGridColumnCount } from "./VirtualizedCardGrid";
+import { VirtualizedCardGrid, columnsForWidth, useGridColumnCount } from "./VirtualizedCardGrid";
 
 describe("VirtualizedCardGrid Component", () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -81,115 +81,70 @@ describe("VirtualizedCardGrid Component", () => {
     });
   });
 
-  it("calculates column counts based on responsive breakpoints", async () => {
-    const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
-    (globalThis as any).window = happyWindow;
-    (globalThis as any).document = happyWindow.document;
-    (globalThis as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
-    (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
-
-    function TestColComponent() {
-      const cols = useGridColumnCount();
-      return <div data-testid="col-count">{cols}</div>;
-    }
-
-    const container = happyWindow.document.createElement("div");
-    happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
-
-    happyWindow.innerWidth = 1200;
-    await act(async () => {
-      root.render(<TestColComponent />);
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("4");
-
-    await act(async () => {
-      root.unmount();
-    });
+  it("fits as many columns of at least 240px cards as the grid width allows, up to 8", () => {
+    expect(columnsForWidth(200)).toBe(1);
+    expect(columnsForWidth(500)).toBe(2);
+    expect(columnsForWidth(760)).toBe(3);
+    expect(columnsForWidth(1000)).toBe(3);
+    expect(columnsForWidth(1190)).toBe(4);
+    expect(columnsForWidth(1300)).toBe(5);
+    expect(columnsForWidth(1856)).toBe(7);
+    expect(columnsForWidth(2400)).toBe(8);
   });
 
-  it("dynamically adjusts column counts across the full spectrum of screen sizes and on window resize", async () => {
+  it("re-counts columns when the grid itself is resized, not the window", async () => {
     const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
     (globalThis as any).window = happyWindow;
     (globalThis as any).document = happyWindow.document;
-    (globalThis as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
-    (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
+    const originalResizeObserver = (globalThis as any).ResizeObserver;
+    const observers: { callback: () => void; target?: unknown }[] = [];
+    (globalThis as any).ResizeObserver = class {
+      private entry: { callback: () => void; target?: unknown };
+      constructor(callback: () => void) {
+        this.entry = { callback };
+        observers.push(this.entry);
+      }
+      observe(target: unknown) {
+        this.entry.target = target;
+      }
+      disconnect() {}
+    };
 
+    let gridWidth = 1190;
     function TestColComponent() {
-      const cols = useGridColumnCount();
-      return <div data-testid="col-count">{cols}</div>;
+      const ref = React.useRef<HTMLDivElement>(null);
+      const cols = useGridColumnCount(ref);
+      return (
+        <div ref={ref} data-testid="grid">
+          <span data-testid="col-count">{cols}</span>
+        </div>
+      );
     }
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
     const root = createRoot(container as any);
+    try {
+      await act(async () => {
+        root.render(<TestColComponent />);
+      });
+      const grid = container.querySelector("[data-testid='grid']")!;
+      Object.defineProperty(grid, "clientWidth", { configurable: true, get: () => gridWidth });
 
-    // Initial render at 1920px (Full HD / Maximized Screen)
-    happyWindow.innerWidth = 1920;
-    await act(async () => {
-      root.render(<TestColComponent />);
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("6");
+      const observer = observers.find((o) => o.target === grid)!;
+      await act(async () => observer.callback());
+      expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("4");
 
-    // Dynamic resize to 1440px (5 columns)
-    happyWindow.innerWidth = 1440;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("5");
-
-    // Dynamic resize to 1200px (4 columns)
-    happyWindow.innerWidth = 1200;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("4");
-
-    // Dynamic resize to 800px (3 columns)
-    happyWindow.innerWidth = 800;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("3");
-
-    // Dynamic resize to 700px (2 columns)
-    happyWindow.innerWidth = 700;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("2");
-
-    // Dynamic resize to 500px (1 column)
-    happyWindow.innerWidth = 500;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("1");
-
-    // Dynamic resize to 2100px (7 columns)
-    happyWindow.innerWidth = 2100;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("7");
-
-    // Dynamic resize to 2560px (8 columns)
-    happyWindow.innerWidth = 2560;
-    await act(async () => {
-      happyWindow.dispatchEvent(new (happyWindow as any).Event("resize"));
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("8");
-
-    await act(async () => {
-      root.unmount();
-    });
+      // Collapsing the sidebar widens the grid without touching the window size
+      gridWidth = 1300;
+      await act(async () => observer.callback());
+      expect(container.querySelector("[data-testid='col-count']")?.textContent).toBe("5");
+    } finally {
+      (globalThis as any).ResizeObserver = originalResizeObserver;
+      await act(async () => {
+        root.unmount();
+      });
+    }
   });
 
   it("handles scrollRequest and triggers onScrollHandled", async () => {

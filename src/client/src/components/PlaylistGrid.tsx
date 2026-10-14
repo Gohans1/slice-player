@@ -20,7 +20,7 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, onMix }: PlaylistGri
   const canMix = playlists.filter((pl) => !pl.is_mix).length >= 2;
 
   return (
-    <ul className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[2048px]:grid-cols-8 gap-4">
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4">
       {playlists.map((pl) => {
         const isEmpty = (pl.item_count || 0) === 0;
         const isPlayingThis = playingId === pl.id;
