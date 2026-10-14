@@ -1,6 +1,6 @@
 import * as React from "react";
 import {
-  Music2, FolderPlus, Search, AlertCircle, Loader2, X, Folder,
+  Music2, FolderPlus, Search, AlertCircle, Loader2, X,
   UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight, Terminal, Languages, Keyboard, Archive,
   Volume2, VolumeX
 } from "lucide-react";
@@ -29,11 +29,10 @@ import { useHeightCssVar } from "../hooks/use-height-css-var";
 interface NavbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  onTogglePlaylistDrawer?: () => void;
   onOpenShortcuts?: () => void;
 }
 
-export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, onOpenShortcuts }: NavbarProps) {
+export function Navbar({ searchQuery, onSearchChange, onOpenShortcuts }: NavbarProps) {
   const { t, i18n } = useTranslation();
   const currentLang = (i18n.resolvedLanguage || i18n.language || "en").startsWith("vi") ? "vi" : "en";
   const toggleLanguage = () => {
@@ -42,7 +41,6 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
   };
 
   const fetchTracks = usePlayerStore((s) => s.fetchTracks);
-  const playlists = usePlayerStore((s) => s.playlists);
   const masterVolume = usePlayerStore((s) => s.masterVolume);
   const setMasterVolume = usePlayerStore((s) => s.setMasterVolume);
 
@@ -441,22 +439,6 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
               {t("app.tagline")}
             </p>
           </div>
-
-          {onTogglePlaylistDrawer && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onTogglePlaylistDrawer}
-              className="hidden sm:inline-flex items-center gap-1.5 ml-1 border-border/80 bg-secondary/30 hover:bg-secondary text-xs h-8"
-              title={t("nav.playlistsTooltip")}
-            >
-              <Folder className="h-3.5 w-3.5 text-primary" />
-              <span>{t("nav.playlists")}</span>
-              <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground ml-0.5">
-                {playlists.length}
-              </span>
-            </Button>
-          )}
         </div>
 
         {/* Desktop Search bar */}
@@ -497,19 +479,6 @@ export function Navbar({ searchQuery, onSearchChange, onTogglePlaylistDrawer, on
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {onTogglePlaylistDrawer && (
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onTogglePlaylistDrawer}
-              title={t("nav.playlistsTooltip")}
-              aria-label={t("nav.playlists")}
-              className="sm:hidden h-8 w-8 text-primary border-primary/30"
-            >
-              <Folder className="h-4 w-4" />
-            </Button>
-          )}
-
           <Button
             variant={isMobileSearchOpen ? "secondary" : "ghost"}
             size="icon"

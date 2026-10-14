@@ -279,7 +279,7 @@ function PlaylistMenuItem({ playlist, size, isActive, nowPlaying, onOpen, onDele
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" finalFocus={() => renameInputRef.current ?? true}>
+        <DropdownMenuContent side="right" align="start" className="w-auto" finalFocus={() => renameInputRef.current ?? true}>
           <DropdownMenuGroup>
             <DropdownMenuItem disabled={isEmpty} onClick={() => buildPlaylistQueue(playlist.id, true)}>
               <Shuffle />

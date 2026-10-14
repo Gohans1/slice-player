@@ -7,7 +7,6 @@ const SliceStudio = React.lazy(() => import("./components/SliceStudio").then((m)
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
 const LogDrawer = React.lazy(() => import("./components/LogDrawer").then((m) => ({ default: m.LogDrawer })));
-import { PlaylistDrawer } from "./components/PlaylistDrawer";
 const CreatePlaylistModal = React.lazy(() => import("./components/CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 const MixPlaylistModal = React.lazy(() => import("./components/MixPlaylistModal").then((m) => ({ default: m.MixPlaylistModal })));
 const ShortcutsModal = React.lazy(() => import("./components/ShortcutsModal").then((m) => ({ default: m.ShortcutsModal })));
@@ -17,11 +16,11 @@ import { PlaylistHeader } from "./components/PlaylistHeader";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
-import { Music, Loader2, LayoutGrid, List, ListMusic, Plus, Scissors, Disc, Shuffle, AlertCircle, Check, Folder, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Music, Loader2, LayoutGrid, List, Scissors, AlertCircle, Check, RefreshCw } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
 import { showsItemsOf } from "./lib/mixPlaylist";
-import { compareDownloadingTracks, cn, createDefaultFullSegment } from "./lib/utils";
+import { compareDownloadingTracks, createDefaultFullSegment } from "./lib/utils";
 import {
   findActivePlaylistItemIndex,
   findActiveMixedItemIndex,
@@ -37,6 +36,8 @@ import {
   type MixedItem,
 } from "./lib/playlistSort";
 import { Button } from "./components/ui/button";
+import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
+import { AppShell } from "./components/layout/AppShell";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { FloatingScrollControls } from "./components/FloatingScrollControls";
 import { ConfirmModal } from "./components/ui/ConfirmModal";
@@ -66,7 +67,6 @@ export function App() {
   const playlists = usePlayerStore((s) => s.playlists);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
   const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
-  const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
   const playlistSortMode = usePlayerStore((s) => s.playlistSortMode);
   const playlistRandomMap = usePlayerStore((s) => s.playlistRandomMap);
@@ -88,42 +88,6 @@ export function App() {
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
   const activeTrackScrollRequest = usePlayerStore((s) => s.activeTrackScrollRequest);
-
-  // Built-in tabs fold state (persisted to localStorage)
-  const [isBuiltInFolded, setIsBuiltInFolded] = React.useState<boolean>(() => {
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        const saved = window.localStorage.getItem("slice_player_builtin_folded");
-        return saved !== null ? JSON.parse(saved) : false;
-      }
-    } catch {}
-    return false;
-  });
-
-  const handleToggleBuiltInFold = React.useCallback(() => {
-    const next = !isBuiltInFolded;
-    setIsBuiltInFolded(next);
-    try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.setItem("slice_player_builtin_folded", JSON.stringify(next));
-      }
-    } catch {}
-    if (next && activePlaylistId === null && activeSystemCategory !== "mixed" && activeSystemCategory !== "playlists") {
-      setActiveSystemCategory("mixed");
-    }
-  }, [isBuiltInFolded, activePlaylistId, activeSystemCategory, setActiveSystemCategory]);
-
-  // Auto-unfold if a non-mixed built-in category is explicitly navigated to
-  React.useEffect(() => {
-    if (activePlaylistId === null && activeSystemCategory !== "mixed" && activeSystemCategory !== "playlists" && isBuiltInFolded) {
-      setIsBuiltInFolded(false);
-      try {
-        if (typeof window !== "undefined" && window.localStorage) {
-          window.localStorage.setItem("slice_player_builtin_folded", "false");
-        }
-      } catch {}
-    }
-  }, [activePlaylistId, activeSystemCategory, isBuiltInFolded]);
 
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const segmentsEtagRef = React.useRef<string | null>(null);
@@ -157,7 +121,6 @@ export function App() {
   const deferredQuery = React.useDeferredValue(searchQuery);
   const [isQueueOpen, setIsQueueOpen] = React.useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
-  const [isPlaylistDrawerOpen, setIsPlaylistDrawerOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   // null = closed; {} = create a new mix; { mix } = edit that mix's sources
   const [mixModal, setMixModal] = React.useState<{ mix?: Playlist } | null>(null);
@@ -171,26 +134,22 @@ export function App() {
   const isLogDrawerOpen = useLogStore((s) => s.isDrawerOpen);
   const closeLogDrawer = useLogStore((s) => s.closeDrawer);
 
-  // Mutual exclusion: ensure only one major drawer is open at a time
+  // Mutual exclusion: the log drawer and the queue drawer are never open together
   React.useEffect(() => {
     if (isLogDrawerOpen) {
       setIsQueueOpen(false);
-      setIsPlaylistDrawerOpen(false);
     }
   }, [isLogDrawerOpen]);
 
   const prevQueueRef = React.useRef(isQueueOpen);
-  const prevPlaylistRef = React.useRef(isPlaylistDrawerOpen);
   React.useEffect(() => {
     const queueJustOpened = !prevQueueRef.current && isQueueOpen;
-    const playlistJustOpened = !prevPlaylistRef.current && isPlaylistDrawerOpen;
     prevQueueRef.current = isQueueOpen;
-    prevPlaylistRef.current = isPlaylistDrawerOpen;
 
-    if ((queueJustOpened || playlistJustOpened) && isLogDrawerOpen) {
+    if (queueJustOpened && isLogDrawerOpen) {
       closeLogDrawer();
     }
-  }, [isQueueOpen, isPlaylistDrawerOpen, isLogDrawerOpen, closeLogDrawer]);
+  }, [isQueueOpen, isLogDrawerOpen, closeLogDrawer]);
 
   // Initial load & WebSocket heartbeat with auto-reconnect
   React.useEffect(() => {
@@ -1100,51 +1059,23 @@ export function App() {
     t,
   ]);
 
-  const handleTablistKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "Home" && e.key !== "End") {
-      return;
-    }
-    const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-    if (tabs.length === 0) return;
-    const currentIndex = tabs.findIndex((tab) => tab === document.activeElement);
-    if (currentIndex === -1) return;
-
-    e.preventDefault();
-    let nextIndex = currentIndex;
-    if (e.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % tabs.length;
-    } else if (e.key === "ArrowLeft") {
-      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-    } else if (e.key === "Home") {
-      nextIndex = 0;
-    } else if (e.key === "End") {
-      nextIndex = tabs.length - 1;
-    }
-
-    const nextTab = tabs[nextIndex];
-    if (nextTab) {
-      nextTab.focus();
-      nextTab.click();
-    }
-  };
-
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground pb-24">
-      <Navbar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onTogglePlaylistDrawer={() => setIsPlaylistDrawerOpen((prev) => !prev)}
-        onOpenShortcuts={() => setIsShortcutsOpen(true)}
-      />
+    <AppShell onCreatePlaylist={() => setIsCreateModalOpen(true)}>
+      <SidebarInset>
+        <Navbar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        />
 
-      <main className="flex-1 w-full pb-28 sm:pb-32">
-        {/* Sticky Library Header & Navigation Bar (Always follows scroll, pushed up & compact) */}
+        {/* Sticky Library Header (follows scroll, compact) */}
         <div data-testid="sticky-library-header" className="sticky top-[var(--navbar-height,61px)] z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
-            {/* Top Row: Compact Title & View Mode Switcher */}
-            <div className="flex items-center justify-between gap-3 mb-1.5">
+            {/* Compact Title & View Mode Switcher */}
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 min-w-0">
+                <SidebarTrigger />
+                <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 min-w-0">
                   <span className="truncate">{headerMeta.title}</span>
                   <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
                     {headerMeta.count}
@@ -1195,216 +1126,16 @@ export function App() {
                 </div>
               </div>
             </div>
-
-            {/* Bottom Row: Horizontal Pill Tabs Bar */}
-            <div className="flex items-center justify-between gap-2 pt-0.5">
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0 pr-2">
-            <div
-              role="tablist"
-              aria-label={t("library.tabsAria", "Library categories and playlists")}
-              onKeyDown={handleTablistKeyDown}
-              className="flex items-center gap-2 min-w-0 shrink-0"
-            >
-              {/* Playlists: library of custom playlists as cover cards */}
-              <button
-                type="button"
-                role="tab"
-                id="tab-category-playlists"
-                aria-controls="main-library-panel"
-                aria-selected={activePlaylistId === null && activeSystemCategory === "playlists"}
-                tabIndex={activePlaylistId === null && activeSystemCategory === "playlists" ? 0 : -1}
-                onClick={() => setActiveSystemCategory("playlists")}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                  activePlaylistId === null && activeSystemCategory === "playlists"
-                    ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                    : "bg-primary/10 text-primary font-semibold hover:bg-primary/20 border border-primary/40"
-                }`}
-              >
-                <ListMusic className="h-3.5 w-3.5" />
-                <span>{t("categories.playlists")}</span>
-                <span className="font-mono text-2xs opacity-80">({playlists.length})</span>
-              </button>
-
-              <div role="presentation" aria-hidden="true" className="h-4 w-px bg-border/80 mx-0.5 shrink-0 self-center" />
-
-              {/* System category: Mix (Always visible, primary anchor) */}
-              <button
-                type="button"
-                role="tab"
-                id="tab-category-mixed"
-                aria-controls="main-library-panel"
-                aria-selected={activePlaylistId === null && activeSystemCategory === "mixed"}
-                tabIndex={activePlaylistId === null && activeSystemCategory === "mixed" ? 0 : -1}
-                onClick={() => setActiveSystemCategory("mixed")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                  activePlaylistId === null && activeSystemCategory === "mixed"
-                    ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                    : "bg-secondary/70 text-foreground/90 font-medium hover:bg-secondary hover:text-foreground border border-border/70"
-                }`}
-              >
-                <Shuffle className="h-3 w-3" />
-                <span className="font-semibold">{t("categories.mixed")}</span>
-                <span className="font-mono text-2xs opacity-80">({allMixedItems.length})</span>
-              </button>
-
-              {/* Folded toggle button right next to Mix when folded */}
-              {isBuiltInFolded && (
-                <button
-                  type="button"
-                  onClick={handleToggleBuiltInFold}
-                  aria-label={t("library.unfoldBuiltIn")}
-                  title={t("library.unfoldBuiltIn")}
-                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                  <span className="font-mono text-2xs opacity-80">4</span>
-                  {errorTracks.length > 0 ? (
-                    <span className="relative flex h-2 w-2 ml-0.5" title={t("categories.errors")}>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive"></span>
-                    </span>
-                  ) : downloadingTracks.length > 0 ? (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin text-primary ml-0.5" />
-                  ) : null}
-                </button>
-              )}
-
-              {/* Collapsible System category pills */}
-              {!isBuiltInFolded && (
-                <div className="flex items-center gap-2 shrink-0 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
-                  <button
-                    type="button"
-                    role="tab"
-                    id="tab-category-slices_only"
-                    aria-controls="main-library-panel"
-                    aria-selected={activePlaylistId === null && activeSystemCategory === "slices_only"}
-                    tabIndex={activePlaylistId === null && activeSystemCategory === "slices_only" ? 0 : -1}
-                    onClick={() => setActiveSystemCategory("slices_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                      activePlaylistId === null && activeSystemCategory === "slices_only"
-                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                        : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
-                    }`}
-                  >
-                    <Scissors className="h-3 w-3" />
-                    <span>{t("categories.slices")}</span>
-                    <span className="font-mono text-2xs opacity-80">({allSliceItems.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="tab"
-                    id="tab-category-original_only"
-                    aria-controls="main-library-panel"
-                    aria-selected={activePlaylistId === null && activeSystemCategory === "original_only"}
-                    tabIndex={activePlaylistId === null && activeSystemCategory === "original_only" ? 0 : -1}
-                    onClick={() => setActiveSystemCategory("original_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                      activePlaylistId === null && activeSystemCategory === "original_only"
-                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                        : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
-                    }`}
-                  >
-                    <Disc className="h-3 w-3" />
-                    <span>{t("categories.tracks")}</span>
-                    <span className="font-mono text-2xs opacity-80">({originalTracks.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="tab"
-                    id="tab-category-downloading_only"
-                    aria-controls="main-library-panel"
-                    aria-selected={activePlaylistId === null && activeSystemCategory === "downloading_only"}
-                    tabIndex={activePlaylistId === null && activeSystemCategory === "downloading_only" ? 0 : -1}
-                    onClick={() => setActiveSystemCategory("downloading_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                      activePlaylistId === null && activeSystemCategory === "downloading_only"
-                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                        : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
-                    }`}
-                  >
-                    <Loader2 className={`h-3 w-3 ${downloadingTracks.length > 0 ? "animate-spin" : ""}`} />
-                    <span>{t("categories.downloading")}</span>
-                    <span className="font-mono text-2xs opacity-80">({downloadingTracks.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="tab"
-                    id="tab-category-error_only"
-                    aria-controls="main-library-panel"
-                    aria-selected={activePlaylistId === null && activeSystemCategory === "error_only"}
-                    tabIndex={activePlaylistId === null && activeSystemCategory === "error_only" ? 0 : -1}
-                    onClick={() => setActiveSystemCategory("error_only")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 ${
-                      activePlaylistId === null && activeSystemCategory === "error_only"
-                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                        : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground border border-border/50"
-                    }`}
-                  >
-                    <AlertCircle className={`h-3 w-3 ${errorTracks.length > 0 && activeSystemCategory !== "error_only" ? "text-destructive" : ""}`} />
-                    <span>{t("categories.errors")}</span>
-                    <span className="font-mono text-2xs opacity-80">({errorTracks.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleToggleBuiltInFold}
-                    aria-label={t("library.foldBuiltIn")}
-                    title={t("library.foldBuiltIn")}
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 border border-border/40 hover:border-border/80 transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* Open playlist pill (the Playlists tab is the way in; this shows where you are) */}
-              {activePl && (
-                <>
-                  <div role="presentation" aria-hidden="true" className="h-4 w-px bg-border/80 mx-1 shrink-0 self-center" />
-                  <button
-                    type="button"
-                    role="tab"
-                    id={`tab-playlist-${activePl.id}`}
-                    aria-controls="main-library-panel"
-                    aria-selected={true}
-                    tabIndex={0}
-                    onClick={() => setActivePlaylist(activePl.id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer shrink-0 bg-primary text-primary-foreground shadow-xs"
-                  >
-                    <Folder className="h-3 w-3 shrink-0 text-primary-foreground" />
-                    <span>{activePl.name}</span>
-                    <span className="font-mono text-2xs opacity-80">({activePl.item_count || 0})</span>
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div role="presentation" className="h-4 w-px bg-border/80 mx-1 shrink-0" />
-
-            <button
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-primary border border-dashed border-primary/40 hover:bg-primary/10 transition-colors cursor-pointer shrink-0"
-            >
-              <Plus className="h-3 w-3" />
-              <span>{t("library.newPlaylist")}</span>
-            </button>
-          </div>
-
-            </div>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+        {/* Content Area (bottom padding clears the fixed player bar) */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 sm:pb-32">
           <div
             id="main-library-panel"
-            role="tabpanel"
+            role="region"
             key={`${activePlaylistId || activeSystemCategory || "mixed"}_${viewMode}`}
-            aria-labelledby={activePlaylistId ? `tab-playlist-${activePlaylistId}` : `tab-category-${activeSystemCategory || "mixed"}`}
+            aria-labelledby="library-view-title"
             className="animate-in fade-in duration-150 ease-out motion-reduce:animate-none"
           >
         {isLoadingTracks && isLibraryEmpty ? (
@@ -1866,7 +1597,7 @@ export function App() {
         )}
           </div>
         </div>
-      </main>
+      </SidebarInset>
 
       {/* Bulk Action Floating Bar */}
       <BulkActionBar visibleTrackIds={visibleTrackIds} visibleItems={visibleItems} />
@@ -1886,13 +1617,6 @@ export function App() {
           />
         </React.Suspense>
       )}
-
-      {/* Playlist Drawer (Left) */}
-      <PlaylistDrawer
-        isOpen={isPlaylistDrawerOpen}
-        onClose={() => setIsPlaylistDrawerOpen(false)}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
-      />
 
       {/* Confirm Delete Modal */}
       {deleteTarget && (
@@ -1989,6 +1713,6 @@ export function App() {
         onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
         isQueueOpen={isQueueOpen}
       />
-    </div>
+    </AppShell>
   );
 }

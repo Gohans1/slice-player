@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
-import "../i18n";
+import i18n from "../i18n";
 import { App } from "../App";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { useLogStore } from "../store/useLogStore";
@@ -27,7 +27,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
   };
 }
 
-describe("Library Tabs: built-in fold & Playlists tab", () => {
+describe("Library navigation: sidebar, playlists overview and sticky header", () => {
   let container: HTMLDivElement;
   let root: Root;
   let happyWindow: GlobalWindow;
@@ -87,102 +87,34 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("renders Mix and all 4 collapsible built-in tabs by default when not folded", async () => {
+  const sidebarButton = (label: string) =>
+    Array.from(container.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')).find(
+      (el) => el.textContent?.trim() === label
+    )!;
+
+  async function waitFor(check: () => boolean) {
+    for (let i = 0; i < 50 && !check(); i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
+  }
+
+  it("switches library category from the sidebar and titles the view after it", async () => {
     await act(async () => {
       root.render(<App />);
     });
 
-    const mixTab = container.querySelector("#tab-category-mixed");
-    const slicesTab = container.querySelector("#tab-category-slices_only");
-    const tracksTab = container.querySelector("#tab-category-original_only");
-    const downloadingTab = container.querySelector("#tab-category-downloading_only");
-    const errorTab = container.querySelector("#tab-category-error_only");
+    await act(async () => {
+      sidebarButton("Slices").click();
+    });
 
-    expect(mixTab).not.toBeNull();
-    expect(slicesTab).not.toBeNull();
-    expect(tracksTab).not.toBeNull();
-    expect(downloadingTab).not.toBeNull();
-    expect(errorTab).not.toBeNull();
-
-    // Fold button is present
-    const foldBtn = container.querySelector('button[aria-label*="system"], button[title*="system"], button[aria-label*="hệ thống"]');
-    expect(foldBtn).not.toBeNull();
+    expect(usePlayerStore.getState().activeSystemCategory).toBe("slices_only");
+    expect(sidebarButton("Slices").hasAttribute("data-active")).toBe(true);
+    expect(container.querySelector('[data-testid="sticky-library-header"] h1')?.textContent).toContain("Slices");
   });
 
-  it("clicking fold button hides the 4 tabs, shows the folded toggle, and persists to localStorage", async () => {
-    await act(async () => {
-      root.render(<App />);
-    });
-
-    const foldBtn = container.querySelector('button[title="Collapse system filters"], button[title="Thu gọn danh mục hệ thống"]') as HTMLButtonElement;
-    expect(foldBtn).not.toBeNull();
-
-    await act(async () => {
-      foldBtn.click();
-    });
-
-    expect(container.querySelector("#tab-category-mixed")).not.toBeNull();
-    expect(container.querySelector("#tab-category-slices_only")).toBeNull();
-    expect(container.querySelector("#tab-category-original_only")).toBeNull();
-    expect(container.querySelector("#tab-category-downloading_only")).toBeNull();
-    expect(container.querySelector("#tab-category-error_only")).toBeNull();
-
-    // Expand button is present with label
-    const expandBtn = container.querySelector('button[title="Expand system filters (4)"], button[title="Mở rộng danh mục hệ thống (4)"]') as HTMLButtonElement;
-    expect(expandBtn).not.toBeNull();
-    expect(expandBtn.textContent).toContain("4");
-
-    // LocalStorage checked
-    expect(happyWindow.localStorage.getItem("slice_player_builtin_folded")).toBe("true");
-
-    // Clicking expand restores the tabs
-    await act(async () => {
-      expandBtn.click();
-    });
-
-    expect(container.querySelector("#tab-category-slices_only")).not.toBeNull();
-    expect(container.querySelector("#tab-category-original_only")).not.toBeNull();
-    expect(happyWindow.localStorage.getItem("slice_player_builtin_folded")).toBe("false");
-  });
-
-  it("resets activeSystemCategory to mixed if folding while on a non-mixed system category", async () => {
-    usePlayerStore.setState({
-      activePlaylistId: null,
-      activeSystemCategory: "slices_only",
-    });
-
-    await act(async () => {
-      root.render(<App />);
-    });
-
-    const foldBtn = container.querySelector('button[title="Collapse system filters"], button[title="Thu gọn danh mục hệ thống"]') as HTMLButtonElement;
-    expect(foldBtn).not.toBeNull();
-
-    await act(async () => {
-      foldBtn.click();
-    });
-
-    expect(usePlayerStore.getState().activeSystemCategory).toBe("mixed");
-  });
-
-  it("renders a Playlists tab first in the tab list with the playlist count", async () => {
-    usePlayerStore.setState({
-      playlists: [
-        { id: "pl_1", name: "Gym Hype", created_at: 1000, updated_at: 1000, item_count: 24 },
-        { id: "pl_2", name: "Chill", created_at: 2000, updated_at: 2000, item_count: 9 },
-      ],
-    });
-
-    await act(async () => {
-      root.render(<App />);
-    });
-
-    const firstTab = container.querySelector('[role="tablist"] [role="tab"]');
-    expect(firstTab?.id).toBe("tab-category-playlists");
-    expect(firstTab?.textContent).toContain("2");
-  });
-
-  it("opening the Playlists tab shows a card per playlist and a create card, without custom playlist pills", async () => {
+  it("opens the playlists overview from the sidebar with a card per playlist and a create card", async () => {
     usePlayerStore.setState({
       playlists: [
         { id: "pl_1", name: "Gym Hype", created_at: 1000, updated_at: 1000, item_count: 24 },
@@ -194,15 +126,14 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
       root.render(<App />);
     });
     await act(async () => {
-      (container.querySelector("#tab-category-playlists") as HTMLButtonElement).click();
+      sidebarButton("All Playlists").click();
     });
 
     const panel = container.querySelector("#main-library-panel")!;
     expect(usePlayerStore.getState().activeSystemCategory).toBe("playlists");
-    expect(panel.querySelector('button[aria-label="Open playlist Gym Hype"], button[aria-label="Mở playlist Gym Hype"]')).not.toBeNull();
-    expect(panel.querySelector('button[aria-label="Open playlist Chill"], button[aria-label="Mở playlist Chill"]')).not.toBeNull();
-    expect(panel.textContent).toMatch(/New Playlist|Tạo Playlist Mới/);
-    expect(container.querySelector('[id^="tab-playlist-"]')).toBeNull();
+    expect(panel.querySelector('button[aria-label="Open playlist Gym Hype"]')).not.toBeNull();
+    expect(panel.querySelector('button[aria-label="Open playlist Chill"]')).not.toBeNull();
+    expect(panel.textContent).toContain("New Playlist");
   });
 
   it("clicking a playlist card opens that playlist", async () => {
@@ -215,7 +146,7 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
       root.render(<App />);
     });
     await act(async () => {
-      (container.querySelector('button[aria-label="Open playlist Gym Hype"], button[aria-label="Mở playlist Gym Hype"]') as HTMLButtonElement).click();
+      (container.querySelector('button[aria-label="Open playlist Gym Hype"]') as HTMLButtonElement).click();
     });
 
     expect(usePlayerStore.getState().activePlaylistId).toBe("pl_1");
@@ -236,11 +167,12 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
       await act(async () => {
         root.render(<App />);
       });
+      const panel = container.querySelector("#main-library-panel")!;
       await act(async () => {
-        (container.querySelector('button[aria-label="Play Gym Hype"], button[aria-label="Phát Gym Hype"]') as HTMLButtonElement).click();
+        (panel.querySelector('button[aria-label="Play Gym Hype"]') as HTMLButtonElement).click();
       });
       await act(async () => {
-        (container.querySelector('button[aria-label="Shuffle Gym Hype"], button[aria-label="Xáo trộn Gym Hype"]') as HTMLButtonElement).click();
+        (panel.querySelector('button[aria-label="Shuffle Gym Hype"]') as HTMLButtonElement).click();
       });
 
       expect(buildCalls.map((args) => args.slice(0, 2))).toEqual([["pl_1", false], ["pl_1", true]]);
@@ -274,7 +206,7 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
     expect(imgs).toEqual(["https://img/a.jpg", "https://img/b.jpg", "https://img/c.jpg", "https://img/d.jpg"]);
   });
 
-  it("shows only the open playlist as a pill in the tab strip", async () => {
+  it("highlights the open playlist in the sidebar", async () => {
     usePlayerStore.setState({
       activePlaylistId: "pl_2",
       playlists: [
@@ -287,9 +219,9 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
       root.render(<App />);
     });
 
-    const activeTab = container.querySelector("#tab-playlist-pl_2");
-    expect(activeTab?.getAttribute("aria-selected")).toBe("true");
-    expect(container.querySelector("#tab-playlist-pl_1")).toBeNull();
+    expect(sidebarButton("Custom 2").hasAttribute("data-active")).toBe(true);
+    expect(sidebarButton("Custom 1").hasAttribute("data-active")).toBe(false);
+    expect(sidebarButton("Mix").hasAttribute("data-active")).toBe(false);
   });
 
   it("renders a playlist header with name, item count and play controls when a playlist is open", async () => {
@@ -305,55 +237,34 @@ describe("Library Tabs: built-in fold & Playlists tab", () => {
     const header = container.querySelector('[data-testid="playlist-header"]');
     expect(header?.querySelector("h2")?.textContent).toBe("Gym Hype");
     expect(header?.textContent).toMatch(/24/);
-    expect(header?.querySelector('button[aria-label="Play Gym Hype"], button[aria-label="Phát Gym Hype"]')).not.toBeNull();
+    expect(header?.querySelector('button[aria-label="Play Gym Hype"]')).not.toBeNull();
   });
 
-  it("keeps built-in categories folded while browsing the Playlists tab", async () => {
-    happyWindow.localStorage.setItem("slice_player_builtin_folded", "true");
-
-    await act(async () => {
-      root.render(<App />);
-    });
-    await act(async () => {
-      (container.querySelector("#tab-category-playlists") as HTMLButtonElement).click();
-    });
-
-    expect(container.querySelector("#tab-category-slices_only")).toBeNull();
-    expect(happyWindow.localStorage.getItem("slice_player_builtin_folded")).toBe("true");
-  });
-
-  it("tablist container has shrink-0 to prevent flexbox shrink collision with + New Playlist", async () => {
+  it("opens the create playlist dialog from the sidebar", async () => {
     await act(async () => {
       root.render(<App />);
     });
 
-    const tablist = container.querySelector('[role="tablist"]');
-    expect(tablist).not.toBeNull();
-    expect(tablist?.classList.contains("shrink-0")).toBe(true);
+    await act(async () => {
+      (container.querySelector('[data-sidebar="group-action"][aria-label="New Playlist"]') as HTMLButtonElement).click();
+    });
+    const title = i18n.t("createPlaylist.title");
+    await waitFor(() => Boolean(happyWindow.document.body.textContent?.includes(title)));
+
+    expect(happyWindow.document.body.textContent).toContain(title);
   });
 
-  it("renders sticky compact header and tabs bar that stays with user on scroll", async () => {
+  it("keeps the view title and view switcher in a sticky header, with no tab strip", async () => {
     await act(async () => {
       root.render(<App />);
     });
 
     const stickyBar = container.querySelector('[data-testid="sticky-library-header"]');
     expect(stickyBar).not.toBeNull();
-    expect(stickyBar?.classList.contains("z-30")).toBe(true);
+    expect(stickyBar?.querySelector("h1")?.textContent).toContain("Mix");
+    expect(stickyBar?.querySelector('[role="group"][aria-label*="View"]')).not.toBeNull();
+    expect(container.querySelectorAll('[role="tablist"]').length).toBe(0);
 
-    // Header title and View mode switcher are inside the sticky bar
-    const title = stickyBar?.querySelector("h1");
-    expect(title).not.toBeNull();
-    expect(title?.textContent).toContain("Mix");
-
-    const viewGroup = stickyBar?.querySelector('[role="group"][aria-label*="View"], [role="group"][aria-label*="chế độ"]');
-    expect(viewGroup).not.toBeNull();
-
-    // Tablist is also inside the sticky bar
-    const tablist = stickyBar?.querySelector('[role="tablist"]');
-    expect(tablist).not.toBeNull();
-
-    // Content panel is outside and below the sticky bar
     const panel = container.querySelector("#main-library-panel");
     expect(panel).not.toBeNull();
     expect(stickyBar?.contains(panel)).toBe(false);
