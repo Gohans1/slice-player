@@ -1,8 +1,18 @@
 import * as React from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { Modal } from "./modal";
-import { Button } from "./button";
+import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "./alert-dialog";
+import { Spinner } from "./spinner";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -14,7 +24,6 @@ interface ConfirmModalProps {
   cancelText?: string;
   variant?: "destructive" | "default";
   isLoading?: boolean;
-  zIndex?: number;
 }
 
 export function ConfirmModal({
@@ -27,20 +36,10 @@ export function ConfirmModal({
   cancelText,
   variant = "destructive",
   isLoading = false,
-  zIndex = 60,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
-  const cancelBtnRef = React.useRef<HTMLButtonElement>(null);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      // Focus cancel button by default to prevent accidental confirmation
-      const timer = setTimeout(() => {
-        cancelBtnRef.current?.focus();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
+  // Cancel takes focus first so Enter never confirms by accident
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   const handleConfirm = async () => {
     if (isLoading) return;
@@ -48,46 +47,34 @@ export function ConfirmModal({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={isLoading ? () => {} : onClose}
-      title={title}
-      className="max-w-md"
-      zIndex={zIndex}
+    <AlertDialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && !isLoading) onClose();
+      }}
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-muted-foreground">
-          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-          <p className="leading-relaxed text-foreground/90">
+      <AlertDialogContent initialFocus={cancelRef}>
+        <AlertDialogHeader>
+          {variant === "destructive" && (
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <AlertTriangle />
+            </AlertDialogMedia>
+          )}
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>
             {description || t("library.confirmWarning", "Hành động này không thể hoàn tác.")}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border/50">
-          <Button
-            ref={cancelBtnRef}
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            disabled={isLoading}
-            className="px-4 text-xs font-semibold"
-          >
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel ref={cancelRef} disabled={isLoading}>
             {cancelText || t("common.cancel", "Hủy")}
-          </Button>
-          <Button
-            type="button"
-            variant={variant}
-            size="sm"
-            onClick={handleConfirm}
-            disabled={isLoading}
-            className="px-4 text-xs font-semibold gap-1.5"
-          >
-            {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            <span>{confirmText || t("common.delete", "Xóa")}</span>
-          </Button>
-        </div>
-      </div>
-    </Modal>
+          </AlertDialogCancel>
+          <AlertDialogAction variant={variant} onClick={handleConfirm} disabled={isLoading}>
+            {isLoading && <Spinner data-icon="inline-start" />}
+            {confirmText || t("common.delete", "Xóa")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
 import { ConfirmModal } from "./ConfirmModal";
 import i18n from "../../i18n";
 
@@ -12,15 +11,8 @@ describe("ConfirmModal Component", () => {
 
   beforeEach(async () => {
     await i18n.changeLanguage("en");
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    const happyWindow = new GlobalWindow();
-    (globalThis as any).window = happyWindow;
-    (globalThis as any).document = happyWindow.document;
-    (globalThis as any).HTMLElement = happyWindow.HTMLElement;
-    (globalThis as any).Event = happyWindow.Event;
-
-    container = happyWindow.document.createElement("div") as unknown as HTMLDivElement;
-    happyWindow.document.body.appendChild(container as any);
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
   });
 
@@ -31,41 +23,61 @@ describe("ConfirmModal Component", () => {
     container.remove();
   });
 
-  it("renders when isOpen is true and shows title, description, and action buttons", () => {
-    act(() => {
+  const renderConfirm = async (props: Partial<React.ComponentProps<typeof ConfirmModal>> = {}) => {
+    await act(async () => {
       root.render(
-        <ConfirmModal
-          isOpen={true}
-          onClose={() => {}}
-          onConfirm={() => {}}
-          title="Delete Test Track"
-          description="Are you sure you want to delete this track?"
-        />
+        <ConfirmModal isOpen={true} onClose={() => {}} onConfirm={() => {}} title="Delete Confirmation" {...props} />
       );
     });
+    // Base UI moves focus after the opening render commits
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+  };
 
-    const bodyText = (globalThis as any).document.body.textContent || "";
+  const findButton = (label: string) =>
+    Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.includes(label));
+
+  const pressEscape = () => {
+    act(() => {
+      (document.activeElement ?? document.body).dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+  };
+
+  it("renders when isOpen is true and shows title, description, and action buttons", async () => {
+    await renderConfirm({ title: "Delete Test Track", description: "Are you sure you want to delete this track?" });
+
+    const bodyText = document.body.textContent || "";
     expect(bodyText).toContain("Delete Test Track");
     expect(bodyText).toContain("Are you sure you want to delete this track?");
   });
 
-  it("calls onClose when cancel button is clicked", () => {
+  it("asks with an alert dialog that focuses Cancel first", async () => {
+    await renderConfirm();
+
+    expect(document.querySelectorAll('[role="alertdialog"]').length).toBe(1);
+    expect(document.activeElement?.textContent).toBe("Cancel");
+  });
+
+  it("dismisses on Escape unless the action is still running", async () => {
     const onClose = mock(() => {});
-    act(() => {
-      root.render(
-        <ConfirmModal
-          isOpen={true}
-          onClose={onClose}
-          onConfirm={() => {}}
-          title="Delete Confirmation"
-        />
-      );
-    });
 
-    const cancelBtn = Array.from(
-      (globalThis as any).document.querySelectorAll("button")
-    ).find((b: any) => b.textContent?.includes("Hủy") || b.textContent?.includes("Cancel")) as HTMLButtonElement | undefined;
+    await renderConfirm({ onClose, isLoading: true });
+    pressEscape();
+    expect(onClose).not.toHaveBeenCalled();
 
+    await renderConfirm({ onClose, isLoading: false });
+    pressEscape();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onClose when cancel button is clicked", async () => {
+    const onClose = mock(() => {});
+    await renderConfirm({ onClose });
+
+    const cancelBtn = findButton("Cancel");
     expect(cancelBtn).toBeDefined();
     act(() => {
       cancelBtn?.click();
@@ -73,23 +85,11 @@ describe("ConfirmModal Component", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("calls onConfirm when confirm button is clicked", () => {
+  it("calls onConfirm when confirm button is clicked", async () => {
     const onConfirm = mock(() => {});
-    act(() => {
-      root.render(
-        <ConfirmModal
-          isOpen={true}
-          onClose={() => {}}
-          onConfirm={onConfirm}
-          title="Delete Confirmation"
-        />
-      );
-    });
+    await renderConfirm({ onConfirm });
 
-    const confirmBtn = Array.from(
-      (globalThis as any).document.querySelectorAll("button")
-    ).find((b: any) => b.textContent?.includes("Xóa") || b.textContent?.includes("Delete")) as HTMLButtonElement | undefined;
-
+    const confirmBtn = findButton("Delete");
     expect(confirmBtn).toBeDefined();
     act(() => {
       confirmBtn?.click();

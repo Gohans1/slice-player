@@ -22,6 +22,8 @@ async function waitForCondition(check: () => boolean, timeoutMs = 1500): Promise
 
 describe("ImportActions: YouTube ingestion queue and local audio", () => {
   let container: HTMLDivElement;
+  // Dialogs render in a portal on document.body, outside the root container
+  const body = () => document.body;
   let root: Root;
   let originalFetch: typeof globalThis.fetch;
 
@@ -112,7 +114,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Find and click the "+ Link YouTube" button
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     expect(ytButton).toBeDefined();
@@ -122,10 +124,10 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Modal is open, find textarea and submit button
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     expect(textarea).toBeDefined();
 
-    const getSubmitBtn = () => findSubmitBtn(container);
+    const getSubmitBtn = () => findSubmitBtn(body());
 
     expect(getSubmitBtn()).toBeDefined();
     expect(getSubmitBtn().disabled).toBe(true);
@@ -144,7 +146,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Textarea should be immediately cleared
-    const currentTextarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const currentTextarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     expect(currentTextarea.value).toBe("");
 
     // Submit button should be disabled ONLY because textarea is empty, but NOT because YouTube is loading
@@ -164,7 +166,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Input cleared again
-    const clearedTextarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const clearedTextarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     expect(clearedTextarea.value).toBe("");
 
     // Resolve first fetch so the background queue finishes
@@ -174,7 +176,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
 
     // Deterministically wait until callCount reaches 2 and queue finishes
     await waitForCondition(
-      () => callCount === 2 && (/(Processed 2\/2 links|Đã xử lý xong 2\/2 link)/.test(container.textContent || ""))
+      () => callCount === 2 && (/(Processed 2\/2 links|Đã xử lý xong 2\/2 link)/.test(body().textContent || ""))
     );
     expect(callCount).toBe(2);
   });
@@ -196,15 +198,15 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
-    const submitBtn = findSubmitBtn(container);
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const submitBtn = findSubmitBtn(body());
 
     const multiUrls = `
       https://www.youtube.com/playlist?list=PLalpha
@@ -223,12 +225,12 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Input immediately clears
-    const currentTextarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const currentTextarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     expect(currentTextarea.value).toBe("");
 
     // Wait for sequential queue to finish all 3
     await waitForCondition(
-      () => fetchedUrls.length === 3 && (/(Processed 3\/3 links|Đã xử lý xong 3\/3 link)/.test(container.textContent || ""))
+      () => fetchedUrls.length === 3 && (/(Processed 3\/3 links|Đã xử lý xong 3\/3 link)/.test(body().textContent || ""))
     );
 
     expect(fetchedUrls).toEqual([
@@ -258,19 +260,19 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     await act(async () => {
       triggerTextareaChange(textarea, "https://www.youtube.com/watch?v=slow123");
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
@@ -278,10 +280,10 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
 
     // Wait for cancel button to appear
     await waitForCondition(() =>
-      Array.from(container.querySelectorAll("button")).some((b) => b.textContent?.includes("Cancel") || b.textContent?.includes("Hủy"))
+      Array.from(body().querySelectorAll("button")).some((b) => b.textContent?.includes("Cancel") || b.textContent?.includes("Hủy"))
     );
 
-    const cancelBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+    const cancelBtn = Array.from(body().querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Cancel") || b.textContent?.includes("Hủy")
     ) as HTMLButtonElement;
 
@@ -292,7 +294,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Confirmation popup opens; confirm cancellation
-    const confirmStopBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+    const confirmStopBtn = Array.from(body().querySelectorAll("button")).find((b) =>
       b.textContent?.includes("Dừng") || b.textContent?.includes("Stop")
     ) as HTMLButtonElement;
     if (confirmStopBtn) {
@@ -306,10 +308,10 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     // Queue should reflect cancellation
     await waitForCondition(
       () =>
-        (/(Cancelled|Import cancelled|Đã hủy quét link)/.test(container.textContent || "")) &&
-        !container.querySelector(".animate-spin")
+        (/(Cancelled|Import cancelled|Đã hủy quét link)/.test(body().textContent || "")) &&
+        !body().querySelector(".animate-spin")
     );
-    expect(container.textContent).toMatch(/Cancelled|Import cancelled|Đã hủy quét link/);
+    expect(body().textContent).toMatch(/Cancelled|Import cancelled|Đã hủy quét link/);
   });
 
   it("should continue processing subsequent URLs when one URL encounters an error", async () => {
@@ -332,19 +334,19 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     await act(async () => {
       triggerTextareaChange(textarea, "https://www.youtube.com/watch?v=bad_url\nhttps://www.youtube.com/watch?v=good_url");
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
@@ -354,16 +356,16 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     await waitForCondition(
       () =>
         fetchedUrls.length === 2 &&
-        (/((\+1 tracks|\+1 bài))/.test(container.textContent || "")) &&
-        (container.textContent?.includes("Video không tồn tại") ?? false)
+        (/((\+1 tracks|\+1 bài))/.test(body().textContent || "")) &&
+        (body().textContent?.includes("Video không tồn tại") ?? false)
     );
     expect(fetchedUrls).toEqual([
       "https://www.youtube.com/watch?v=bad_url",
       "https://www.youtube.com/watch?v=good_url",
     ]);
 
-    expect(container.textContent).toContain("Video không tồn tại");
-    expect(container.textContent).toMatch(/\+1 tracks|\+1 bài/);
+    expect(body().textContent).toContain("Video không tồn tại");
+    expect(body().textContent).toMatch(/\+1 tracks|\+1 bài/);
   });
 
   it("should reject batch when exceeding 50 URLs with a friendly error", async () => {
@@ -371,27 +373,27 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     const urls = Array.from({ length: 55 }, (_, i) => `https://www.youtube.com/watch?v=id_${i}`).join("\n");
 
     await act(async () => {
       triggerTextareaChange(textarea, urls);
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
     });
 
-    expect(container.textContent).toMatch(/Maximum 50 links allowed|Chỉ được nạp tối đa 50 đường link/);
+    expect(body().textContent).toMatch(/Maximum 50 links allowed|Chỉ được nạp tối đa 50 đường link/);
   });
 
   it("should show error feedback when submitting duplicate URLs that are already active in queue", async () => {
@@ -406,19 +408,19 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     await act(async () => {
       triggerTextareaChange(textarea, "https://www.youtube.com/watch?v=dup123");
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
@@ -434,7 +436,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     });
 
     // Should display feedback instead of silently dropping
-    expect(container.textContent).toMatch(/already queued|đã có trong hàng đợi/);
+    expect(body().textContent).toMatch(/already queued|đã có trong hàng đợi/);
 
     // Clean up pending fetch
     await act(async () => {
@@ -461,14 +463,14 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     // Input containing trailing punctuation like periods or markdown brackets
     const rawInput = "Check: <https://www.youtube.com/watch?v=pass123.> and [link](https://www.youtube.com/watch?v=fail456!)";
 
@@ -476,7 +478,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       triggerTextareaChange(textarea, rawInput);
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
@@ -485,7 +487,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     await waitForCondition(
       () =>
         fetchedUrls.length === 2 &&
-        (/(Completed: 1\/2|Hoàn tất: 1\/2)/.test(container.textContent || ""))
+        (/(Completed: 1\/2|Hoàn tất: 1\/2)/.test(body().textContent || ""))
     );
 
     // Trailing period and exclamation mark should be stripped
@@ -494,7 +496,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       "https://www.youtube.com/watch?v=fail456",
     ]);
 
-    expect(container.textContent).toMatch(/Completed: 1\/2|Hoàn tất: 1\/2/);
+    expect(body().textContent).toMatch(/Completed: 1\/2|Hoàn tất: 1\/2/);
   });
 
   it("should reject invalid input or non-YouTube URLs with user-friendly error", async () => {
@@ -502,25 +504,25 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     await act(async () => {
       triggerTextareaChange(textarea, "https://example.com/not-youtube and some random text");
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
     });
 
-    expect(container.textContent).toMatch(/No valid YouTube URL found|Không tìm thấy đường link YouTube hợp lệ/);
+    expect(body().textContent).toMatch(/No valid YouTube URL found|Không tìm thấy đường link YouTube hợp lệ/);
   });
 
   it("should accept protocol-less YouTube and youtu.be shortlinks", async () => {
@@ -539,19 +541,19 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const ytButton = Array.from(container.querySelectorAll("button")).find(
+    const ytButton = Array.from(body().querySelectorAll("button")).find(
       (b) => b.textContent?.includes("YouTube")
     );
     await act(async () => {
       ytButton?.click();
     });
 
-    const textarea = container.querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
+    const textarea = body().querySelector("textarea[placeholder*='youtube.com']") as HTMLTextAreaElement;
     await act(async () => {
       triggerTextareaChange(textarea, "Check: youtu.be/abc1234");
     });
 
-    const submitBtn = findSubmitBtn(container);
+    const submitBtn = findSubmitBtn(body());
 
     await act(async () => {
       submitForm(submitBtn);
@@ -560,7 +562,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     await waitForCondition(
       () =>
         fetchedUrls.length === 1 &&
-        (/(Processed 1\/1 links|Đã xử lý xong 1\/1 link)/.test(container.textContent || ""))
+        (/(Processed 1\/1 links|Đã xử lý xong 1\/1 link)/.test(body().textContent || ""))
     );
 
     expect(fetchedUrls).toEqual(["https://youtu.be/abc1234"]);
@@ -571,7 +573,7 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
       root.render(<ImportActions />);
     });
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = body().querySelector('input[type="file"]') as HTMLInputElement;
     expect(fileInput).toBeDefined();
     expect(fileInput.accept).toContain(".mp4");
     expect(fileInput.accept).toContain("video/mp4");

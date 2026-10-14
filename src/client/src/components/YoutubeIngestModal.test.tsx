@@ -167,7 +167,7 @@ describe("YoutubeIngestModal Component", () => {
     }
   });
 
-  it("pressing Escape when ConfirmModal is open only closes ConfirmModal and keeps YoutubeIngestModal open", () => {
+  it("pressing Escape when ConfirmModal is open only closes ConfirmModal and keeps YoutubeIngestModal open", async () => {
     let isModalClosed = false;
 
     // Mock fetch that hangs
@@ -231,6 +231,10 @@ describe("YoutubeIngestModal Component", () => {
           bubbles: true,
         });
         happyWindow.document.dispatchEvent(escEvent);
+      });
+      // Base UI unmounts the popup once its exit animation finishes
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
       // Confirm modal should be closed

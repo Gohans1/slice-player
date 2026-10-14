@@ -407,7 +407,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
         isOpen={isCoverModalOpen}
         onClose={() => setIsCoverModalOpen(false)}
         title={t("playlist.changeCoverTitle", "Chọn ảnh bìa đại diện")}
-        className="max-w-md"
+        className="sm:max-w-md"
       >
         <div className="space-y-3 py-1">
           <p className="text-xs text-muted-foreground">

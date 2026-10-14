@@ -42,10 +42,10 @@ describe("ShortcutsModal Component", () => {
       root.render(<ShortcutsModal isOpen={true} onClose={() => {}} />);
     });
 
-    expect(container.textContent).toContain("Keyboard Shortcuts");
-    expect(container.textContent).toContain("Playback Controls");
-    expect(container.textContent).toContain("Space");
-    expect(container.textContent).toContain("Slice Studio");
+    expect(document.body.textContent).toContain("Keyboard Shortcuts");
+    expect(document.body.textContent).toContain("Playback Controls");
+    expect(document.body.textContent).toContain("Space");
+    expect(document.body.textContent).toContain("Slice Studio");
   });
 
   it("does not render when closed", () => {
@@ -62,7 +62,7 @@ describe("ShortcutsModal Component", () => {
       root.render(<ShortcutsModal isOpen={true} onClose={() => { closed = true; }} />);
     });
 
-    const closeBtn = Array.from(container.querySelectorAll("button")).find(
+    const closeBtn = Array.from(document.querySelectorAll("button")).find(
       (btn) => btn.textContent?.includes("Close")
     );
     expect(closeBtn).toBeDefined();

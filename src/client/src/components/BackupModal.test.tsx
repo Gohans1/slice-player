@@ -56,7 +56,7 @@ describe("BackupModal Component", () => {
       root.render(<BackupModal isOpen={true} onClose={() => {}} />);
     });
 
-    const text = container.textContent || "";
+    const text = document.body.textContent || "";
     expect(text.length).toBeGreaterThan(0);
     // Should display current library stats
     expect(text).toContain("1");
@@ -67,7 +67,7 @@ describe("BackupModal Component", () => {
       root.render(<BackupModal isOpen={true} onClose={() => {}} />);
     });
 
-    const buttons = container.querySelectorAll("button");
+    const buttons = document.querySelectorAll("button");
     const importTabBtn = Array.from(buttons).find((b) => b.textContent?.includes("Restore") || b.textContent?.includes("Khôi phục") || b.textContent?.includes("Import") || b.textContent?.includes("Nạp"));
     expect(importTabBtn).toBeDefined();
 
@@ -76,7 +76,7 @@ describe("BackupModal Component", () => {
         importTabBtn.click();
       });
 
-      const textAfter = container.textContent || "";
+      const textAfter = document.body.textContent || "";
       expect(textAfter.length).toBeGreaterThan(0);
     }
   });
@@ -105,7 +105,7 @@ describe("BackupModal Component", () => {
       root.render(<BackupModal isOpen={true} onClose={() => {}} />);
     });
 
-    const downloadBtn = Array.from(container.querySelectorAll("button")).find(
+    const downloadBtn = Array.from(document.querySelectorAll("button")).find(
       (b) => b.textContent?.includes(".tar.gz")
     );
     expect(downloadBtn).toBeDefined();

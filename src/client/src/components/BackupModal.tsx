@@ -157,7 +157,6 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
       onClose={onClose}
       title={t("backupModal.title")}
       description={t("backupModal.description")}
-      className="max-w-lg"
     >
       <div className="space-y-4">
         {/* Navigation Tabs */}

@@ -46,7 +46,7 @@ describe("BulkActionBar Component", () => {
     expect(aside).toBeNull();
   });
 
-  it("renders aside and opens ConfirmModal outside aside when delete button is clicked", () => {
+  it("renders aside and opens ConfirmModal outside aside when delete button is clicked", async () => {
     // Select 2 tracks
     act(() => {
       useSelectionStore.getState().toggleTrack({
@@ -82,16 +82,15 @@ describe("BulkActionBar Component", () => {
     });
 
     // Confirm modal should be rendered
-    const dialog = container.querySelector('[role="dialog"]');
-    expect(dialog).not.toBeNull();
-    expect(container.textContent).toContain("Delete selected items?");
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("Delete selected items?");
 
     // CRITICAL: Ensure modal is rendered OUTSIDE of the <aside> element so it is not
     // trapped in aside's transform (-translate-x-1/2) containing block and z-40 stacking context
     expect(aside?.contains(dialog)).toBe(false);
 
     // Cancel closes the dialog
-    const cancelBtn = Array.from(container.querySelectorAll("button")).find((btn) =>
+    const cancelBtn = Array.from(dialog?.querySelectorAll("button") ?? []).find((btn) =>
       btn.textContent?.includes("Cancel")
     );
     expect(cancelBtn).toBeDefined();
@@ -99,8 +98,12 @@ describe("BulkActionBar Component", () => {
     act(() => {
       cancelBtn?.click();
     });
+    // Base UI unmounts the popup once its exit animation finishes
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelectorAll('[role="alertdialog"]').length).toBe(0);
   });
 
   it("offers no delete action while viewing a mix playlist (its songs live in the sources)", () => {

@@ -67,7 +67,7 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
       onClose={onClose}
       title={t("shortcutsModal.title", "Keyboard Shortcuts")}
       description={t("shortcutsModal.description", "Essential desktop hotkeys for quick playback and precision slicing.")}
-      className="max-w-md"
+      className="sm:max-w-md"
     >
       <div className="space-y-5 py-1">
         {renderSection(

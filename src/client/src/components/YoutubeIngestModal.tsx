@@ -278,8 +278,7 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
   };
 
   return (
-    <>
-      <Modal
+    <Modal
       isOpen={isOpen}
       onClose={handleClose}
       title={t("ytModal.title")}
@@ -460,9 +459,8 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
           </div>
         </div>
       </div>
-    </Modal>
 
-    {showCancelConfirm && (
+      {/* Nested in the Modal so Base UI stacks it: Escape closes only the confirmation */}
       <ConfirmModal
         isOpen={showCancelConfirm}
         onClose={() => setShowCancelConfirm(false)}
@@ -479,7 +477,6 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
         cancelText={t("ytModal.keepGoing", "Continue Import")}
         variant="destructive"
       />
-    )}
-    </>
+    </Modal>
   );
 });
