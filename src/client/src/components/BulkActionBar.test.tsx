@@ -168,6 +168,51 @@ describe("BulkActionBar Component", () => {
     }
   });
 
+  it("adds the selection to a playlist picked from the menu, then closes it", async () => {
+    const originalAddBatch = usePlayerStore.getState().addTracksToPlaylistBatch;
+    const addBatchMock = mock(async () => true);
+    usePlayerStore.setState({
+      addTracksToPlaylistBatch: addBatchMock as any,
+      playlists: [
+        { id: "pl_existing", name: "Existing PL", created_at: 1, updated_at: 1, item_count: 0 },
+        { id: "mix_1", name: "Gym Mix", created_at: 2, updated_at: 2, item_count: 0, is_mix: true, source_ids: [] },
+      ],
+    });
+    act(() => {
+      useSelectionStore.getState().toggleTrack({ id: "track_10", type: "track", trackId: "track_10", title: "Track 10" });
+    });
+    act(() => {
+      root.render(<BulkActionBar visibleTrackIds={["track_10"]} />);
+    });
+
+    const trigger = Array.from(container.querySelectorAll("button")).find((btn) => btn.textContent?.includes("Playlist"));
+    await act(async () => {
+      trigger?.click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const menuItems = () => Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'));
+    // Mixes take their songs from their sources, so they are not offered
+    expect(menuItems().some((item) => item.textContent?.includes("Gym Mix"))).toBe(false);
+    const target = menuItems().find((item) => item.textContent?.includes("Existing PL"));
+    expect(target).toBeDefined();
+
+    await act(async () => {
+      target?.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(addBatchMock).toHaveBeenCalledWith("pl_existing", [{ track_id: "track_10", segment_id: null }]);
+    // The menu stays up long enough to show the confirmation, then closes
+    expect(document.querySelectorAll('[role="menu"]').length).toBe(1);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    expect(document.querySelectorAll('[role="menu"]').length).toBe(0);
+
+    usePlayerStore.setState({ addTracksToPlaylistBatch: originalAddBatch });
+  });
+
   it("renders New Playlist button in bulk playlist menu and creates playlist with selected items", async () => {
     const originalCreatePlaylist = usePlayerStore.getState().createPlaylist;
     const originalAddBatch = usePlayerStore.getState().addTracksToPlaylistBatch;
@@ -219,9 +264,9 @@ describe("BulkActionBar Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Verify "+ New Playlist" button is rendered at top of bulk menu
-    const newPlaylistBtn = Array.from(container.querySelectorAll("button")).find((btn) =>
-      btn.textContent?.toLowerCase().includes("new playlist")
+    // Verify "+ New Playlist" is offered in the bulk menu (rendered in a portal)
+    const newPlaylistBtn = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((item) =>
+      item.textContent?.toLowerCase().includes("new playlist")
     );
     expect(newPlaylistBtn).toBeDefined();
 

@@ -1,6 +1,16 @@
 import * as React from "react";
 import { FolderPlus, Trash2, X, Check, CheckSquare, Square, Plus } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { ConfirmModal } from "./ui/ConfirmModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { useTranslation } from "react-i18next";
@@ -26,16 +36,16 @@ const mapItemsToBatchPayload = (items: SelectedItem[]) =>
     segment_id: item.segmentId || (item.type === "slice" ? item.id : null),
   }));
 
+// Long enough to read the check mark before the menu closes
+const ADDED_CLOSE_DELAY_MS = 600;
+
+// Adds every selected item to the picked playlist. Mixes take their songs from their sources, so they are left out.
 function BulkAddToPlaylistMenu({
-  isOpen,
   selectedItems,
-  onClose,
-  onOpenCreateModal,
+  onCreatePlaylist,
 }: {
-  isOpen: boolean;
   selectedItems: SelectedItem[];
-  onClose: () => void;
-  onOpenCreateModal?: () => void;
+  onCreatePlaylist: () => void;
 }) {
   const { t } = useTranslation();
   const allPlaylists = usePlayerStore((s) => s.playlists);
@@ -43,117 +53,80 @@ function BulkAddToPlaylistMenu({
     return getHierarchicalPlaylists(allPlaylists, { excludeMixes: true });
   }, [allPlaylists]);
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
-  const [addedFeedback, setAddedFeedback] = React.useState<string | null>(null);
-  const feedbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [addedTo, setAddedTo] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-
-  const [isRendered, setIsRendered] = React.useState(isOpen);
-  const [isExiting, setIsExiting] = React.useState(false);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsRendered(true);
-      setIsExiting(false);
-    } else if (isRendered) {
-      setIsExiting(true);
-      const timer = setTimeout(() => {
-        setIsRendered(false);
-        setIsExiting(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isRendered]);
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     return () => {
-      if (feedbackTimeoutRef.current) {
-        clearTimeout(feedbackTimeoutRef.current);
-      }
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
   }, []);
 
-  const handleSelect = async (plId: string) => {
+  const addToPlaylist = async (playlistId: string) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const payload = mapItemsToBatchPayload(selectedItems);
-      const ok = await addTracksToPlaylistBatch(plId, payload);
-      if (ok) {
-        setAddedFeedback(plId);
-        feedbackTimeoutRef.current = setTimeout(() => {
-          setIsSubmitting(false);
-          setAddedFeedback(null);
-          onClose();
-        }, 600);
-      } else {
+      if (!(await addTracksToPlaylistBatch(playlistId, mapItemsToBatchPayload(selectedItems)))) {
         setIsSubmitting(false);
+        return;
       }
+      setAddedTo(playlistId);
+      closeTimerRef.current = setTimeout(() => {
+        setIsSubmitting(false);
+        setOpen(false);
+      }, ADDED_CLOSE_DELAY_MS);
     } catch {
       setIsSubmitting(false);
     }
   };
 
-  if (!isOpen && !isRendered) return null;
-
   return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          onClose();
-        }
-        e.stopPropagation();
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) setAddedTo(null);
       }}
-      className={cn(
-        "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-lg border border-border bg-card/95 backdrop-blur-md p-1.5 shadow-xl z-50 duration-100",
-        isExiting ? "animate-out fade-out zoom-out-95 pointer-events-none" : "animate-in fade-in zoom-in-95"
-      )}
     >
-      <div className="px-2 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border mb-1">
-        {t("addToPlaylist.title", "Add to Playlist")}
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          onClose();
-          onOpenCreateModal?.();
-        }}
-        className="w-full flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded text-xs text-left font-medium text-primary hover:bg-primary/10 transition-colors cursor-pointer border-b border-border/50"
-      >
-        <Plus className="h-3.5 w-3.5 shrink-0 stroke-[2.5]" />
-        <span className="truncate">{t("addToPlaylist.newPlaylist", "New Playlist")}</span>
-      </button>
-      {orderedPlaylists.length === 0 ? (
-        <div className="px-2 py-2 text-xs text-muted-foreground text-center">
-          {t("addToPlaylist.empty", "No playlists yet")}
-        </div>
-      ) : (
-        <div className="max-h-60 overflow-y-auto space-y-0.5">
-          {orderedPlaylists.map(({ playlist: pl, isChild }) => (
-            <button
-              key={pl.id}
-              onClick={() => handleSelect(pl.id)}
-              disabled={isSubmitting}
-              className={`w-full flex items-center justify-between py-1.5 rounded text-xs text-left hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer disabled:opacity-50 ${
-                isChild ? "pl-5 pr-2" : "px-2"
-              }`}
-            >
-              <span className="truncate flex items-center gap-1">
+      <DropdownMenuTrigger render={<Button variant="outline" size="lg" />}>
+        <FolderPlus data-icon="inline-start" />
+        {t("bulkActions.addToPlaylist", "Playlist")}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{t("addToPlaylist.title", "Add to Playlist")}</DropdownMenuLabel>
+          <DropdownMenuItem onClick={onCreatePlaylist}>
+            <Plus />
+            {t("addToPlaylist.newPlaylist", "New Playlist")}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          {orderedPlaylists.length === 0 ? (
+            <DropdownMenuItem disabled>{t("addToPlaylist.empty", "No playlists yet")}</DropdownMenuItem>
+          ) : (
+            orderedPlaylists.map(({ playlist, isChild }) => (
+              <DropdownMenuItem
+                key={playlist.id}
+                inset={isChild || undefined}
+                closeOnClick={false}
+                onClick={() => void addToPlaylist(playlist.id)}
+              >
                 {isChild && (
-                  <span className="text-muted-foreground/60 select-none font-mono text-2xs mr-0.5" aria-hidden="true">
+                  <span aria-hidden="true" className="text-muted-foreground">
                     ↳
                   </span>
                 )}
-                <span className="truncate">{pl.name}</span>
-              </span>
-              {addedFeedback === pl.id && (
-                <Check className="h-3.5 w-3.5 text-flexoki-green shrink-0 ml-1 animate-in zoom-in-75 duration-100 ease-out" />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+                <span className="truncate">{playlist.name}</span>
+                {addedTo === playlist.id && <Check className="ml-auto text-flexoki-green" />}
+              </DropdownMenuItem>
+            ))
+          )}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -173,37 +146,14 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
   const isMixView = usePlayerStore((s) => Boolean(s.playlists.find((p) => p.id === s.activePlaylistId)?.is_mix));
 
-  const [isPlaylistOpen, setIsPlaylistOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
 
-  // Close playlist popover on click outside or Escape
-  React.useEffect(() => {
-    if (!isPlaylistOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsPlaylistOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsPlaylistOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isPlaylistOpen]);
-
-  // Global Escape clears selection when popover isn't open
+  // Global Escape clears the selection; open menus and dialogs keep their Escape to themselves
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && selectedCount > 0 && !isPlaylistOpen) {
+      if (e.key === "Escape" && selectedCount > 0) {
         const target = e.target as HTMLElement | null;
         const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as any).isContentEditable);
         if (isInput || isDialogOpen()) return;
@@ -212,7 +162,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [selectedCount, isPlaylistOpen, clearSelection]);
+  }, [selectedCount, clearSelection]);
 
   const [isRendered, setIsRendered] = React.useState(selectedCount > 0);
   const [isExiting, setIsExiting] = React.useState(false);
@@ -238,7 +188,6 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
 
   const handleDelete = () => {
     if (isDeleting) return;
-    setIsPlaylistOpen(false);
     setIsConfirmOpen(true);
   };
 
@@ -316,7 +265,6 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     <>
       <div className="fixed bottom-24 inset-x-0 z-40 flex justify-center pointer-events-none px-4">
         <aside
-          ref={containerRef}
           aria-label={t("bulkActions.barLabel", "Bulk actions")}
           className={cn(
             "pointer-events-auto flex items-center gap-2 sm:gap-3 rounded-2xl border border-border/80 bg-card/95 backdrop-blur-md px-3 sm:px-4 py-2 shadow-2xl duration-150 max-w-[95vw]",
@@ -324,69 +272,42 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
           )}
         >
         {/* Selection count badge */}
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/10 border border-primary/20 text-xs text-primary font-medium shrink-0">
+        <Badge className="shrink-0">
           <span key={selectedCount} className="font-mono font-bold inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{selectedCount}</span>
           <span className="hidden sm:inline">{t("bulkActions.selected", "selected")}</span>
-        </div>
+        </Badge>
 
         {/* Select All Visible toggle */}
         {hasVisible && (
           <Button
             variant="ghost"
-            size="sm"
+            size="lg"
             onClick={handleToggleSelectAllVisible}
-            className="h-8 text-xs gap-1.5 px-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
             title={allVisibleSelected ? t("bulkActions.deselectAllVisible", "Deselect view") : t("bulkActions.selectAllVisible", "Select all in view")}
           >
             {allVisibleSelected ? (
               <>
-                <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                <CheckSquare data-icon="inline-start" className="text-primary" />
                 <span className="hidden md:inline">{t("bulkActions.deselectAll", "Deselect view")}</span>
               </>
             ) : (
               <>
-                <Square className="h-3.5 w-3.5" />
+                <Square data-icon="inline-start" />
                 <span className="hidden md:inline">{t("bulkActions.selectAll", "Select view")}</span>
               </>
             )}
           </Button>
         )}
 
-        {/* Add to Playlist */}
-        <div className="relative inline-flex">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsPlaylistOpen((prev) => !prev)}
-            aria-haspopup="menu"
-            aria-expanded={isPlaylistOpen}
-            className="h-8 text-xs gap-1.5 px-2.5 border-primary/20 text-primary hover:bg-primary/10 cursor-pointer"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-            <span>{t("bulkActions.addToPlaylist", "Playlist")}</span>
-          </Button>
-
-          <BulkAddToPlaylistMenu
-            isOpen={isPlaylistOpen}
-            selectedItems={Array.from(selectedItems.values())}
-            onClose={() => setIsPlaylistOpen(false)}
-            onOpenCreateModal={() => {
-              setIsPlaylistOpen(false);
-              setIsCreateModalOpen(true);
-            }}
-          />
-        </div>
+        <BulkAddToPlaylistMenu
+          selectedItems={Array.from(selectedItems.values())}
+          onCreatePlaylist={() => setIsCreateModalOpen(true)}
+        />
 
         {/* Delete selected */}
         {!isMixView && (
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="h-8 text-xs gap-1.5 px-2.5 cursor-pointer shadow-xs"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
+          <Button variant="destructive" size="lg" onClick={handleDelete} disabled={isDeleting}>
+            <Trash2 data-icon="inline-start" />
             <span className="hidden sm:inline">{t("bulkActions.delete", "Delete")}</span>
           </Button>
         )}
@@ -394,34 +315,31 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         {/* Clear selection */}
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-lg"
           onClick={clearSelection}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer shrink-0 ml-1"
           title={t("bulkActions.clear", "Clear selection")}
           aria-label={t("bulkActions.clear", "Clear selection")}
         >
-          <X className="h-3.5 w-3.5" />
+          <X />
         </Button>
       </aside>
     </div>
 
     {/* Bulk Delete Confirm Modal */}
-    {isConfirmOpen && (
-      <ConfirmModal
-        isOpen={isConfirmOpen}
-        onClose={() => !isDeleting && setIsConfirmOpen(false)}
-        onConfirm={handleConfirmBulkDelete}
-        isLoading={isDeleting}
-        title={t("bulkActions.deleteTitle", "Delete selected items?")}
-        description={t("bulkActions.confirmDelete", {
-          count: selectedCount,
-          defaultValue: `Are you sure you want to delete ${selectedCount} selected item(s)?`,
-        })}
-        confirmText={t("common.delete", "Delete")}
-        cancelText={t("common.cancel", "Cancel")}
-        variant="destructive"
-      />
-    )}
+    <ConfirmModal
+      isOpen={isConfirmOpen}
+      onClose={() => !isDeleting && setIsConfirmOpen(false)}
+      onConfirm={handleConfirmBulkDelete}
+      isLoading={isDeleting}
+      title={t("bulkActions.deleteTitle", "Delete selected items?")}
+      description={t("bulkActions.confirmDelete", {
+        count: selectedCount,
+        defaultValue: `Are you sure you want to delete ${selectedCount} selected item(s)?`,
+      })}
+      confirmText={t("common.delete", "Delete")}
+      cancelText={t("common.cancel", "Cancel")}
+      variant="destructive"
+    />
 
     {/* Create Playlist Modal */}
     {isCreateModalOpen && (
