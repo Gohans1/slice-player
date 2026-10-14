@@ -1,4 +1,8 @@
 {
+  "sidebar": {
+    "allPlaylists": "Tất cả danh sách",
+    "playlistActions": "Tùy chọn khác cho {{name}}"
+  },
   "app": {
     "title": "SLICE PLAYER",
     "tagline": "Trình phát lát cắt ảo",

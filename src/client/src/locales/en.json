@@ -1,4 +1,8 @@
 {
+  "sidebar": {
+    "allPlaylists": "All Playlists",
+    "playlistActions": "More options for {{name}}"
+  },
   "app": {
     "title": "SLICE PLAYER",
     "tagline": "Virtual slice player",
