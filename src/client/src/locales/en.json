@@ -151,6 +151,7 @@
     "deleteTrack": "Delete Track",
     "deleteSlice": "Delete slice",
     "removeFromPlaylist": "Remove from Playlist",
+    "moreActions": "More options for {{name}}",
     "slicesCountBadge": "{{count}} slices",
     "slicesCountBadge_one": "1 slice",
     "slicesCountBadge_other": "{{count}} slices",

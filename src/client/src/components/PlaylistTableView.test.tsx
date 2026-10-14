@@ -100,6 +100,21 @@ describe("PlaylistTableView", () => {
   let container: any;
   let root: any;
 
+  // Opens a row's "..." menu and returns the newest menu's items (Base UI portals them to document.body)
+  const openRowMenu = async (rowIndex: number) => {
+    const row = container.querySelectorAll(".group[role='row']")[rowIndex];
+    const trigger = Array.from<HTMLElement>(row?.querySelectorAll("button") ?? []).find((button) =>
+      /^(More options for|Tùy chọn khác cho) /.test(button.getAttribute("aria-label") ?? "")
+    );
+    await act(async () => {
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const menus = document.querySelectorAll('[role="menu"]');
+    return Array.from(menus[menus.length - 1]?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+  };
+  const findItem = (items: HTMLElement[], label: RegExp) => items.find((item) => label.test(item.textContent ?? ""));
+
   beforeEach(() => {
     window = new GlobalWindow();
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -864,14 +879,17 @@ describe("PlaylistTableView", () => {
         );
       });
 
-      const deleteButtons = container.querySelectorAll("button[title='Delete Track'], button[title='Delete track'], button[title='Xóa bài hát']");
-      expect(deleteButtons.length).toBe(1);
+      const deleteTrack = findItem(await openRowMenu(0), /Delete track|Xóa bài hát/i);
+      expect(deleteTrack).toBeDefined();
 
       await act(async () => {
-        deleteButtons[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+        deleteTrack?.click();
       });
 
       expect(onDeleteSpy).toHaveBeenCalledWith("trk_tbl_1");
+
+      // Without onDeleteSlice the slice row offers no delete
+      expect(findItem(await openRowMenu(1), /Delete|Xóa/i)).toBeUndefined();
     });
 
     it("renders slice delete button and calls onDeleteSlice in mixedItems view", async () => {
@@ -896,11 +914,11 @@ describe("PlaylistTableView", () => {
         );
       });
 
-      const sliceDeleteBtn = container.querySelector("button[title='Delete slice'], button[title='Xóa lát cắt']");
-      expect(sliceDeleteBtn).not.toBeNull();
+      const sliceDeleteBtn = findItem(await openRowMenu(0), /Delete slice|Xóa lát cắt/i);
+      expect(sliceDeleteBtn).toBeDefined();
 
       await act(async () => {
-        sliceDeleteBtn!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+        sliceDeleteBtn?.click();
       });
 
       expect(onDeleteSliceSpy).toHaveBeenCalledWith(dummySegment.id);
@@ -927,11 +945,11 @@ describe("PlaylistTableView", () => {
         );
       });
 
-      const sliceDeleteBtn = container.querySelector("button[title='Delete slice'], button[title='Xóa lát cắt']");
-      expect(sliceDeleteBtn).not.toBeNull();
+      const sliceDeleteBtn = findItem(await openRowMenu(0), /Delete slice|Xóa lát cắt/i);
+      expect(sliceDeleteBtn).toBeDefined();
 
       await act(async () => {
-        sliceDeleteBtn!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+        sliceDeleteBtn?.click();
       });
 
       expect(onDeleteSliceSpy).toHaveBeenCalledWith(dummySegment.id);
@@ -956,8 +974,7 @@ describe("PlaylistTableView", () => {
         );
       });
 
-      const sliceDeleteBtn = container.querySelector("button[title='Delete slice'], button[title='Xóa lát cắt']");
-      expect(sliceDeleteBtn).toBeNull();
+      expect(findItem(await openRowMenu(0), /Delete slice|Xóa lát cắt/i)).toBeUndefined();
     });
 
     it("highlights currently playing slice item vs playing track item", async () => {
@@ -1157,8 +1174,7 @@ describe("PlaylistTableView", () => {
       root.render(<PlaylistTableView />);
     });
 
-    const addButtons = container.querySelectorAll("button[title='Thêm vào danh sách'], button[title='Add to Playlist']");
-    expect(addButtons.length).toBe(1);
+    expect(findItem(await openRowMenu(0), /Add to Playlist|Thêm vào danh sách/i)).toBeDefined();
   });
 
   it("toggles track selection when clicking row in selection mode without playing", async () => {
@@ -2434,10 +2450,30 @@ describe("PlaylistTableView", () => {
         root.render(<PlaylistTableView />);
       });
 
-      const removeButtons = container.querySelectorAll(
-        "button[title='Remove from Playlist'], button[title='Xóa khỏi danh sách phát']"
+      expect(findItem(await openRowMenu(0), /Remove from Playlist|Xóa khỏi danh sách phát/i)).toBeUndefined();
+    });
+
+    it("removes a playlist item from its row menu", async () => {
+      const onDeletePlaylistItem = mock(() => {});
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1],
+        playlists: [dummyPlaylist],
+      });
+
+      await act(async () => {
+        root.render(<PlaylistTableView onDeletePlaylistItem={onDeletePlaylistItem} />);
+      });
+
+      const remove = findItem(await openRowMenu(0), /Remove from Playlist|Xóa khỏi danh sách phát/i);
+      await act(async () => {
+        remove?.click();
+      });
+
+      expect(onDeletePlaylistItem).toHaveBeenCalledWith(
+        dummyPlaylistItem1.id,
+        dummyPlaylistItem1.segment?.name ?? dummyPlaylistItem1.track?.title
       );
-      expect(removeButtons.length).toBe(0);
     });
 
     it("sorts newest items first when in newest mode", async () => {
@@ -2565,20 +2601,24 @@ describe("PlaylistTableView", () => {
       );
     });
 
-    const copyButtons = container.querySelectorAll(
-      'button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]'
-    );
-    // Only 1 button (for the YouTube slice row; local track row has none)
-    expect(copyButtons.length).toBe(1);
+    const copyLabel = /Copy YouTube link|Sao chép link YouTube/i;
+    // Only the YouTube slice row offers its link; the local track row has none
+    const copyItem = findItem(await openRowMenu(0), copyLabel);
+    expect(copyItem).toBeDefined();
 
     await act(async () => {
-      (copyButtons[0] as HTMLButtonElement).click();
+      copyItem?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     expect(writeTextSpy).toHaveBeenCalledTimes(1);
     expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=orig_video_abc");
-    // Clicking copy button must NOT trigger row playback
+    // The item confirms the copy before the menu closes
+    expect(copyItem?.textContent).toMatch(/Copied link!|Đã sao chép link!/);
+    // Clicking copy must NOT trigger row playback
     expect(playSegmentSpy).not.toHaveBeenCalled();
+
+    expect(findItem(await openRowMenu(1), copyLabel)).toBeUndefined();
 
     // Also verify custom playlist view renders both Open Slice Studio and Copy YouTube link buttons
     await act(async () => {
@@ -2594,10 +2634,7 @@ describe("PlaylistTableView", () => {
       root.render(<PlaylistTableView />);
     });
 
-    const plCopyBtns = container.querySelectorAll(
-      'button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]'
-    );
-    expect(plCopyBtns.length).toBe(1);
+    expect(findItem(await openRowMenu(0), /Copy YouTube link|Sao chép link YouTube/i)).toBeDefined();
     const plStudioBtns = container.querySelectorAll(
       'button[title="Open Slice Studio"], button[title="Mở Studio Cắt Đoạn"]'
     );

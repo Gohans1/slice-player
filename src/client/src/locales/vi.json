@@ -151,6 +151,7 @@
     "deleteTrack": "Xóa bài hát",
     "deleteSlice": "Xóa lát cắt",
     "removeFromPlaylist": "Xóa khỏi danh sách phát",
+    "moreActions": "Tùy chọn khác cho {{name}}",
     "slicesCountBadge": "{{count}} đoạn",
     "slicesCountBadge_one": "{{count}} đoạn",
     "slicesCountBadge_other": "{{count}} đoạn",

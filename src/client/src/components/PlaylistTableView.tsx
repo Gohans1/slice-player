@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualizer } from "@tanstack/react-virtual";
-import { Play, Pause, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
+import { Play, Pause, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { cn, formatDuration, createDefaultFullSegment, DEFAULT_SLICE_COLOR } from "../lib/utils";
@@ -24,8 +24,7 @@ import {
   createPlaylistItemSelectedItem,
   type SelectedItem,
 } from "../store/useSelectionStore";
-import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
-import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
+import { RowActionsMenu } from "./RowActionsMenu";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { TrackThumbnail } from "./TrackThumbnail";
@@ -1234,7 +1233,7 @@ export function PlaylistTableView({
           }}
           className={cn(
             TABLE_HEADER_CLASS,
-            "grid-cols-[72px_1fr_64px_168px] transition-colors sm:grid-cols-[80px_1fr_180px_90px_196px]",
+            "grid-cols-[72px_1fr_64px_128px] transition-colors sm:grid-cols-[80px_1fr_180px_90px_128px]",
             dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0 && "border-primary bg-accent text-foreground ring-2 ring-primary/60"
           )}
         >
@@ -1396,7 +1395,7 @@ export function PlaylistTableView({
                   handlePlayPlaylistItem(item);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName("grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px]", {
+                className={tableRowClassName("grid-cols-[72px_1fr_64px_128px] sm:grid-cols-[80px_1fr_180px_90px_128px]", {
                   index: idx,
                   isSelected,
                   isReady,
@@ -1590,40 +1589,26 @@ export function PlaylistTableView({
                   >
                     <Scissors className="h-3.5 w-3.5" />
                   </Button>
-                  <CopyTrackLinkButton
-                    sourceType={item.track?.source_type}
-                    sourceUri={item.track?.source_uri}
-                    size="table"
-                  />
-                  <AddToPlaylistPopover
-                    trackId={item.track?.id ?? item.track_id}
+                  <RowActionsMenu
+                    name={item.segment ? item.segment.name : (item.track?.title || "")}
+                    track={item.track}
                     segmentId={isSlice && item.segment ? item.segment.id : undefined}
-                    disabled={!isReady || isReordering}
-                    variant="ghost"
-                    size="icon"
-                    buttonClassName="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:opacity-30"
-                    showText={false}
+                    canAddToPlaylist={isReady}
+                    disabled={isReordering}
+                    deleteLabel={t("table.removeFromPlaylist")}
+                    onDelete={
+                      isMixPlaylist
+                        ? undefined
+                        : () => {
+                            const name = item.segment ? item.segment.name : (item.track?.title || "");
+                            if (onDeletePlaylistItem) {
+                              onDeletePlaylistItem(item.id, name);
+                            } else {
+                              setPlaylistItemToDelete({ id: item.id, name });
+                            }
+                          }
+                    }
                   />
-                  {!isMixPlaylist && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={isReordering}
-                      onClick={() => {
-                        const name = item.segment ? item.segment.name : (item.track?.title || "");
-                        if (onDeletePlaylistItem) {
-                          onDeletePlaylistItem(item.id, name);
-                        } else {
-                          setPlaylistItemToDelete({ id: item.id, name });
-                        }
-                      }}
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-30"
-                      title={t("table.removeFromPlaylist")}
-                      aria-label={t("table.removeFromPlaylist")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
                 </div>
               </div>
             );
@@ -1706,7 +1691,7 @@ export function PlaylistTableView({
         aria-rowcount={sliceItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]")}>
+        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_180px_90px_104px]")}>
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleSliceItemIds.length > 0 && (
               <button
@@ -1784,7 +1769,7 @@ export function PlaylistTableView({
                   handlePlaySlice(item.segment, item.track);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]", {
+                className={tableRowClassName("grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_180px_90px_104px]", {
                   index: idx,
                   isSelected,
                   isReady,
@@ -1868,32 +1853,14 @@ export function PlaylistTableView({
                     <Scissors className="h-3.5 w-3.5" />
                     <span className="hidden md:inline">{t("table.studio")}</span>
                   </Button>
-                  <CopyTrackLinkButton
-                    sourceType={item.track?.source_type}
-                    sourceUri={item.track?.source_uri}
-                    size="table"
-                  />
-                  <AddToPlaylistPopover
-                    trackId={item.track?.id ?? ""}
+                  <RowActionsMenu
+                    name={item.segment.name}
+                    track={item.track}
                     segmentId={item.segment.id}
-                    disabled={!isReady}
-                    variant="ghost"
-                    size="icon"
-                    buttonClassName="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-                    showText={false}
+                    canAddToPlaylist={isReady}
+                    deleteLabel={t("table.deleteSlice", "Delete slice")}
+                    onDelete={onDeleteSlice && (() => onDeleteSlice(item.segment.id))}
                   />
-                  {onDeleteSlice && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDeleteSlice(item.segment.id)}
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                      title={t("table.deleteSlice", "Delete slice")}
-                      aria-label={t("table.deleteSlice", "Delete slice")}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
                 </div>
               </div>
             );
@@ -1925,7 +1892,7 @@ export function PlaylistTableView({
         aria-rowcount={mixedItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]")}>
+        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_180px_90px_104px]")}>
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleMixedItemIds.length > 0 && (
               <button
@@ -2030,7 +1997,7 @@ export function PlaylistTableView({
                   handlePlayMixed(item);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]", {
+                className={tableRowClassName("grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_180px_90px_104px]", {
                   index: idx,
                   isSelected,
                   isReady,
@@ -2157,44 +2124,18 @@ export function PlaylistTableView({
                     <Scissors className="h-3.5 w-3.5" />
                     <span className="hidden md:inline">{isSlice ? t("table.studio") : t("table.slice")}</span>
                   </Button>
-                  <CopyTrackLinkButton
-                    sourceType={item.track?.source_type}
-                    sourceUri={item.track?.source_uri}
-                    size="table"
-                  />
-                  <AddToPlaylistPopover
-                    trackId={item.track?.id ?? ""}
+                  <RowActionsMenu
+                    name={isSlice ? item.segment.name : item.track.title}
+                    track={item.track}
                     segmentId={isSlice ? item.segment.id : undefined}
-                    disabled={!isReady}
-                    variant="ghost"
-                    size="icon"
-                    buttonClassName="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-                    showText={false}
+                    canAddToPlaylist={isReady}
+                    deleteLabel={isSlice ? t("table.deleteSlice", "Delete slice") : t("table.deleteTrack")}
+                    onDelete={
+                      isSlice
+                        ? onDeleteSlice && (() => onDeleteSlice(item.segment.id))
+                        : onDeleteTrack && (() => onDeleteTrack(item.track.id))
+                    }
                   />
-                  {!isSlice && onDeleteTrack && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDeleteTrack(item.track.id)}
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                      title={t("table.deleteTrack")}
-                      aria-label={t("table.deleteTrack")}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                  {isSlice && onDeleteSlice && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDeleteSlice(item.segment.id)}
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
-                      title={t("table.deleteSlice", "Delete slice")}
-                      aria-label={t("table.deleteSlice", "Delete slice")}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
                 </div>
               </div>
             );
@@ -2222,7 +2163,7 @@ export function PlaylistTableView({
       aria-rowcount={trackList.length + 1}
     >
       {/* Table Header */}
-      <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px]")}>
+      <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_160px_100px_104px]")}>
         <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
           {visibleTrackIds.length > 0 && (
             <button
@@ -2311,7 +2252,7 @@ export function PlaylistTableView({
                 handlePlayTrack(track);
               }}
               aria-current={isCurrentPlaying ? "true" : undefined}
-              className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px]", {
+              className={tableRowClassName("grid-cols-[44px_1fr_64px_72px] sm:grid-cols-[56px_1fr_160px_100px_104px]", {
                 index: idx,
                 isSelected,
                 isReady,
@@ -2426,11 +2367,6 @@ export function PlaylistTableView({
                       <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
                       <span className="hidden sm:inline">{isRetrying ? t("table.retrying") : t("table.retry")}</span>
                     </Button>
-                    <CopyTrackLinkButton
-                      sourceType={track.source_type}
-                      sourceUri={track.source_uri}
-                      size="table"
-                    />
                   </>
                 ) : (
                   <>
@@ -2445,32 +2381,15 @@ export function PlaylistTableView({
                       <Scissors className="h-3 w-3" />
                       <span className="hidden md:inline">{t("table.slice")}</span>
                     </Button>
-                    <CopyTrackLinkButton
-                      sourceType={track.source_type}
-                      sourceUri={track.source_uri}
-                      size="table"
-                    />
-                    <AddToPlaylistPopover
-                      trackId={track?.id ?? ""}
-                      disabled={!isReady}
-                      variant="ghost"
-                      size="icon"
-                      buttonClassName="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-                      showText={false}
-                    />
                   </>
                 )}
-                {onDeleteTrack && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onDeleteTrack(track.id)}
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    title={t("table.deleteTrack")}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
+                <RowActionsMenu
+                  name={track.title}
+                  track={track}
+                  canAddToPlaylist={isReady}
+                  deleteLabel={t("table.deleteTrack")}
+                  onDelete={onDeleteTrack && (() => onDeleteTrack(track.id))}
+                />
               </div>
             </div>
           );
