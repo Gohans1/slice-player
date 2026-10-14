@@ -2047,6 +2047,24 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     }
   });
 
+  it("setPlaybackMode with the current mode leaves a playing playlist for that mode's queue", async () => {
+    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
+    const mixedIds = usePlayerStore.getState().queuesByMode.mixed.map((it) => it.segment.id);
+
+    // Playing a playlist swaps the queue but keeps playbackMode as it was
+    usePlayerStore.setState({
+      activePlaylistPlayingId: "pl_1",
+      queue: [usePlayerStore.getState().queuesByMode.mixed[1]],
+      queueIndex: 0,
+    });
+    expect(usePlayerStore.getState().playbackMode).toBe("mixed");
+
+    await usePlayerStore.getState().setPlaybackMode("mixed");
+
+    expect(usePlayerStore.getState().activePlaylistPlayingId).toBeNull();
+    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(mixedIds);
+  });
+
   it("playSegment with stale overrideIndex falls back to true segment index", async () => {
     const origAudioPlay = audioEngine.playSegment;
     audioEngine.playSegment = () => Promise.resolve();

@@ -2064,7 +2064,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   setPlaybackMode: async (mode: PlaybackMode): Promise<boolean> => {
-    if (mode === get().playbackMode) return true;
+    // A playing playlist keeps playbackMode, so the same mode still has to swap its queue back in
+    if (mode === get().playbackMode && !get().activePlaylistPlayingId) return true;
     const requestId = ++latestPlaybackModeRequestId;
 
     const { queuesByMode, initializedModes } = get();
