@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
 
 html,
 body {
@@ -9,7 +12,7 @@ body {
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Inter Variable', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Typography Scale Tokens (Tailwind v4 Impeccable Scale) */
@@ -212,8 +215,24 @@ body {
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
-
 
 :root {
   /* Flexoki Official Light Theme */
@@ -235,13 +254,14 @@ body {
   --flexoki-pu: #5E409D;      /* purple-600 */
   --flexoki-ma: #A02F6F;      /* magenta-600 */
 
+  /* Accent is Flexoki red: the Apple Music signal color, in Flexoki ink */
   --background: #FFFCF0;
   --foreground: #100F0F;
   --card: #F2F0E5;
   --card-foreground: #100F0F;
   --popover: #FFFCF0;
   --popover-foreground: #100F0F;
-  --primary: #205EA6;
+  --primary: #AF3029;
   --primary-foreground: #FFFCF0;
   --secondary: #E6E4D9;
   --secondary-foreground: #6F6E69;
@@ -253,8 +273,21 @@ body {
   --destructive-foreground: #FFFCF0;
   --border: #E6E4D9;
   --input: #DAD8CE;
-  --ring: #205EA6;
+  --ring: #AF3029;
   --radius: 0.625rem;
+  --chart-1: #AF3029;
+  --chart-2: #BC5215;
+  --chart-3: #AD8301;
+  --chart-4: #66800B;
+  --chart-5: #205EA6;
+  --sidebar: #F2F0E5;
+  --sidebar-foreground: #100F0F;
+  --sidebar-primary: #AF3029;
+  --sidebar-primary-foreground: #FFFCF0;
+  --sidebar-accent: #DAD8CE;
+  --sidebar-accent-foreground: #100F0F;
+  --sidebar-border: #E6E4D9;
+  --sidebar-ring: #AF3029;
 }
 
 .dark {
@@ -283,7 +316,7 @@ body {
   --card-foreground: #CECDC3;
   --popover: #1C1B1A;
   --popover-foreground: #CECDC3;
-  --primary: #4385BE;
+  --primary: #D14D41;
   --primary-foreground: #FFFCF0;
   --secondary: #282726;
   --secondary-foreground: #E6E4D9;
@@ -293,22 +326,38 @@ body {
   --accent-foreground: #F2F0E5;
   --destructive: #D14D41;
   --destructive-foreground: #FFFCF0;
-  --border: #343331;
-  --input: #282726;
-  --ring: #4385BE;
+  --border: #282726;
+  --input: #343331;
+  --ring: #D14D41;
   --radius: 0.625rem;
+  --chart-1: #D14D41;
+  --chart-2: #DA702C;
+  --chart-3: #D0A215;
+  --chart-4: #879A39;
+  --chart-5: #4385BE;
+  --sidebar: #1C1B1A;
+  --sidebar-foreground: #CECDC3;
+  --sidebar-primary: #D14D41;
+  --sidebar-primary-foreground: #FFFCF0;
+  --sidebar-accent: #343331;
+  --sidebar-accent-foreground: #F2F0E5;
+  --sidebar-border: #282726;
+  --sidebar-ring: #D14D41;
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
     scrollbar-width: thin;
     scrollbar-color: var(--border) var(--background);
   }
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply font-sans bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
@@ -525,68 +574,6 @@ body {
   transform-origin: bottom;
 }
 
-/* Backward-compatible classes for existing codebase markup */
-.animate-in {
-  animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  animation-duration: var(--tw-duration, var(--transition-duration, 0.2s));
-}
-
-.animate-in.fade-in {
-  animation-name: fadeIn;
-}
-
-.animate-in.zoom-in-95,
-.animate-in.fade-in.zoom-in-95 {
-  animation-name: zoomIn95;
-}
-
-.animate-in.zoom-in-75,
-.animate-in.fade-in.zoom-in-75 {
-  animation-name: zoomIn75;
-}
-
-.animate-in.slide-in-from-right {
-  animation-name: slideInRight;
-}
-
-.animate-in.slide-in-from-left {
-  animation-name: slideInLeft;
-}
-
-.animate-in.slide-in-from-bottom-4,
-.animate-in.fade-in.slide-in-from-bottom-4 {
-  animation-name: slideInBottom4;
-}
-
-.animate-out {
-  animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-  animation-duration: var(--tw-duration, var(--transition-duration, 0.15s));
-}
-
-.animate-out.fade-out {
-  animation-name: fadeOut;
-}
-
-.animate-out.zoom-out-95,
-.animate-out.fade-out.zoom-out-95 {
-  animation-name: zoomOut95;
-}
-
-.animate-out.slide-out-to-right {
-  animation-name: slideOutRight;
-}
-
-.animate-out.slide-out-to-left {
-  animation-name: slideOutLeft;
-}
-
-.animate-out.slide-out-to-bottom-4,
-.animate-out.fade-out.slide-out-to-bottom-4 {
-  animation-name: slideOutBottom4;
-}
-
 /* Accessibility: respect user preference for reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -603,4 +590,3 @@ body {
     animation-play-state: paused !important;
   }
 }
-

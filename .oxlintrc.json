@@ -1,17 +1,86 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": [
+    "@shadcn/lint"
+  ],
   "categories": {
     "correctness": "warn",
     "perf": "warn",
     "suspicious": "warn"
   },
-  "plugins": ["react", "typescript"],
+  "plugins": [
+    "react",
+    "typescript"
+  ],
+  "settings": {
+    "shadcn": {
+      "note": "See DESIGN.md for the Flexoki tokens and layout rules."
+    }
+  },
   "rules": {
     "no-console": "off",
     "no-unused-vars": "warn",
     "typescript/no-floating-promises": "off",
     "typescript/restrict-template-expressions": "off",
     "react/refs": "off",
-    "react/set-state-in-effect": "off"
-  }
+    "react/set-state-in-effect": "off",
+    "shadcn/no-restyle": [
+      "warn",
+      {
+        "allow": [
+          "layout"
+        ]
+      }
+    ],
+    "shadcn/no-raw-colors": "warn",
+    "shadcn/no-arbitrary-values": [
+      "warn",
+      {
+        "allow": [
+          "layout"
+        ]
+      }
+    ],
+    "shadcn/no-inline-styles": "warn",
+    "shadcn/require-static-classes": "warn",
+    "shadcn/no-unknown-classes": "warn"
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/client/src/components/layout/**"
+      ],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": [
+              "layout"
+            ]
+          }
+        ],
+        "shadcn/no-raw-colors": "error",
+        "shadcn/no-arbitrary-values": [
+          "error",
+          {
+            "allow": [
+              "layout"
+            ]
+          }
+        ],
+        "shadcn/no-inline-styles": "error",
+        "shadcn/require-static-classes": "error"
+      }
+    },
+    {
+      "files": [
+        "src/client/src/components/ui/**"
+      ],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "shadcn/require-static-classes": "off"
+      }
+    }
+  ]
 }

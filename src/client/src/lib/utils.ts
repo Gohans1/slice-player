@@ -1,11 +1,7 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
 import type { Track, Segment } from "@/server/types";
 import i18n from "../i18n";
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+export { cn } from "cn";
 
 export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "00:00.0";

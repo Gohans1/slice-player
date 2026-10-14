@@ -70,6 +70,7 @@ describe("PlaylistItemCardComponent", () => {
     (globalThis as any).window = window;
     (globalThis as any).document = document;
     (globalThis as any).navigator = window.navigator;
+    (globalThis as any).HTMLElement = window.HTMLElement;
 
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement("div");

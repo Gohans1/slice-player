@@ -310,8 +310,8 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
     const titleEl = cardRoot.querySelector("h3") as HTMLElement;
     expect(titleEl.className).toContain("min-h-[2.5rem]");
 
-    const slicesBadge = Array.from(cardRoot.querySelectorAll("div")).find(
-      (el) => el.children.length === 0 && el.textContent?.includes("slices")
+    const slicesBadge = Array.from(cardRoot.querySelectorAll('[data-slot="badge"]')).find(
+      (el) => el.textContent?.includes("slices")
     );
     expect(slicesBadge).toBeDefined();
     expect(slicesBadge?.className).toContain("whitespace-nowrap");
