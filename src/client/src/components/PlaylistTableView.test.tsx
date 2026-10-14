@@ -271,9 +271,9 @@ describe("PlaylistTableView", () => {
     expect(rows.length).toBe(2);
 
     // Row 1 (item_1) is active playing
-    expect(rows[0].className).toContain("border-primary/50");
+    expect(rows[0].getAttribute("aria-current")).toBe("true");
     // Row 2 (item_2) has the identical track but distinct queueItemId, should NOT be active playing
-    expect(rows[1].className).not.toContain("border-primary/50");
+    expect(rows[1].hasAttribute("aria-current")).toBe(false);
   });
 
   it("renders sliceItems view mode correctly with slice badges and actions", async () => {
@@ -990,10 +990,10 @@ describe("PlaylistTableView", () => {
       });
 
       const rows = container.querySelectorAll(".group[role='row']");
-      // Row 0 is track (not active segment) -> should NOT have active border
-      expect(rows[0].className).not.toContain("border-primary/50");
-      // Row 1 is slice (matches activeSegment.id) -> SHOULD have active border
-      expect(rows[1].className).toContain("border-primary/50");
+      // Row 0 is track (not active segment) -> should NOT be marked current
+      expect(rows[0].hasAttribute("aria-current")).toBe(false);
+      // Row 1 is slice (matches activeSegment.id) -> SHOULD be marked current
+      expect(rows[1].getAttribute("aria-current")).toBe("true");
 
       // 2. Track is currently playing (fallback segment)
       await act(async () => {
@@ -1020,10 +1020,33 @@ describe("PlaylistTableView", () => {
       });
 
       const updatedRows = container.querySelectorAll(".group[role='row']");
-      // Row 0 is track -> now SHOULD have active border
-      expect(updatedRows[0].className).toContain("border-primary/50");
-      // Row 1 is slice -> should NOT have active border
-      expect(updatedRows[1].className).not.toContain("border-primary/50");
+      // Row 0 is track -> now SHOULD be marked current
+      expect(updatedRows[0].getAttribute("aria-current")).toBe("true");
+      // Row 1 is slice -> should NOT be marked current
+      expect(updatedRows[1].hasAttribute("aria-current")).toBe(false);
+    });
+
+    it("shows each row's artwork, with the slice color under slices", async () => {
+      await act(async () => {
+        usePlayerStore.setState({ activePlaylistId: null, activeSystemCategory: "mixed" });
+        root.render(
+          <PlaylistTableView
+            mixedItems={[
+              { type: "track", id: "track_trk_tbl_1", track: dummyTrack },
+              { type: "slice", id: "slice_seg_tbl_1", track: dummyTrack, segment: { ...dummySegment, color: "#D0A215" } },
+            ]}
+          />
+        );
+      });
+
+      const rows = Array.from<Element>(container.querySelectorAll(".group[role='row']"));
+      expect(rows.map((row) => row.querySelector("img")?.getAttribute("src"))).toEqual([
+        dummyTrack.thumbnail_url,
+        dummyTrack.thumbnail_url,
+      ]);
+      expect(
+        rows.map((row) => row.querySelector<HTMLElement>('[data-slot="slice-color"]')?.style.backgroundColor ?? null)
+      ).toEqual([null, "#D0A215"]);
     });
   });
 
@@ -2084,8 +2107,8 @@ describe("PlaylistTableView", () => {
         rows[1].dispatchEvent(dragOverEvent);
       });
 
-      // Item 1 (target) should shift UP to make room (-68px)
-      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-68px)");
+      // Item 1 (target) should shift UP by one row height to make room (-50px)
+      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-50px)");
       expect((rows[1] as HTMLElement).style.transition).toContain("transform 220ms");
 
       // Now drop item 0 onto item 1
@@ -2153,7 +2176,7 @@ describe("PlaylistTableView", () => {
       await act(async () => {
         rows[1].dispatchEvent(dragOverItem1);
       });
-      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-68px)");
+      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-50px)");
 
       // User changes mind and drags back over item 0 (original position)
       const dragOverItem0 = new window.Event("dragover", { bubbles: true }) as any;

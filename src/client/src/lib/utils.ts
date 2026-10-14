@@ -3,6 +3,9 @@ import i18n from "../i18n";
 
 export { cn } from "cn";
 
+// Flexoki blue, shown for slices saved without a color of their own
+export const DEFAULT_SLICE_COLOR = "#4385BE";
+
 export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "00:00.0";
   const totalTenths = Math.round(seconds * 10);

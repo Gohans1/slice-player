@@ -4,7 +4,7 @@ import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualiz
 import { Play, Pause, Trash2, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { formatDuration, createDefaultFullSegment } from "../lib/utils";
+import { cn, formatDuration, createDefaultFullSegment, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import {
   findActivePlaylistItemIndex,
   findActiveMixedItemIndex,
@@ -28,12 +28,62 @@ import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
 import { ConfirmModal } from "./ui/ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
+import { TrackThumbnail } from "./TrackThumbnail";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";
 import type { MixedItem } from "../lib/playlistSort";
 export type { MixedItem };
 
 const getEntityId = (item: { id: string }) => item.id;
-const PLAYLIST_ROW_HEIGHT = 68;
+const PLAYLIST_ROW_HEIGHT = 50;
+
+interface TableRowState {
+  index: number;
+  isSelected: boolean;
+  isReady: boolean;
+  isCurrentPlaying: boolean;
+  isDragging?: boolean;
+  isDragTarget?: boolean;
+}
+
+// Flat Apple Music style rows: zebra stripes, a tint on the playing row and a ring on selected rows
+function tableRowClassName(
+  gridCols: string,
+  { index, isSelected, isReady, isCurrentPlaying, isDragging, isDragTarget }: TableRowState
+) {
+  return cn(
+    "group grid items-center gap-x-3 rounded-md px-3 py-1 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 sm:gap-x-4",
+    gridCols,
+    index % 2 === 1 && "bg-muted/40",
+    isSelected
+      ? "bg-primary/10 ring-1 ring-primary/50"
+      : isDragging
+      ? "opacity-40 outline-1 outline-dashed outline-primary/60"
+      : isDragTarget
+      ? "bg-accent ring-2 ring-primary/60"
+      : !isReady
+      ? "cursor-not-allowed opacity-60"
+      : cn("cursor-pointer", isCurrentPlaying ? "bg-primary/10" : "hover:bg-accent/60")
+  );
+}
+
+const TABLE_HEADER_CLASS =
+  "grid items-center gap-x-3 border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground sm:gap-x-4";
+
+// Row actions stay out of the way until the row is hovered or focused; touch screens always show them
+const ROW_ACTIONS_CLASS =
+  "flex items-center justify-end transition-opacity [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-within:opacity-100";
+
+// Small 16:9 artwork; a slice also shows its color as a bar along the bottom
+function TableArtwork({ track, sliceColor }: { track?: Track | null; sliceColor?: string }) {
+  return (
+    <div className="relative aspect-video h-8 shrink-0 overflow-hidden rounded bg-muted">
+      <TrackThumbnail src={track?.thumbnail_url} className="size-full object-cover" />
+      {sliceColor && (
+        <div data-slot="slice-color" className="absolute inset-x-0 bottom-0 h-0.5" style={{ backgroundColor: sliceColor }} />
+      )}
+    </div>
+  );
+}
 
 interface VirtualizedTableBodyProps<T> {
   items: T[];
@@ -174,7 +224,6 @@ function VirtualizedTableBody<T>({
                 width: "100%",
                 transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
               }}
-              className="pb-1"
               onDragOver={(e) => {
                 if (draggedIdx !== null && draggedIdx !== undefined) {
                   e.preventDefault();
@@ -1183,11 +1232,11 @@ export function PlaylistTableView({
             if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
             handleDrop(e, 0);
           }}
-          className={`grid grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b transition-colors ${
-            dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0
-              ? "border-primary ring-2 ring-primary/60 bg-accent/70 shadow-md text-foreground"
-              : "border-border text-muted-foreground"
-          }`}
+          className={cn(
+            TABLE_HEADER_CLASS,
+            "grid-cols-[72px_1fr_64px_168px] transition-colors sm:grid-cols-[80px_1fr_180px_90px_196px]",
+            dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0 && "border-primary bg-accent text-foreground ring-2 ring-primary/60"
+          )}
         >
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1">
             {visiblePlaylistItemIds.length > 0 && (
@@ -1346,19 +1395,15 @@ export function PlaylistTableView({
                   }
                   handlePlayPlaylistItem(item);
                 }}
-                className={`group grid grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 ${
-                  isSelected
-                    ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
-                    : isDragging
-                    ? "opacity-40 border-dashed border-primary/60"
-                    : isDragTarget
-                    ? "border-primary ring-2 ring-primary/60 bg-accent/70 shadow-md"
-                    : !isReady
-                    ? "opacity-60 cursor-not-allowed border-border bg-card/60"
-                    : "cursor-pointer " + (isCurrentPlaying
-                      ? "border-primary/50 bg-primary/10 shadow-xs"
-                      : "border-border bg-card hover:border-border/80 hover:bg-card/80")
-                }`}
+                aria-current={isCurrentPlaying ? "true" : undefined}
+                className={tableRowClassName("grid-cols-[72px_1fr_64px_168px] sm:grid-cols-[80px_1fr_180px_90px_196px]", {
+                  index: idx,
+                  isSelected,
+                  isReady,
+                  isCurrentPlaying,
+                  isDragging,
+                  isDragTarget,
+                })}
               >
                 {/* Index / Play indicator & Drag Handle */}
                 <div role="cell" className="flex items-center gap-1.5 sm:gap-2 text-xs font-mono text-muted-foreground min-w-0">
@@ -1452,12 +1497,15 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Title & Artist */}
-                <div role="cell" className="min-w-0 pr-2">
-                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                    {isSlice && item.segment ? item.segment.name : item.track?.title}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate mt-0.5">
-                    {isSlice ? t("table.from", { title: item.track?.title }) : (item.track?.artist || t("table.unknownArtist"))}
+                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
+                  <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment?.color || DEFAULT_SLICE_COLOR) : undefined} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                      {isSlice && item.segment ? item.segment.name : item.track?.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                      {isSlice ? t("table.from", { title: item.track?.title }) : (item.track?.artist || t("table.unknownArtist"))}
+                    </div>
                   </div>
                 </div>
 
@@ -1505,7 +1553,7 @@ export function PlaylistTableView({
                 {/* Actions */}
                 <div
                   role="cell"
-                  className="flex items-center justify-end gap-0.5"
+                  className={cn(ROW_ACTIONS_CLASS, "gap-0.5")}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
@@ -1658,7 +1706,7 @@ export function PlaylistTableView({
         aria-rowcount={sliceItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]")}>
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleSliceItemIds.length > 0 && (
               <button
@@ -1735,15 +1783,13 @@ export function PlaylistTableView({
                   }
                   handlePlaySlice(item.segment, item.track);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
-                  isSelected
-                    ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
-                    : !isReady
-                    ? "opacity-60 cursor-not-allowed border-border bg-card/60"
-                    : "cursor-pointer " + (isCurrentPlaying
-                      ? "border-primary/50 bg-primary/10 shadow-xs"
-                      : "border-border bg-card hover:border-border/80 hover:bg-card/80")
-                }`}
+                aria-current={isCurrentPlaying ? "true" : undefined}
+                className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]", {
+                  index: idx,
+                  isSelected,
+                  isReady,
+                  isCurrentPlaying,
+                })}
               >
                 {/* Index / Play icon */}
                 <div role="cell" className="flex items-center gap-1.5 sm:gap-2 text-xs font-mono text-muted-foreground min-w-0">
@@ -1786,8 +1832,9 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Title */}
-                <div role="cell" className="min-w-0 pr-2">
-                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
+                  <TableArtwork track={item.track} sliceColor={item.segment.color || DEFAULT_SLICE_COLOR} />
+                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex min-w-0 items-center gap-1.5">
                     <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
                     <span className="truncate">{item.segment.name}</span>
                   </div>
@@ -1806,7 +1853,7 @@ export function PlaylistTableView({
                 {/* Actions */}
                 <div
                   role="cell"
-                  className="flex items-center justify-end gap-1"
+                  className={cn(ROW_ACTIONS_CLASS, "gap-1")}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
@@ -1878,7 +1925,7 @@ export function PlaylistTableView({
         aria-rowcount={mixedItems.length + 1}
       >
         {/* Table Header */}
-        <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+        <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]")}>
           <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
             {visibleMixedItemIds.length > 0 && (
               <button
@@ -1982,15 +2029,13 @@ export function PlaylistTableView({
                   }
                   handlePlayMixed(item);
                 }}
-                className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
-                  isSelected
-                    ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
-                    : !isReady
-                    ? "opacity-60 cursor-not-allowed border-border bg-card/60"
-                    : "cursor-pointer " + (isCurrentPlaying
-                      ? "border-primary/50 bg-primary/10 shadow-xs"
-                      : "border-border bg-card hover:border-border/80 hover:bg-card/80")
-                }`}
+                aria-current={isCurrentPlaying ? "true" : undefined}
+                className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_180px_90px_156px]", {
+                  index: idx,
+                  isSelected,
+                  isReady,
+                  isCurrentPlaying,
+                })}
               >
                 {/* Index / Play indicator */}
                 <div role="cell" className="flex items-center gap-1.5 sm:gap-2 text-xs font-mono text-muted-foreground min-w-0">
@@ -2040,13 +2085,16 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Title & Artist */}
-                <div role="cell" className="min-w-0 pr-2">
-                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
-                    {isSlice && <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />}
-                    <span className="truncate">{isSlice ? item.segment.name : item.track.title}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate mt-0.5">
-                    {isSlice ? t("table.from", { title: item.track.title }) : (item.track.artist || t("table.unknownArtist"))}
+                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
+                  <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment.color || DEFAULT_SLICE_COLOR) : undefined} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                      {isSlice && <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />}
+                      <span className="truncate">{isSlice ? item.segment.name : item.track.title}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                      {isSlice ? t("table.from", { title: item.track.title }) : (item.track.artist || t("table.unknownArtist"))}
+                    </div>
                   </div>
                 </div>
 
@@ -2094,7 +2142,7 @@ export function PlaylistTableView({
                 {/* Actions */}
                 <div
                   role="cell"
-                  className="flex items-center justify-end gap-1"
+                  className={cn(ROW_ACTIONS_CLASS, "gap-1")}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
@@ -2174,7 +2222,7 @@ export function PlaylistTableView({
       aria-rowcount={trackList.length + 1}
     >
       {/* Table Header */}
-      <div role="row" aria-rowindex={1} className="grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+      <div role="row" aria-rowindex={1} className={cn(TABLE_HEADER_CLASS, "grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px]")}>
         <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
           {visibleTrackIds.length > 0 && (
             <button
@@ -2262,15 +2310,13 @@ export function PlaylistTableView({
                 if (!isReady) return;
                 handlePlayTrack(track);
               }}
-              className={`group grid grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px] gap-x-3 sm:gap-x-4 items-center px-3 sm:px-4 py-3 rounded-lg border transition-[border-color,background-color,box-shadow,opacity] duration-150 ${
-                isSelected
-                  ? "ring-1 ring-primary/60 border-primary/50 bg-primary/5 shadow-xs"
-                  : !isReady
-                  ? "opacity-60 cursor-not-allowed border-border bg-card/60"
-                  : "cursor-pointer " + (isCurrentPlaying
-                    ? "border-primary/50 bg-primary/10 shadow-xs"
-                    : "border-border bg-card hover:border-border/80 hover:bg-card/80")
-              }`}
+              aria-current={isCurrentPlaying ? "true" : undefined}
+              className={tableRowClassName("grid-cols-[44px_1fr_64px_116px] sm:grid-cols-[56px_1fr_160px_100px_156px]", {
+                index: idx,
+                isSelected,
+                isReady,
+                isCurrentPlaying,
+              })}
             >
               {/* Index & Selection Checkbox */}
               <div role="cell" className="flex items-center gap-1.5 sm:gap-2 text-xs font-mono text-muted-foreground min-w-0">
@@ -2313,18 +2359,21 @@ export function PlaylistTableView({
               </div>
 
               {/* Title & Artist */}
-              <div role="cell" className="min-w-0 pr-2">
-                <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                  {track.title}
-                </div>
-                <div className="text-xs text-muted-foreground truncate mt-0.5">
-                  {track.artist || t("table.unknownArtist")}
-                </div>
-                {track.status === "error" && track.error_message && (
-                  <div className="text-2xs text-destructive/90 truncate mt-0.5" title={track.error_message}>
-                    {track.error_message}
+              <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
+                <TableArtwork track={track} />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                    {track.title}
                   </div>
-                )}
+                  <div className="text-xs text-muted-foreground truncate mt-0.5">
+                    {track.artist || t("table.unknownArtist")}
+                  </div>
+                  {track.status === "error" && track.error_message && (
+                    <div className="text-2xs text-destructive/90 truncate mt-0.5" title={track.error_message}>
+                      {track.error_message}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Segment count */}
@@ -2358,7 +2407,7 @@ export function PlaylistTableView({
               {/* Actions */}
               <div
                 role="cell"
-                className="flex items-center justify-end gap-1"
+                className={cn(ROW_ACTIONS_CLASS, "gap-1")}
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
