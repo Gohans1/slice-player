@@ -18,9 +18,11 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
@@ -38,6 +40,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { LibrarySearch } from "./LibrarySearch";
+import { SidebarUtilities } from "./SidebarUtilities";
 import { DeletePlaylistModal } from "../DeletePlaylistModal";
 import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
 import { usePlayerStore, type SystemCategory } from "../../store/usePlayerStore";
@@ -66,10 +70,13 @@ function buildPlaylistTree(playlists: SidebarPlaylist[]): PlaylistNode[] {
 }
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
   onCreatePlaylist: () => void;
+  onOpenShortcuts: () => void;
 }
 
-export function AppSidebar({ onCreatePlaylist, ...props }: AppSidebarProps) {
+export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOpenShortcuts, ...props }: AppSidebarProps) {
   const { t } = useTranslation();
   const tracks = usePlayerStore((s) => s.tracks);
   const playlists = usePlayerStore((s) => s.playlists);
@@ -141,6 +148,9 @@ export function AppSidebar({ onCreatePlaylist, ...props }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader>
+        <LibrarySearch value={searchQuery} onChange={onSearchChange} />
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.systemHeader")}</SidebarGroupLabel>
@@ -199,6 +209,9 @@ export function AppSidebar({ onCreatePlaylist, ...props }: AppSidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarUtilities onOpenShortcuts={onOpenShortcuts} />
+      </SidebarFooter>
       <SidebarRail />
 
       {playlistToDelete && (

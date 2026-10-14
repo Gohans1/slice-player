@@ -1,7 +1,9 @@
 {
   "sidebar": {
     "allPlaylists": "Tất cả danh sách",
-    "playlistActions": "Tùy chọn khác cho {{name}}"
+    "playlistActions": "Tùy chọn khác cho {{name}}",
+    "shortcuts": "Phím tắt",
+    "language": "Ngôn ngữ"
   },
   "app": {
     "title": "SLICE PLAYER",

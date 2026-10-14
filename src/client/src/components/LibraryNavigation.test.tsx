@@ -240,6 +240,15 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
     expect(header?.querySelector('button[aria-label="Play Gym Hype"]')).not.toBeNull();
   });
 
+  it("searches the library from the sidebar", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const search = container.querySelector('[data-sidebar="header"] input[type="search"]');
+    expect(search?.getAttribute("aria-label")).toBe("Search tracks or artists");
+  });
+
   it("opens the create playlist dialog from the sidebar", async () => {
     await act(async () => {
       root.render(<App />);
@@ -254,7 +263,7 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
     expect(happyWindow.document.body.textContent).toContain(title);
   });
 
-  it("keeps the view title and view switcher in a sticky header, with no tab strip", async () => {
+  it("keeps the view title, view switcher, library actions and master volume in one sticky toolbar", async () => {
     await act(async () => {
       root.render(<App />);
     });
@@ -263,7 +272,11 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
     expect(stickyBar).not.toBeNull();
     expect(stickyBar?.querySelector("h1")?.textContent).toContain("Mix");
     expect(stickyBar?.querySelector('[role="group"][aria-label*="View"]')).not.toBeNull();
+    expect(stickyBar?.querySelector('button[aria-label="+ YouTube"]')).not.toBeNull();
+    expect(stickyBar?.querySelector('button[aria-label="+ Local Audio"]')).not.toBeNull();
+    expect(stickyBar?.querySelector('input[type="range"][aria-label="Master volume"]')).not.toBeNull();
     expect(container.querySelectorAll('[role="tablist"]').length).toBe(0);
+    expect(container.querySelectorAll("header").length).toBe(1);
 
     const panel = container.querySelector("#main-library-panel");
     expect(panel).not.toBeNull();

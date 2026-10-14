@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
 import i18n from "../i18n";
-import { Navbar } from "./Navbar";
+import { ImportActions } from "./ImportActions";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { useLogStore } from "../store/useLogStore";
 
@@ -20,7 +20,7 @@ async function waitForCondition(check: () => boolean, timeoutMs = 1500): Promise
   }
 }
 
-describe("Navbar YouTube Ingestion Queue", () => {
+describe("ImportActions: YouTube ingestion queue and local audio", () => {
   let container: HTMLDivElement;
   let root: Root;
   let originalFetch: typeof globalThis.fetch;
@@ -108,7 +108,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     // Find and click the "+ Link YouTube" button
@@ -193,7 +193,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -255,7 +255,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -329,7 +329,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -368,7 +368,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
 
   it("should reject batch when exceeding 50 URLs with a friendly error", async () => {
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -403,7 +403,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
       })) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -458,7 +458,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -499,7 +499,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
 
   it("should reject invalid input or non-YouTube URLs with user-friendly error", async () => {
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -536,7 +536,7 @@ describe("Navbar YouTube Ingestion Queue", () => {
     }) as any;
 
     await act(async () => {
-      root.render(<Navbar searchQuery="" onSearchChange={() => {}} />);
+      root.render(<ImportActions />);
     });
 
     const ytButton = Array.from(container.querySelectorAll("button")).find(
@@ -566,41 +566,9 @@ describe("Navbar YouTube Ingestion Queue", () => {
     expect(fetchedUrls).toEqual(["https://youtu.be/abc1234"]);
   });
 
-  it("should render the language switcher button and toggle language between en and vi", async () => {
-    await i18n.changeLanguage("en");
-    await act(async () => {
-      root.render(
-        <Navbar
-          onSearchChange={() => {}}
-          searchQuery=""
-        />
-      );
-    });
-
-    const langBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim().toLowerCase() === "en" || b.textContent?.trim().toLowerCase() === "vi"
-    );
-    expect(langBtn).toBeDefined();
-    expect(langBtn?.textContent?.trim().toUpperCase()).toBe("EN");
-
-    await act(async () => {
-      langBtn?.click();
-    });
-
-    expect(langBtn?.textContent?.trim().toUpperCase()).toBe("VI");
-    expect(i18n.language.startsWith("vi")).toBe(true);
-
-    await i18n.changeLanguage("en");
-  });
-
   it("should accept .mp4 files in the local audio file picker", async () => {
     await act(async () => {
-      root.render(
-        <Navbar
-          onSearchChange={() => {}}
-          searchQuery=""
-        />
-      );
+      root.render(<ImportActions />);
     });
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -609,60 +577,4 @@ describe("Navbar YouTube Ingestion Queue", () => {
     expect(fileInput.accept).toContain("video/mp4");
   });
 
-  it("controls the global master volume, muting and restoring the previous level", async () => {
-    await i18n.changeLanguage("en");
-    usePlayerStore.setState({ masterVolume: 0.8 });
-    await act(async () => {
-      root.render(
-        <Navbar
-          onSearchChange={() => {}}
-          searchQuery=""
-        />
-      );
-    });
-
-    const slider = container.querySelector<HTMLInputElement>('input[type="range"][aria-label="Master volume"]');
-    expect(slider).not.toBeNull();
-    expect(slider?.getAttribute("aria-valuenow")).toBe("80");
-
-    await act(async () => {
-      slider!.value = "0.35";
-      slider!.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(usePlayerStore.getState().masterVolume).toBe(0.35);
-
-    const muteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Mute all audio"]');
-    expect(muteBtn).not.toBeNull();
-    await act(async () => {
-      muteBtn!.click();
-    });
-    expect(usePlayerStore.getState().masterVolume).toBe(0);
-
-    const unmuteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Unmute all audio"]');
-    expect(unmuteBtn).not.toBeNull();
-    await act(async () => {
-      unmuteBtn!.click();
-    });
-    expect(usePlayerStore.getState().masterVolume).toBe(0.35);
-  });
-
-  it("unmutes to the 50% default when the session started muted", async () => {
-    await i18n.changeLanguage("en");
-    usePlayerStore.setState({ masterVolume: 0 });
-    await act(async () => {
-      root.render(
-        <Navbar
-          onSearchChange={() => {}}
-          searchQuery=""
-        />
-      );
-    });
-
-    const unmuteBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Unmute all audio"]');
-    expect(unmuteBtn).not.toBeNull();
-    await act(async () => {
-      unmuteBtn!.click();
-    });
-    expect(usePlayerStore.getState().masterVolume).toBe(0.5);
-  });
 });

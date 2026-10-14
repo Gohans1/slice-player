@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, createQueueItem, type QueueItem } from "./store/usePlayerStore";
-import { Navbar } from "./components/Navbar";
+import { ImportActions } from "./components/ImportActions";
+import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
 const SliceStudio = React.lazy(() => import("./components/SliceStudio").then((m) => ({ default: m.SliceStudio })));
 import { PlayerBar } from "./components/PlayerBar";
@@ -1060,40 +1061,38 @@ export function App() {
   ]);
 
   return (
-    <AppShell onCreatePlaylist={() => setIsCreateModalOpen(true)}>
-      <SidebarInset>
-        <Navbar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onOpenShortcuts={() => setIsShortcutsOpen(true)}
-        />
-
-        {/* Sticky Library Header (follows scroll, compact) */}
-        <div data-testid="sticky-library-header" className="sticky top-[var(--navbar-height,61px)] z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+    <AppShell
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      onCreatePlaylist={() => setIsCreateModalOpen(true)}
+      onOpenShortcuts={() => setIsShortcutsOpen(true)}
+    >
+      <SidebarInset className="min-w-0">
+        {/* Sticky toolbar: view title, sort and view mode, library actions, master volume */}
+        <header data-testid="sticky-library-header" className="sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
-            {/* Compact Title & View Mode Switcher */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
+            {/* Title on the left; controls wrap below it when the column is narrow */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <div className="flex flex-1 items-center gap-2.5 min-w-48">
                 <SidebarTrigger />
-                <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 min-w-0">
+                <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0 max-w-xs">
                   <span className="truncate">{headerMeta.title}</span>
                   <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
                     {headerMeta.count}
                   </span>
                 </h1>
                 {headerMeta.description && (
-                  <span className="text-xs text-muted-foreground truncate hidden md:inline border-l border-border/60 pl-2.5">
+                  <span className="text-xs text-muted-foreground truncate min-w-0 hidden md:inline border-l border-border/60 pl-2.5">
                     {headerMeta.description}
                   </span>
                 )}
               </div>
 
-              {/* View Mode Switcher & Playlist Sort Selector */}
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Sort, view mode, library actions and master volume */}
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
                   <PlaylistSortSelector builtInItemIds={builtInItemIds} />
                 )}
-                <span className="text-xs text-muted-foreground font-medium hidden sm:inline">{t("library.viewMode")}</span>
                 <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">
                   <button
                     type="button"
@@ -1124,10 +1123,14 @@ export function App() {
                     <span>{t("library.table")}</span>
                   </button>
                 </div>
+                <ImportActions />
+                <div className="hidden xl:flex">
+                  <MasterVolume />
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
         {/* Content Area (bottom padding clears the fixed player bar) */}
         <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 sm:pb-32">

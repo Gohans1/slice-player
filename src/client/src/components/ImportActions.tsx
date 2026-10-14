@@ -1,18 +1,10 @@
 import * as React from "react";
-import {
-  Music2, FolderPlus, Search, AlertCircle, Loader2, X,
-  UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight, Terminal, Languages, Keyboard, Archive,
-  Volume2, VolumeX
-} from "lucide-react";
+import { FolderPlus, AlertCircle, Loader2, UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Modal } from "./ui/modal";
-import { VolumeSlider } from "./ui/VolumeSlider";
+import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { useLogStore } from "../store/useLogStore";
-import { BackupModal } from "./BackupModal";
-import { cn } from "../lib/utils";
 
 interface UploadQueueItem {
   id: string;
@@ -23,73 +15,13 @@ interface UploadQueueItem {
   error?: string;
 }
 
-import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
-import { useHeightCssVar } from "../hooks/use-height-css-var";
-
-interface NavbarProps {
-  searchQuery: string;
-  onSearchChange: (q: string) => void;
-  onOpenShortcuts?: () => void;
-}
-
-export function Navbar({ searchQuery, onSearchChange, onOpenShortcuts }: NavbarProps) {
-  const { t, i18n } = useTranslation();
-  const currentLang = (i18n.resolvedLanguage || i18n.language || "en").startsWith("vi") ? "vi" : "en";
-  const toggleLanguage = () => {
-    const nextLang = currentLang === "vi" ? "en" : "vi";
-    void i18n.changeLanguage(nextLang);
-  };
+export function ImportActions() {
+  const { t } = useTranslation();
 
   const fetchTracks = usePlayerStore((s) => s.fetchTracks);
-  const masterVolume = usePlayerStore((s) => s.masterVolume);
-  const setMasterVolume = usePlayerStore((s) => s.setMasterVolume);
-
-  const isMasterMuted = masterVolume === 0;
-  const lastAudibleMasterRef = React.useRef(masterVolume > 0 ? masterVolume : 0.5);
-  React.useEffect(() => {
-    if (masterVolume > 0) lastAudibleMasterRef.current = masterVolume;
-  }, [masterVolume]);
-  const toggleMasterMute = () => setMasterVolume(isMasterMuted ? lastAudibleMasterRef.current : 0);
-
-  const isLogsOpen = useLogStore((s) => s.isDrawerOpen);
-  const toggleLogs = useLogStore((s) => s.toggleDrawer);
-  const unreadErrorCount = useLogStore((s) => s.unreadErrorCount);
-
-  const desktopSearchRef = React.useRef<HTMLInputElement>(null);
-  const mobileSearchRef = React.useRef<HTMLInputElement>(null);
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
-  const [isMobileSearchRendered, setIsMobileSearchRendered] = React.useState(false);
-  const [isMobileSearchExiting, setIsMobileSearchExiting] = React.useState(false);
-
-  const isTestOrReducedMotion =
-    (typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST))) ||
-    (typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches));
-
-  React.useEffect(() => {
-    if (isMobileSearchOpen) {
-      setIsMobileSearchRendered(true);
-      setIsMobileSearchExiting(false);
-    } else if (isMobileSearchRendered) {
-      if (isTestOrReducedMotion) {
-        setIsMobileSearchRendered(false);
-        setIsMobileSearchExiting(false);
-        return;
-      }
-      setIsMobileSearchExiting(true);
-      const timer = setTimeout(() => {
-        setIsMobileSearchRendered(false);
-        setIsMobileSearchExiting(false);
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isMobileSearchOpen, isMobileSearchRendered, isTestOrReducedMotion]);
-
-  const navbarRef = useHeightCssVar("--navbar-height");
-
   const [isYtModalOpen, setIsYtModalOpen] = React.useState(false);
   const [isProcessingYtQueue, setIsProcessingYtQueue] = React.useState(false);
   const handleCloseYtModal = React.useCallback(() => setIsYtModalOpen(false), []);
-  const [isBackupModalOpen, setIsBackupModalOpen] = React.useState(false);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isLocalModalOpen, setIsLocalModalOpen] = React.useState(false);
@@ -109,58 +41,6 @@ export function Navbar({ searchQuery, onSearchChange, onOpenShortcuts }: NavbarP
     [uploadQueue]
   );
   const uploadProgressPercent = uploadQueue.length > 0 ? Math.round((uploadFinishedCount / uploadQueue.length) * 100) : 0;
-
-  React.useEffect(() => {
-    if (isMobileSearchOpen) {
-      mobileSearchRef.current?.focus();
-    }
-  }, [isMobileSearchOpen]);
-
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const hasActiveModal =
-        isYtModalOpen ||
-        isLocalModalOpen ||
-        Boolean(usePlayerStore.getState().sliceStudioTrack) ||
-        Boolean(document.querySelector('[role="dialog"]'));
-
-      if (hasActiveModal || e.defaultPrevented) {
-        return;
-      }
-
-      const target = e.target as HTMLElement | null;
-      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-
-      const isSlash = e.key === "/" && !e.shiftKey && !isInput && !e.ctrlKey && !e.metaKey && !e.altKey;
-      const isCmdK = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k";
-
-      if (isSlash || isCmdK) {
-        e.preventDefault();
-        if (window.innerWidth < 768) {
-          setIsMobileSearchOpen(true);
-          mobileSearchRef.current?.focus();
-          mobileSearchRef.current?.select();
-        } else {
-          desktopSearchRef.current?.focus();
-          desktopSearchRef.current?.select();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isYtModalOpen, isLocalModalOpen]);
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
-      if (searchQuery) {
-        onSearchChange("");
-      } else {
-        e.currentTarget.blur();
-        setIsMobileSearchOpen(false);
-      }
-    }
-  };
 
   const isMountedRef = React.useRef(true);
 
@@ -421,266 +301,42 @@ export function Navbar({ searchQuery, onSearchChange, onOpenShortcuts }: NavbarP
 
   return (
     <>
-      <header ref={navbarRef} className="sticky top-0 z-40 w-full border-b border-border bg-card/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3">
-      <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
-        {/* Logo & Brand */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/30 text-primary">
-            <Music2 className="h-5 w-5" />
-          </div>
-          <div className="hidden sm:block">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base tracking-tight text-foreground">{t("app.title")}</span>
-              <span className="text-2xs uppercase font-mono px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
-                {t("app.flexoki")}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground hidden sm:block">
-              {t("app.tagline")}
-            </p>
-          </div>
-        </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleOpenFlacPicker}
+        title={t("nav.addFlacTooltip")}
+        aria-label={t("nav.addFlac")}
+        className="text-flexoki-cyan hover:text-flexoki-cyan hover:border-flexoki-cyan/40"
+      >
+        <FolderPlus className="h-4 w-4" />
+        <span className="hidden sm:inline">{t("nav.addFlac")}</span>
+      </Button>
 
-        {/* Desktop Search bar */}
-        <div role="search" className="relative flex-1 max-w-sm hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            ref={desktopSearchRef}
-            id="library-search-desktop"
-            name="search"
-            type="search"
-            maxLength={200}
-            aria-label={t("nav.searchAria")}
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder={t("nav.searchPlaceholder")}
-            className="pl-9 pr-8 bg-background/60 text-sm h-9 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              onClick={() => {
-                onSearchChange("");
-                desktopSearchRef.current?.focus();
-              }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer transition-colors"
-              title={t("nav.clearSearch")}
-              aria-label={t("nav.clearSearch")}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <kbd className="hidden lg:inline-flex absolute right-2.5 top-1/2 -translate-y-1/2 items-center pointer-events-none text-2xs text-muted-foreground font-mono bg-muted/60 border border-border px-1.5 py-0.5 rounded">
-              /
-            </kbd>
-          )}
-        </div>
+      <input
+        ref={fileInputRef}
+        id="local-audio-file-input"
+        name="audioFiles"
+        type="file"
+        multiple
+        accept=".flac,audio/flac,.mp3,.m4a,.wav,.ogg,.opus,.webm,.aac,.mp4,video/mp4"
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button
-            variant={isMobileSearchOpen ? "secondary" : "ghost"}
-            size="icon"
-            onClick={() => {
-              const next = !isMobileSearchOpen;
-              setIsMobileSearchOpen(next);
-              if (!next && searchQuery) {
-                onSearchChange("");
-              }
-            }}
-            title={t("nav.searchAria")}
-            aria-label={t("nav.searchAria")}
-            aria-expanded={isMobileSearchOpen}
-            aria-controls="mobile-search-bar"
-            className="md:hidden h-8 w-8 text-muted-foreground hover:text-foreground relative"
-          >
-            <Search className="h-4 w-4" />
-            {searchQuery && (
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
-            )}
-          </Button>
-
-
-          <div className="hidden xl:flex items-center gap-1 pr-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleMasterMute}
-              aria-label={isMasterMuted ? t("nav.unmuteAll") : t("nav.muteAll")}
-              title={isMasterMuted ? t("nav.unmuteAll") : t("nav.muteAll")}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-            >
-              <span className="relative">
-                <VolumeX
-                  aria-hidden="true"
-                  className={cn(
-                    "absolute inset-0 h-4 w-4 text-destructive transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
-                    isMasterMuted ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"
-                  )}
-                />
-                <Volume2
-                  aria-hidden="true"
-                  className={cn(
-                    "h-4 w-4 transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
-                    isMasterMuted ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"
-                  )}
-                />
-              </span>
-            </Button>
-            <VolumeSlider
-              value={masterVolume}
-              onChange={setMasterVolume}
-              aria-label={t("nav.masterVolume")}
-              title={t("nav.masterVolumeTooltip", { percent: Math.round(masterVolume * 100) })}
-              className="w-20"
-            />
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleOpenFlacPicker}
-            title={t("nav.addFlacTooltip")}
-            aria-label={t("nav.addFlac")}
-            className="text-flexoki-cyan hover:text-flexoki-cyan hover:border-flexoki-cyan/40"
-          >
-            <FolderPlus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("nav.addFlac")}</span>
-          </Button>
-
-          <input
-            ref={fileInputRef}
-            id="local-audio-file-input"
-            name="audioFiles"
-            type="file"
-            multiple
-            accept=".flac,audio/flac,.mp3,.m4a,.wav,.ogg,.opus,.webm,.aac,.mp4,video/mp4"
-            className="hidden"
-            onChange={handleFileInputChange}
-          />
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsYtModalOpen(true)}
-            aria-label={t("nav.addYoutube")}
-            className="text-flexoki-red hover:text-flexoki-red hover:border-flexoki-red/40 hover:bg-flexoki-red/10 border-border/80"
-          >
-            <YoutubeIcon className="h-4 w-4 text-flexoki-red" />
-            <span className="hidden sm:inline">{t("nav.addYoutube")}</span>
-            {isProcessingYtQueue && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin ml-1 text-flexoki-red" />
-            )}
-          </Button>
-
-          {onOpenShortcuts && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onOpenShortcuts}
-              aria-label={t("nav.shortcutsAria", "Keyboard Shortcuts (?)")}
-              title={t("nav.shortcuts", "Shortcuts (?)")}
-              className="hidden sm:inline-flex h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-            >
-              <Keyboard className="h-4 w-4" />
-            </Button>
-          )}
-
-          <Button
-            variant={isLogsOpen ? "secondary" : "ghost"}
-            size="icon"
-            onClick={toggleLogs}
-            aria-expanded={isLogsOpen}
-            aria-label={
-              isLogsOpen
-                ? t("nav.closeLogs")
-                : unreadErrorCount > 0
-                ? t("nav.systemLogsUnread", { count: unreadErrorCount })
-                : t("nav.systemLogsAria")
-            }
-            className="relative h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-            title={t("nav.systemLogs")}
-          >
-            <Terminal className="h-4 w-4" />
-            {unreadErrorCount > 0 && (
-              <span className="absolute top-1 right-1 flex h-2 w-2" aria-hidden="true">
-                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" />
-              </span>
-            )}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleLanguage}
-            title={t("nav.switchLanguage")}
-            aria-label={t("nav.switchLanguage")}
-            className="h-8 px-2 text-xs font-mono font-semibold gap-1 text-muted-foreground hover:text-foreground shrink-0 border border-border/60 hover:bg-secondary/60 transition-colors"
-          >
-            <Languages className="hidden sm:block h-3.5 w-3.5 text-primary" />
-            <span className="uppercase">{currentLang}</span>
-          </Button>
-
-          <Button
-            variant={isBackupModalOpen ? "secondary" : "ghost"}
-            size="icon"
-            onClick={() => setIsBackupModalOpen(true)}
-            aria-label={t("nav.backup")}
-            title={t("nav.backupTooltip")}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-          >
-            <Archive className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Mobile search bar */}
-      {(isMobileSearchOpen || isMobileSearchRendered) && (
-        <div
-          id="mobile-search-bar"
-          role="search"
-          className={cn(
-            "pt-2.5 pb-0.5 w-full md:hidden duration-100 ease-out",
-            isMobileSearchExiting
-              ? "animate-out fade-out slide-out-to-top-2 pointer-events-none"
-              : "animate-in fade-in slide-in-from-top-2"
-          )}
-        >
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              ref={mobileSearchRef}
-              id="library-search-mobile"
-              name="mobileSearch"
-              type="search"
-              maxLength={200}
-              aria-label={t("nav.searchAria")}
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder={t("nav.searchPlaceholder")}
-              className="pl-9 pr-9 bg-background/90 text-sm h-9 w-full [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSearchChange("");
-                  mobileSearchRef.current?.focus();
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded cursor-pointer transition-colors"
-                title={t("nav.clearSearch")}
-                aria-label={t("nav.clearSearch")}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      </header>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIsYtModalOpen(true)}
+        aria-label={t("nav.addYoutube")}
+        className="text-flexoki-red hover:text-flexoki-red hover:border-flexoki-red/40 hover:bg-flexoki-red/10 border-border/80"
+      >
+        <YoutubeIcon className="h-4 w-4 text-flexoki-red" />
+        <span className="hidden sm:inline">{t("nav.addYoutube")}</span>
+        {isProcessingYtQueue && (
+          <Loader2 className="h-3.5 w-3.5 animate-spin ml-1 text-flexoki-red" />
+        )}
+      </Button>
 
       {/* YouTube Modal */}
       <YoutubeIngestModal
@@ -888,11 +544,6 @@ export function Navbar({ searchQuery, onSearchChange, onOpenShortcuts }: NavbarP
           </div>
         </div>
       </Modal>
-
-      <BackupModal
-        isOpen={isBackupModalOpen}
-        onClose={() => setIsBackupModalOpen(false)}
-      />
     </>
   );
 }

@@ -1,7 +1,9 @@
 {
   "sidebar": {
     "allPlaylists": "All Playlists",
-    "playlistActions": "More options for {{name}}"
+    "playlistActions": "More options for {{name}}",
+    "shortcuts": "Keyboard Shortcuts",
+    "language": "Language"
   },
   "app": {
     "title": "SLICE PLAYER",

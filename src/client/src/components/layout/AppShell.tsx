@@ -3,18 +3,17 @@ import { AppSidebar } from "./AppSidebar";
 import { SidebarProvider } from "../ui/sidebar";
 import { TooltipProvider } from "../ui/tooltip";
 
-interface AppShellProps {
-  onCreatePlaylist: () => void;
+interface AppShellProps extends Omit<React.ComponentProps<typeof AppSidebar>, "className"> {
   // Render a SidebarInset for the main column; fixed overlays can sit beside it.
   children: React.ReactNode;
 }
 
-export function AppShell({ onCreatePlaylist, children }: AppShellProps) {
+export function AppShell({ children, ...sidebarProps }: AppShellProps) {
   return (
     <TooltipProvider>
       <SidebarProvider>
         {/* The docked player bar spans the full width, so the sidebar stops above it */}
-        <AppSidebar onCreatePlaylist={onCreatePlaylist} className="bottom-[var(--player-bar-height,0px)] h-auto" />
+        <AppSidebar {...sidebarProps} className="bottom-[var(--player-bar-height,0px)] h-auto" />
         {children}
       </SidebarProvider>
     </TooltipProvider>

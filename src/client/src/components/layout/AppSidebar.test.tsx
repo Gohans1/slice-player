@@ -59,7 +59,7 @@ describe("AppSidebar", () => {
       root.render(
         <TooltipProvider>
           <SidebarProvider>
-            <AppSidebar onCreatePlaylist={onCreatePlaylist} />
+            <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
           </SidebarProvider>
         </TooltipProvider>
       );
