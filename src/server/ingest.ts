@@ -64,6 +64,7 @@ const MAX_CONCURRENT_METADATA = 2;
 let activeMetadataCount = 0;
 const metadataWaitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 const activeIngestOperations = new Set<Promise<void>>();
+const ingestOperationsByTrack = new Map<string, Set<Promise<void>>>();
 let ingestDrain: Promise<void> | null = null;
 let ingestPauseDepth = 0;
 
@@ -74,13 +75,23 @@ export function pauseIngestOperations(): () => void {
 }
 const INGEST_PAUSED_MESSAGE = "Thư viện đang tạm dừng nạp nhạc, vui lòng thử lại sau.";
 
-function beginIngestOperation(): (() => void) | null {
+function beginIngestOperation(trackId?: string): (() => void) | null {
   if (ingestPauseDepth > 0) return null;
   let settle!: () => void;
   const pending = new Promise<void>((fulfill) => { settle = fulfill; });
   activeIngestOperations.add(pending);
+  if (trackId) {
+    const operations = ingestOperationsByTrack.get(trackId) ?? new Set<Promise<void>>();
+    operations.add(pending);
+    ingestOperationsByTrack.set(trackId, operations);
+  }
   return () => {
     activeIngestOperations.delete(pending);
+    if (trackId) {
+      const operations = ingestOperationsByTrack.get(trackId);
+      operations?.delete(pending);
+      if (!operations?.size) ingestOperationsByTrack.delete(trackId);
+    }
     settle();
   };
 }
@@ -758,6 +769,14 @@ export async function cancelDownloadIfActive(trackId: string, preReadFiles?: str
     );
   } catch {}
 
+  // The logical operation can still reconcile/create its row after its subprocess exits.
+  const operations = ingestOperationsByTrack.get(trackId);
+  if (operations?.size) {
+    const currentTrack = getTrack(trackId);
+    if (currentTrack?.file_path) await cancelWaveformForFile(currentTrack.file_path);
+    await Promise.allSettled([...operations]);
+  }
+
   // Clean up any residual .part or .ytdl files
   // If track was actively downloading, bypass preReadFiles so fresh directory scan catches latest chunks
   await purgeTrackCacheFiles(audioDir, trackId, wasActivelyDownloading ? undefined : preReadFiles);
@@ -837,7 +856,7 @@ export function requeueErrorTracks(trackIds?: string[]): { requeued: number } {
 
 async function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
-  const finish = beginIngestOperation();
+  const finish = beginIngestOperation(downloadQueue[0].trackId);
   if (!finish) return;
   isDownloading = true;
 
@@ -1150,8 +1169,7 @@ async function processDownloadQueue() {
  * Handle Local FLAC or Audio File
  */
 export async function ingestLocalFile(rawPath: string, preferredTitle?: string): Promise<IngestResult> {
-  const finish = beginIngestOperation();
-  if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
+  let finish: (() => void) | null = null;
   let newlyExtractedPath: string | null = null;
   try {
     const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
@@ -1178,6 +1196,8 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
     const normalizedPath = process.platform === "win32" ? fullPath.toLowerCase() : fullPath;
     const hash = createHash("md5").update(normalizedPath).digest("hex").slice(0, 12);
     const trackId = `loc_${hash}`;
+    finish = beginIngestOperation(trackId);
+    if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
 
     // Probe duration before heavy extraction to avoid extracting oversized or invalid files
     let duration = 0;
@@ -1355,7 +1375,7 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
     logEvent("error", "download", `Lỗi nạp file local: ${msg}`);
     return { success: false, message: `Lỗi đọc file local: ${msg}` };
   } finally {
-    finish();
+    finish?.();
   }
 }
 
