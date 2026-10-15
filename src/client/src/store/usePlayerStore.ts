@@ -154,6 +154,13 @@ function saveTrackVolume(trackId: string, volume: number) {
   });
 }
 
+// A retried download that fails again comes back as HTTP 400 with the ingest result, and the server records the new
+// reason on the track, which shows it inline. Any other failed retry has nowhere else to show.
+async function isDownloadFailedAgain(res: Response): Promise<boolean> {
+  if (res.status !== 400) return false;
+  const body: unknown = await res.json().catch(() => null);
+  return typeof body === "object" && body !== null && "success" in body && body.success === false;
+}
 
 export async function flushTrackVolume(trackId: string): Promise<void> {
   const existing = trackVolumeDebounceTimers.get(trackId);
@@ -792,17 +799,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (get().isRetryingAll) return false;
     set({ isRetryingAll: true });
     try {
-      const res = await fetch("/api/tracks/retry-all", {
+      // The server only requeues here; a download that fails again later shows its reason on the track
+      const res = await sendChange("retryDownload", "/api/tracks/retry-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(trackIds ? { track_ids: trackIds } : {}),
       });
+      if (!res) return false;
       await get().fetchTracks(true);
-      return res.ok;
-    } catch (err) {
-      // A rejected retry shows its new error on each track; only a server that can't be reached needs saying
-      notifyChangeFailed("retryDownload", err);
-      return false;
+      return true;
     } finally {
       set({ isRetryingAll: false });
     }
@@ -818,11 +823,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      // Even on HTTP 400 (e.g. YouTube rejection recorded in DB), fetchTracks to sync updated error_message
+      if (!res.ok && !(await isDownloadFailedAgain(res))) notifyChangeFailed("retryDownload", res);
+      // Sync the track whatever happened, including the new error_message of a download that failed again
       await get().fetchTracks(true);
       return res.ok;
     } catch (err) {
-      // A rejected retry shows its new error on the track; only a server that can't be reached needs saying
       notifyChangeFailed("retryDownload", err);
       return false;
     } finally {

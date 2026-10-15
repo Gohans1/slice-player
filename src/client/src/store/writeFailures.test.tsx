@@ -26,6 +26,17 @@ function serverUnreachable() {
   );
 }
 
+// A retry the server tried and failed: it records the reason on the track, which shows it inline
+function downloadFailsAgain(message: string) {
+  globalThis.fetch = Object.assign(
+    async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      return url.endsWith("/retry") ? Response.json({ success: false, message }, { status: 400 }) : Response.json([]);
+    },
+    { preconnect: originalFetch.preconnect }
+  );
+}
+
 const shownToasts = () => Array.from(document.querySelectorAll<HTMLElement>('[data-slot="toast"]'));
 
 async function settle(action: () => Promise<unknown>) {
@@ -119,6 +130,33 @@ describe("failed changes", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0].message).toContain("Failed to add to playlist");
     expect(logged[0].message).toContain("HTTP 403");
+  });
+
+  it("tells the user when retrying every failed download can't reach the server", async () => {
+    serverResponds(502);
+
+    await settle(() => usePlayerStore.getState().retryAllErrors());
+
+    expect(shownToasts()).toHaveLength(1);
+    expect(shownToasts()[0].textContent).toContain("Failed to retry download");
+    expect(shownToasts()[0].textContent).toContain("Can't reach the server");
+  });
+
+  it("tells the user when retrying one download can't reach the server", async () => {
+    serverResponds(502);
+
+    await settle(() => usePlayerStore.getState().retryTrack("trk_1"));
+
+    expect(shownToasts()).toHaveLength(1);
+    expect(shownToasts()[0].textContent).toContain("Failed to retry download");
+  });
+
+  it("leaves a download that failed again to its track, which shows the new reason", async () => {
+    downloadFailsAgain("Video unavailable");
+
+    await settle(() => usePlayerStore.getState().retryTrack("trk_1"));
+
+    expect(shownToasts()).toHaveLength(0);
   });
 
   it("tells the user when the volume saved on closing Slice Studio fails", async () => {
