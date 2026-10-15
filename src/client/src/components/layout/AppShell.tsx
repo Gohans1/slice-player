@@ -2,6 +2,7 @@ import * as React from "react";
 import { AppSidebar } from "./AppSidebar";
 import { SidebarProvider } from "../ui/sidebar";
 import { TooltipProvider } from "../ui/tooltip";
+import { Toaster } from "../ui/toast";
 import { RowActionsMenuProvider } from "../RowActionsMenu";
 import { useMediaQuery, WIDE_LAYOUT_QUERY } from "../../hooks/use-media-query";
 
@@ -29,6 +30,8 @@ export function AppShell({ children, ...sidebarProps }: AppShellProps) {
           {children}
         </SidebarProvider>
       </RowActionsMenuProvider>
+      {/* Toasts stack above the docked player bar rather than over its controls */}
+      <Toaster className="bottom-[calc(var(--player-bar-height,0px)+1rem)]" />
     </TooltipProvider>
   );
 }

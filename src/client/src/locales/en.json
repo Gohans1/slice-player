@@ -536,5 +536,21 @@
     "importSuccess": "Library restored successfully! Reloading tracks...",
     "importError": "Failed to restore library: {{message}}",
     "close": "Close"
+  },
+  "changeFailed": {
+    "renamePlaylist": "Failed to rename playlist",
+    "deletePlaylist": "Failed to delete playlist",
+    "setPlaylistCover": "Failed to change playlist cover",
+    "addToPlaylist": "Failed to add to playlist",
+    "removeFromPlaylist": "Failed to remove from playlist",
+    "reorderPlaylist": "Failed to save the new order",
+    "deleteTracks_one": "Failed to delete track",
+    "deleteTracks_other": "Failed to delete {{count}} tracks",
+    "deleteSlices_one": "Failed to delete slice",
+    "deleteSlices_other": "Failed to delete {{count}} slices",
+    "retryDownload": "Failed to retry download",
+    "trackVolume": "Failed to save track volume",
+    "rejected": "The server returned an error (HTTP {{status}}). Try again, or see System Logs for details.",
+    "unreachable": "Can't reach the server. Check that it's running, then try again."
   }
 }

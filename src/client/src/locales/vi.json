@@ -535,5 +535,21 @@
     "importSuccess": "Khôi phục thư viện thành công! Đang tải lại danh sách bài hát...",
     "importError": "Lỗi khôi phục thư viện: {{message}}",
     "close": "Đóng"
+  },
+  "changeFailed": {
+    "renamePlaylist": "Không thể đổi tên danh sách phát",
+    "deletePlaylist": "Không thể xóa danh sách phát",
+    "setPlaylistCover": "Không thể đổi ảnh bìa danh sách phát",
+    "addToPlaylist": "Không thể thêm vào danh sách phát",
+    "removeFromPlaylist": "Không thể xóa khỏi danh sách phát",
+    "reorderPlaylist": "Không thể lưu thứ tự mới",
+    "deleteTracks_one": "Không thể xóa bài hát",
+    "deleteTracks_other": "Không thể xóa {{count}} bài hát",
+    "deleteSlices_one": "Không thể xóa lát cắt",
+    "deleteSlices_other": "Không thể xóa {{count}} lát cắt",
+    "retryDownload": "Không thể thử tải lại",
+    "trackVolume": "Không thể lưu âm lượng bài hát",
+    "rejected": "Máy chủ báo lỗi (HTTP {{status}}). Hãy thử lại, hoặc xem Nhật ký hệ thống để biết chi tiết.",
+    "unreachable": "Không kết nối được máy chủ. Hãy kiểm tra máy chủ đang chạy rồi thử lại."
   }
 }

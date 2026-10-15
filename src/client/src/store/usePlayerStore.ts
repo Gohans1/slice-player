@@ -7,6 +7,7 @@ import { useSelectionStore } from "./useSelectionStore";
 import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getShuffledEntityIds } from "../lib/playlistSort";
 import { searchItems } from "../lib/search";
 import { showsItemsOf } from "../lib/mixPlaylist";
+import { notifyChangeFailed, sendChange } from "../lib/sendChange";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -178,17 +179,12 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   return new Promise((resolve) => {
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tracks/${encodeURIComponent(trackId)}`, {
+        await sendChange("trackVolume", `/api/tracks/${encodeURIComponent(trackId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ volume: safe }),
           keepalive: true,
         });
-        if (!res.ok) {
-          console.warn(`[Store] Server rejected track volume update (status ${res.status})`);
-        }
-      } catch (e) {
-        console.error("[Store] Failed to update track volume:", e);
       } finally {
         trackVolumeDebounceTimers.delete(trackId);
         resolve();
@@ -806,7 +802,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await get().fetchTracks(true);
       return res.ok;
     } catch (err) {
-      console.error("[Store] Failed to retry all error tracks:", err);
+      // A rejected retry shows its new error on each track; only a server that can't be reached needs saying
+      notifyChangeFailed("retryDownload", err);
       return false;
     } finally {
       set({ isRetryingAll: false });
@@ -827,7 +824,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await get().fetchTracks(true);
       return res.ok;
     } catch (err) {
-      console.error(`[Store] Failed to retry track "${trackId}":`, err);
+      // A rejected retry shows its new error on the track; only a server that can't be reached needs saying
+      notifyChangeFailed("retryDownload", err);
       return false;
     } finally {
       set((state) => {
@@ -2557,8 +2555,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const childPlaylists = get().playlists.filter((p) => p.parent_id === id);
       const childIds = childPlaylists.map((p) => p.id);
       const url = `/api/playlists/${encodeURIComponent(id)}${keepChildren ? "?keep_children=true" : ""}`;
-      const res = await fetch(url, { method: "DELETE" });
-      if (res.ok) {
+      const res = await sendChange("deletePlaylist", url, { method: "DELETE" });
+      if (res) {
         const updates: Partial<PlayerState> = {};
         const affectedIds = keepChildren ? [id] : [id, ...childIds];
 
@@ -2603,12 +2601,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   renamePlaylist: async (id: string, name: string) => {
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}`, {
+      const res = await sendChange("renamePlaylist", `/api/playlists/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
-      if (res.ok) {
+      if (res) {
         await get().fetchPlaylists();
         return true;
       }
@@ -2620,12 +2618,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setPlaylistCover: async (id: string, trackId: string | null) => {
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(id)}`, {
+      const res = await sendChange("setPlaylistCover", `/api/playlists/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cover_track_id: trackId }),
       });
-      if (res.ok) {
+      if (res) {
         await get().fetchPlaylists();
         return true;
       }
@@ -2637,12 +2635,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   addToPlaylist: async (playlistId: string, trackId: string, segmentId?: string | null) => {
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/items`, {
+      const res = await sendChange("addToPlaylist", `/api/playlists/${encodeURIComponent(playlistId)}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ track_id: trackId, segment_id: segmentId ?? null }),
       });
-      if (res.ok) {
+      if (res) {
         try {
           const newItem = await res.json();
           if (newItem && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
@@ -2684,12 +2682,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const payload = typeof itemsOrTrackIds[0] === "string"
         ? { trackIds: itemsOrTrackIds as string[] }
         : { items: itemsOrTrackIds };
-      const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/items/batch`, {
+      const res = await sendChange("addToPlaylist", `/api/playlists/${encodeURIComponent(playlistId)}/items/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
+      if (res) {
         try {
           const data = await res.json();
           const newItems: PlaylistItemWithDetails[] = Array.isArray(data?.items) ? data.items : [];
@@ -2742,12 +2740,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   deleteTracksBatch: async (trackIds: string[]) => {
     if (!trackIds || trackIds.length === 0) return false;
     try {
-      const res = await fetch("/api/tracks/batch-delete", {
+      const res = await sendChange("deleteTracks", "/api/tracks/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: trackIds }),
-      });
-      if (res.ok) {
+      }, trackIds.length);
+      if (res) {
         useSelectionStore.getState().deselectTracks(trackIds);
         const delSet = new Set(trackIds);
         const { queue, queueIndex, activeTrack, playbackMode, queuesByMode } = get();
@@ -2842,12 +2840,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   deleteSegmentsBatch: async (segmentIds: string[]) => {
     if (!segmentIds || segmentIds.length === 0) return false;
     try {
-      const res = await fetch("/api/segments/batch-delete", {
+      const res = await sendChange("deleteSlices", "/api/segments/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: segmentIds }),
-      });
-      if (res.ok) {
+      }, segmentIds.length);
+      if (res) {
         cachedSegmentsEtag = null;
         useSelectionStore.getState().deselectTracks(segmentIds);
         const delSet = new Set(segmentIds);
@@ -2935,12 +2933,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ activePlaylistItems: prevItems.filter((it) => !removeSet.has(it.id)) });
     }
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/items/batch-delete`, {
+      const res = await sendChange("removeFromPlaylist", `/api/playlists/${encodeURIComponent(playlistId)}/items/batch-delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemIds }),
       });
-      if (res.ok) {
+      if (res) {
         useSelectionStore.getState().deselectTracks(itemIds);
         if (showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
           const removeSet = new Set(itemIds);
@@ -3035,10 +3033,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ activePlaylistItems: prevItems.filter((it) => it.id !== itemId) });
     }
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(itemId)}`, {
+      const res = await sendChange("removeFromPlaylist", `/api/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(itemId)}`, {
         method: "DELETE",
       });
-      if (res.ok) {
+      if (res) {
         useSelectionStore.getState().deselectTracks([itemId]);
         if (showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
           const currentItem = get().queue[get().queueIndex];
@@ -3175,12 +3173,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     };
 
     try {
-      const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/reorder`, {
+      const res = await sendChange("reorderPlaylist", `/api/playlists/${encodeURIComponent(playlistId)}/reorder`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemIds }),
       });
-      if (res.ok) {
+      if (res) {
         return true;
       } else {
         rollback();

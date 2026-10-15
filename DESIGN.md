@@ -289,6 +289,13 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - **Queue**: mỗi hàng có tay cầm kéo, nút lên/xuống (`Button` `ghost` `icon-sm`, chỉ hiện trên thiết bị cảm ứng hoặc màn hẹp) và nút xoá hiện khi hover.
 - **Cuộn nhanh**: `ButtonGroup` dọc gồm 2 `Button` `outline`; mỗi nút `disabled` khi trang đã ở đúng đầu đó.
 
+### Feedback & Errors
+- Lỗi nằm cạnh chỗ nó xảy ra: các dialog (New Playlist, Mix Playlists, YouTube, Import, Backup) và Slice Studio tự hiện lỗi bên trong.
+- Thay đổi không còn chỗ nào để báo (menu đã đóng, cập nhật lạc quan đã lặng lẽ rollback) gửi qua `sendChange` (`lib/sendChange.ts`). Lỗi hiện `toast` của shadcn: project là Base UI nên dùng Base UI Toast, không dùng Sonner (Sonner dành cho Radix). Toast lỗi có `type: "error"`, `priority: "high"` (screen reader đọc ngay), `timeout: 0` (ở lại tới khi tắt). Mỗi loại thay đổi chỉ có 1 toast (`id` cố định), thất bại lặp lại thì cập nhật toast đó. Chi tiết ghi vào System Logs bằng tiếng Anh.
+- Chỉ báo khi chính request thất bại, không báo khi phần xử lý sau một response thành công bị lỗi. Lỗi mạng và 502/503/504 (proxy không tới được server) đều là "Can't reach the server".
+- Giọng theo copy sẵn có: tiêu đề "Failed to …" / "Không thể …", mô tả nói cách xử lý.
+- `Toaster` nằm trong `AppShell`; viewport đặt trên PlayerBar (`bottom` = `--player-bar-height` + 1rem) để không che nút điều khiển.
+
 ### Signature Component: Slice Studio Waveform Deck
 - Khung hiển thị sóng âm WaveSurfer với nền `#100F0F`, sóng màu xám `#403E3C`, dải tiến trình đỏ `#D14D41`, con trỏ hồng `#CE5D97`.
 - Các vùng phân đoạn (Regions) được gán 8 màu ngẫu nhiên từ bảng màu Flexoki đầy đủ (Xanh dương, Lam ngọc, Lục, Vàng, Cam, Tím, Đỏ, Hồng), hiển thị viền kéo thả hai đầu trực quan.
@@ -306,7 +313,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 ### Don't:
 - **Don't** sử dụng nền trắng tinh (`#FFFFFF`) hoặc xám lạnh thông thường; toàn bộ bề mặt phải thuộc 14 nấc màu Base Flexoki ấm.
 - **Don't** sử dụng gradient màu bóng bẩy hoặc chữ gradient rườm rà.
-- **Don't** tự dựng component UI mà shadcn đã có: thêm bản Base UI bằng CLI (`bunx --bun shadcn@latest add <x>`). File trong `ui/` giữ nguyên như CLI sinh ra; sửa đổi cục bộ (checkbox, slider, badge, item) commit riêng kèm lý do. Kéo thả vẫn dùng API DOM (`draggable`, `PointerEvent`), không thêm thư viện kéo thả.
+- **Don't** tự dựng component UI mà shadcn đã có: thêm bản Base UI bằng CLI (`bunx --bun shadcn@latest add <x>`). File trong `ui/` giữ nguyên như CLI sinh ra; sửa đổi cục bộ (checkbox, slider, badge, item, dropdown-menu, toast) commit riêng kèm lý do. Kéo thả vẫn dùng API DOM (`draggable`, `PointerEvent`), không thêm thư viện kéo thả.
 - **Don't** dùng inline style cho giá trị động; đặt CSS variable rồi dùng class (`bg-(--slice-color)`, `h-(--bar-height)`).
 - **Don't** dùng `text-primary` cho chữ chỉ mang thông tin; màu nhấn dành cho hành động và trạng thái đang phát.
 - **Don't** làm mất đi tính xúc giác của thanh tiến trình: khi kéo tua, phải dừng phát tạm thời và cập nhật mượt mà theo từng pixel.
