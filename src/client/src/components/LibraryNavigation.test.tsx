@@ -100,6 +100,16 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
     }
   }
 
+  it("lets keyboard users skip past the sidebar to the library", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const firstStop = container.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([tabindex="-1"]), [tabindex="0"]');
+    expect(firstStop?.textContent).toBe("Skip to main content");
+    expect(document.querySelector(firstStop?.getAttribute("href") ?? "")?.tagName).toBe("MAIN");
+  });
+
   it("switches library category from the sidebar and titles the view after it", async () => {
     await act(async () => {
       root.render(<App />);

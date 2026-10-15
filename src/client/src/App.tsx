@@ -42,7 +42,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
-import { AppShell } from "./components/layout/AppShell";
+import { AppShell, MAIN_CONTENT_ID } from "./components/layout/AppShell";
 import { useQueueVisibility } from "./hooks/use-queue-visibility";
 import { useHeightCssVar } from "./hooks/use-height-css-var";
 import { BulkActionBar } from "./components/BulkActionBar";
@@ -1113,7 +1113,7 @@ export function App() {
       onCreatePlaylist={() => setIsCreateModalOpen(true)}
       onOpenShortcuts={() => setIsShortcutsOpen(true)}
     >
-      <SidebarInset className="min-w-0">
+      <SidebarInset id={MAIN_CONTENT_ID} className="min-w-0">
         {/* Sticky toolbar: view title, sort and view mode, library actions, master volume.
             A container, so control labels give way to icons when the column is narrow rather than wrapping */}
         <header ref={toolbarRef} data-testid="sticky-library-header" className="@container sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">

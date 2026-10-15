@@ -25,6 +25,7 @@
     "playlistsTooltip": "Manage playlists",
     "searchPlaceholder": "Search tracks or artists…",
     "searchAria": "Search tracks or artists",
+    "skipToContent": "Skip to main content",
     "clearSearch": "Clear search",
     "shuffle": "Shuffle",
     "shufflePlaylist": "Shuffle {{name}}",
