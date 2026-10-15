@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualizer } from "@tanstack/react-virtual";
-import { Play, Pause, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Clock, AlertCircle, RotateCcw, GripVertical, SquareCheck } from "lucide-react";
+import { Play, Pause, Scissors, Music, ChevronUp, ChevronDown, Shuffle, Clock, AlertCircle, RotateCcw, GripVertical, SquareCheck } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Spinner } from "./ui/spinner";
@@ -1583,10 +1583,8 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green">
-                      <Disc data-icon="inline-start" />
-                      <span>{t("table.fullTrack")}</span>
-                    </Badge>
+                    // Plain text like Apple Music's Album column: full tracks are the default, slices are what stands out
+                    <span className="truncate text-xs text-muted-foreground">{t("table.fullTrack")}</span>
                   )}
                 </div>
 
@@ -2053,10 +2051,8 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green">
-                      <Disc data-icon="inline-start" />
-                      <span>{t("table.fullTrack")}</span>
-                    </Badge>
+                    // Plain text like Apple Music's Album column: full tracks are the default, slices are what stands out
+                    <span className="truncate text-xs text-muted-foreground">{t("table.fullTrack")}</span>
                   )}
                 </div>
 
