@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { pack as createPack } from "tar-stream";
+import { MAX_EXPORTED_BACKUP_BYTES } from "./backupLimits";
 
 export type ArchiveEntry = { name: string; source: string } | { name: string; data: string | Uint8Array };
 
@@ -13,6 +14,7 @@ export function writeArchive(entries: ArchiveEntry[], onClose: (completed: boole
   const output: import("node:stream/web").ReadableStream<Uint8Array> = Readable.toWeb(gzip, { strategy: { highWaterMark: 1 } });
   const reader = output.getReader();
   let closed = false;
+  let outputBytes = 0;
   const close = (completed: boolean) => {
     if (closed) return;
     closed = true;
@@ -49,6 +51,8 @@ export function writeArchive(entries: ArchiveEntry[], onClose: (completed: boole
           controller.close();
           close(true);
         } else {
+          outputBytes += chunk.value.byteLength;
+          if (outputBytes > MAX_EXPORTED_BACKUP_BYTES) throw new Error("Backup exceeds the restore upload limit.");
           controller.enqueue(chunk.value);
         }
       } catch (error) {

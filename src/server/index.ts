@@ -15,6 +15,7 @@ import { serverEvents } from "./events";
 import { forwardServerEvents } from "./websocketEvents";
 import { runLibraryRequest } from "./libraryRequests";
 import { resolveAudioSource } from "./audioSource";
+import { MAX_BACKUP_REQUEST_BYTES } from "./backupLimits";
 import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
@@ -117,7 +118,7 @@ const server = serve({
   hostname: "127.0.0.1",
   port: PORT,
   idleTimeout: 120,
-  maxRequestBodySize: 2048 * 1024 * 1024, // 2GB max upload limit for library backup restore
+  maxRequestBodySize: MAX_BACKUP_REQUEST_BYTES, // 2GB max upload limit for library backup restore
   error(err: Error) {
     logEvent("error", "system", "Lỗi server không bắt được:", err);
     return new Response(JSON.stringify({ error: "Đã xảy ra lỗi máy chủ nội bộ." }), {
@@ -244,7 +245,7 @@ const server = serve({
             url.pathname.endsWith("/items/batch-delete") ||
             url.pathname.endsWith("/reorder");
           const maxLimit = isLibraryImport
-            ? 2048 * 1024 * 1024
+            ? MAX_BACKUP_REQUEST_BYTES
             : isTrackUpload
             ? 305 * 1024 * 1024
             : isBatchEndpoint

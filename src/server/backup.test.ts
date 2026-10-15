@@ -14,6 +14,7 @@ async function exportLibraryArchive(...args: Parameters<typeof streamLibraryArch
   return new Response(await streamLibraryArchive(...args)).blob();
 }
 
+const originalCwd = process.cwd();
 const TEST_DIR = mkdtempSync(join(tmpdir(), "slice-backup-test-"));
 const TEST_DB = join(TEST_DIR, "music.db");
 const TEST_AUDIO_DIR = join(TEST_DIR, "cache", "audio");
@@ -22,6 +23,7 @@ const TEST_COOKIE = join(TEST_DIR, "cookies.txt");
 
 describe("Library Backup & Restore (Export / Import)", () => {
   beforeEach(() => {
+    process.chdir(originalCwd);
     closeDatabase();
     if (existsSync(TEST_DIR)) {
       rmSync(TEST_DIR, { recursive: true, force: true });
@@ -36,6 +38,7 @@ describe("Library Backup & Restore (Export / Import)", () => {
   });
 
   afterAll(() => {
+    process.chdir(originalCwd);
     closeDatabase();
     if (existsSync(TEST_DIR)) {
       try { rmSync(TEST_DIR, { recursive: true, force: true }); } catch {}

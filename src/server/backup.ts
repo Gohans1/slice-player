@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { writeArchive, type ArchiveEntry } from "./archiveWriter";
+import { MAX_COOKIE_FILE_BYTES, MAX_TOTAL_EXTRACTED_BYTES, MAX_ARCHIVE_ENTRIES, MAX_AUDIO_FILE_BYTES, MAX_THUMB_FILE_BYTES, MAX_DB_FILE_BYTES, MAX_BACKUP_REQUEST_BYTES, assertExportFitsRestore } from "./backupLimits";
+export { MAX_COOKIE_FILE_BYTES, MAX_TOTAL_EXTRACTED_BYTES, MAX_ARCHIVE_ENTRIES, MAX_AUDIO_FILE_BYTES, MAX_THUMB_FILE_BYTES, MAX_DB_FILE_BYTES } from "./backupLimits";
 import { join, resolve, dirname, extname } from "node:path";
 import { initDatabase, closeDatabase, healTrackFilePaths, getCrossPlatformBasename } from "./db";
 import { abortIngestProcesses, pauseIngestOperations, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
@@ -12,7 +14,6 @@ import { pauseLibraryMutations, drainLibraryMutations } from "./libraryRequests"
 import { logEvent } from "./logger";
 
 export const ALLOWED_THUMB_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"] as const;
-export const MAX_COOKIE_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export interface BackupPaths {
   dbPath?: string;
@@ -63,11 +64,6 @@ export function isSafeArchiveFilename(fileName: string): boolean {
   return true;
 }
 
-export const MAX_TOTAL_EXTRACTED_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB
-export const MAX_ARCHIVE_ENTRIES = 10_000;
-export const MAX_AUDIO_FILE_BYTES = 350 * 1024 * 1024; // 350 MB
-export const MAX_THUMB_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
-export const MAX_DB_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
 
 function readLibrarySnapshot(dbPath: string, audioCacheDir: string) {
   const snapshotDir = mkdtempSync(join(tmpdir(), "slice-export-"));
@@ -178,19 +174,10 @@ export async function exportLibraryArchive(
       }
     }
 
-    if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Backup entry count exceeds restore limits.");
-    let totalBytes = 0;
-    for (const entry of entries) {
-      const size = "source" in entry ? statSync(entry.source).size : Buffer.byteLength(entry.data);
-      let limit = MAX_THUMB_FILE_BYTES;
-      if (entry.name === "music.db") limit = MAX_DB_FILE_BYTES;
-      else if (entry.name === "cookies.txt") limit = MAX_COOKIE_FILE_BYTES;
-      else if (entry.name.startsWith("cache/audio/")) limit = MAX_AUDIO_FILE_BYTES;
-      totalBytes += size;
-      if (size > limit || totalBytes > MAX_TOTAL_EXTRACTED_BYTES) {
-        throw new Error(`Backup file or total size exceeds restore limits: ${entry.name}`);
-      }
-    }
+    assertExportFitsRestore(entries.map((entry) => ({
+      name: entry.name,
+      size: "source" in entry ? statSync(entry.source).size : Buffer.byteLength(entry.data),
+    })));
 
     const stream = writeArchive(entries, (completed) => {
       isExporting = false;
@@ -221,6 +208,8 @@ export async function importLibraryArchive(
   if (!archiveInput || inputSize < 50) {
     throw new Error("Dữ liệu file backup không hợp lệ hoặc quá nhỏ.");
   }
+
+  if (inputSize > MAX_BACKUP_REQUEST_BYTES) throw new Error("Backup exceeds the 2GB restore upload limit.");
 
   isRestoring = true;
   const resumeIngest = pauseIngestOperations();
