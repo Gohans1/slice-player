@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
 import { LogDrawer } from "./LogDrawer";
 import { useLogStore } from "../store/useLogStore";
 
@@ -10,15 +9,18 @@ describe("LogDrawer Component", () => {
   let container: any;
   let root: any;
 
-  beforeEach(() => {
-    const happyWindow = new GlobalWindow();
-    (globalThis as any).window = happyWindow;
-    (globalThis as any).document = happyWindow.document;
-    (globalThis as any).KeyboardEvent = happyWindow.KeyboardEvent;
-    (globalThis as any).HTMLElement = happyWindow.HTMLElement;
+  // The drawer renders in a portal on document.body
+  const page = () => document.body;
+  const drawer = () => document.querySelector<HTMLElement>('[data-drawer="log-drawer"]');
+  // Focus moves into the drawer after the opening render commits
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
-    container = happyWindow.document.createElement("div");
-    happyWindow.document.body.appendChild(container);
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
 
     useLogStore.setState({
@@ -59,13 +61,14 @@ describe("LogDrawer Component", () => {
       root.unmount();
     });
     container.remove();
+    document.querySelectorAll("[data-test-opener]").forEach((el) => el.remove());
   });
 
   it("does not render when isOpen is false", () => {
     act(() => {
       root.render(<LogDrawer isOpen={false} onClose={() => {}} />);
     });
-    expect(container.innerHTML).toBe("");
+    expect(drawer() === null).toBe(true);
   });
 
   it("renders log drawer with title and all log entries when isOpen is true", () => {
@@ -73,24 +76,60 @@ describe("LogDrawer Component", () => {
       root.render(<LogDrawer isOpen={true} onClose={() => {}} />);
     });
 
-    expect(container.textContent).toMatch(/System Logs|Nhật Ký Hoạt Động/);
-    expect(container.textContent).toContain("Đang tải video YouTube test");
-    expect(container.textContent).toContain("Lỗi phát file âm thanh");
-    expect(container.textContent).toContain("WebSocket đã kết nối");
-    expect(container.textContent).toMatch(/1 error|1 lỗi/);
+    expect(page().textContent).toMatch(/System Logs|Nhật Ký Hoạt Động/);
+    expect(page().textContent).toContain("Đang tải video YouTube test");
+    expect(page().textContent).toContain("Lỗi phát file âm thanh");
+    expect(page().textContent).toContain("WebSocket đã kết nối");
+    expect(page().textContent).toMatch(/1 error|1 lỗi/);
   });
 
-  it("calls onClose when Escape key is pressed", () => {
+  it("calls onClose when Escape key is pressed", async () => {
     let closed = false;
     act(() => {
       root.render(<LogDrawer isOpen={true} onClose={() => { closed = true; }} />);
     });
+    await settle();
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      (document.activeElement ?? document.body).dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
     });
 
     expect(closed).toBe(true);
+  });
+
+  it("opens as a labelled modal dialog with the search field focused", async () => {
+    act(() => {
+      root.render(<LogDrawer isOpen={true} onClose={() => {}} />);
+    });
+    await settle();
+
+    expect(drawer()?.getAttribute("role")).toBe("dialog");
+    const title = document.getElementById(drawer()?.getAttribute("aria-labelledby") ?? "");
+    expect(title?.textContent).toMatch(/System Logs|Nhật Ký Hoạt Động/);
+    // The rest of the page is hidden from assistive tech while the drawer is open
+    expect(container.getAttribute("aria-hidden")).toBe("true");
+    expect(document.activeElement?.tagName).toBe("INPUT");
+    expect(drawer()?.contains(document.activeElement)).toBe(true);
+  });
+
+  it("returns focus to what opened it once closed", async () => {
+    const opener = document.createElement("button");
+    opener.setAttribute("data-test-opener", "");
+    document.body.appendChild(opener);
+    opener.focus();
+
+    act(() => {
+      root.render(<LogDrawer isOpen={true} onClose={() => {}} />);
+    });
+    await settle();
+    act(() => {
+      root.render(<LogDrawer isOpen={false} onClose={() => {}} />);
+    });
+    await settle();
+
+    expect(document.activeElement === opener).toBe(true);
   });
 
   it("filters logs by category tabs", () => {
@@ -103,9 +142,9 @@ describe("LogDrawer Component", () => {
       useLogStore.getState().setFilterCategory("error");
     });
 
-    expect(container.textContent).toContain("Lỗi phát file âm thanh");
-    expect(container.textContent).not.toContain("Đang tải video YouTube test");
-    expect(container.textContent).not.toContain("WebSocket đã kết nối");
+    expect(page().textContent).toContain("Lỗi phát file âm thanh");
+    expect(page().textContent).not.toContain("Đang tải video YouTube test");
+    expect(page().textContent).not.toContain("WebSocket đã kết nối");
   });
 
   it("filters logs by text search query", () => {
@@ -117,9 +156,9 @@ describe("LogDrawer Component", () => {
       useLogStore.getState().setSearchQuery("WebSocket");
     });
 
-    expect(container.textContent).toContain("WebSocket đã kết nối");
-    expect(container.textContent).not.toContain("Đang tải video YouTube test");
-    expect(container.textContent).not.toContain("Lỗi phát file âm thanh");
+    expect(page().textContent).toContain("WebSocket đã kết nối");
+    expect(page().textContent).not.toContain("Đang tải video YouTube test");
+    expect(page().textContent).not.toContain("Lỗi phát file âm thanh");
   });
 
   it("matches Vietnamese logs using unaccented queries", () => {
@@ -131,15 +170,15 @@ describe("LogDrawer Component", () => {
       useLogStore.getState().setSearchQuery("tai video");
     });
 
-    expect(container.textContent).toContain("Đang tải video YouTube test");
-    expect(container.textContent).not.toContain("Lỗi phát file âm thanh");
+    expect(page().textContent).toContain("Đang tải video YouTube test");
+    expect(page().textContent).not.toContain("Lỗi phát file âm thanh");
 
     act(() => {
       useLogStore.getState().setSearchQuery("loi phat");
     });
 
-    expect(container.textContent).toContain("Lỗi phát file âm thanh");
-    expect(container.textContent).not.toContain("Đang tải video YouTube test");
+    expect(page().textContent).toContain("Lỗi phát file âm thanh");
+    expect(page().textContent).not.toContain("Đang tải video YouTube test");
   });
 
   it("clears logs when clear button is clicked", () => {
@@ -147,8 +186,8 @@ describe("LogDrawer Component", () => {
       root.render(<LogDrawer isOpen={true} onClose={() => {}} />);
     });
 
-    const clearBtn = (container.querySelector('button[title="Clear all logs"], button[title="Xóa toàn bộ nhật ký"]') ||
-      container.querySelector('button[aria-label*="clear" i]')) as HTMLButtonElement;
+    const clearBtn = (page().querySelector('button[title="Clear all logs"], button[title="Xóa toàn bộ nhật ký"]') ||
+      page().querySelector('button[aria-label*="clear" i]')) as HTMLButtonElement;
     expect(clearBtn).not.toBeNull();
 
     act(() => {
@@ -156,7 +195,7 @@ describe("LogDrawer Component", () => {
     });
 
     expect(useLogStore.getState().logs.length).toBe(0);
-    expect(container.textContent).toMatch(/Events will appear here|Chưa có sự kiện nào được ghi nhận|Các sự kiện sẽ hiển thị/);
+    expect(page().textContent).toMatch(/Events will appear here|Chưa có sự kiện nào được ghi nhận|Các sự kiện sẽ hiển thị/);
   });
 
   it("handles circular objects and Error instances safely without crashing", () => {
@@ -202,17 +241,17 @@ describe("LogDrawer Component", () => {
     });
 
     // Should render without throwing
-    expect(container.textContent).toContain("Circular log test");
-    expect(container.textContent).toContain("Error object log test");
-    expect(container.textContent).toContain("Circular Error test");
-    expect(container.textContent).toContain("Nested Error cause test");
+    expect(page().textContent).toContain("Circular log test");
+    expect(page().textContent).toContain("Error object log test");
+    expect(page().textContent).toContain("Circular Error test");
+    expect(page().textContent).toContain("Nested Error cause test");
 
     // Search query should safely handle circular error details
     act(() => {
       useLogStore.getState().setSearchQuery("Circular");
     });
-    expect(container.textContent).toContain("Circular log test");
-    expect(container.textContent).toContain("Circular Error test");
+    expect(page().textContent).toContain("Circular log test");
+    expect(page().textContent).toContain("Circular Error test");
   });
 
   it("resets auto-scroll and updates aria-pressed when auto-scroll button is clicked", () => {
@@ -220,8 +259,8 @@ describe("LogDrawer Component", () => {
       root.render(<LogDrawer isOpen={true} onClose={() => {}} />);
     });
 
-    const autoScrollBtn = (container.querySelector('button[aria-label="Scroll"], button[aria-label="Tự động cuộn"]') ||
-      container.querySelector('button[aria-pressed]')) as HTMLButtonElement;
+    const autoScrollBtn = (page().querySelector('button[aria-label="Scroll"], button[aria-label="Tự động cuộn"]') ||
+      page().querySelector('button[aria-pressed]')) as HTMLButtonElement;
     expect(autoScrollBtn).toBeTruthy();
     expect(autoScrollBtn.getAttribute("aria-pressed")).toBe("true");
 

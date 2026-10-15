@@ -137,6 +137,9 @@ export function App() {
 
   const isLogDrawerOpen = useLogStore((s) => s.isDrawerOpen);
   const closeLogDrawer = useLogStore((s) => s.closeDrawer);
+  // The drawer loads lazily on first open, then stays mounted so it can animate closed
+  const [hasOpenedLogDrawer, setHasOpenedLogDrawer] = React.useState(isLogDrawerOpen);
+  if (isLogDrawerOpen && !hasOpenedLogDrawer) setHasOpenedLogDrawer(true);
 
   // Mutual exclusion: the log drawer and the queue sheet are never open together.
   // The docked queue panel is part of the layout, so it stays.
@@ -1691,12 +1694,9 @@ export function App() {
       {!isQueueDocked && <QueueDrawer isOpen={isQueueOpen} onClose={closeQueue} />}
 
       {/* Activity & Error Log Drawer (Slide-over) */}
-      {isLogDrawerOpen && (
+      {hasOpenedLogDrawer && (
         <React.Suspense fallback={null}>
-          <LogDrawer
-            isOpen={isLogDrawerOpen}
-            onClose={closeLogDrawer}
-          />
+          <LogDrawer isOpen={isLogDrawerOpen} onClose={closeLogDrawer} />
         </React.Suspense>
       )}
 

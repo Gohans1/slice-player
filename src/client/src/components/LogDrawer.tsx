@@ -11,15 +11,19 @@ import {
   Info,
   AlertTriangle,
   ArrowDownToLine,
-  ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "./ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./ui/input-group";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { useTranslation } from "react-i18next";
-import { useLogStore, type LogFilterCategory, type AppLogItem } from "../store/useLogStore";
+import { useLogStore, type LogFilterCategory } from "../store/useLogStore";
 import { normalizeVi, tokenizeQuery } from "../lib/search";
 import { cn } from "../lib/utils";
+import { copyToClipboard } from "../lib/clipboard";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface LogDrawerProps {
@@ -94,11 +98,12 @@ export function safePrettyStringify(value: unknown): string {
   return safeStringify(value, 2);
 }
 
-interface LogDrawerContentProps extends LogDrawerProps {
-  isExiting?: boolean;
+interface LogDrawerContentProps {
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerContentProps) {
+// Mounted only while the sheet is open, so its state starts fresh each time
+function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
   const { t } = useTranslation();
   const logs = useLogStore((s) => s.logs);
   const clearLogs = useLogStore((s) => s.clearLogs);
@@ -114,28 +119,8 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
   const [expandedLogIds, setExpandedLogIds] = React.useState<Set<string>>(new Set());
   const [isUserScrolledUp, setIsUserScrolledUp] = React.useState(false);
   const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
   const listContainerRef = React.useRef<HTMLDivElement>(null);
-  const drawerRef = React.useRef<HTMLDivElement>(null);
   const isFirstRender = React.useRef(true);
-  const previousActiveElementRef = React.useRef<HTMLElement | null>(null);
-
-  // Focus search input and manage focus restoration on mount/unmount
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsUserScrolledUp(false);
-      previousActiveElementRef.current = document.activeElement as HTMLElement | null;
-      searchInputRef.current?.focus();
-    }
-    return () => {
-      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === "function") {
-        try {
-          previousActiveElementRef.current.focus();
-        } catch {}
-        previousActiveElementRef.current = null;
-      }
-    };
-  }, [isOpen]);
 
   // Clear expandedLogIds when logs are cleared
   React.useEffect(() => {
@@ -148,40 +133,6 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
-
-  // Keyboard navigation & close on Escape + focus trap
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key === "Tab" && drawerRef.current) {
-        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusable.length > 0) {
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (!drawerRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            first.focus();
-            return;
-          }
-          if (e.shiftKey && document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
 
   // Counts by category
   const { errorCount, downloadCount, playbackCount, systemCount } = React.useMemo(() => {
@@ -200,7 +151,6 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
 
   // Filtered logs using deferredSearch for fast responsiveness
   const filteredLogs = React.useMemo(() => {
-    if (!isOpen) return [];
     const trimmed = deferredSearch.trim();
     const tokens = trimmed ? tokenizeQuery(trimmed) : null;
 
@@ -223,7 +173,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
 
       return true;
     });
-  }, [logs, filterCategory, deferredSearch, isOpen]);
+  }, [logs, filterCategory, deferredSearch]);
 
   const observeElementRect = React.useCallback(
     (
@@ -287,7 +237,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
   const prevFilterRef = React.useRef({ category: filterCategory, query: deferredSearch });
 
   React.useEffect(() => {
-    if (!isOpen || !listContainerRef.current) return;
+    if (!listContainerRef.current) return;
 
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -323,7 +273,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
     if (autoScroll && !isUserScrolledUp) {
       listContainerRef.current.scrollTop = listContainerRef.current.scrollHeight;
     }
-  }, [latestFilteredLogId, isOpen, autoScroll, isUserScrolledUp, filterCategory, deferredSearch]);
+  }, [latestFilteredLogId, autoScroll, isUserScrolledUp, filterCategory, deferredSearch]);
 
   const handleToggleAutoScroll = () => {
     const next = !autoScroll;
@@ -348,39 +298,10 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
       })
       .join("\n");
 
-    const fallbackCopy = () => {
-      const prevActive = document.activeElement as HTMLElement | null;
-      try {
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.position = "fixed";
-        textArea.style.left = "-999999px";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand("copy");
-        textArea.remove();
-        prevActive?.focus();
-        setCopied(true);
-        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-      } catch {
-        prevActive?.focus();
-        // Ignore clipboard errors
-      }
-    };
-
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-      } catch {
-        fallbackCopy();
-      }
-    } else {
-      fallbackCopy();
+    if (await copyToClipboard(text)) {
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -396,253 +317,169 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
     });
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Backdrop */}
-      <div
-        aria-hidden="true"
-        className={cn(
-          "fixed inset-0 bg-black/60 backdrop-blur-xs duration-200",
-          isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
-        )}
-        onClick={onClose}
-      />
+  const filters: { id: LogFilterCategory; label: string; count: number; isError?: boolean }[] = [
+    { id: "all", label: t("logs.filterAll"), count: logs.length },
+    { id: "download", label: t("logs.filterDownload"), count: downloadCount },
+    { id: "error", label: t("logs.filterError"), count: errorCount, isError: true },
+    { id: "playback", label: t("logs.filterPlayback"), count: playbackCount },
+    { id: "system", label: t("logs.filterSystem"), count: systemCount },
+  ];
 
-      {/* Drawer Panel */}
-      <div
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        data-drawer="log-drawer"
-        aria-label={t("logs.title")}
-        className={cn(
-          "relative z-10 w-full max-w-md sm:max-w-xl md:max-w-2xl border-l border-border bg-card/95 backdrop-blur-md shadow-2xl flex flex-col h-full duration-200 text-foreground",
-          isExiting ? "animate-out slide-out-to-right pointer-events-none" : "animate-in slide-in-from-right"
-        )}
-      >
+  return (
+    <>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border bg-card/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-md bg-primary/10 border border-primary/20 text-primary">
-              <Terminal className="h-4 w-4" />
+        <div className="flex items-center justify-between gap-3 border-b border-border p-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="rounded-md border border-primary/20 bg-primary/10 p-1.5 text-primary">
+              <Terminal className="size-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="font-bold text-sm tracking-tight">{t("logs.title")}</h2>
-                <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-accent text-accent-foreground border border-border">
-                  {logs.length}
-                </span>
-                {errorCount > 0 && (
-                  <span className="font-mono text-2xs px-1.5 py-0.5 rounded bg-destructive/20 text-destructive border border-destructive/30 font-semibold">
-                    {t("logs.errorsCount", { count: errorCount })}
-                  </span>
-                )}
+                <SheetTitle>{t("logs.title")}</SheetTitle>
+                <Badge variant="secondary">{logs.length}</Badge>
+                {errorCount > 0 && <Badge variant="destructive">{t("logs.errorsCount", { count: errorCount })}</Badge>}
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t("logs.description")}
-              </p>
+              <SheetDescription>{t("logs.description")}</SheetDescription>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Auto-scroll toggle */}
+          <div className="flex shrink-0 items-center gap-1.5">
             <Button
               variant={autoScroll ? "secondary" : "ghost"}
-              size="sm"
+              size="lg"
               onClick={handleToggleAutoScroll}
               title={autoScroll ? t("logs.autoScrollOn") : t("logs.autoScrollOff")}
               aria-label={t("logs.autoScroll")}
               aria-pressed={autoScroll}
-              className="h-8 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
             >
-              <ArrowDownToLine className={`h-3.5 w-3.5 ${autoScroll ? "text-primary" : "opacity-60"}`} />
+              <ArrowDownToLine data-icon="inline-start" className={cn(autoScroll ? "text-primary" : "opacity-60")} />
               <span className="hidden md:inline">{t("logs.autoScroll")}</span>
             </Button>
-
-            {/* Copy button */}
             <Button
               variant="outline"
-              size="sm"
+              size="lg"
               onClick={handleCopyAll}
               disabled={filteredLogs.length === 0}
               title={t("logs.copyTooltip")}
               aria-label={t("logs.copyTooltip")}
-              className="h-8 px-2 text-xs gap-1 border-border/80 text-muted-foreground hover:text-foreground"
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-flexoki-green" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? <Check data-icon="inline-start" className="text-flexoki-green" /> : <Copy data-icon="inline-start" />}
               <span className="hidden sm:inline">{copied ? t("logs.copied") : t("logs.copy")}</span>
             </Button>
-
-            {/* Clear button */}
             <Button
               variant="ghost"
-              size="sm"
+              size="lg"
               onClick={clearLogs}
               disabled={logs.length === 0}
               title={t("logs.clearTooltip")}
               aria-label={t("logs.clearTooltip")}
-              className="h-8 px-2 text-xs gap-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 data-icon="inline-start" />
               <span className="hidden sm:inline">{t("logs.clear")}</span>
             </Button>
-
-            {/* Close button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label={t("logs.close")}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground ml-1"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <SheetClose aria-label={t("logs.close")} render={<Button variant="ghost" size="icon-lg" />}>
+              <X />
+            </SheetClose>
           </div>
         </div>
 
-        {/* Filter Category Tabs & Search Bar */}
-        <div className="p-3 border-b border-border bg-background/50 space-y-2.5">
-          {/* Tabs */}
-          <div role="tablist" aria-label={t("logs.title")} className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none">
-            {[
-              { id: "all" as LogFilterCategory, label: t("logs.filterAll"), count: logs.length },
-              { id: "download" as LogFilterCategory, label: t("logs.filterDownload"), count: downloadCount },
-              { id: "error" as LogFilterCategory, label: t("logs.filterError"), count: errorCount, isError: true },
-              { id: "playback" as LogFilterCategory, label: t("logs.filterPlayback"), count: playbackCount },
-              { id: "system" as LogFilterCategory, label: t("logs.filterSystem"), count: systemCount },
-            ].map((tab) => {
-              const isSelected = filterCategory === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  aria-controls="log-list-panel"
-                  onClick={() => setFilterCategory(tab.id)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors shrink-0 ${
-                    isSelected
-                      ? tab.isError && tab.count > 0
-                        ? "bg-destructive text-destructive-foreground font-semibold"
-                        : "bg-primary text-primary-foreground font-semibold"
-                      : "bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <span>{tab.label}</span>
-                  <span
-                    className={`font-mono text-2xs px-1 py-0.2 rounded ${
-                      isSelected
-                        ? "bg-black/20 text-inherit"
-                        : tab.isError && tab.count > 0
-                        ? "bg-destructive/20 text-destructive font-bold"
-                        : "bg-background text-muted-foreground"
-                    }`}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
+        {/* Category filters & search */}
+        <div className="flex flex-col gap-2.5 border-b border-border p-3">
+          <div className="overflow-x-auto pb-1">
+            <ToggleGroup
+              aria-label={t("logs.filterLabel", "Filter logs")}
+              value={[filterCategory]}
+              onValueChange={(value) => {
+                // Pressing the active filter again empties the value; keep the filter instead
+                const next = filters.find((filter) => value.includes(filter.id));
+                if (next) setFilterCategory(next.id);
+              }}
+              variant="outline"
+              size="sm"
+            >
+              {filters.map((filter) => (
+                <ToggleGroupItem key={filter.id} value={filter.id}>
+                  {filter.label}
+                  <Badge variant={filter.isError && filter.count > 0 ? "destructive" : "secondary"}>{filter.count}</Badge>
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </div>
 
-          {/* Search box */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
+          <InputGroup>
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
               ref={searchInputRef}
               type="text"
               placeholder={t("logs.searchPlaceholder")}
               aria-label={t("logs.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 pl-8 pr-7 text-xs bg-background/80"
             />
             {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-                title={t("nav.clearSearch")}
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  size="icon-xs"
+                  onClick={() => setSearchQuery("")}
+                  aria-label={t("nav.clearSearch")}
+                  title={t("nav.clearSearch")}
+                >
+                  <X />
+                </InputGroupButton>
+              </InputGroupAddon>
             )}
-          </div>
+          </InputGroup>
         </div>
 
         {/* Logs List Area */}
         <div
           ref={listContainerRef}
-          role="tabpanel"
-          id="log-list-panel"
+          role="region"
           aria-label={t("logs.title")}
           tabIndex={0}
           onScroll={handleContainerScroll}
-          className="flex-1 overflow-y-auto p-3 font-mono text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex-1 overflow-y-auto p-3 text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {filteredLogs.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 space-y-2 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-              <Terminal className="h-8 w-8 opacity-30" />
-              <p className="text-xs font-sans">
-                {logs.length === 0
-                  ? t("logs.emptyDesc")
-                  : t("logs.emptyFilter")}
-              </p>
+            <Empty className="h-full">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Terminal />
+                </EmptyMedia>
+                <EmptyDescription>{logs.length === 0 ? t("logs.emptyDesc") : t("logs.emptyFilter")}</EmptyDescription>
+              </EmptyHeader>
               {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchQuery("")}
-                  className="text-xs font-sans mt-2"
-                >
-                  {t("library.clearSearch")}
-                </Button>
+                <EmptyContent>
+                  <Button variant="ghost" onClick={() => setSearchQuery("")}>
+                    {t("library.clearSearch")}
+                  </Button>
+                </EmptyContent>
               )}
-            </div>
+            </Empty>
           ) : (
-            <div
-              style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                width: "100%",
-                position: "relative",
-              }}
-            >
+            <div className="relative w-full font-mono" style={{ height: rowVirtualizer.getTotalSize() }}>
               {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                 const item = filteredLogs[virtualRow.index];
                 if (!item) return null;
                 const isExpanded = expandedLogIds.has(item.id);
                 const hasDetails = item.details !== undefined && item.details !== null;
 
-                let levelBadge = (
-                  <span className="px-1 py-0.5 rounded text-2xs font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
-                    INFO
-                  </span>
-                );
-                let icon = <Info className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />;
+                let levelBadge = <Badge variant="blue">INFO</Badge>;
+                let icon = <Info className="h-3.5 w-3.5 text-flexoki-blue shrink-0 mt-0.5" />;
                 let borderColor = "border-border/60 hover:border-border";
 
                 if (item.level === "error") {
-                  levelBadge = (
-                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-destructive/20 text-destructive border border-destructive/30 shrink-0">
-                      ERROR
-                    </span>
-                  );
+                  levelBadge = <Badge variant="destructive">ERROR</Badge>;
                   icon = <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />;
                   borderColor = "border-destructive/30 bg-destructive/5 hover:border-destructive/50";
                 } else if (item.level === "warn") {
-                  levelBadge = (
-                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-yellow/20 text-flexoki-yellow border border-flexoki-yellow/30 shrink-0">
-                      WARN
-                    </span>
-                  );
+                  levelBadge = <Badge variant="yellow">WARN</Badge>;
                   icon = <AlertTriangle className="h-3.5 w-3.5 text-flexoki-yellow shrink-0 mt-0.5" />;
                   borderColor = "border-flexoki-yellow/30 bg-flexoki-yellow/5 hover:border-flexoki-yellow/50";
                 } else if (item.level === "success") {
-                  levelBadge = (
-                    <span className="px-1 py-0.5 rounded text-2xs font-bold bg-flexoki-green/20 text-flexoki-green border border-flexoki-green/30 shrink-0">
-                      OK
-                    </span>
-                  );
+                  levelBadge = <Badge variant="green">OK</Badge>;
                   icon = <CheckCircle2 className="h-3.5 w-3.5 text-flexoki-green shrink-0 mt-0.5" />;
                   borderColor = "border-flexoki-green/30 bg-flexoki-green/5 hover:border-flexoki-green/50";
                 }
@@ -656,14 +493,8 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualRow.index}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    className="pb-1.5"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    className="absolute top-0 left-0 w-full pb-1.5"
                   >
                     <div
                       className={`rounded-md border p-2 transition-colors ${borderColor}`}
@@ -676,9 +507,7 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                               {formatLogTimestamp(item.timestamp)}
                             </span>
                             {levelBadge}
-                            <span className="px-1 py-0.2 rounded bg-secondary text-secondary-foreground text-2xs uppercase tracking-wider">
-                              {categoryTag}
-                            </span>
+                            <Badge variant="secondary">{categoryTag}</Badge>
                           </div>
                           <p className="break-words text-xs leading-relaxed text-foreground select-text">
                             {item.message}
@@ -686,21 +515,16 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
                         </div>
 
                         {hasDetails && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
                             onClick={() => toggleExpand(item.id)}
                             aria-expanded={isExpanded}
                             aria-label={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
-                            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent shrink-0"
                             title={isExpanded ? t("logs.collapseDetails") : t("logs.viewDetails")}
                           >
-                            <ChevronRight
-                              className={cn(
-                                "h-3.5 w-3.5 transition-transform duration-150",
-                                isExpanded && "rotate-90"
-                              )}
-                            />
-                          </button>
+                            <ChevronRight className={cn("transition-transform duration-150", isExpanded && "rotate-90")} />
+                          </Button>
                         )}
                       </div>
 
@@ -721,36 +545,36 @@ function LogDrawerContent({ isOpen, onClose, isExiting = false }: LogDrawerConte
         </div>
 
         {/* Footer info bar */}
-        <div className="px-4 py-2 border-t border-border bg-card/60 flex items-center justify-between text-2xs text-muted-foreground font-sans">
+        <div className="flex items-center justify-between border-t border-border px-4 py-2 font-sans text-2xs text-muted-foreground">
           <span>{t("logs.shortcutHint")}</span>
           <span className="font-mono">
             {t("logs.linesCount", { current: filteredLogs.length, total: logs.length })}
           </span>
         </div>
-      </div>
-    </div>
+    </>
   );
 }
 
+// Slide-over log viewer. The shadcn Sheet traps focus, closes on Escape or the backdrop,
+// returns focus to the opener and animates out.
 export function LogDrawer({ isOpen, onClose }: LogDrawerProps) {
-  const [isRendered, setIsRendered] = React.useState(isOpen);
-  const [isExiting, setIsExiting] = React.useState(false);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsRendered(true);
-      setIsExiting(false);
-    } else if (isRendered) {
-      setIsExiting(true);
-      const timer = setTimeout(() => {
-        setIsRendered(false);
-        setIsExiting(false);
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, isRendered]);
-
-  if (!isOpen && !isRendered) return null;
-
-  return <LogDrawerContent isOpen={isOpen} onClose={onClose} isExiting={isExiting} />;
+  return (
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        data-drawer="log-drawer"
+        showCloseButton={false}
+        initialFocus={searchInputRef}
+        className="data-[side=right]:w-full data-[side=right]:sm:max-w-xl data-[side=right]:md:max-w-2xl"
+      >
+        <LogDrawerContent searchInputRef={searchInputRef} />
+      </SheetContent>
+    </Sheet>
+  );
 }
