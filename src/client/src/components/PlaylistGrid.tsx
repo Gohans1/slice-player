@@ -61,7 +61,7 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, onMix }: PlaylistGri
               )}
             </div>
             <div className="min-w-0">
-              <h3 title={pl.name} className="truncate text-sm font-medium text-foreground">
+              <h3 title={pl.name} className="truncate text-xs text-foreground">
                 {pl.name}
               </h3>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -84,7 +84,7 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, onMix }: PlaylistGri
                     <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
                   </span>
                 )}
-                <span className="shrink-0 font-mono">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
+                <span className="shrink-0 tabular-nums">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
               </p>
             </div>
           </li>
@@ -110,7 +110,7 @@ function NewTileButton({ icon: Icon, label, onClick }: { icon: typeof Plus; labe
       <span className="flex aspect-square w-full items-center justify-center rounded-lg border border-dashed text-muted-foreground transition-colors group-hover/new:border-foreground/40 group-hover/new:text-foreground group-focus-visible/new:ring-2 group-focus-visible/new:ring-ring group-focus-visible/new:ring-offset-2 group-focus-visible/new:ring-offset-background">
         <Icon className="size-8" aria-hidden="true" />
       </span>
-      <span className="truncate text-sm font-medium text-foreground">{label}</span>
+      <span className="truncate text-xs text-foreground">{label}</span>
     </button>
   );
 }

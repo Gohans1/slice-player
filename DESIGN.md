@@ -282,10 +282,10 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Như Apple Music, hàng chỉ có nút "…" (`RowActionsMenu`, luôn hiện). Ở mọi độ rộng, các hành động của hàng nằm trong menu đó: Select, Move up / Move down (chỉ khi playlist sắp xếp thủ công), Open Slice Studio (hoặc Retry với bài tải lỗi), Add to Playlist, Copy YouTube link, xoá. Đang mở menu thì hàng giữ nền hover, như context menu của macOS. Grip kéo thả của playlist nằm cạnh nút "…" và chỉ hiện khi hover / focus (`REVEAL_ON_HOVER`), như tay nắm sắp xếp bên phải hàng của iOS Music; bàn phím vẫn sắp xếp bằng phím mũi tên trên grip. Cột này không có nhãn hiển thị: header "Actions" là `sr-only`, chỉ dành cho screen reader. Trạng thái đang tải dùng `Badge` + `Spinner`.
 
 ### Grid Tiles (`MediaTile`)
-- TrackCard, SliceCard và PlaylistItemCard dùng chung `MediaTile` và `useGuardedPlayToggle`: artwork 16:9 bo góc, bên dưới là tiêu đề, phụ đề và meta font mono (`text-2xs`), bên phải là nút Studio và "…", chỉ hiện khi hover / focus như Apple Music.
+- TrackCard, SliceCard và PlaylistItemCard dùng chung `MediaTile` và `useGuardedPlayToggle`: artwork 16:9 bo góc, bên dưới là tiêu đề `text-xs` chữ thường (như tile của Apple Music), phụ đề `text-xs text-muted-foreground` và meta `text-2xs tabular-nums` (không dùng font mono), bên phải là nút Studio và "…", chỉ hiện khi hover / focus như Apple Music.
 - Bấm artwork để phát/tạm dừng; khi đang chọn nhiều thì bấm để chọn. Checkbox góc trái trên và các nút trên artwork hiện khi hover qua `REVEAL_ON_HOVER` (chỉ ẩn trên thiết bị có chuột; màn cảm ứng luôn hiện). Menu mở từ bên trong (`has-data-popup-open`) giữ chúng hiện, vì khi chuột đã vào popup thì tile hết hover. Với thành phần shadcn, `REVEAL_ON_HOVER` đặt ở `div` bọc ngoài chứ không đặt thẳng lên `Button`.
 - Lớp phủ trạng thái (queued / downloading / failed) che artwork; vạch màu lát cắt `bg-(--slice-color)` nằm ở chân artwork; `Badge` "Playing" khi đang phát.
-- Lưới ảo hoá, mỗi cột tối thiểu 240px, khe 20px (`GRID_GAP`). Tile playlist (`PlaylistGrid`) vuông: bấm cover để mở, Play / Shuffle hiện khi hover, tile viền đứt cho New Playlist / Mix Playlists.
+- Lưới ảo hoá, mỗi cột tối thiểu 240px, khe 20px (`GRID_GAP`). Tile playlist (`PlaylistGrid`) vuông, tên `text-xs` chữ thường và số mục `tabular-nums`: bấm cover để mở, Play / Shuffle hiện khi hover, tile viền đứt cho New Playlist / Mix Playlists.
 - Lần tải đầu hiện `LibrarySkeleton` có hình theo chế độ xem hiện tại (hàng hoặc tile) và đúng một `role="status"`.
 
 ### Forms & Dialogs

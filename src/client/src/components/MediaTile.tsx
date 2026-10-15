@@ -167,11 +167,11 @@ export function MediaTile({
 
       <div className="flex min-w-0 items-start gap-1">
         <div className="min-w-0 flex-1">
-          <h3 title={title} className={cn("truncate text-sm font-medium", isCurrentPlaying ? "text-primary" : "text-foreground")}>
+          <h3 title={title} className={cn("truncate text-xs", isCurrentPlaying ? "text-primary" : "text-foreground")}>
             {title}
           </h3>
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
-          <p className="truncate font-mono text-2xs text-muted-foreground">{meta}</p>
+          <p className="truncate text-2xs text-muted-foreground tabular-nums">{meta}</p>
         </div>
         <div className={cn("flex shrink-0 items-center", REVEAL_ON_HOVER)}>{actions}</div>
       </div>
