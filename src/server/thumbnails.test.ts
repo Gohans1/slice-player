@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { removeThumbnailVariants, resizedThumbnail, sweepThumbnailVariants, withResizeSlot } from "./thumbnails";
@@ -8,6 +8,16 @@ import { removeThumbnailVariants, resizedThumbnail, sweepThumbnailVariants, with
 async function coverArt(path: string, size: number) {
   const proc = Bun.spawn(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", `color=c=red:s=${size}x${size}`, "-frames:v", "1", path]);
   expect(await proc.exited).toBe(0);
+}
+
+// Holds the event loop until ffmpeg has read the cover art and begun writing its copy, so a test can act in the window
+// before the resize publishes it: the resize can't go on while the loop is held
+function holdUntilFfmpegWrites(variants: string) {
+  const deadline = Date.now() + 5_000;
+  while (!existsSync(variants) || readdirSync(variants).length === 0) {
+    if (Date.now() > deadline) throw new Error("ffmpeg never began writing");
+    Bun.sleepSync(1);
+  }
 }
 
 async function widthOf(path: string) {
@@ -79,6 +89,23 @@ describe("resizedThumbnail", () => {
     expect(readdirSync(variants)).toEqual([basename(current!)]);
   });
 
+  it("drops a copy whose cover art a restore replaced while it was being made", async () => {
+    await coverArt(source, 3000);
+    const restored = join(dir, "restored.jpg");
+    await coverArt(restored, 100);
+    const making = resizedThumbnail(source, 192, variants);
+
+    holdUntilFfmpegWrites(variants);
+    // The restore writes the backup's cover art with the backup's older date
+    renameSync(restored, source);
+    const backedUpAt = new Date(Date.now() - 86_400_000);
+    utimesSync(source, backedUpAt, backedUpAt);
+
+    // That request gets the original, which is now the restored art
+    expect(await making).toBeNull();
+    expect(await widthOf((await resizedThumbnail(source, 192, variants))!)).toBe(100);
+  });
+
   it("keeps a copy that a request may still be sending when newer cover art replaces it", async () => {
     await coverArt(source, 3000);
     const sending = await resizedThumbnail(source, 192, variants);
@@ -94,11 +121,7 @@ describe("resizedThumbnail", () => {
     await coverArt(source, 3000);
     const making = resizedThumbnail(source, 192, variants);
 
-    // Hold the event loop until ffmpeg has read the cover art and begun writing, then delete the track
-    const deadline = Date.now() + 10_000;
-    while (!existsSync(variants) || readdirSync(variants).length === 0) {
-      if (Date.now() > deadline) throw new Error("ffmpeg never started writing");
-    }
+    holdUntilFfmpegWrites(variants);
     rmSync(source);
     removeThumbnailVariants("loc_abc", variants);
 
