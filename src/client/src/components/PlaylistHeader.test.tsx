@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
 import { PlaylistHeader } from "./PlaylistHeader";
 import { usePlayerStore } from "../store/usePlayerStore";
 import i18n from "../i18n";
@@ -75,18 +74,22 @@ describe("PlaylistHeader Component (TDD)", () => {
 
   beforeEach(async () => {
     await i18n.changeLanguage("en");
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    const happyWindow = new GlobalWindow();
-    (globalThis as any).window = happyWindow;
-    (globalThis as any).document = happyWindow.document;
-    (globalThis as any).HTMLElement = happyWindow.HTMLElement;
-    (globalThis as any).HTMLInputElement = happyWindow.HTMLInputElement;
-    (globalThis as any).Event = happyWindow.Event;
-    (globalThis as any).KeyboardEvent = happyWindow.KeyboardEvent;
-    container = happyWindow.document.createElement("div") as unknown as HTMLElement;
-    happyWindow.document.body.appendChild(container as any);
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
   });
+
+  // Opens the "..." menu next to Play and Shuffle; its items render in a portal on document.body
+  const openMoreMenu = async () => {
+    const trigger = Array.from(container.querySelectorAll<HTMLElement>("button")).find((button) =>
+      button.getAttribute("aria-label")?.startsWith("More actions for")
+    );
+    await act(async () => {
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    return (testId: string) => document.querySelector<HTMLElement>(`[role="menu"] [data-testid='${testId}']`);
+  };
 
   afterEach(() => {
     act(() => root.unmount());
@@ -118,8 +121,22 @@ describe("PlaylistHeader Component (TDD)", () => {
     // Play & Shuffle buttons inside controls
     const playBtn = controls?.querySelector("[data-testid='playlist-play-btn']") as HTMLButtonElement;
     const shuffleBtn = controls?.querySelector("[data-testid='playlist-shuffle-btn']") as HTMLButtonElement;
-    expect(playBtn).not.toBeNull();
-    expect(shuffleBtn).not.toBeNull();
+    // Like Apple Music, both carry a visible label
+    expect(playBtn?.textContent).toContain("Play");
+    expect(shuffleBtn?.textContent).toContain("Shuffle");
+  });
+
+  it("starts an inline rename from the more menu", async () => {
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={mockPlaylist} items={mockItems} />);
+    });
+
+    const menuItem = await openMoreMenu();
+    await act(async () => {
+      menuItem("playlist-menu-rename")?.click();
+    });
+
+    expect(container.querySelector<HTMLInputElement>("[data-testid='playlist-inline-rename-input']")?.value).toBe("very low");
   });
 
   it("triggers buildPlaylistQueue when Play or Shuffle button is clicked", async () => {
@@ -162,15 +179,10 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(input).not.toBeNull();
     expect(input.value).toBe("very low");
 
-    // Simulate input change
-    const propsKey = Object.keys(input).find((k) => k.startsWith("__reactProps$"));
+    // Type a new name: the native setter bypasses React's value tracker so the input event reaches onChange
     await act(async () => {
-      if (propsKey) {
-        (input as any)[propsKey].onChange({ target: { value: "chill vibes" } });
-      } else {
-        input.value = "chill vibes";
-        input.dispatchEvent(new (window as any).Event("input", { bubbles: true }));
-      }
+      Reflect.set(Object.getPrototypeOf(input), "value", "chill vibes", input);
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
 
     // Save
@@ -213,11 +225,11 @@ describe("PlaylistHeader Component (TDD)", () => {
       root.render(<PlaylistHeader playlist={mockPlaylist} items={mockItems} />);
     });
 
-    const deleteBtn = container.querySelector("[data-testid='playlist-delete-btn']") as HTMLButtonElement;
-    expect(deleteBtn).not.toBeNull();
+    const deleteItem = (await openMoreMenu())("playlist-menu-delete");
+    expect(deleteItem).not.toBeNull();
 
     await act(async () => {
-      deleteBtn.click();
+      deleteItem?.click();
     });
 
     // Confirm modal should be open in document.body
@@ -242,12 +254,14 @@ describe("PlaylistHeader Component (TDD)", () => {
       root.render(<PlaylistHeader playlist={mockPlaylist} items={mockItems} />);
     });
 
-    const coverBtn = container.querySelector("[data-testid='playlist-cover-btn']") as HTMLButtonElement;
-    expect(coverBtn).not.toBeNull();
-
-    await act(async () => {
-      coverBtn.click();
-    });
+    const openCoverPicker = async () => {
+      const coverItem = (await openMoreMenu())("playlist-menu-cover");
+      expect(coverItem).not.toBeNull();
+      await act(async () => {
+        coverItem?.click();
+      });
+    };
+    await openCoverPicker();
 
     // 1. Set track as cover
     const trackOption = document.body.querySelector("[data-testid='cover-option-track_1']") as HTMLElement;
@@ -260,9 +274,7 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(setPlaylistCover).toHaveBeenCalledWith("pl_1", "track_1");
 
     // 2. Open again and reset to auto mosaic
-    await act(async () => {
-      coverBtn.click();
-    });
+    await openCoverPicker();
 
     const resetOption = document.body.querySelector("[data-testid='cover-option-reset']") as HTMLElement;
     expect(resetOption).not.toBeNull();
@@ -302,11 +314,17 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(header?.textContent).toContain("Mix");
     expect(header?.textContent).toContain("Chill Tracks · Gym Pump");
 
-    // Rename and cover buttons should be hidden for mix playlist
-    expect(container.querySelector("[data-testid='playlist-rename-btn']")).toBeNull();
-    expect(container.querySelector("[data-testid='playlist-toolbar-rename-btn']")).toBeNull();
-    expect(container.querySelector("[data-testid='playlist-cover-btn']")).toBeNull();
-    expect(container.querySelector("[data-testid='playlist-cover-hover-btn']")).toBeNull();
+    // Rename and cover options should be hidden for mix playlist
+    expect(container.querySelectorAll("[data-testid='playlist-rename-btn']").length).toBe(0);
+    expect(container.querySelectorAll("[data-testid='playlist-cover-hover-btn']").length).toBe(0);
+    const menuItem = await openMoreMenu();
+    expect(menuItem("playlist-menu-rename") === null).toBe(true);
+    expect(menuItem("playlist-menu-cover") === null).toBe(true);
+    expect(menuItem("playlist-menu-delete") === null).toBe(false);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
 
     // Edit sources button exists and triggers callback
     const editSourcesBtn = Array.from(container.querySelectorAll("button")).find((b) =>
@@ -365,7 +383,7 @@ describe("PlaylistHeader Component (TDD)", () => {
       root.render(<PlaylistHeader playlist={childPlaylist} items={mockItems} />);
     });
 
-    const breadcrumb = container.querySelector("[aria-label='Breadcrumb']");
+    const breadcrumb = container.querySelector("[data-slot='breadcrumb']");
     expect(breadcrumb).not.toBeNull();
     expect(breadcrumb?.textContent).toContain("Rock Parent");
     expect(breadcrumb?.textContent).toContain("Guitar Solos");

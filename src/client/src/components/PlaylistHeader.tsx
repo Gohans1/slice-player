@@ -1,13 +1,30 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Combine, FolderTree, ImageIcon, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
+import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, cn } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./Modal";
+import { Badge } from "./ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "./ui/breadcrumb";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { Input } from "./ui/input";
 import type { Playlist, PlaylistItemWithDetails } from "@/server/types";
 
 interface PlaylistHeaderProps {
@@ -40,6 +57,8 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isCoverModalOpen, setIsCoverModalOpen] = React.useState(false);
   const [isCreateSubModalOpen, setIsCreateSubModalOpen] = React.useState(false);
+  // Renaming from the "..." menu: the menu hands focus to the field instead of back to its trigger
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   const parentPlaylist = React.useMemo(() => {
     if (!playlist.parent_id) return null;
@@ -123,17 +142,11 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
 
   return (
     <>
-      <section
-        data-testid="playlist-header"
-        className="mb-6 rounded-2xl bg-gradient-to-b from-secondary/70 to-transparent p-4 sm:p-5 flex flex-col gap-4 border border-border/40 shadow-xs"
-      >
-        {/* Top Block: Cover + Info */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-5 min-w-0">
-          <div className="relative group shrink-0 self-start sm:self-auto">
-            <PlaylistCover
-              playlist={playlist}
-              className="w-28 sm:w-36 rounded-xl shadow-xl shadow-black/50 aspect-square"
-            />
+      {/* Apple Music style: artwork, a large title, labelled Play and Shuffle, and a "..." menu */}
+      <section data-testid="playlist-header" className="mb-6 flex flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end">
+          <div className="group relative shrink-0 self-start sm:self-auto">
+            <PlaylistCover playlist={playlist} className="aspect-square w-36 rounded-xl shadow-xl shadow-black/50 sm:w-48" />
             {!playlist.is_mix && (
               <button
                 type="button"
@@ -141,9 +154,9 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 data-testid="playlist-cover-hover-btn"
                 title={t("playlist.changeCover", "Đổi ảnh bìa")}
                 aria-label={t("playlist.changeCover", "Đổi ảnh bìa")}
-                className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity rounded-xl text-white font-semibold text-xs gap-1 cursor-pointer focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl bg-black/60 text-xs font-semibold text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
-                <ImageIcon className="h-5 w-5" />
+                <ImageIcon className="size-5" />
                 <span>{t("playlist.changeCover", "Đổi bìa")}</span>
               </button>
             )}
@@ -151,29 +164,32 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
 
           <div className="min-w-0 flex-1">
             {parentPlaylist ? (
-              <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium mb-1.5 flex-wrap">
-                <FolderTree className="h-3.5 w-3.5 text-flexoki-purple shrink-0" aria-hidden="true" />
-                <button
-                  type="button"
-                  onClick={() => setActivePlaylist(parentPlaylist.id)}
-                  className="hover:text-foreground hover:underline transition-colors cursor-pointer truncate max-w-[200px]"
-                >
-                  {parentPlaylist.name}
-                </button>
-                <span className="text-muted-foreground/60 select-none">/</span>
-                <span className="text-foreground truncate font-semibold" aria-current="page">
-                  {playlist.name}
-                </span>
-              </nav>
+              <Breadcrumb className="mb-1.5">
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <FolderTree className="size-3.5 text-flexoki-purple" aria-hidden="true" />
+                    <BreadcrumbLink
+                      render={<button type="button" onClick={() => setActivePlaylist(parentPlaylist.id)} />}
+                    >
+                      {parentPlaylist.name}
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{playlist.name}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
             ) : (
-              <span className="text-2xs uppercase tracking-wider font-bold text-primary mb-1 block">
+              <span className="mb-1 block text-2xs font-bold tracking-wider text-primary uppercase">
                 {playlist.is_mix ? t("mixPlaylist.badge", "Mix Playlist") : t("playlist.customBadge", "Playlist")}
               </span>
             )}
 
             {isEditingName ? (
-              <form onSubmit={handleSaveRename} className="flex items-center gap-2 max-w-md my-1">
-                <input
+              <form onSubmit={handleSaveRename} className="my-1 flex max-w-md items-center gap-2">
+                <Input
+                  ref={renameInputRef}
                   type="text"
                   autoFocus
                   id="playlist-rename-input"
@@ -183,48 +199,44 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                   onChange={(e) => setEditingName(e.target.value)}
                   onKeyDown={handleKeyDownRename}
                   aria-label={t("playlist.renameAria", "Tên danh sách phát")}
-                  className="w-full rounded-md border border-primary/50 bg-background px-3 py-1.5 text-base sm:text-xl font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 />
                 <Button
                   type="submit"
-                  size="sm"
-                  variant="default"
+                  size="icon-lg"
                   data-testid="playlist-rename-save-btn"
                   title={t("playlist.save", "Lưu")}
                   aria-label={t("playlist.save", "Lưu")}
-                  className="shrink-0 h-9 px-3 gap-1 cursor-pointer"
                 >
-                  <Check className="h-4 w-4" />
+                  <Check />
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
                   variant="ghost"
+                  size="icon-lg"
                   onClick={handleCancelRename}
                   data-testid="playlist-rename-cancel-btn"
                   title={t("playlist.cancel", "Hủy")}
                   aria-label={t("playlist.cancel", "Hủy")}
-                  className="shrink-0 h-9 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  <X className="h-4 w-4" />
+                  <X />
                 </Button>
               </form>
             ) : (
-              <div className="flex items-center gap-2 group/title flex-wrap">
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-foreground text-balance break-words">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-extrabold tracking-tight text-balance break-words text-foreground sm:text-3xl lg:text-4xl">
                   {playlist.name}
                 </h2>
                 {!playlist.is_mix && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleStartRename}
                     data-testid="playlist-rename-btn"
                     title={t("playlist.rename", "Đổi tên")}
                     aria-label={t("playlist.rename", "Đổi tên")}
-                    className="p-1.5 rounded-lg border border-transparent hover:border-border text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
                   >
-                    <Pencil className="h-4 w-4" />
-                  </button>
+                    <Pencil />
+                  </Button>
                 )}
               </div>
             )}
@@ -234,147 +246,119 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
             {playlist.is_mix && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="flex min-w-0 items-center gap-1.5 font-semibold text-flexoki-magenta">
-                  <Combine className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <Combine className="size-3.5 shrink-0" aria-hidden="true" />
                   <span className="truncate">{t("mixPlaylist.sources", { names: sourceNames })}</span>
                 </span>
                 {onEditSources && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={onEditSources}
                     aria-label={t("mixPlaylist.editSourcesNamed", { name: playlist.name })}
-                    className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 font-semibold text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
                   >
-                    <Pencil className="h-3 w-3" aria-hidden="true" />
+                    <Pencil data-icon="inline-start" />
                     {t("mixPlaylist.editSources")}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Bottom Row: Controls & Actions Row (Spotify + Actions Toolbar) */}
-        <div
-          data-testid="playlist-controls-row"
-          className="flex flex-wrap items-center gap-3 pt-2 border-t border-border/40"
-        >
-          {/* Primary Play & Shuffle Buttons */}
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              disabled={count === 0}
-              onClick={() => buildPlaylistQueue(playlist.id, false)}
-              data-testid="playlist-play-btn"
-              aria-label={t("playlist.playNamed", { name: playlist.name })}
-              title={t("playlist.playNamed", { name: playlist.name })}
-              className="flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-black/40 hover:scale-105 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-transform motion-reduce:transform-none cursor-pointer"
-            >
-              <Play className="h-5 w-5 fill-current translate-x-px" />
-            </button>
-            <button
-              type="button"
-              disabled={count === 0}
-              onClick={() => buildPlaylistQueue(playlist.id, true)}
-              data-testid="playlist-shuffle-btn"
-              aria-label={t("playlist.shuffleTooltip", { name: playlist.name })}
-              title={t("playlist.shuffleTooltip", { name: playlist.name })}
-              className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border border-border bg-card text-flexoki-green hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer transition-transform hover:scale-105 motion-reduce:transform-none"
-            >
-              <Shuffle className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="h-5 w-px bg-border/60 mx-1 hidden sm:block" />
-
-          {/* Action Toolbar Buttons */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {!playlist.is_mix && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleStartRename}
-                  disabled={isEditingName}
-                  data-testid="playlist-toolbar-rename-btn"
-                  className="h-8 gap-1.5 text-xs border-border/80 text-foreground hover:bg-secondary cursor-pointer"
+            <div data-testid="playlist-controls-row" className="mt-4 flex flex-wrap items-center gap-2">
+              <Button
+                size="lg"
+                disabled={count === 0}
+                onClick={() => buildPlaylistQueue(playlist.id, false)}
+                data-testid="playlist-play-btn"
+                aria-label={t("playlist.playNamed", { name: playlist.name })}
+                title={t("playlist.playNamed", { name: playlist.name })}
+              >
+                <Play data-icon="inline-start" className="fill-current" />
+                {t("playlist.play", "Play")}
+              </Button>
+              <Button
+                variant="secondary"
+                size="lg"
+                disabled={count === 0}
+                onClick={() => buildPlaylistQueue(playlist.id, true)}
+                data-testid="playlist-shuffle-btn"
+                aria-label={t("playlist.shuffleTooltip", { name: playlist.name })}
+                title={t("playlist.shuffleTooltip", { name: playlist.name })}
+              >
+                <Shuffle data-icon="inline-start" />
+                {t("playlist.shuffle", "Shuffle")}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label={t("playlist.moreActions", { name: playlist.name })}
+                  title={t("playlist.moreActions", { name: playlist.name })}
+                  render={<Button variant="ghost" size="icon-lg" />}
                 >
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>{t("playlist.rename", "Đổi tên")}</span>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsCoverModalOpen(true)}
-                  data-testid="playlist-cover-btn"
-                  className="h-8 gap-1.5 text-xs border-border/80 text-foreground hover:bg-secondary cursor-pointer"
-                >
-                  <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>{t("playlist.changeCover", "Đổi ảnh bìa")}</span>
-                </Button>
-              </>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsDeleteModalOpen(true)}
-              data-testid="playlist-delete-btn"
-              className="h-8 gap-1.5 text-xs border-border/80 text-destructive/90 hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 cursor-pointer"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>{t("playlist.delete", "Xóa playlist")}</span>
-            </Button>
+                  <MoreHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48" finalFocus={renameInputRef}>
+                  {!playlist.is_mix && (
+                    <>
+                      <DropdownMenuItem data-testid="playlist-menu-rename" onClick={handleStartRename}>
+                        <Pencil />
+                        {t("playlist.rename", "Đổi tên")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem data-testid="playlist-menu-cover" onClick={() => setIsCoverModalOpen(true)}>
+                        <ImageIcon />
+                        {t("playlist.changeCover", "Đổi ảnh bìa")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem
+                    variant="destructive"
+                    data-testid="playlist-menu-delete"
+                    onClick={() => setIsDeleteModalOpen(true)}
+                  >
+                    <Trash2 />
+                    {t("playlist.delete", "Xóa playlist")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
         {/* Sub-Playlists Navigation Bar (Parent View) */}
         {!playlist.is_mix && !playlist.parent_id && (
-          <div
-            data-testid="sub-playlists-bar"
-            className="pt-3 border-t border-border/40 flex flex-col gap-2"
-          >
+          <div data-testid="sub-playlists-bar" className="flex flex-col gap-2 border-t border-border/40 pt-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                <FolderTree className="h-3.5 w-3.5 text-flexoki-purple" aria-hidden="true" />
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <FolderTree className="size-3.5 text-flexoki-purple" aria-hidden="true" />
                 {t("playlist.subPlaylists", "Sub-playlists")}
-                {childPlaylists.length > 0 && (
-                  <span className="text-2xs rounded-full bg-secondary px-1.5 py-0.5 text-muted-foreground font-mono">
-                    {childPlaylists.length}
-                  </span>
-                )}
+                {childPlaylists.length > 0 && <Badge variant="secondary">{childPlaylists.length}</Badge>}
               </span>
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
                 onClick={() => setIsCreateSubModalOpen(true)}
                 data-testid="create-sub-playlist-btn"
-                className="h-7 px-2 text-xs text-flexoki-purple hover:text-flexoki-purple hover:bg-flexoki-purple/10 gap-1 cursor-pointer font-medium"
               >
-                <Plus className="h-3.5 w-3.5" />
-                <span>{t("playlist.newSubPlaylist", "New Sub-playlist")}</span>
+                <Plus data-icon="inline-start" />
+                {t("playlist.newSubPlaylist", "New Sub-playlist")}
               </Button>
             </div>
 
             {childPlaylists.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {childPlaylists.map((child) => (
-                  <button
+                  <Button
                     key={child.id}
-                    type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setActivePlaylist(child.id)}
                     data-testid={`sub-playlist-pill-${child.id}`}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary/80 hover:bg-secondary border border-border text-foreground hover:border-flexoki-purple/50 transition-colors cursor-pointer group"
                   >
-                    <FolderTree className="h-3 w-3 text-flexoki-purple group-hover:scale-110 transition-transform" aria-hidden="true" />
-                    <span className="truncate max-w-[150px]">{child.name}</span>
+                    <FolderTree data-icon="inline-start" className="text-flexoki-purple" aria-hidden="true" />
+                    <span className="max-w-40 truncate">{child.name}</span>
                     {child.item_count !== undefined && (
-                      <span className="text-2xs font-mono text-muted-foreground group-hover:text-foreground">
-                        {child.item_count}
-                      </span>
+                      <span className="font-mono text-muted-foreground">{child.item_count}</span>
                     )}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
