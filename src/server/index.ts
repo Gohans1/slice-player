@@ -777,32 +777,34 @@ const server = serve({
         const allowedThumbsDir = resolve("./data/cache/thumbs");
         // A slot size (?size=small|large) gets a copy scaled to it; without one, or if scaling fails, the original
         const size = url.searchParams.get("size");
-        for (const ext of [".jpg", ".png", ".webp"]) {
-          const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
-          if (isSubdirectoryOf(allowedThumbsDir, thumbPath) && existsSync(thumbPath)) {
-            const servedPath =
-              (isThumbnailSize(size) && (await resizedThumbnail(thumbPath, THUMBNAIL_WIDTHS[size], resolve(THUMBNAIL_VARIANTS_DIR)))) ||
-              thumbPath;
-            const ct = servedPath !== thumbPath ? "image/jpeg" : ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-            const stat = statSync(servedPath);
-            const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
-            const headers = {
-              ...corsHeaders,
-              "Content-Type": ct,
-              "Content-Length": String(stat.size),
-              "ETag": etag,
-              "Cache-Control": "public, max-age=86400",
-            };
-            if (req.headers.get("if-none-match") === etag) {
-              return new Response(null, { status: 304, headers });
-            }
-            if (req.method === "HEAD") {
-              return new Response(null, { headers });
-            }
-            return new Response(bunFile(servedPath), { headers });
-          }
+        const ext = [".jpg", ".png", ".webp"].find((candidate) => {
+          const candidatePath = resolve(allowedThumbsDir, `${thumbId}${candidate}`);
+          return isSubdirectoryOf(allowedThumbsDir, candidatePath) && existsSync(candidatePath);
+        });
+        if (!ext) {
+          return new Response("Thumbnail not found", { status: 404, headers: corsHeaders });
         }
-        return new Response("Thumbnail not found", { status: 404, headers: corsHeaders });
+        const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
+        const servedPath =
+          (isThumbnailSize(size) && (await resizedThumbnail(thumbPath, THUMBNAIL_WIDTHS[size], resolve(THUMBNAIL_VARIANTS_DIR)))) ||
+          thumbPath;
+        const ct = servedPath !== thumbPath ? "image/jpeg" : ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+        const stat = statSync(servedPath);
+        const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
+        const headers = {
+          ...corsHeaders,
+          "Content-Type": ct,
+          "Content-Length": String(stat.size),
+          "ETag": etag,
+          "Cache-Control": "public, max-age=86400",
+        };
+        if (req.headers.get("if-none-match") === etag) {
+          return new Response(null, { status: 304, headers });
+        }
+        if (req.method === "HEAD") {
+          return new Response(null, { headers });
+        }
+        return new Response(bunFile(servedPath), { headers });
       }
 
       // 4. Segments API
