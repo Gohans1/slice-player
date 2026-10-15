@@ -241,4 +241,26 @@ describe("TrackThumbnail Component", () => {
     expect(img).not.toBeNull();
     expect(img.src).toBe("https://i.ytimg.com/vi/trk_b/maxresdefault.jpg");
   });
+
+  it("loads YouTube's 320px thumbnail in small slots", () => {
+    const jpg = renderToStaticMarkup(<TrackThumbnail size="small" src="https://i.ytimg.com/vi/test_id/maxresdefault.jpg" />);
+    const webp = renderToStaticMarkup(<TrackThumbnail size="small" src="https://i.ytimg.com/vi_webp/test_id/maxresdefault.webp" />);
+    const local = renderToStaticMarkup(<TrackThumbnail size="small" src="/api/thumbnails/local_1.jpg" />);
+
+    expect(jpg).toContain('src="https://i.ytimg.com/vi/test_id/mqdefault.jpg"');
+    expect(webp).toContain('src="https://i.ytimg.com/vi_webp/test_id/mqdefault.webp"');
+    expect(local).toContain('src="/api/thumbnails/local_1.jpg"');
+  });
+
+  it("falls back to the original thumbnail when a small slot's thumbnail fails", () => {
+    act(() => {
+      root.render(<TrackThumbnail size="small" src="https://i.ytimg.com/vi/test_123/maxresdefault.jpg" />);
+    });
+
+    act(() => {
+      container.querySelector("img").dispatchEvent(new window.Event("error"));
+    });
+
+    expect(container.querySelector("img").src).toBe("https://i.ytimg.com/vi/test_123/maxresdefault.jpg");
+  });
 });

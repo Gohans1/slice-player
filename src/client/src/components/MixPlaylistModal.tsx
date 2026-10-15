@@ -106,7 +106,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
                         onCheckedChange={() => toggle(pl.id)}
                         disabled={isSubmitting}
                       />
-                      <PlaylistCover playlist={pl} className="w-9 shrink-0 rounded-md" />
+                      <PlaylistCover playlist={pl} thumbnailSize="small" className="w-9 shrink-0 rounded-md" />
                       <FieldContent className="min-w-0">
                         <FieldTitle>{pl.name}</FieldTitle>
                         <FieldDescription>{t("playlist.itemCount", { count: pl.item_count || 0 })}</FieldDescription>

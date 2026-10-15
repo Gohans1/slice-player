@@ -383,6 +383,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             <TrackThumbnail
               key={activeTrack.id}
               src={activeTrack.thumbnail_url}
+              size="small"
               alt={activeTrack.title}
               className="h-full w-full object-cover"
               loading="eager"

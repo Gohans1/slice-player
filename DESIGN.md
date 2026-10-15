@@ -301,6 +301,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - **Do** giữ thanh điều khiển PlayerBar ở vị trí `fixed bottom-0` để người dùng có thể thao tác nhạc từ bất kỳ đâu.
 - **Do** áp dụng `pointer-events-none` và `user-select: none` cho các thành phần kéo thả thumbnail để tránh lỗi kéo nhầm hình ảnh của trình duyệt.
 - **Do** gán màu lát cắt (`activeSegment.color`) trực tiếp vào vạch màu thumbnail và thanh tiến trình để tạo dấu ấn thị giác nhận diện đoạn nhạc.
+- **Do** dùng `TrackThumbnail size="small"` (hoặc `PlaylistCover thumbnailSize="small"`) cho ô ảnh nhỏ: hàng bảng, queue, PlayerBar, danh sách. Với YouTube nó tải bản 320px `mqdefault` thay vì `maxresdefault` 1280px (nhẹ hơn khoảng 8 lần), lỗi thì quay về ảnh gốc. Tile grid và header playlist giữ ảnh lớn.
 
 ### Don't:
 - **Don't** sử dụng nền trắng tinh (`#FFFFFF`) hoặc xám lạnh thông thường; toàn bộ bề mặt phải thuộc 14 nấc màu Base Flexoki ấm.

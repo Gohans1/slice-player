@@ -8,9 +8,16 @@ interface TrackThumbnailProps {
   className?: string;
   loading?: "lazy" | "eager";
   fallback?: React.ReactNode;
+  // "small" for slots a few dozen pixels wide: table rows, the queue, the player bar, the sidebar
+  size?: "small" | "large";
 }
 
 const HIGH_RES_THUMB_REGEX = /\/(?:maxresdefault|hq720|sddefault)(\.[a-zA-Z0-9]+(?:\?.*)?)$/i;
+
+// YouTube serves each video's thumbnail in several sizes under one path. Small slots load the 320px
+// "mqdefault": 16:9 like the original, and about 8x fewer bytes than the 1280px maxresdefault.
+const YOUTUBE_THUMB_REGEX = /^(https:\/\/i\.ytimg\.com\/vi(?:_webp)?\/[\w-]+\/)\w+(\.(?:jpg|webp))$/i;
+const smallYoutubeThumbnail = (url: string) => url.replace(YOUTUBE_THUMB_REGEX, "$1mqdefault$2");
 
 const isAllowedUrl = (url?: string): boolean =>
   Boolean(url && (/^https?:\/\//i.test(url) || url.startsWith("/")));
@@ -21,19 +28,21 @@ export function TrackThumbnail({
   className = "w-full h-full object-cover",
   loading = "lazy",
   fallback,
+  size = "large",
 }: TrackThumbnailProps) {
   const cleanSrc = React.useMemo(() => (isAllowedUrl(src?.trim()) ? src!.trim() : undefined), [src]);
-  const [prevSrc, setPrevSrc] = React.useState(cleanSrc);
-  const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(cleanSrc);
-  const [isFailed, setIsFailed] = React.useState(!cleanSrc);
+  const preferredSrc = cleanSrc && size === "small" ? smallYoutubeThumbnail(cleanSrc) : cleanSrc;
+  const [prevSrc, setPrevSrc] = React.useState(preferredSrc);
+  const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(preferredSrc);
+  const [isFailed, setIsFailed] = React.useState(!preferredSrc);
   const [isLoaded, setIsLoaded] = React.useState(false);
   const imgRef = React.useRef<HTMLImageElement>(null);
 
   // Synchronously reset state during render when src prop changes to avoid 1-frame stale image flicker
-  if (cleanSrc !== prevSrc) {
-    setPrevSrc(cleanSrc);
-    setCurrentSrc(cleanSrc);
-    setIsFailed(!cleanSrc);
+  if (preferredSrc !== prevSrc) {
+    setPrevSrc(preferredSrc);
+    setCurrentSrc(preferredSrc);
+    setIsFailed(!preferredSrc);
     setIsLoaded(false);
   }
 
@@ -53,8 +62,12 @@ export function TrackThumbnail({
   }, [currentSrc]);
 
   const handleError = () => {
-    // If high-res thumbnail fails, fall back to reliable hqdefault
-    if (currentSrc && HIGH_RES_THUMB_REGEX.test(currentSrc)) {
+    // A small slot's thumbnail failed: try the original, then its fallbacks
+    if (cleanSrc && currentSrc === preferredSrc && preferredSrc !== cleanSrc) {
+      setCurrentSrc(cleanSrc);
+      setIsLoaded(false);
+    } else if (currentSrc && HIGH_RES_THUMB_REGEX.test(currentSrc)) {
+      // If high-res thumbnail fails, fall back to reliable hqdefault
       setCurrentSrc(currentSrc.replace(HIGH_RES_THUMB_REGEX, "/hqdefault$1"));
       setIsLoaded(false);
     } else {

@@ -222,6 +222,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
           <div className="relative size-10 rounded overflow-hidden bg-muted shrink-0">
             <TrackThumbnail
               src={item.track.thumbnail_url}
+              size="small"
               alt={item.track.title}
               className="h-full w-full object-cover select-none pointer-events-none"
               fallback={

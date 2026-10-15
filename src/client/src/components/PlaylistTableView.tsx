@@ -90,7 +90,7 @@ const ROW_ACTIONS_CLASS =
 function TableArtwork({ track, sliceColor }: { track?: Track | null; sliceColor?: string }) {
   return (
     <div className="relative aspect-video h-8 shrink-0 overflow-hidden rounded bg-muted">
-      <TrackThumbnail src={track?.thumbnail_url} className="size-full object-cover" />
+      <TrackThumbnail src={track?.thumbnail_url} size="small" className="size-full object-cover" />
       {sliceColor && (
         <div
           data-slot="slice-color"
