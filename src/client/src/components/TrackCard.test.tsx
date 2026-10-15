@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
+import { createAppRoot } from "../test/app-root";
 import { TrackCard } from "./TrackCard";
 import { usePlayerStore } from "../store/usePlayerStore";
 import type { Segment, Track } from "@/server/types";
@@ -15,7 +16,7 @@ describe("TrackCard", () => {
     await i18n.changeLanguage("en");
     container = document.createElement("div");
     document.body.appendChild(container);
-    root = createRoot(container);
+    root = createAppRoot(container);
   });
 
   afterEach(() => {

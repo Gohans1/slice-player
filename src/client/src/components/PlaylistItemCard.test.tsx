@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { Root } from "react-dom/client";
+import { createAppRoot } from "../test/app-root";
 import { PlaylistItemCardComponent } from "./PlaylistItemCard";
 import { usePlayerStore } from "../store/usePlayerStore";
 import i18n from "../i18n";
@@ -57,7 +58,7 @@ describe("PlaylistItemCardComponent", () => {
     await i18n.changeLanguage("en");
     container = document.createElement("div");
     document.body.appendChild(container);
-    root = createRoot(container);
+    root = createAppRoot(container);
   });
 
   afterEach(() => {

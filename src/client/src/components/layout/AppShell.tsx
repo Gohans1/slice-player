@@ -2,6 +2,7 @@ import * as React from "react";
 import { AppSidebar } from "./AppSidebar";
 import { SidebarProvider } from "../ui/sidebar";
 import { TooltipProvider } from "../ui/tooltip";
+import { RowActionsMenuProvider } from "../RowActionsMenu";
 import { useMediaQuery, WIDE_LAYOUT_QUERY } from "../../hooks/use-media-query";
 
 interface AppShellProps extends Omit<React.ComponentProps<typeof AppSidebar>, "className"> {
@@ -21,11 +22,13 @@ export function AppShell({ children, ...sidebarProps }: AppShellProps) {
 
   return (
     <TooltipProvider>
-      <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-        {/* The docked player bar spans the full width, so the sidebar stops above it */}
-        <AppSidebar {...sidebarProps} className="bottom-[var(--player-bar-height,0px)] h-auto" />
-        {children}
-      </SidebarProvider>
+      <RowActionsMenuProvider>
+        <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+          {/* The docked player bar spans the full width, so the sidebar stops above it */}
+          <AppSidebar {...sidebarProps} className="bottom-[var(--player-bar-height,0px)] h-auto" />
+          {children}
+        </SidebarProvider>
+      </RowActionsMenuProvider>
     </TooltipProvider>
   );
 }

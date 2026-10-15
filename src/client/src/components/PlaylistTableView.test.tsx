@@ -21,7 +21,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
 
 import * as React from "react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createAppRoot } from "../test/app-root";
 import { GlobalWindow } from "happy-dom";
 import { PlaylistTableView, type MixedItem } from "./PlaylistTableView";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -128,7 +128,7 @@ describe("PlaylistTableView", () => {
 
     container = window.document.createElement("div");
     window.document.body.appendChild(container);
-    root = createRoot(container);
+    root = createAppRoot(container);
 
     usePlayerStore.setState({
       activePlaylistId: null,
