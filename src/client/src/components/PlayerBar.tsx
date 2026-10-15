@@ -422,7 +422,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                 {isShuffle && <Shuffle aria-hidden="true" />}
                 {isFromSearch && <Search aria-hidden="true" />}
                 <span className="min-w-0 truncate">{playingPlaylistName}</span>
-                {isFromSearch && <span className="shrink-0 font-mono">({searchCount})</span>}
+                {isFromSearch && <span className="shrink-0 font-mono">({formatNumber(searchCount)})</span>}
               </Button>
               {displayPlaylists.length > 0 && (
                 <div role="group" className="flex flex-wrap items-center gap-1" aria-label={t("player.playlistsTagLabel", "Playlists")}>
@@ -445,7 +445,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                   ))}
                   {displayPlaylists.length > 2 && (
                     <Badge variant="outline" title={displayPlaylists.slice(2).map((p) => p.name).join(", ")}>
-                      +{displayPlaylists.length - 2}
+                      +{formatNumber(displayPlaylists.length - 2)}
                     </Badge>
                   )}
                 </div>
