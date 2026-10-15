@@ -7,13 +7,14 @@ import {
   getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listSegmentsByTrackIds, listAllSegments, validateVolume,
   createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist, setPlaylistCover, createMixPlaylist, setMixSources,
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
-  getPlaylistMemberships, getCrossPlatformBasename, getDb, getChildPlaylistIds
+  getPlaylistMemberships, getDb, getChildPlaylistIds
 } from "./db";
 import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
 import { forwardServerEvents } from "./websocketEvents";
 import { runLibraryRequest } from "./libraryRequests";
+import { resolveAudioSource } from "./audioSource";
 import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
@@ -678,23 +679,9 @@ const server = serve({
           return new Response("Audio file not available or not downloaded yet", { status: 404, headers: corsHeaders });
         }
 
-        let targetFilePath = track.file_path;
-        const pathCheck = validateSafeLocalAudioPath(targetFilePath);
-        if (!pathCheck.ok) {
-          return new Response("Invalid or forbidden audio file path", { status: 403, headers: corsHeaders });
-        }
-        let audioFile = bunFile(targetFilePath);
-        if (!(await audioFile.exists())) {
-          const localCandidate = resolve(join("./data/cache/audio", getCrossPlatformBasename(targetFilePath)));
-          const candidateCheck = validateSafeLocalAudioPath(localCandidate);
-          if (candidateCheck.ok && existsSync(localCandidate)) {
-            updateTrack(track.id, { file_path: localCandidate });
-            targetFilePath = localCandidate;
-            audioFile = bunFile(targetFilePath);
-          } else {
-            return new Response("Audio file missing on disk", { status: 404, headers: corsHeaders });
-          }
-        }
+        const source = await resolveAudioSource(track.file_path);
+        if ("error" in source) return new Response(source.error, { status: source.status, headers: corsHeaders });
+        const { path: targetFilePath, file: audioFile } = source;
 
         const ext = extname(targetFilePath).toLowerCase();
         const allowedAudioExts = new Set<string>(SUPPORTED_AUDIO_EXTENSIONS);
