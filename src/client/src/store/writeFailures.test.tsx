@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Toaster, toast } from "../components/ui/toast";
-import { usePlayerStore } from "./usePlayerStore";
+import { flushTrackVolume, usePlayerStore } from "./usePlayerStore";
 import { useLogStore } from "./useLogStore";
 import i18n from "../i18n";
 import type { Playlist } from "@/server/types";
@@ -119,6 +119,17 @@ describe("failed changes", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0].message).toContain("Failed to add to playlist");
     expect(logged[0].message).toContain("HTTP 403");
+  });
+
+  it("tells the user when the volume saved on closing Slice Studio fails", async () => {
+    serverResponds(500);
+
+    // Closing Studio flushes a volume change still waiting out its debounce
+    void usePlayerStore.getState().setTrackVolume("trk_1", 0.8);
+    await settle(() => flushTrackVolume("trk_1"));
+
+    expect(shownToasts()).toHaveLength(1);
+    expect(shownToasts()[0].textContent).toContain("Failed to save track volume");
   });
 
   it("leaves a failed new playlist to its dialog, which shows the error itself", async () => {

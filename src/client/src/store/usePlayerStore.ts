@@ -142,23 +142,26 @@ interface DebounceRecord {
   volume: number;
 }
 
+// A pending record also tells fetchTracks to keep the local volume, so it stays until the save settles
 const trackVolumeDebounceTimers = new Map<string, DebounceRecord>();
+
+function saveTrackVolume(trackId: string, volume: number) {
+  return sendChange("trackVolume", `/api/tracks/${encodeURIComponent(trackId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ volume }),
+    keepalive: true,
+  });
+}
+
 
 export async function flushTrackVolume(trackId: string): Promise<void> {
   const existing = trackVolumeDebounceTimers.get(trackId);
   if (existing) {
     clearTimeout(existing.timer);
     existing.resolve();
-    const vol = existing.volume;
     try {
-      await fetch(`/api/tracks/${encodeURIComponent(trackId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ volume: vol }),
-        keepalive: true,
-      });
-    } catch (e) {
-      console.error("[Store] Failed to flush track volume:", e);
+      await saveTrackVolume(trackId, existing.volume);
     } finally {
       trackVolumeDebounceTimers.delete(trackId);
     }
@@ -179,12 +182,7 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   return new Promise((resolve) => {
     const timer = setTimeout(async () => {
       try {
-        await sendChange("trackVolume", `/api/tracks/${encodeURIComponent(trackId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ volume: safe }),
-          keepalive: true,
-        });
+        await saveTrackVolume(trackId, safe);
       } finally {
         trackVolumeDebounceTimers.delete(trackId);
         resolve();
