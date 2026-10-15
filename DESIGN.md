@@ -267,6 +267,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 
 ### Song Table (List view)
 - `PlaylistTableView`: hàng ảo hoá cao 50px, thumbnail 16:9 cao 32px, tiêu đề + nghệ sĩ, nhãn loại (`Badge`), thời lượng font mono. Chọn nhiều bằng `Checkbox` (ô ở header có trạng thái indeterminate).
+- Cột thứ 3 (nhãn loại / bài gốc / số slice) chỉ hiện khi **chính bảng** rộng từ 48rem (container query `@3xl`, `@container` gắn trên `role="table"`), không theo viewport: cạnh sidebar và queue, viewport 1280px chỉ chừa cho bảng khoảng 630px. Khi cột bài gốc bị ẩn, dòng phụ "From: …" dưới tên slice thay thế nó.
 - Hành động phụ (thêm vào playlist, copy link, xoá) nằm trong `RowActionsMenu` (nút "…" mở `DropdownMenu`). Trạng thái đang tải dùng `Badge` + `Spinner`.
 
 ### Grid Tiles (`MediaTile`)

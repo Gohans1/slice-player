@@ -72,10 +72,12 @@ function tableRowClassName(
   );
 }
 
-// Phones keep the number, the title, the duration (it also carries download status) and the "..." menu
-const PLAYLIST_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[80px_minmax(0,1fr)_180px_90px_128px]";
-const LIBRARY_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_180px_90px_104px]";
-const TRACKS_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_160px_100px_104px]";
+// Phones keep the number, the title, the duration (it also carries download status) and the "..." menu.
+// The third column (type, original track or slice count) waits for the table itself to be 48rem wide:
+// beside the sidebar and the queue panel the viewport is wide but the table is not, and the title would starve.
+const PLAYLIST_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[80px_minmax(0,1fr)_90px_128px] @3xl:grid-cols-[80px_minmax(0,1fr)_180px_90px_128px]";
+const LIBRARY_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_90px_104px] @3xl:grid-cols-[56px_minmax(0,1fr)_180px_90px_104px]";
+const TRACKS_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_100px_104px] @3xl:grid-cols-[56px_minmax(0,1fr)_160px_100px_104px]";
 
 const TABLE_HEADER_CLASS =
   "grid items-center gap-x-2 border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground sm:gap-x-4";
@@ -1288,7 +1290,7 @@ export function PlaylistTableView({
     return (
       <div
         ref={tableContainerRef}
-        className="w-full space-y-1"
+        className="@container w-full space-y-1"
         role="table"
         aria-label={t("nav.playlists")}
         aria-rowcount={displayedItems.length + 1}
@@ -1353,7 +1355,7 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.trackOrSlice")}</span>
-          <span role="columnheader" className="hidden sm:inline">{t("table.type")}</span>
+          <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
         </div>
@@ -1569,7 +1571,7 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Kind Badge */}
-                <div role="cell" className="hidden sm:flex items-center">
+                <div role="cell" className="hidden @3xl:flex items-center">
                   {isSlice && item.segment ? (
                     <Badge variant="yellow">
                       <Scissors data-icon="inline-start" />
@@ -1755,7 +1757,7 @@ export function PlaylistTableView({
 
     return (
       <div
-        className="w-full space-y-1"
+        className="@container w-full space-y-1"
         role="table"
         aria-label={t("table.slices")}
         aria-rowcount={sliceItems.length + 1}
@@ -1775,7 +1777,7 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.slices")}</span>
-          <span role="columnheader" className="hidden sm:inline">{t("table.originalTrack")}</span>
+          <span role="columnheader" className="hidden @3xl:inline">{t("table.originalTrack")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
         </div>
@@ -1846,14 +1848,20 @@ export function PlaylistTableView({
                 {/* Title */}
                 <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
                   <TableArtwork track={item.track} sliceColor={item.segment.color || DEFAULT_SLICE_COLOR} />
-                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex min-w-0 items-center gap-1.5">
-                    <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
-                    <span className="truncate">{item.segment.name}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex min-w-0 items-center gap-1.5">
+                      <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
+                      <span className="truncate">{item.segment.name}</span>
+                    </div>
+                    {/* Stands in for the Original Track column until the table is wide enough to show it */}
+                    <div className="text-xs text-muted-foreground truncate mt-0.5 @3xl:hidden">
+                      {t("table.from", { title: item.track.title })}
+                    </div>
                   </div>
                 </div>
 
                 {/* Original Track */}
-                <div role="cell" className="hidden sm:block text-xs text-muted-foreground truncate pr-2">
+                <div role="cell" className="hidden @3xl:block text-xs text-muted-foreground truncate pr-2">
                   {item.track.title}
                 </div>
 
@@ -1917,7 +1925,7 @@ export function PlaylistTableView({
 
     return (
       <div
-        className="w-full space-y-1"
+        className="@container w-full space-y-1"
         role="table"
         aria-label={t("categories.mixed")}
         aria-rowcount={mixedItems.length + 1}
@@ -1937,7 +1945,7 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.trackOrSlice")}</span>
-          <span role="columnheader" className="hidden sm:inline">{t("table.type")}</span>
+          <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
         </div>
@@ -2033,7 +2041,7 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Kind Badge */}
-                <div role="cell" className="hidden sm:flex items-center">
+                <div role="cell" className="hidden @3xl:flex items-center">
                   {isSlice ? (
                     <Badge variant="yellow">
                       <Scissors data-icon="inline-start" />
@@ -2131,7 +2139,7 @@ export function PlaylistTableView({
 
   return (
     <div
-      className="w-full space-y-1"
+      className="@container w-full space-y-1"
       role="table"
       aria-label={t("categories.tracks")}
       aria-rowcount={trackList.length + 1}
@@ -2151,7 +2159,7 @@ export function PlaylistTableView({
           }}
         />
         <span role="columnheader">{t("table.track")}</span>
-        <span role="columnheader" className="hidden sm:inline">{t("table.slices")}</span>
+        <span role="columnheader" className="hidden @3xl:inline">{t("table.slices")}</span>
         <span role="columnheader">{t("table.duration")}</span>
         <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
       </div>
@@ -2249,7 +2257,7 @@ export function PlaylistTableView({
               </div>
 
               {/* Segment count */}
-              <div role="cell" className="hidden sm:flex items-center">
+              <div role="cell" className="hidden @3xl:flex items-center">
                 <Badge variant="secondary">
                   {t("table.slicesCountBadge", { count: track.segment_count || 0 })}
                 </Badge>
