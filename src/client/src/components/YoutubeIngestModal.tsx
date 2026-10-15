@@ -1,6 +1,10 @@
 import * as React from "react";
-import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { Progress, ProgressLabel, ProgressValue } from "./ui/progress";
+import { Spinner } from "./ui/spinner";
+import { Textarea } from "./ui/textarea";
 import { Modal } from "./Modal";
 import { ConfirmModal } from "./ConfirmModal";
 import { useTranslation } from "react-i18next";
@@ -284,10 +288,10 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
       title={t("ytModal.title")}
       description={t("ytModal.description")}
     >
-      <div className="space-y-4">
-        <form onSubmit={handleIngestYoutube} className="space-y-3">
-          <div className="space-y-2">
-            <textarea
+      <div className="flex flex-col gap-4">
+        <form onSubmit={handleIngestYoutube} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2">
+            <Textarea
               value={ytUrl}
               onChange={(e) => {
                 setYtUrl(e.target.value);
@@ -311,11 +315,10 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
               placeholder={t("ytModal.placeholder")}
               rows={2}
               autoFocus
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono resize-y"
             />
             <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5 text-flexoki-orange">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <AlertCircle className="size-3.5 shrink-0" />
                 <span>{t("ytModal.limitHint")}</span>
               </div>
               <span className="text-2xs hidden sm:inline text-muted-foreground/80">
@@ -325,23 +328,22 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
           </div>
 
           {ytError && (
-            <div role="alert" className="p-2.5 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
-              {ytError}
-            </div>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{ytError}</AlertDescription>
+            </Alert>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="submit" disabled={!ytUrl.trim()}>
-              {t("ytModal.submit")}
-            </Button>
-          </div>
+          <Button type="submit" disabled={!ytUrl.trim()} className="self-end">
+            {t("ytModal.submit")}
+          </Button>
         </form>
 
         {/* YouTube Ingestion Queue Progress */}
         {ytQueue.length > 0 && (
-          <div className="space-y-2 border border-border rounded-md p-3 bg-secondary/10">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-foreground">
+          <div className="flex flex-col gap-3 rounded-md border p-3">
+            <Progress value={ytProgressPercent}>
+              <ProgressLabel>
                 {isProcessingYtQueue
                   ? t("ytModal.scanning", {
                       current: Math.min(ytQueue.length, completedYtCount + 1),
@@ -357,94 +359,67 @@ export const YoutubeIngestModal = React.memo(function YoutubeIngestModal({
                       success: successYtCount,
                       total: ytQueue.length,
                     })}
-              </span>
-              <span className="text-muted-foreground">
-                {ytProgressPercent}%
-              </span>
-            </div>
+              </ProgressLabel>
+              <ProgressValue />
+            </Progress>
 
-            {/* Progress Bar */}
-            <div
-              role="progressbar"
-              aria-label={t("ytModal.title")}
-              aria-valuenow={ytProgressPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="w-full bg-secondary rounded-full h-1.5 overflow-hidden"
-            >
-              <div
-                className="bg-primary h-1.5 transition-[width] duration-300 ease-out"
-                style={{
-                  width: `${ytProgressPercent}%`,
-                }}
-              />
-            </div>
-
-            {/* Items List */}
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pt-1 pr-1 divide-y divide-border/40">
+            <ul className="flex max-h-48 flex-col divide-y overflow-y-auto pr-1">
               {ytQueue.map((item) => (
-                <div key={item.id} className="flex items-center justify-between pt-1.5 text-xs">
-                  <div className="flex items-center gap-2 min-w-0 pr-2">
+                <li key={item.id} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                  <span className="flex min-w-0 items-center gap-2">
                     <YoutubeIcon className="size-3.5 shrink-0 text-destructive" />
                     <span className="truncate font-mono" title={item.url}>
                       {item.url}
                     </span>
-                  </div>
-                  <div className="shrink-0">
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-2xs">
                     {item.status === "pending" && (
-                      <span className="text-2xs text-muted-foreground">{t("ytModal.statusPending")}</span>
+                      <span className="text-muted-foreground">{t("ytModal.statusPending")}</span>
                     )}
                     {item.status === "scanning" && (
-                      <div className="flex items-center gap-1 text-2xs text-primary">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        <span>{t("ytModal.statusScanning")}</span>
-                      </div>
+                      <>
+                        <Spinner className="size-3" />
+                        {t("ytModal.statusScanning")}
+                      </>
                     )}
                     {item.status === "success" && (
-                      <div className="flex items-center gap-1 text-2xs text-flexoki-green" title={item.message}>
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>{item.count ? t("ytModal.addedTracks", { count: item.count }) : t("ytModal.statusSuccess")}</span>
-                      </div>
+                      <span className="flex items-center gap-1 text-flexoki-green" title={item.message}>
+                        <CheckCircle2 className="size-3.5" />
+                        {item.count ? t("ytModal.addedTracks", { count: item.count }) : t("ytModal.statusSuccess")}
+                      </span>
                     )}
                     {item.status === "error" && (
-                      <div className="flex items-center gap-1 text-2xs text-destructive" title={item.error}>
-                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate max-w-[180px] sm:max-w-[240px]">{item.error || t("ytModal.statusError")}</span>
-                      </div>
+                      <span className="flex min-w-0 items-center gap-1 text-destructive" title={item.error}>
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        <span className="max-w-45 truncate sm:max-w-60">{item.error || t("ytModal.statusError")}</span>
+                      </span>
                     )}
-                  </div>
-                </div>
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         )}
 
-        <div className="flex justify-between items-center pt-2 border-t border-border">
-          <div>
-            {ytQueue.length > 0 && !isProcessingYtQueue && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  ytQueueRef.current = [];
-                  setYtQueue([]);
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t("ytModal.clearList")}
-              </Button>
-            )}
-          </div>
+        <div className="flex items-center justify-between gap-2 border-t pt-3">
+          {ytQueue.length > 0 && !isProcessingYtQueue ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                ytQueueRef.current = [];
+                setYtQueue([]);
+              }}
+            >
+              {t("ytModal.clearList")}
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             {isProcessingYtQueue && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCancelConfirm(true)}
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/60"
-              >
+              <Button type="button" variant="destructive" size="sm" onClick={() => setShowCancelConfirm(true)}>
                 {t("ytModal.cancel")}
               </Button>
             )}

@@ -75,10 +75,8 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
   });
 
   const triggerTextareaChange = (el: HTMLTextAreaElement, val: string) => {
-    const propsKey = Object.keys(el).find((k) => k.startsWith("__reactProps"));
-    if (propsKey) {
-      (el as any)[propsKey].onChange({ target: { value: val } });
-    }
+    Reflect.set(Object.getPrototypeOf(el), "value", val, el);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
   const submitForm = (btn: HTMLButtonElement) => {

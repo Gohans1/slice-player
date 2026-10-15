@@ -84,21 +84,14 @@ describe("YoutubeIngestModal Component", () => {
       const form = happyWindow.document.querySelector("form") as HTMLFormElement;
       expect(form).toBeDefined();
 
-      const propsKey = Object.keys(textarea).find((k) => k.startsWith("__reactProps$"))!;
-      expect(propsKey).toBeDefined();
-
       act(() => {
-        (textarea as any)[propsKey].onChange({ target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" } });
+        Reflect.set(Object.getPrototypeOf(textarea), "value", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", textarea);
+        textarea.dispatchEvent(new happyWindow.Event("input", { bubbles: true }));
       });
 
+      // Enter submits the links
       act(() => {
-        (textarea as any)[propsKey].onKeyDown({
-          key: "Enter",
-          shiftKey: false,
-          nativeEvent: { isComposing: false },
-          keyCode: 13,
-          preventDefault: () => {},
-        });
+        textarea.dispatchEvent(new happyWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       });
 
       // Now queue is processing -> Cancel button should be visible
@@ -190,21 +183,14 @@ describe("YoutubeIngestModal Component", () => {
       const textarea = happyWindow.document.querySelector("textarea") as HTMLTextAreaElement;
       expect(form).toBeDefined();
 
-      const propsKey = Object.keys(textarea).find((k) => k.startsWith("__reactProps$"))!;
-      expect(propsKey).toBeDefined();
-
       act(() => {
-        (textarea as any)[propsKey].onChange({ target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" } });
+        Reflect.set(Object.getPrototypeOf(textarea), "value", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", textarea);
+        textarea.dispatchEvent(new happyWindow.Event("input", { bubbles: true }));
       });
 
+      // Enter submits the links
       act(() => {
-        (textarea as any)[propsKey].onKeyDown({
-          key: "Enter",
-          shiftKey: false,
-          nativeEvent: { isComposing: false },
-          keyCode: 13,
-          preventDefault: () => {},
-        });
+        textarea.dispatchEvent(new happyWindow.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       });
 
       const cancelBtn = Array.from(
