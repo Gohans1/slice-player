@@ -18,7 +18,7 @@ import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
 import { EmptyState } from "./components/EmptyState";
-import { Music, Loader2, LayoutGrid, List, Scissors, AlertCircle, Check, RefreshCw, SearchX } from "lucide-react";
+import { Music, Loader2, Scissors, AlertCircle, Check, RefreshCw, SearchX } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
 import { showsItemsOf } from "./lib/mixPlaylist";
@@ -30,6 +30,7 @@ import {
   findActiveTrackIndex,
 } from "./lib/activeItemIndex";
 import { PlaylistSortSelector } from "./components/PlaylistSortSelector";
+import { ViewModeToggle } from "./components/ViewModeToggle";
 import {
   getSortedPlaylistItems,
   getSortedMixedItems,
@@ -1101,36 +1102,7 @@ export function App() {
                 {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
                   <PlaylistSortSelector builtInItemIds={builtInItemIds} />
                 )}
-                <div role="group" aria-label={t("library.viewMode")} className="inline-flex rounded-lg border border-border bg-card/60 p-0.5">
-                  <button
-                    type="button"
-                    aria-pressed={viewMode === "grid"}
-                    onClick={() => setViewMode("grid")}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer ${
-                      viewMode === "grid"
-                        ? "bg-secondary text-primary shadow-xs font-bold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    title={t("library.gridTooltip")}
-                  >
-                    <LayoutGrid className="h-3.5 w-3.5" />
-                    <span>{t("library.grid")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={viewMode === "list"}
-                    onClick={() => setViewMode("list")}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-all active:scale-95 motion-reduce:transform-none duration-100 cursor-pointer ${
-                      viewMode === "list"
-                        ? "bg-secondary text-primary shadow-xs font-bold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    title={t("library.tableTooltip")}
-                  >
-                    <List className="h-3.5 w-3.5" />
-                    <span>{t("library.table")}</span>
-                  </button>
-                </div>
+                <ViewModeToggle value={viewMode} onValueChange={setViewMode} />
                 <ImportActions />
                 <div className="hidden xl:flex">
                   <MasterVolume />

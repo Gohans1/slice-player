@@ -52,6 +52,17 @@ describe("PlaylistSortSelector Component", () => {
     expect(buttons[3].getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("keeps each sort option named when its label collapses to an icon", async () => {
+    usePlayerStore.setState({ activePlaylistId: "pl_1", playlistSortMode: "manual" });
+
+    await act(async () => {
+      root.render(<PlaylistSortSelector />);
+    });
+
+    const names = Array.from(container.querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["Manual", "Newest", "Oldest", "Random"]);
+  });
+
   it("renders 3 sort mode buttons for built-in categories with newest active by default", async () => {
     usePlayerStore.setState({
       activePlaylistId: null,
