@@ -11,6 +11,24 @@ body {
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+  Positions a virtualizer sets inline on each row or card, which change on every frame of a scroll or resize.
+  Custom properties inherit by default, so each change would restyle the element's whole subtree;
+  these are only read by the element that sets them.
+*/
+@property --virtual-size {
+  syntax: "*";
+  inherits: false;
+}
+@property --virtual-start {
+  syntax: "*";
+  inherits: false;
+}
+@property --lane-start {
+  syntax: "*";
+  inherits: false;
+}
+
 @theme inline {
   --font-sans: 'Inter Variable', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
