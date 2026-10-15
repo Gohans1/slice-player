@@ -47,7 +47,7 @@ interface TableRowState {
   isDragTarget?: boolean;
 }
 
-// Apple Music style rows: hairlines between them (the table-row-divider utility), a rounded tint on hover and a ring on
+// Apple Music style rows: hairlines between them (the row-divider utility), a rounded tint on hover and a ring on
 // selected rows. The playing row isn't tinted: its artwork shows the equalizer and its title turns primary.
 function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
   return cn(
@@ -65,7 +65,7 @@ function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, 
   );
 }
 
-// Tells the table-row-divider utility when a row is tinted, so the hairlines on both sides of it hide
+// Tells the row-divider utility when a row is tinted, so the hairlines on both sides of it hide
 function tableRowTint({ isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
   if (isSelected || isDragTarget) return "on";
   return isReady && !isDragging ? "hover" : undefined;
@@ -333,7 +333,7 @@ function VirtualizedTableBody<T>({
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               role="presentation"
-              className="table-row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
+              className="row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
               style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
               onDragOver={(e) => {
                 if (draggedIdx !== null && draggedIdx !== undefined) {

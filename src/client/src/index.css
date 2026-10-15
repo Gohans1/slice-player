@@ -62,12 +62,13 @@ html {
 }
 
 /*
-  Song table rows (PlaylistTableView) are divided by a hairline on each row's top edge, like Apple Music, instead of
-  stripes. The hairlines on both sides of a tinted row hide so the tint reads as one rounded shape: a row is tinted
-  while selected or under a drop (data-tint="on"), and on hover or while its menu is open if it can play
-  (data-tint="hover"). Goes on the virtualizer's row wrappers; each holds one row, so the next wrapper holds the next row.
+  Song lists (the song table and the queue) divide their rows by a hairline on each row's top edge, like Apple Music,
+  instead of stripes. The hairlines on both sides of a tinted row hide so the tint reads as one rounded shape: a row is
+  tinted while it's selected, current or under a drop (data-tint="on"), and on hover or while its menu is open when it
+  can play (data-tint="hover"). Goes on the virtualizer's row wrappers; each holds one row, so the next wrapper holds the
+  next row.
 */
-@utility table-row-divider {
+@utility row-divider {
   &::before {
     content: "";
     position: absolute;
