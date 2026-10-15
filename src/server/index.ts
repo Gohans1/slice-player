@@ -19,6 +19,7 @@ import { MAX_BACKUP_REQUEST_BYTES } from "./backupLimits";
 import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
+import { THUMBNAIL_VARIANTS_DIR, THUMBNAIL_WIDTHS, isThumbnailSize, removeThumbnailVariants, resizedThumbnail } from "./thumbnails";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -483,6 +484,7 @@ const server = serve({
                   await unlinkWithRetry(thumbPath);
                 }
               }
+              removeThumbnailVariants(track.id, resolve(THUMBNAIL_VARIANTS_DIR));
               pendingTrackDeletions.push(trackId);
             }
           }
@@ -592,6 +594,7 @@ const server = serve({
               await unlinkWithRetry(thumbPath);
             }
           }
+          removeThumbnailVariants(track.id, resolve(THUMBNAIL_VARIANTS_DIR));
 
           const segmentsToDelete = listSegmentsByTrack(trackId);
           const ok = deleteTrack(trackId);
@@ -772,11 +775,16 @@ const server = serve({
       if (thumbMatch && (req.method === "GET" || req.method === "HEAD")) {
         const thumbId = thumbMatch[1];
         const allowedThumbsDir = resolve("./data/cache/thumbs");
+        // A slot size (?size=small|large) gets a copy scaled to it; without one, or if scaling fails, the original
+        const size = url.searchParams.get("size");
         for (const ext of [".jpg", ".png", ".webp"]) {
           const thumbPath = resolve(allowedThumbsDir, `${thumbId}${ext}`);
           if (isSubdirectoryOf(allowedThumbsDir, thumbPath) && existsSync(thumbPath)) {
-            const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-            const stat = statSync(thumbPath);
+            const servedPath =
+              (isThumbnailSize(size) && (await resizedThumbnail(thumbPath, THUMBNAIL_WIDTHS[size], resolve(THUMBNAIL_VARIANTS_DIR)))) ||
+              thumbPath;
+            const ct = servedPath !== thumbPath ? "image/jpeg" : ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+            const stat = statSync(servedPath);
             const etag = `"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`;
             const headers = {
               ...corsHeaders,
@@ -791,7 +799,7 @@ const server = serve({
             if (req.method === "HEAD") {
               return new Response(null, { headers });
             }
-            return new Response(bunFile(thumbPath), { headers });
+            return new Response(bunFile(servedPath), { headers });
           }
         }
         return new Response("Thumbnail not found", { status: 404, headers: corsHeaders });
