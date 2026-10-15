@@ -6,6 +6,9 @@ export { cn } from "cn";
 // Flexoki blue, shown for slices saved without a color of their own
 export const DEFAULT_SLICE_COLOR = "#4385BE";
 
+// Hidden until hover on mouse and trackpad; touch screens can't hover, so they always show
+export const REVEAL_ON_HOVER = "transition-opacity pointer-fine:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
+
 export function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "00:00.0";
   const totalTenths = Math.round(seconds * 10);

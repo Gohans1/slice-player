@@ -6,11 +6,8 @@ import { Checkbox } from "./ui/checkbox";
 import { Spinner } from "./ui/spinner";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { TrackThumbnail } from "./TrackThumbnail";
-import { cn } from "../lib/utils";
+import { cn, REVEAL_ON_HOVER } from "../lib/utils";
 import type { Track } from "@/server/types";
-
-// Hidden until hover on mouse and trackpad; touch screens can't hover, so they always show
-const REVEAL_ON_HOVER = "transition-opacity pointer-fine:opacity-0 group-hover:opacity-100 focus-within:opacity-100";
 
 interface MediaTileProps {
   thumbnailUrl?: string | null;
