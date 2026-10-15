@@ -579,4 +579,66 @@ describe("ImportActions: YouTube ingestion queue and local audio", () => {
     expect(fileInput.accept).toContain("video/mp4");
   });
 
+  const pickFiles = async (...files: File[]) => {
+    const fileInput = body().querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, "files", { value: files, configurable: true });
+    await act(async () => {
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  };
+
+  const findButton = (label: string) =>
+    Array.from(body().querySelectorAll("button")).find((b) => b.textContent?.includes(label));
+
+  it("imports picked audio files and reports their progress", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) =>
+      String(input).includes("/api/tracks/upload")
+        ? new Response(JSON.stringify({ success: true }))
+        : new Response("[]")) as unknown as typeof fetch;
+    await act(async () => {
+      root.render(<ImportActions />);
+    });
+
+    await pickFiles(new File(["audio"], "song.flac", { type: "audio/flac" }));
+    await waitForCondition(() => /Imported 1\/1 tracks/.test(body().textContent || ""));
+
+    expect(body().textContent).toContain("song.flac");
+    expect(body().querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("100");
+  });
+
+  it("scans a pasted folder path from the collapsed path form and shows the server's error", async () => {
+    const ingestBodies: unknown[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/tracks/ingest-local")) {
+        ingestBodies.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ success: false, message: "Folder not found" }), { status: 404 });
+      }
+      return url.includes("/api/tracks/upload") ? new Response(JSON.stringify({ success: true })) : new Response("[]");
+    }) as unknown as typeof fetch;
+    await act(async () => {
+      root.render(<ImportActions />);
+    });
+    await pickFiles(new File(["audio"], "song.flac", { type: "audio/flac" }));
+
+    const toggle = findButton("Or scan directory path");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      toggle?.click();
+    });
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+
+    const pathInput = body().querySelector("#local-path-fallback-input") as HTMLTextAreaElement;
+    await act(async () => {
+      Reflect.set(Object.getPrototypeOf(pathInput), "value", "/music", pathInput);
+      pathInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      findButton("Scan Path")?.click();
+    });
+    await waitForCondition(() => (body().textContent || "").includes("Folder not found"));
+
+    expect(ingestBodies).toEqual([{ path: "/music" }]);
+  });
+
 });

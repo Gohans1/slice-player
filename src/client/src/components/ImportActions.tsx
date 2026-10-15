@@ -1,7 +1,13 @@
 import * as React from "react";
-import { FolderPlus, AlertCircle, Loader2, UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight } from "lucide-react";
+import { FolderPlus, AlertCircle, UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
+import { Progress, ProgressLabel, ProgressValue } from "./ui/progress";
+import { Spinner } from "./ui/spinner";
+import { Textarea } from "./ui/textarea";
 import { Modal } from "./Modal";
 import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -307,9 +313,8 @@ export function ImportActions() {
         onClick={handleOpenFlacPicker}
         title={t("nav.addFlacTooltip")}
         aria-label={t("nav.addFlac")}
-        className="text-flexoki-cyan hover:text-flexoki-cyan hover:border-flexoki-cyan/40"
       >
-        <FolderPlus className="h-4 w-4" />
+        <FolderPlus data-icon="inline-start" className="text-flexoki-cyan" />
         <span className="hidden sm:inline">{t("nav.addFlac")}</span>
       </Button>
 
@@ -324,18 +329,10 @@ export function ImportActions() {
         onChange={handleFileInputChange}
       />
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setIsYtModalOpen(true)}
-        aria-label={t("nav.addYoutube")}
-        className="text-flexoki-red hover:text-flexoki-red hover:border-flexoki-red/40 hover:bg-flexoki-red/10 border-border/80"
-      >
-        <YoutubeIcon className="h-4 w-4 text-flexoki-red" />
+      <Button variant="outline" size="sm" onClick={() => setIsYtModalOpen(true)} aria-label={t("nav.addYoutube")}>
+        <YoutubeIcon data-icon="inline-start" className="text-flexoki-red" />
         <span className="hidden sm:inline">{t("nav.addYoutube")}</span>
-        {isProcessingYtQueue && (
-          <Loader2 className="h-3.5 w-3.5 animate-spin ml-1 text-flexoki-red" />
-        )}
+        {isProcessingYtQueue && <Spinner data-icon="inline-end" />}
       </Button>
 
       {/* YouTube Modal */}
@@ -355,37 +352,36 @@ export function ImportActions() {
         title={t("localModal.title")}
         description={t("localModal.description")}
       >
-        <div className="space-y-4">
-          {/* Drag & Drop / File Explorer Trigger Area */}
+        <div className="flex flex-col gap-4">
+          {/* Drop target around the empty state, highlighted while files hover over it */}
           <div
-            onClick={handleOpenFlacPicker}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-2 ${
-              isDragging
-                ? "border-primary bg-primary/10"
-                : "border-border hover:border-primary/50 hover:bg-secondary/30"
-            }`}
+            data-dragging={isDragging || undefined}
+            className="rounded-xl border border-dashed transition-colors data-dragging:border-primary data-dragging:bg-primary/10"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <UploadCloud className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {t("localModal.dropzoneTitle")}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t("localModal.dropzoneHint")}
-              </p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <UploadCloud />
+                </EmptyMedia>
+                <EmptyTitle>{t("localModal.dropzoneTitle")}</EmptyTitle>
+                <EmptyDescription>{t("localModal.dropzoneHint")}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button type="button" variant="outline" size="sm" onClick={handleOpenFlacPicker}>
+                  <FolderPlus data-icon="inline-start" />
+                  {t("localModal.selectMoreFiles")}
+                </Button>
+              </EmptyContent>
+            </Empty>
           </div>
 
-          {/* Upload Queue Progress */}
           {uploadQueue.length > 0 && (
-            <div className="space-y-2 border border-border rounded-md p-3 bg-secondary/10">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-foreground">
+            <div className="flex flex-col gap-3 rounded-md border p-3">
+              <Progress value={uploadProgressPercent}>
+                <ProgressLabel>
                   {isProcessingQueue
                     ? t("localModal.processingProgress", {
                         current: Math.min(uploadQueue.length, uploadFinishedCount + 1),
@@ -395,149 +391,98 @@ export function ImportActions() {
                         success: uploadSuccessCount,
                         total: uploadQueue.length,
                       })}
-                </span>
-                <span className="text-muted-foreground">{uploadProgressPercent}%</span>
-              </div>
+                </ProgressLabel>
+                <ProgressValue />
+              </Progress>
 
-              {/* Progress Bar */}
-              <div
-                role="progressbar"
-                aria-valuenow={uploadProgressPercent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={t("localModal.uploadProgressAria", "Import progress")}
-                className="w-full bg-secondary rounded-full h-1.5 overflow-hidden"
-              >
-                <div
-                  className="bg-primary h-1.5 transition-[width] duration-300 ease-out"
-                  style={{ width: `${uploadProgressPercent}%` }}
-                />
-              </div>
-
-              {/* Items List */}
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pt-1 pr-1 divide-y divide-border/40">
+              <ul className="flex max-h-48 flex-col divide-y overflow-y-auto pr-1">
                 {uploadQueue.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between pt-1.5 text-xs">
-                    <div className="flex items-center gap-2 min-w-0 pr-2">
-                      <FileAudio className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <li key={item.id} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <FileAudio className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate font-mono" title={item.name}>
                         {item.name}
                       </span>
-                    </div>
-                    <div className="shrink-0">
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-2xs">
                       {item.status === "pending" && (
-                        <span className="text-2xs text-muted-foreground">{t("localModal.statusPending")}</span>
+                        <span className="text-muted-foreground">{t("localModal.statusPending")}</span>
                       )}
                       {item.status === "uploading" && (
-                        <div className="flex items-center gap-1 text-2xs text-primary">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          <span>{t("localModal.statusUploading")}</span>
-                        </div>
+                        <>
+                          <Spinner className="size-3" />
+                          {t("localModal.statusUploading")}
+                        </>
                       )}
                       {item.status === "success" && (
-                        <div className="flex items-center gap-1 text-2xs text-flexoki-green">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>{t("localModal.statusSuccess")}</span>
-                        </div>
+                        <span className="flex items-center gap-1 text-flexoki-green">
+                          <CheckCircle2 className="size-3.5" />
+                          {t("localModal.statusSuccess")}
+                        </span>
                       )}
                       {item.status === "error" && (
-                        <div className="flex items-center gap-1 text-2xs text-destructive" title={item.error}>
-                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate max-w-[120px]">{item.error || t("localModal.statusError")}</span>
-                        </div>
+                        <span className="flex min-w-0 items-center gap-1 text-destructive" title={item.error}>
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          <span className="max-w-30 truncate">{item.error || t("localModal.statusError")}</span>
+                        </span>
                       )}
-                    </div>
-                  </div>
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
 
           {localError && (
-            <div className="p-3 rounded-md bg-destructive/10 border border-destructive/30 text-xs text-destructive">
-              {localError}
-            </div>
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{localError}</AlertDescription>
+            </Alert>
           )}
 
-          {/* Path/Directory fallback */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowPathFallback((v) => !v)}
-              aria-expanded={showPathFallback}
-              aria-controls="local-path-fallback-form"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              {showPathFallback ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              <span>{t("localModal.pathFallback")}</span>
-            </button>
-
-            {showPathFallback && (
-              <form id="local-path-fallback-form" onSubmit={handleIngestLocal} className="space-y-3 pt-2">
-                <div className="space-y-1.5">
-                  <textarea
-                    id="local-path-fallback-input"
-                    value={localPath}
-                    onChange={(e) => setLocalPath(e.target.value)}
-                    placeholder={t("localModal.pathPlaceholder")}
-                    aria-label={t("localModal.pathPlaceholder")}
-                    rows={2}
-                    disabled={isLocalLoading}
-                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono resize-y"
-                  />
-                  <p className="text-2xs text-muted-foreground">
-                    {t("localModal.pathHint")}
-                  </p>
-                </div>
-                <div className="flex justify-end">
-                  <Button type="submit" size="sm" disabled={isLocalLoading || !localPath.trim()}>
-                    {isLocalLoading && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
-                    {isLocalLoading ? t("localModal.scanning") : t("localModal.ingestPath")}
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-
-          <div className="flex justify-between items-center pt-2 border-t border-border">
-            <div>
-              {uploadQueue.length > 0 && !isProcessingQueue && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setUploadQueue([])}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {t("localModal.clearList")}
+          <Collapsible open={showPathFallback} onOpenChange={setShowPathFallback}>
+            <CollapsibleTrigger render={<Button type="button" variant="ghost" size="sm" />}>
+              {showPathFallback ? <ChevronDown data-icon="inline-start" /> : <ChevronRight data-icon="inline-start" />}
+              {t("localModal.pathFallback")}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <form onSubmit={handleIngestLocal} className="flex flex-col gap-2 pt-2">
+                <Textarea
+                  id="local-path-fallback-input"
+                  value={localPath}
+                  onChange={(e) => setLocalPath(e.target.value)}
+                  placeholder={t("localModal.pathPlaceholder")}
+                  aria-label={t("localModal.pathPlaceholder")}
+                  aria-describedby="local-path-fallback-hint"
+                  rows={2}
+                  disabled={isLocalLoading}
+                />
+                <p id="local-path-fallback-hint" className="text-2xs text-muted-foreground">
+                  {t("localModal.pathHint")}
+                </p>
+                <Button type="submit" size="sm" disabled={isLocalLoading || !localPath.trim()} className="self-end">
+                  {isLocalLoading && <Spinner data-icon="inline-start" />}
+                  {isLocalLoading ? t("localModal.scanning") : t("localModal.ingestPath")}
                 </Button>
-              )}
-            </div>
+              </form>
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div className="flex items-center justify-between gap-2 border-t pt-3">
+            {uploadQueue.length > 0 && !isProcessingQueue ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setUploadQueue([])}>
+                {t("localModal.clearList")}
+              </Button>
+            ) : (
+              <span />
+            )}
             <div className="flex gap-2">
               {isProcessingQueue && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleCancelUpload}
-                >
+                <Button type="button" variant="destructive" size="sm" onClick={handleCancelUpload}>
                   {t("localModal.cancelUpload")}
                 </Button>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleOpenFlacPicker}
-              >
-                <FolderPlus className="h-3.5 w-3.5 mr-1" />
-                {t("localModal.selectMoreFiles")}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setIsLocalModalOpen(false)}
-              >
+              <Button type="button" size="sm" onClick={() => setIsLocalModalOpen(false)}>
                 {t("localModal.close")}
               </Button>
             </div>
