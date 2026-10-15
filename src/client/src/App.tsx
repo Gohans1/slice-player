@@ -378,7 +378,8 @@ export function App() {
   // Global shortcuts: `~`/`F2` for Logs, `?` for Shortcuts, `Q` for Queue, `Space` for Play/Pause
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // A focused element that already handled the key (a table row's Space/Enter, for one) owns it
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
 
       const otherModalOpen = Boolean(
         usePlayerStore.getState().sliceStudioTrack || isDialogOpen('[data-drawer="log-drawer"]')
