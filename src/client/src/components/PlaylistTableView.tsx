@@ -38,6 +38,8 @@ export type { MixedItem };
 
 const getEntityId = (item: { id: string }) => item.id;
 const PLAYLIST_ROW_HEIGHT = 50;
+// Parks the drag preview off screen until the first dragover gives it a position
+const DRAG_PREVIEW_HIDDEN = "-9999px";
 
 interface TableRowState {
   index: number;
@@ -87,7 +89,11 @@ function TableArtwork({ track, sliceColor }: { track?: Track | null; sliceColor?
     <div className="relative aspect-video h-8 shrink-0 overflow-hidden rounded bg-muted">
       <TrackThumbnail src={track?.thumbnail_url} className="size-full object-cover" />
       {sliceColor && (
-        <div data-slot="slice-color" className="absolute inset-x-0 bottom-0 h-0.5" style={{ backgroundColor: sliceColor }} />
+        <div
+          data-slot="slice-color"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-(--slice-color)"
+          style={{ "--slice-color": sliceColor }}
+        />
       )}
     </div>
   );
@@ -304,14 +310,11 @@ function VirtualizedTableBody<T>({
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <div ref={containerRef} className="pt-1" role="rowgroup" style={{ overflowAnchor: "none" }}>
+    <div ref={containerRef} className="pt-1 [overflow-anchor:none]" role="rowgroup">
       <div
         role="presentation"
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: "100%",
-          position: "relative",
-        }}
+        className="relative h-(--virtual-size) w-full"
+        style={{ "--virtual-size": `${virtualizer.getTotalSize()}px` }}
       >
         {virtualRows.map((virtualRow) => {
           const item = items[virtualRow.index];
@@ -323,13 +326,8 @@ function VirtualizedTableBody<T>({
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               role="presentation"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
-              }}
+              className="absolute inset-x-0 top-0 translate-y-(--virtual-start)"
+              style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
               onDragOver={(e) => {
                 if (draggedIdx !== null && draggedIdx !== undefined) {
                   e.preventDefault();
@@ -439,7 +437,8 @@ export function PlaylistTableView({
 
   const updatePreviewPosition = React.useCallback((clientX: number, clientY: number) => {
     if (floatingPreviewRef.current && (clientX !== 0 || clientY !== 0)) {
-      floatingPreviewRef.current.style.transform = `translate3d(${clientX + 16}px, ${clientY - 20}px, 0) rotate(1.5deg) scale(1.02)`;
+      floatingPreviewRef.current.style.setProperty("--drag-x", `${clientX + 16}px`);
+      floatingPreviewRef.current.style.setProperty("--drag-y", `${clientY - 20}px`);
     }
   }, []);
 
@@ -626,7 +625,8 @@ export function PlaylistTableView({
     setDraggedIdx(null);
     setDragOverIdx(null);
     if (floatingPreviewRef.current) {
-      floatingPreviewRef.current.style.transform = "translate3d(-9999px, -9999px, 0)";
+      floatingPreviewRef.current.style.setProperty("--drag-x", DRAG_PREVIEW_HIDDEN);
+      floatingPreviewRef.current.style.setProperty("--drag-y", DRAG_PREVIEW_HIDDEN);
     }
     stopAutoScroll();
   }, [stopAutoScroll]);
@@ -1424,11 +1424,7 @@ export function PlaylistTableView({
                 role="row"
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
-                style={{
-                  transform: shiftY !== 0 ? `translateY(${shiftY}px)` : undefined,
-                  transition: draggedIdx !== null ? "transform 220ms cubic-bezier(0.2, 0, 0, 1), border-color 150ms ease, background-color 150ms ease" : undefined,
-                  willChange: draggedIdx !== null ? "transform" : undefined,
-                }}
+                style={shiftY !== 0 ? { "--drag-shift": `${shiftY}px` } : undefined}
                 aria-label={
                   isSelectionActive
                     ? (isSelected
@@ -1483,14 +1479,19 @@ export function PlaylistTableView({
                   handlePlayPlaylistItem(item);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName(PLAYLIST_GRID, {
-                  index: idx,
-                  isSelected,
-                  isReady,
-                  isCurrentPlaying,
-                  isDragging,
-                  isDragTarget,
-                })}
+                className={cn(
+                  tableRowClassName(PLAYLIST_GRID, {
+                    index: idx,
+                    isSelected,
+                    isReady,
+                    isCurrentPlaying,
+                    isDragging,
+                    isDragTarget,
+                  }),
+                  // FLIP: rows slide aside to open a gap under the dragged item
+                  shiftY !== 0 && "translate-y-(--drag-shift)",
+                  draggedIdx !== null && "transition duration-220 ease-standard"
+                )}
               >
                 {/* Index / Play indicator & Drag Handle */}
                 <RowLeadingCell
@@ -1697,20 +1698,14 @@ export function PlaylistTableView({
         {draggedIdx !== null && activePlaylistItems[draggedIdx] && (
           <div
             ref={floatingPreviewRef}
-            style={{
-              position: "fixed",
-              left: 0,
-              top: 0,
-              pointerEvents: "none",
-              zIndex: 99999,
-              willChange: "transform",
-              transform: "translate3d(-9999px, -9999px, 0)",
-            }}
-            className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg border border-primary/70 bg-card/95 backdrop-blur-md shadow-2xl text-xs font-medium text-foreground ring-2 ring-primary/40 select-none max-w-sm pointer-events-none transition-none"
+            data-slot="drag-preview"
+            aria-hidden="true"
+            className="pointer-events-none fixed top-0 left-0 z-50 flex max-w-sm translate-x-(--drag-x) translate-y-(--drag-y) rotate-2 scale-102 items-center gap-2.5 rounded-lg border border-primary/70 bg-card/95 px-3.5 py-2 text-xs font-medium text-foreground shadow-2xl ring-2 ring-primary/40 backdrop-blur-md select-none"
+            style={{ "--drag-x": DRAG_PREVIEW_HIDDEN, "--drag-y": DRAG_PREVIEW_HIDDEN }}
           >
-            <GripVertical className="h-3.5 w-3.5 text-primary shrink-0" />
-            <Music className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="truncate max-w-[200px] font-semibold">
+            <GripVertical className="size-3.5 shrink-0 text-primary" />
+            <Music className="size-3.5 shrink-0 text-primary" />
+            <span className="max-w-50 truncate font-semibold">
               {activePlaylistItems[draggedIdx].segment
                 ? activePlaylistItems[draggedIdx].segment?.name
                 : activePlaylistItems[draggedIdx].track?.title || t("table.track", "Bài hát")}

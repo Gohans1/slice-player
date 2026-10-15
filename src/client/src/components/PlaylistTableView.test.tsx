@@ -1062,7 +1062,7 @@ describe("PlaylistTableView", () => {
         dummyTrack.thumbnail_url,
       ]);
       expect(
-        rows.map((row) => row.querySelector<HTMLElement>('[data-slot="slice-color"]')?.style.backgroundColor ?? null)
+        rows.map((row) => row.querySelector<HTMLElement>('[data-slot="slice-color"]')?.style.getPropertyValue("--slice-color") ?? null)
       ).toEqual([null, "#D0A215"]);
     });
   });
@@ -2065,11 +2065,12 @@ describe("PlaylistTableView", () => {
       });
 
       // Floating preview should be rendered
-      const badge = container.querySelector(".select-none.max-w-sm");
-      expect(badge).not.toBeNull();
-      expect(badge?.textContent).toContain("#1");
-      expect(badge?.textContent).toContain(dummyTrack.title);
-      expect((badge as HTMLElement).style.position).toBe("fixed");
+      const preview = container.querySelector("[data-slot='drag-preview']") as HTMLElement | null;
+      expect(preview?.textContent).toContain("#1");
+      expect(preview?.textContent).toContain(dummyTrack.title);
+      // It follows the cursor, offset so it doesn't hide what's under the pointer
+      expect(preview?.style.getPropertyValue("--drag-x")).toBe("196px");
+      expect(preview?.style.getPropertyValue("--drag-y")).toBe("300px");
 
       await act(async () => {
         window.dispatchEvent(new window.Event("dragend", { bubbles: true }));
@@ -2124,8 +2125,8 @@ describe("PlaylistTableView", () => {
       });
 
       // Item 1 (target) should shift UP by one row height to make room (-50px)
-      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-50px)");
-      expect((rows[1] as HTMLElement).style.transition).toContain("transform 220ms");
+      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-50px");
+      expect(rows[1].classList.contains("ease-standard")).toBe(true);
 
       // Now drop item 0 onto item 1
       const dropEvent = new window.Event("drop", { bubbles: true }) as any;
@@ -2140,8 +2141,8 @@ describe("PlaylistTableView", () => {
 
       // Target row should no longer have inline transform or transform transition (preventing bounce)
       const updatedRows = container.querySelectorAll(".group[role='row']");
-      expect((updatedRows[0] as HTMLElement).style.transform).toBe("");
-      expect((updatedRows[0] as HTMLElement).style.transition).toBe("");
+      expect((updatedRows[0] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("");
+      expect(updatedRows[0].classList.contains("ease-standard")).toBe(false);
       expect(updatedRows[0].className).toContain("transition-colors");
     });
 
@@ -2192,7 +2193,7 @@ describe("PlaylistTableView", () => {
       await act(async () => {
         rows[1].dispatchEvent(dragOverItem1);
       });
-      expect((rows[1] as HTMLElement).style.transform).toBe("translateY(-50px)");
+      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-50px");
 
       // User changes mind and drags back over item 0 (original position)
       const dragOverItem0 = new window.Event("dragover", { bubbles: true }) as any;
@@ -2204,8 +2205,8 @@ describe("PlaylistTableView", () => {
         rows[0].dispatchEvent(dragOverItem0);
       });
 
-      // All shifted rows should restore to normal position (transform = "")
-      expect((rows[1] as HTMLElement).style.transform).toBe("");
+      // All shifted rows should restore to normal position
+      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("");
 
       // Drop on item 0
       const dropEvent = new window.Event("drop", { bubbles: true }) as any;

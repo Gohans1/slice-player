@@ -15,6 +15,9 @@ body {
   --font-sans: 'Inter Variable', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
+  /* Motion: Material 3's standard curve, for things that move on screen (e.g. rows sliding aside during a drag) */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
   /* Typography Scale Tokens (Tailwind v4 Impeccable Scale) */
   --text-2xs: 0.75rem;
   --text-2xs--line-height: 1rem;
