@@ -318,5 +318,57 @@ describe("AddToPlaylistPopover Component", () => {
     expect(rootItem.hasAttribute("data-inset")).toBe(false);
     expect(childItem.hasAttribute("data-inset")).toBe(true);
   });
+
+  it("doesn't toggle a playlist before the track's memberships have loaded", async () => {
+    const addToPlaylistMock = mock(async () => true);
+    const removeFromPlaylistMock = mock(async () => true);
+    usePlayerStore.setState({ addToPlaylist: addToPlaylistMock, removeFromPlaylist: removeFromPlaylistMock });
+    // Memberships stay pending: the track may already be in Playlist One, so a click now would guess
+    globalThis.fetch = Object.assign(() => new Promise<Response>(() => {}), { preconnect: originalFetch.preconnect });
+
+    act(() => {
+      root.render(<AddToPlaylistPopover trackId="trk_1" />);
+    });
+    await act(async () => {
+      container.querySelector('button[title="Add to Playlist"]').click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      playlistItem("Playlist One").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(addToPlaylistMock).not.toHaveBeenCalled();
+    expect(removeFromPlaylistMock).not.toHaveBeenCalled();
+  });
+
+  it("drops the previous track's memberships when it switches to another track", async () => {
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (url.includes("track_id=trk_1")) return Response.json([{ playlist_id: "pl_1", item_id: "pli_100" }]);
+        // trk_2's memberships are still loading
+        return new Promise<Response>(() => {});
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+
+    act(() => {
+      root.render(<AddToPlaylistPopover trackId="trk_1" />);
+    });
+    await act(async () => {
+      container.querySelector('button[title="Add to Playlist"]').click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(playlistItem("Playlist One").getAttribute("aria-checked")).toBe("true");
+
+    // The shared row menu hands its open content from one row to the next like this
+    await act(async () => {
+      root.render(<AddToPlaylistPopover trackId="trk_2" />);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(playlistItem("Playlist One").getAttribute("aria-checked")).toBe("false");
+  });
 });
 

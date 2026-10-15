@@ -96,8 +96,14 @@ interface AddToPlaylistItemsProps {
   onCreatePlaylist: () => void;
 }
 
-// Menu items for adding a track or slice to playlists, for this menu and for row action submenus
-export function AddToPlaylistItems({ trackId, segmentId, onCreatePlaylist }: AddToPlaylistItemsProps) {
+// Menu items for adding a track or slice to playlists, for this menu and for row action submenus.
+// Keyed by the track or slice: the shared row menu hands its open content from row to row, and the
+// memberships loaded for one row must never be shown or toggled for the next.
+export function AddToPlaylistItems(props: AddToPlaylistItemsProps) {
+  return <PlaylistCheckboxItems key={`${props.trackId}:${props.segmentId ?? ""}`} {...props} />;
+}
+
+function PlaylistCheckboxItems({ trackId, segmentId, onCreatePlaylist }: AddToPlaylistItemsProps) {
   const { t } = useTranslation();
   const allPlaylists = usePlayerStore((s) => s.playlists);
   const orderedPlaylists = React.useMemo(
@@ -130,7 +136,8 @@ export function AddToPlaylistItems({ trackId, segmentId, onCreatePlaylist }: Add
               inset={isChild || undefined}
               checked={Boolean(memberships[playlist.id])}
               onCheckedChange={() => void toggle(playlist.id)}
-              disabled={Boolean(busyPlaylistId)}
+              // Until memberships load, a click can't know whether it adds or removes
+              disabled={loading || Boolean(busyPlaylistId)}
             >
               {isChild && (
                 <span aria-hidden="true" className="text-muted-foreground">
