@@ -864,15 +864,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const prevTracks = get().tracks;
       const prevReadyTrackIds = new Set(prevTracks.filter((t) => t.status === "ready").map((t) => t.id));
       let finalTracks: Track[];
+      let nextTracksEtag = cachedTracksEtag;
       let hasNewlyReady = false;
 
       if (isTracks304) {
         finalTracks = prevTracks;
       } else {
         const tracks: Track[] = await res.json();
-        if (!Array.isArray(tracks)) return;
+        if (!Array.isArray(tracks) || fetchId !== latestFetchTracksRequestId) return;
         const etag = res.headers?.get ? res.headers.get("etag") : null;
-        cachedTracksEtag = etag || null;
+        nextTracksEtag = etag || null;
         const prevTrackMap = new Map(prevTracks.map((t) => [t.id, t]));
         const stabilizedTracks = tracks.map((fresh) => {
           const prev = prevTrackMap.get(fresh.id);
@@ -904,10 +905,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const trackMap = new Map(finalTracks.map((t) => [t.id, t]));
       const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
-        if (!reconcileSegments) {
-          if (hasNewlyReady) {
-            return get().fetchTracks(true);
-          }
+        // Escalate using this response, not a second conditional request whose 304
+        // would otherwise pair the new validator with the old queued-track payload.
+        if (!reconcileSegments && !hasNewlyReady) {
           const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
           const { queuesByMode, playbackMode } = get();
           const updateQueueList = (list: QueueItem[], mode: PlaybackMode) => {
@@ -1034,6 +1034,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             const fallbackIdx = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
             updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
           }
+          cachedTracksEtag = nextTracksEtag;
           set(updates);
 
           if (activeTrack && (!trackMap.has(activeTrack.id) || trackMap.get(activeTrack.id)!.status !== "ready")) {
@@ -1228,6 +1229,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             }
           }
         }
+        cachedTracksEtag = nextTracksEtag;
         set(reconcileUpdates);
 
         // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server

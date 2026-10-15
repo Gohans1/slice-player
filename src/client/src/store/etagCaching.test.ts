@@ -23,6 +23,9 @@ import type { Track, Segment } from "@/server/types";
 
 describe("Client ETag 304 Caching in usePlayerStore", () => {
   const origFetch = globalThis.fetch;
+  const mockFetch = (handler: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>) => {
+    globalThis.fetch = Object.assign(handler, { preconnect: origFetch.preconnect });
+  };
 
   const track1: Track = {
     id: "trk_etag_1",
@@ -226,9 +229,11 @@ describe("Client ETag 304 Caching in usePlayerStore", () => {
 
     usePlayerStore.setState({ tracks: [queuedTrack] });
 
-    globalThis.fetch = (mock(async (input: any) => {
-      const url = typeof input === "string" ? input : input.url;
+    mockFetch(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const validator = new Headers(init?.headers).get("If-None-Match");
       if (url === "/api/tracks") {
+        if (validator === 'W/"tracks_ready"') return new Response(null, { status: 304 });
         return new Response(JSON.stringify([readyTrack]), {
           status: 200,
           headers: { "Content-Type": "application/json", "ETag": 'W/"tracks_ready"' },
@@ -236,19 +241,44 @@ describe("Client ETag 304 Caching in usePlayerStore", () => {
       }
       if (url === "/api/segments") {
         segCalls++;
+        if (validator === 'W/"segments_tag"') return new Response(null, { status: 304 });
         return new Response(JSON.stringify([segment1]), {
           status: 200,
           headers: { "Content-Type": "application/json", "ETag": 'W/"segments_tag"' },
         });
       }
       return new Response("Not found", { status: 404 });
-    }) as any);
+    });
 
     // Call with reconcileSegments = false
     await usePlayerStore.getState().fetchTracks(false);
 
     // Because track transitioned from queued to ready, it MUST escalate and fetch segments!
     expect(segCalls).toBe(1);
+    expect(usePlayerStore.getState().tracks[0].status).toBe("ready");
+    await usePlayerStore.getState().fetchTracks(true);
+    expect(usePlayerStore.getState().tracks[0].status).toBe("ready");
+  });
+
+  it("retries a track payload when its segment reconciliation failed before committing it", async () => {
+    const queuedTrack: Track = { ...track1, status: "queued" };
+    usePlayerStore.setState({ tracks: [queuedTrack] });
+    let segmentsAvailable = false;
+    mockFetch(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const validator = new Headers(init?.headers).get("If-None-Match");
+      if (url === "/api/tracks") {
+        if (validator === 'W/"ready"') return new Response(null, { status: 304 });
+        return Response.json([track1], { headers: { ETag: 'W/"ready"' } });
+      }
+      if (url === "/api/segments") {
+        return segmentsAvailable ? Response.json([segment1]) : new Response(null, { status: 503 });
+      }
+      return new Response(null, { status: 404 });
+    });
+    await usePlayerStore.getState().fetchTracks(true);
+    segmentsAvailable = true;
+    await usePlayerStore.getState().fetchTracks(true);
     expect(usePlayerStore.getState().tracks[0].status).toBe("ready");
   });
 
