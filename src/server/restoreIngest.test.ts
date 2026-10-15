@@ -20,7 +20,11 @@ mock.module("./waveform", () => ({
   cancelWaveformForFile: async () => {},
 }));
 const { ingestLocalFile } = await import("./ingest");
-const { exportLibraryArchive, importLibraryArchive } = await import("./backup");
+const { exportLibraryArchive: streamLibraryArchive, importLibraryArchive } = await import("./backup");
+// Collect only small test fixtures; production serves the archive stream directly.
+async function exportLibraryArchive(...args: Parameters<typeof streamLibraryArchive>): Promise<Blob> {
+  return new Response(await streamLibraryArchive(...args)).blob();
+}
 const cwd = process.cwd();
 const sandbox = mkdtempSync(join(tmpdir(), "slice-restore-ingest-"));
 let input: string;

@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { rejects } from "node:assert/strict";
 import { Database } from "bun:sqlite";
+import { ingestLocalFile } from "./ingest";
 import { initDatabase, closeDatabase, createTrack, getTrack, createPlaylist, createSegment, getDb } from "./db";
-import { exportLibraryArchive, importLibraryArchive, MAX_THUMB_FILE_BYTES } from "./backup";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync } from "node:fs";
+import { exportLibraryArchive as streamLibraryArchive, importLibraryArchive, MAX_THUMB_FILE_BYTES } from "./backup";
+
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve, join } from "node:path";
+import { resolve, join, dirname } from "node:path";
+
+// Collect only small test fixtures; production serves the archive stream directly.
+async function exportLibraryArchive(...args: Parameters<typeof streamLibraryArchive>): Promise<Blob> {
+  return new Response(await streamLibraryArchive(...args)).blob();
+}
 
 const TEST_DIR = mkdtempSync(join(tmpdir(), "slice-backup-test-"));
 const TEST_DB = join(TEST_DIR, "music.db");
@@ -82,6 +90,9 @@ describe("Library Backup & Restore (Export / Import)", () => {
     expect(fileNames).toContain("cookies.txt");
     expect(fileNames).toContain("cache/audio/yt_test123.opus");
     expect(fileNames).toContain("cache/thumbs/yt_test123.jpg");
+    expect(await files.get("cache/audio/yt_test123.opus").text()).toBe("test audio data 12345");
+    expect(await files.get("cache/thumbs/yt_test123.jpg").text()).toBe("fake jpeg header bytes");
+    expect(await files.get("cookies.txt").text()).toBe("# YouTube cookies mock");
 
     const manifestFile = files.get("manifest.json");
     const manifest = JSON.parse(await manifestFile.text());
@@ -263,6 +274,76 @@ describe("Library Backup & Restore (Export / Import)", () => {
     expect(track).not.toBeNull();
     expect(track?.title).toBe("Imported Song");
     expect(track?.file_path).toBe(resolve(join(TEST_AUDIO_DIR, "yt_imported.opus")));
+  });
+
+  it("transfers external local audio with colliding basenames after the originals become unavailable", async () => {
+    const previousCwd = process.cwd();
+    const external = join(TEST_DIR, "external");
+    process.chdir(TEST_DIR);
+    try {
+      const originals: { trackId: string; path: string; bytes: Uint8Array }[] = [];
+      for (const [folder, frequency] of [["one", "440"], ["two", "880"]]) {
+        const source = join(external, folder, "song.wav");
+        mkdirSync(join(external, folder), { recursive: true });
+        const proc = Bun.spawn(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=${frequency}:duration=1`, source], { stderr: "pipe" });
+        expect(await proc.exited).toBe(0);
+        const result = await ingestLocalFile(source);
+        expect(result.success).toBe(true);
+        originals.push({ trackId: result.tracks![0].id, path: source, bytes: await Bun.file(source).bytes() });
+      }
+      const archive = await exportLibraryArchive({
+        dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+      });
+      for (const original of originals) expect(getTrack(original.trackId)?.file_path).toBe(original.path);
+      closeDatabase();
+      rmSync(external, { recursive: true });
+      const moved = join(TEST_DIR, "moved");
+      await importLibraryArchive(archive, {
+        dbPath: join(moved, "music.db"), audioCacheDir: join(moved, "audio"), thumbCacheDir: join(moved, "thumbs"), cookiePath: join(moved, "cookies.txt"),
+      });
+      const paths: string[] = [];
+      for (const original of originals) {
+        const restoredPath = getTrack(original.trackId)!.file_path!;
+        expect(dirname(restoredPath)).toBe(join(moved, "audio"));
+        expect(Buffer.from(await Bun.file(restoredPath).bytes()).equals(original.bytes)).toBe(true);
+        paths.push(restoredPath);
+      }
+      expect(new Set(paths).size).toBe(2);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it("prefers the transferred cached copy even when the old machine's cache still exists", async () => {
+    const source = join(TEST_AUDIO_DIR, "cached.opus");
+    writeFileSync(source, "cached audio");
+    createTrack({ id: "cached", source_type: "local", source_uri: source, title: "Cached", duration: 1, status: "ready", file_path: source });
+    const archive = await exportLibraryArchive({
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    });
+    closeDatabase();
+    const moved = join(TEST_DIR, "other-machine");
+    await importLibraryArchive(archive, { dbPath: join(moved, "music.db"), audioCacheDir: join(moved, "audio"), thumbCacheDir: join(moved, "thumbs"), cookiePath: join(moved, "cookies.txt") });
+    const restoredPath = getTrack("cached")!.file_path!;
+    expect(restoredPath).toBe(join(moved, "audio", "cached.opus"));
+    expect(readFileSync(restoredPath, "utf8")).toBe("cached audio");
+  });
+
+  it("rejects a supposedly ready track's missing audio instead of reporting a complete backup", async () => {
+    createTrack({ id: "missing", source_type: "local", source_uri: "gone.wav", title: "Missing", duration: 1, status: "ready", file_path: join(TEST_DIR, "gone.wav") });
+    await rejects(exportLibraryArchive({
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    }));
+  });
+
+  it("rejects export entries that the same application's restore limits cannot accept", async () => {
+    const oversized = join(TEST_THUMB_DIR, "too-large.jpg");
+    writeFileSync(oversized, "");
+    truncateSync(oversized, MAX_THUMB_FILE_BYTES + 1);
+    const error = await streamLibraryArchive({
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    }).then(async (stream) => { await stream.cancel(); return null; }, (failure: unknown) => failure);
+    expect(error).toBeInstanceOf(Error);
   });
 
   it("should validate archive filenames against tar-slip and dangerous names", () => {

@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
 import { initDatabase, closeDatabase, createTrack, getTrack, updateTrack } from "./db";
-import { exportLibraryArchive, importLibraryArchive } from "./backup";
+import { exportLibraryArchive as streamLibraryArchive, importLibraryArchive } from "./backup";
+
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { validateSafeLocalAudioPath } from "./ingest";
 import { safeSerializeDetails } from "./logger";
+
+// Collect only small test fixtures; production serves the archive stream directly.
+async function exportLibraryArchive(...args: Parameters<typeof streamLibraryArchive>): Promise<Blob> {
+  return new Response(await streamLibraryArchive(...args)).blob();
+}
 
 const TEST_DIR = "./data/test_security_sandbox";
 const TEST_DB = join(TEST_DIR, "music.db");

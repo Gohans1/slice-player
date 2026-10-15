@@ -1402,15 +1402,14 @@ const server = serve({
           );
         }
         try {
-          const archiveBlob = await exportLibraryArchive();
+          const archiveStream = await exportLibraryArchive();
           const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-          return new Response(archiveBlob, {
+          return new Response(archiveStream, {
             status: 200,
             headers: {
               ...corsHeaders,
               "Content-Type": "application/gzip",
               "Content-Disposition": `attachment; filename="slice-player-backup-${timestamp}.tar.gz"`,
-              "Content-Length": String(archiveBlob.size),
             },
           });
         } catch (err: unknown) {

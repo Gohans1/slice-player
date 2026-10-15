@@ -1,8 +1,10 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, lstatSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
+import { writeArchive, type ArchiveEntry } from "./archiveWriter";
 import { join, resolve, dirname, extname } from "node:path";
-import { initDatabase, closeDatabase, healTrackFilePaths } from "./db";
+import { initDatabase, closeDatabase, healTrackFilePaths, getCrossPlatformBasename } from "./db";
 import { abortIngestProcesses, pauseIngestOperations, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
@@ -67,7 +69,7 @@ export const MAX_AUDIO_FILE_BYTES = 350 * 1024 * 1024; // 350 MB
 export const MAX_THUMB_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
 export const MAX_DB_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
 
-function readLibrarySnapshot(dbPath: string) {
+function readLibrarySnapshot(dbPath: string, audioCacheDir: string) {
   const snapshotDir = mkdtempSync(join(tmpdir(), "slice-export-"));
   let source: Database | undefined;
   let snapshot: Database | undefined;
@@ -76,13 +78,53 @@ function readLibrarySnapshot(dbPath: string) {
     const snapshotPath = join(snapshotDir, "music.db");
     // VACUUM INTO includes committed WAL frames even when another reader blocks checkpointing.
     source.query("VACUUM INTO ?").run(snapshotPath);
-    snapshot = new Database(snapshotPath, { readonly: true });
-    return {
-      bytes: readFileSync(snapshotPath),
+    snapshot = new Database(snapshotPath);
+    const audioFiles = new Map<string, string>();
+    if (existsSync(audioCacheDir)) {
+      for (const name of readdirSync(audioCacheDir)) {
+        const path = join(audioCacheDir, name);
+        if (isSafeArchiveFilename(name) && (SUPPORTED_AUDIO_EXTENSIONS as readonly string[]).includes(extname(name).toLowerCase()) && statSync(path).isFile()) {
+          audioFiles.set(name, path);
+        }
+      }
+    }
+    const tracks = snapshot.query<{ id: string; file_path: string; status: string }, []>(
+      "SELECT id, file_path, status FROM tracks WHERE file_path IS NOT NULL"
+    ).all();
+    const updatePath = snapshot.prepare("UPDATE tracks SET file_path = ? WHERE id = ?");
+    snapshot.transaction(() => {
+      for (const track of tracks) {
+        const originalName = getCrossPlatformBasename(track.file_path);
+        const cachedPath = join(audioCacheDir, originalName);
+        let sourcePath = resolve(track.file_path);
+        if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) sourcePath = cachedPath;
+        if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+          if (track.status === "ready") throw new Error(`Cannot back up missing audio for track: ${track.id}`);
+          continue;
+        }
+        let name = originalName;
+        if (sourcePath !== cachedPath || !audioFiles.has(name)) {
+          const ext = extname(sourcePath).toLowerCase();
+          if (!(SUPPORTED_AUDIO_EXTENSIONS as readonly string[]).includes(ext)) {
+            throw new Error(`Unsupported backup audio format for track: ${track.id}`);
+          }
+          const hash = createHash("sha256").update(track.id).digest("hex");
+          name = `local_${hash}${ext}`;
+          let suffix = 1;
+          while (audioFiles.has(name)) name = `local_${hash}_${suffix++}${ext}`;
+          audioFiles.set(name, sourcePath);
+        }
+        updatePath.run(`cache/audio/${name}`, track.id);
+      }
+    })();
+    const counts = {
       trackCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM tracks").get()!.count,
       segmentCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM segments").get()!.count,
       playlistCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM playlists").get()!.count,
     };
+    snapshot.close();
+    snapshot = undefined;
+    return { bytes: readFileSync(snapshotPath), ...counts, audioFiles };
   } finally {
     snapshot?.close();
     source?.close();
@@ -96,18 +138,19 @@ function readLibrarySnapshot(dbPath: string) {
 export async function exportLibraryArchive(
   paths: BackupPaths = {},
   options: { includeCookies?: boolean } = {}
-): Promise<Blob> {
+): Promise<ReadableStream<Uint8Array>> {
   if (isExporting || isRestoring) {
     throw new Error("Một tiến trình xuất hoặc khôi phục thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
   }
   isExporting = true;
+  let handedOff = false;
   try {
     const dbPath = resolve(paths.dbPath || "./data/music.db");
     const audioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
     const thumbCacheDir = resolve(paths.thumbCacheDir || "./data/cache/thumbs");
     const cookiePath = resolve(paths.cookiePath || "./data/cookies.txt");
 
-    const { bytes: dbBytes, trackCount, segmentCount, playlistCount } = readLibrarySnapshot(dbPath);
+    const { bytes: dbBytes, trackCount, segmentCount, playlistCount, audioFiles } = readLibrarySnapshot(dbPath, audioCacheDir);
 
     const manifest: LibraryManifest = {
       version: 1,
@@ -118,58 +161,47 @@ export async function exportLibraryArchive(
       playlistCount,
     };
 
-    const archiveFiles: Record<string, any> = {};
-    archiveFiles["manifest.json"] = JSON.stringify(manifest, null, 2);
-    archiveFiles["music.db"] = dbBytes;
-
-    // Only include cookies if explicitly requested (prevents session token leaks)
-    if (options.includeCookies && existsSync(cookiePath)) {
-      try {
-        const cookieFile = Bun.file(cookiePath);
-        if (await cookieFile.exists()) {
-          archiveFiles["cookies.txt"] = cookieFile;
-        }
-      } catch {}
+    const entries: ArchiveEntry[] = [
+      { name: "manifest.json", data: JSON.stringify(manifest, null, 2) },
+      { name: "music.db", data: dbBytes },
+    ];
+    if (options.includeCookies && existsSync(cookiePath)) entries.push({ name: "cookies.txt", source: cookiePath });
+    for (const [name, sourcePath] of audioFiles) {
+      entries.push({ name: `cache/audio/${name}`, source: sourcePath });
     }
-
-    // Add cached audio files as lazy file handles to prevent unbounded heap memory buffering
-    if (existsSync(audioCacheDir)) {
-      const audioFiles = readdirSync(audioCacheDir);
-      for (const f of audioFiles) {
-        if (f.endsWith(".part") || f.endsWith(".ytdl")) continue;
-        if (!isSafeArchiveFilename(f)) continue;
-        const fPath = join(audioCacheDir, f);
-        try {
-          const fileObj = Bun.file(fPath);
-          if (await fileObj.exists()) {
-            archiveFiles[`cache/audio/${f}`] = fileObj;
-          }
-        } catch {}
-      }
-    }
-
-    // Add cached thumbnail files as lazy file handles
     if (existsSync(thumbCacheDir)) {
-      const thumbFiles = readdirSync(thumbCacheDir);
-      for (const f of thumbFiles) {
-        if (!isSafeArchiveFilename(f)) continue;
-        const fPath = join(thumbCacheDir, f);
-        try {
-          const fileObj = Bun.file(fPath);
-          if (await fileObj.exists()) {
-            archiveFiles[`cache/thumbs/${f}`] = fileObj;
-          }
-        } catch {}
+      for (const name of readdirSync(thumbCacheDir)) {
+        const path = join(thumbCacheDir, name);
+        if (isSafeArchiveFilename(name) && (ALLOWED_THUMB_EXTENSIONS as readonly string[]).includes(extname(name).toLowerCase()) && statSync(path).isFile()) {
+          entries.push({ name: `cache/thumbs/${name}`, source: path });
+        }
       }
     }
 
-    const archive = new (Bun as any).Archive(archiveFiles, { compress: "gzip" });
-    const blob: Blob = await archive.blob();
+    if (entries.length > MAX_ARCHIVE_ENTRIES) throw new Error("Backup entry count exceeds restore limits.");
+    let totalBytes = 0;
+    for (const entry of entries) {
+      const size = "source" in entry ? statSync(entry.source).size : Buffer.byteLength(entry.data);
+      let limit = MAX_THUMB_FILE_BYTES;
+      if (entry.name === "music.db") limit = MAX_DB_FILE_BYTES;
+      else if (entry.name === "cookies.txt") limit = MAX_COOKIE_FILE_BYTES;
+      else if (entry.name.startsWith("cache/audio/")) limit = MAX_AUDIO_FILE_BYTES;
+      totalBytes += size;
+      if (size > limit || totalBytes > MAX_TOTAL_EXTRACTED_BYTES) {
+        throw new Error(`Backup file or total size exceeds restore limits: ${entry.name}`);
+      }
+    }
 
-    logEvent("info", "system", `Xuất thư viện thành công: ${trackCount} bài, ${segmentCount} lát cắt, ${playlistCount} playlist`);
-    return blob;
+    const stream = writeArchive(entries, (completed) => {
+      isExporting = false;
+      if (completed) {
+        logEvent("info", "system", `Xuất thư viện thành công: ${trackCount} bài, ${segmentCount} lát cắt, ${playlistCount} playlist`);
+      }
+    });
+    handedOff = true;
+    return stream;
   } finally {
-    isExporting = false;
+    if (!handedOff) isExporting = false;
   }
 }
 
@@ -285,7 +317,7 @@ export async function importLibraryArchive(
 
     let tempDb: Database | null = null;
     try {
-      tempDb = new Database(incomingTmpPath, { readonly: true });
+      tempDb = new Database(incomingTmpPath);
       const checkRow = tempDb.query("PRAGMA quick_check;").get() as { quick_check: string } | null;
       if (!checkRow || checkRow.quick_check !== "ok") {
         throw new Error(`File cơ sở dữ liệu bị lỗi hỏng (quick_check: ${checkRow?.quick_check || "failed"})`);
@@ -295,6 +327,19 @@ export async function importLibraryArchive(
       if (!tableNames.has("tracks") || !tableNames.has("segments")) {
         throw new Error("File cơ sở dữ liệu không hợp lệ: thiếu cấu trúc bảng của Slice Player.");
       }
+      // Prefer the packaged copy, even if an old absolute path still exists on this machine.
+      const tracks = tempDb.query<{ id: string; file_path: string }, []>(
+        "SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL"
+      ).all();
+      const updatePath = tempDb.prepare("UPDATE tracks SET file_path = ? WHERE id = ?");
+      tempDb.transaction(() => {
+        for (const track of tracks) {
+          const name = getCrossPlatformBasename(track.file_path);
+          if (isSafeArchiveFilename(name) && files.has(`cache/audio/${name}`)) {
+            updatePath.run(join(targetAudioCacheDir, name), track.id);
+          }
+        }
+      })();
     } finally {
       if (tempDb) {
         try { tempDb.close(true); } catch {}
