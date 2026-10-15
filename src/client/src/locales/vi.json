@@ -304,7 +304,7 @@
     "reset": "Về đầu (0:00)",
     "trackVolume": "Âm lượng riêng bài hát",
     "trackVolumeTooltip": "Âm lượng riêng bài này: {{percent}}%",
-    "addSlice": "+ Tạo đoạn tại mốc này",
+    "addSlice": "Tạo đoạn tại mốc này",
     "slicesHeader": "Danh sách các đoạn đã cắt",
     "slicesSub": "Mỗi đoạn này sẽ là 1 \"bài\" độc lập khi chạy Shuffle ngẫu nhiên.",
     "empty": "Chưa có đoạn nào được tạo",

@@ -304,7 +304,7 @@
     "reset": "Reset (0:00)",
     "trackVolume": "Track Volume",
     "trackVolumeTooltip": "Track volume: {{percent}}%",
-    "addSlice": "+ Add Slice at Playhead",
+    "addSlice": "Add Slice at Playhead",
     "slicesHeader": "Slices",
     "slicesSub": "Each slice plays as an independent track during shuffle.",
     "empty": "No slices yet",
