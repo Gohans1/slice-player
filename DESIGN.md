@@ -232,6 +232,7 @@ Bố cục 3 cột theo Apple Music (macOS Tahoe 26), dựng bằng shadcn Base 
 - **Dưới 640px (`INLINE_ROW_ACTIONS_QUERY`, bằng `sm`)**: hành động inline của hàng bảng dồn vào menu "…".
 - **Header dính là `@container`** để luôn nằm trên một hàng thay vì wrap khi cột giữa hẹp (mở queue, sidebar mở): nhãn sort và Grid / List chỉ hiện khi header rộng từ `@6xl` (72rem), nhãn + Local Audio / + YouTube từ `@4xl` (56rem); hẹp hơn chỉ còn icon, tên vẫn nằm ở `aria-label` và tooltip `title`.
 - **Nhịp khoảng cách**: thang 4px; dùng `gap-*` thay cho `space-*`.
+- **Cuộn**: trang (thư viện) là vùng cuộn chính. Vùng cuộn riêng (danh sách playlist trong sidebar, list queue) dùng `overscroll-contain`, nên cuộn quá đáy không kéo thư viện chạy theo. Dưới chuột/trackpad (`pointer-fine`) trang không rubber-band (`overscroll-none` trên `html`); màn cảm ứng giữ mặc định để còn kéo-để-tải-lại.
 
 ## Elevation & Depth
 

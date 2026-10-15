@@ -1127,7 +1127,7 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
         aria-label={t("queue.regionAria", "Current playback queue")}
         tabIndex={-1}
         onKeyDown={handleListKeyDown}
-        className="flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         onDragOver={(e) => {
           if (draggedIdxRef.current === null) return;
           e.preventDefault();

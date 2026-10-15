@@ -153,7 +153,8 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
       <SidebarHeader>
         <LibrarySearch value={searchQuery} onChange={onSearchChange} />
       </SidebarHeader>
-      <SidebarContent>
+      {/* Scrolling past the end of the playlists doesn't carry on into the library */}
+      <SidebarContent className="overscroll-contain">
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.systemHeader")}</SidebarGroupLabel>
           <SidebarMenu>

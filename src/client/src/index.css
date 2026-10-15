@@ -418,6 +418,8 @@ html {
   }
   html {
     @apply font-sans;
+    /* Under a mouse or trackpad the page doesn't rubber-band past its ends, like a desktop app; touch keeps pull-to-refresh */
+    @apply pointer-fine:overscroll-none;
   }
 }
 
