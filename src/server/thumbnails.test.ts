@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { removeThumbnailVariants, resizedThumbnail, sweepThumbnailVariants, withResizeSlot } from "./thumbnails";
 
 // Cover art as local files embed it: a single frame, often 3000px square
@@ -62,6 +62,36 @@ describe("resizedThumbnail", () => {
     expect(statSync((await resizedThumbnail(source, 192, variants))!).mtimeMs).not.toBe(madeAt);
   });
 
+  it("makes a new copy when a restore brings back other cover art with an older date", async () => {
+    await coverArt(source, 3000);
+    expect(await widthOf((await resizedThumbnail(source, 192, variants))!)).toBe(192);
+
+    // A restore writes the backup's cover art and keeps the backup's older modification time
+    await coverArt(source, 100);
+    const backedUpAt = new Date(Date.now() - 86_400_000);
+    utimesSync(source, backedUpAt, backedUpAt);
+
+    expect(await widthOf((await resizedThumbnail(source, 192, variants))!)).toBe(100);
+    // The copy of the art it replaced is gone
+    expect(readdirSync(variants)).toHaveLength(1);
+  });
+
+  it("leaves no copy behind when its track is deleted while the copy is being made", async () => {
+    await coverArt(source, 3000);
+    const making = resizedThumbnail(source, 192, variants);
+
+    // Hold the event loop until ffmpeg has read the cover art and begun writing, then delete the track
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(variants) || readdirSync(variants).length === 0) {
+      if (Date.now() > deadline) throw new Error("ffmpeg never started writing");
+    }
+    rmSync(source);
+    removeThumbnailVariants("loc_abc", variants);
+
+    expect(await making).toBeNull();
+    expect(readdirSync(variants)).toEqual([]);
+  });
+
   it("makes a copy once when the same size is asked for at the same time", async () => {
     await coverArt(source, 3000);
 
@@ -76,23 +106,22 @@ describe("resizedThumbnail", () => {
     await coverArt(join(dir, "loc_other.jpg"), 3000);
     await resizedThumbnail(source, 192, variants);
     await resizedThumbnail(source, 640, variants);
-    await resizedThumbnail(join(dir, "loc_other.jpg"), 192, variants);
+    const other = await resizedThumbnail(join(dir, "loc_other.jpg"), 192, variants);
 
     removeThumbnailVariants("loc_abc", variants);
 
-    expect(readdirSync(variants)).toEqual(["loc_other-192.jpg"]);
+    expect(readdirSync(variants)).toEqual([basename(other!)]);
   });
 
   it("clears copies of tracks that are gone, such as after a library restore", async () => {
     await coverArt(source, 3000);
     await coverArt(join(dir, "loc_gone.jpg"), 3000);
-    await resizedThumbnail(source, 192, variants);
+    const kept = await resizedThumbnail(source, 192, variants);
     await resizedThumbnail(join(dir, "loc_gone.jpg"), 192, variants);
 
     sweepThumbnailVariants(new Set(["loc_abc"]), variants);
 
-    expect(readdirSync(variants)).toEqual(["loc_abc-192.jpg"]);
-    expect(existsSync(join(variants, "loc_gone-192.jpg"))).toBe(false);
+    expect(readdirSync(variants)).toEqual([basename(kept!)]);
   });
 
   it("gives up on a file that isn't an image, so the caller can serve the original", async () => {

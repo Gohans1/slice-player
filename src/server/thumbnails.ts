@@ -32,29 +32,55 @@ export async function withResizeSlot<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
-const variantPathFor = (trackId: string, width: number, variantsDir: string) => join(variantsDir, `${trackId}-${width}.jpg`);
+// Each copy is named <track id>-<width>-<cover art version>.jpg
+interface Variant {
+  trackId: string;
+  width: number;
+  version: string;
+}
+const VARIANT_NAME = /^(.+)-(\d+)-([0-9a-z]+)\.jpg$/;
+const variantPathFor = (variantsDir: string, { trackId, width, version }: Variant) => join(variantsDir, `${trackId}-${width}-${version}.jpg`);
+
+// Changes whenever the cover art file is written, even when a library restore brings back an older modification time,
+// so a copy of earlier art is never taken for a copy of the current one
+function coverArtVersion(sourcePath: string): string | null {
+  try {
+    const { size, mtimeMs, ctimeMs } = statSync(sourcePath);
+    return Bun.hash(`${size}:${mtimeMs}:${ctimeMs}`).toString(36);
+  } catch {
+    return null;
+  }
+}
+
+function removeVariantsWhere(variantsDir: string, shouldRemove: (variant: Variant | null) => boolean) {
+  if (!existsSync(variantsDir)) return;
+  for (const name of readdirSync(variantsDir)) {
+    const match = VARIANT_NAME.exec(name);
+    if (shouldRemove(match && { trackId: match[1], width: Number(match[2]), version: match[3] })) {
+      try { unlinkSync(join(variantsDir, name)); } catch {}
+    }
+  }
+}
 
 // Returns a copy of the cover art scaled down to fit the width (never up). It is made once and reused until the cover
 // art changes. Returns null when it can't be made, so the caller serves the original instead.
 export function resizedThumbnail(sourcePath: string, width: number, variantsDir: string): Promise<string | null> {
-  const variantPath = variantPathFor(basename(sourcePath, extname(sourcePath)), width, variantsDir);
-  try {
-    if (existsSync(variantPath) && statSync(variantPath).mtimeMs >= statSync(sourcePath).mtimeMs) {
-      return Promise.resolve(variantPath);
-    }
-  } catch {
-    return Promise.resolve(null);
-  }
+  const version = coverArtVersion(sourcePath);
+  if (!version) return Promise.resolve(null);
+  const variant = { trackId: basename(sourcePath, extname(sourcePath)), width, version };
+  const variantPath = variantPathFor(variantsDir, variant);
+  if (existsSync(variantPath)) return Promise.resolve(variantPath);
 
   let pending = inFlight.get(variantPath);
   if (!pending) {
-    pending = withResizeSlot(() => scaleDown(sourcePath, width, variantPath)).finally(() => inFlight.delete(variantPath));
+    pending = withResizeSlot(() => scaleDown(sourcePath, variant, variantsDir)).finally(() => inFlight.delete(variantPath));
     inFlight.set(variantPath, pending);
   }
   return pending;
 }
 
-async function scaleDown(sourcePath: string, width: number, variantPath: string): Promise<string | null> {
+async function scaleDown(sourcePath: string, variant: Variant, variantsDir: string): Promise<string | null> {
+  const variantPath = variantPathFor(variantsDir, variant);
   // Written under another name and renamed into place, so a request never reads a half-written file
   const partialPath = `${variantPath}.partial.jpg`;
   try {
@@ -62,7 +88,7 @@ async function scaleDown(sourcePath: string, width: number, variantPath: string)
     const proc = Bun.spawn(
       [
         "ffmpeg", "-v", "error", "-y", "-i", sourcePath,
-        "-vf", `scale='min(iw,${width})':'min(ih,${width})':force_original_aspect_ratio=decrease`,
+        "-vf", `scale='min(iw,${variant.width})':'min(ih,${variant.width})':force_original_aspect_ratio=decrease`,
         "-frames:v", "1", "-update", "1", "-q:v", "3", partialPath,
       ],
       // SIGKILL, so a stuck ffmpeg can't hold its request and its slot past the deadline
@@ -70,6 +96,13 @@ async function scaleDown(sourcePath: string, width: number, variantPath: string)
     );
     if ((await proc.exited) !== 0 || !existsSync(partialPath)) return null;
     renameSync(partialPath, variantPath);
+    // The cover art was replaced, or its track deleted, while it was being scaled: this copy is of art that's gone
+    if (coverArtVersion(sourcePath) !== variant.version) {
+      unlinkSync(variantPath);
+      return null;
+    }
+    // Copies of the art this one replaced won't be asked for again
+    removeVariantsWhere(variantsDir, (other) => other?.trackId === variant.trackId && other.width === variant.width && other.version !== variant.version);
     return variantPath;
   } catch {
     return null;
@@ -82,22 +115,11 @@ async function scaleDown(sourcePath: string, width: number, variantPath: string)
 
 // A deleted track takes its scaled copies with it
 export function removeThumbnailVariants(trackId: string, variantsDir: string) {
-  if (/[\\/]/.test(trackId)) return;
-  for (const width of Object.values(THUMBNAIL_WIDTHS)) {
-    const variantPath = variantPathFor(trackId, width, variantsDir);
-    if (existsSync(variantPath)) {
-      try { unlinkSync(variantPath); } catch {}
-    }
-  }
+  removeVariantsWhere(variantsDir, (variant) => variant?.trackId === trackId);
 }
 
-// Clears copies left behind by tracks that are gone, such as after a library restore
+// Clears copies left behind by tracks that are gone, such as after a library restore. It runs at startup, before any
+// resize, so it also clears partial files and anything else that isn't a copy.
 export function sweepThumbnailVariants(validTrackIds: Set<string>, variantsDir: string) {
-  if (!existsSync(variantsDir)) return;
-  for (const name of readdirSync(variantsDir)) {
-    const trackId = /^(.+)-\d+\.jpg$/.exec(name)?.[1];
-    if (!trackId || !validTrackIds.has(trackId)) {
-      try { unlinkSync(join(variantsDir, name)); } catch {}
-    }
-  }
+  removeVariantsWhere(variantsDir, (variant) => !variant || !validTrackIds.has(variant.trackId));
 }
