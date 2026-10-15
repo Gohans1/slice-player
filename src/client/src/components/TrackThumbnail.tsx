@@ -19,6 +19,15 @@ const HIGH_RES_THUMB_REGEX = /\/(?:maxresdefault|hq720|sddefault)(\.[a-zA-Z0-9]+
 const YOUTUBE_THUMB_REGEX = /^(https:\/\/i\.ytimg\.com\/vi(?:_webp)?\/[\w-]+\/)\w+(\.(?:jpg|webp))$/i;
 const smallYoutubeThumbnail = (url: string) => url.replace(YOUTUBE_THUMB_REGEX, "$1mqdefault$2");
 
+// Cover art from local files is often 3000px square; the server scales a copy to the slot's size
+const LOCAL_THUMB_REGEX = /^\/api\/thumbs\//;
+const sizedLocalThumbnail = (url: string, size: "small" | "large") => `${url}${url.includes("?") ? "&" : "?"}size=${size}`;
+
+function preferredThumbnail(url: string, size: "small" | "large") {
+  if (LOCAL_THUMB_REGEX.test(url)) return sizedLocalThumbnail(url, size);
+  return size === "small" ? smallYoutubeThumbnail(url) : url;
+}
+
 const isAllowedUrl = (url?: string): boolean =>
   Boolean(url && (/^https?:\/\//i.test(url) || url.startsWith("/")));
 
@@ -31,7 +40,7 @@ export function TrackThumbnail({
   size = "large",
 }: TrackThumbnailProps) {
   const cleanSrc = React.useMemo(() => (isAllowedUrl(src?.trim()) ? src!.trim() : undefined), [src]);
-  const preferredSrc = cleanSrc && size === "small" ? smallYoutubeThumbnail(cleanSrc) : cleanSrc;
+  const preferredSrc = cleanSrc && preferredThumbnail(cleanSrc, size);
   const [prevSrc, setPrevSrc] = React.useState(preferredSrc);
   const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(preferredSrc);
   const [isFailed, setIsFailed] = React.useState(!preferredSrc);
@@ -62,7 +71,7 @@ export function TrackThumbnail({
   }, [currentSrc]);
 
   const handleError = () => {
-    // A small slot's thumbnail failed: try the original, then its fallbacks
+    // A thumbnail sized for the slot failed: try the original, then its fallbacks
     if (cleanSrc && currentSrc === preferredSrc && preferredSrc !== cleanSrc) {
       setCurrentSrc(cleanSrc);
       setIsLoaded(false);

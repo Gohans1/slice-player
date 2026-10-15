@@ -12,7 +12,8 @@ describe("TrackThumbnail Component", () => {
   let root: any;
 
   beforeEach(() => {
-    window = new GlobalWindow();
+    // A page URL as in the app: without one, happy-dom fails every relative image URL on its own
+    window = new GlobalWindow({ url: "http://localhost/" });
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     (globalThis as any).window = window;
     (globalThis as any).document = window.document;
@@ -250,6 +251,26 @@ describe("TrackThumbnail Component", () => {
     expect(jpg).toContain('src="https://i.ytimg.com/vi/test_id/mqdefault.jpg"');
     expect(webp).toContain('src="https://i.ytimg.com/vi_webp/test_id/mqdefault.webp"');
     expect(local).toContain('src="/api/thumbnails/local_1.jpg"');
+  });
+
+  it("asks the server for local cover art scaled to the slot", () => {
+    const small = renderToStaticMarkup(<TrackThumbnail size="small" src="/api/thumbs/loc_1.jpg?v=ab12" />);
+    const large = renderToStaticMarkup(<TrackThumbnail size="large" src="/api/thumbs/loc_1.jpg?v=ab12" />);
+
+    expect(small).toContain('src="/api/thumbs/loc_1.jpg?v=ab12&amp;size=small"');
+    expect(large).toContain('src="/api/thumbs/loc_1.jpg?v=ab12&amp;size=large"');
+  });
+
+  it("falls back to the original local cover art when the scaled copy fails", () => {
+    act(() => {
+      root.render(<TrackThumbnail src="/api/thumbs/loc_1.jpg?v=ab12" />);
+    });
+
+    act(() => {
+      container.querySelector("img").dispatchEvent(new window.Event("error"));
+    });
+
+    expect(container.querySelector("img").getAttribute("src")).toBe("/api/thumbs/loc_1.jpg?v=ab12");
   });
 
   it("falls back to the original thumbnail when a small slot's thumbnail fails", () => {
