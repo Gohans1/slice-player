@@ -105,11 +105,13 @@ describe("SliceCard", () => {
       container.querySelector<HTMLButtonElement>('button[aria-label="Open Slice Studio"]')?.click();
     });
     expect(onOpenStudio).toHaveBeenCalledTimes(1);
+    expect(onOpenStudio).toHaveBeenCalledWith(baseTrack);
 
     act(() => {
       container.querySelector<HTMLButtonElement>('button[title=\'Play slice "Chorus Slice"\']')?.click();
     });
     expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(onPlay).toHaveBeenCalledWith(baseSegment, baseTrack);
   });
 
   it("renders pause button and calls pause when clicked while actively playing", async () => {

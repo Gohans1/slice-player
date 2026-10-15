@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { usePlayerStore, createQueueItem, type QueueItem } from "./store/usePlayerStore";
+import { usePlayerStore, createQueueItem, type PlaybackMode, type QueueItem } from "./store/usePlayerStore";
 import { ImportActions } from "./components/ImportActions";
 import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
@@ -675,6 +675,40 @@ export function App() {
       .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id));
   }, [filteredTracks]);
 
+  // Cards are memoized, so their handlers must be stable: an inline closure re-renders every visible card
+  // each time the grid renders, which is every frame while the sidebar animates
+  const playFromQueue = React.useCallback(
+    (mode: PlaybackMode, viewQueue: QueueItem[], segment: Segment, track: Track) => {
+      const query = deferredQuery.trim();
+      const index = viewQueue.findIndex((q) => q.segment.id === segment.id);
+      return playSegmentInMode(
+        mode,
+        segment,
+        track,
+        viewQueue,
+        index >= 0 ? index : undefined,
+        query ? { type: "search", query, count: viewQueue.length, mode } : { type: "system", mode }
+      );
+    },
+    [deferredQuery, playSegmentInMode]
+  );
+  const handlePlaySlice = React.useCallback(
+    (segment: Segment, track: Track) => playFromQueue("slices_only", sliceQueue, segment, track),
+    [playFromQueue, sliceQueue]
+  );
+  const handlePlayMixedSlice = React.useCallback(
+    (segment: Segment, track: Track) => playFromQueue("mixed", mixedQueue, segment, track),
+    [playFromQueue, mixedQueue]
+  );
+  const handlePlayMixedTrack = React.useCallback(
+    (track: Track) => playFromQueue("mixed", mixedQueue, createDefaultFullSegment(track), track),
+    [playFromQueue, mixedQueue]
+  );
+  const handlePlayTrack = React.useCallback(
+    (track: Track) => playFromQueue("original_only", originalQueue, createDefaultFullSegment(track), track),
+    [playFromQueue, originalQueue]
+  );
+
   const currentViewKey = getViewScrollKey(activePlaylistId, activeSystemCategory);
 
   const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
@@ -1236,31 +1270,17 @@ export function App() {
               onScrollHandled={handleGridScrollHandled}
               initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item) => {
-                const qIdx = sliceQueue.findIndex((q) => q.segment.id === item.segment.id);
-                return (
-                  <SliceCard
-                    key={item.id}
-                    segment={item.segment}
-                    track={item.track}
-                    visibleItemIds={visibleItems}
-                    onPlay={() =>
-                      playSegmentInMode(
-                        "slices_only",
-                        item.segment,
-                        item.track,
-                        sliceQueue,
-                        qIdx >= 0 ? qIdx : undefined,
-                        deferredQuery.trim()
-                          ? { type: "search", query: deferredQuery.trim(), count: sliceQueue.length, mode: "slices_only" }
-                          : { type: "system", mode: "slices_only" }
-                      )
-                    }
-                    onOpenStudio={() => openSliceStudio(item.track)}
-                    onDelete={handleDeleteSlice}
-                  />
-                );
-              }}
+              renderItem={(item) => (
+                <SliceCard
+                  key={item.id}
+                  segment={item.segment}
+                  track={item.track}
+                  visibleItemIds={visibleItems}
+                  onPlay={handlePlaySlice}
+                  onOpenStudio={openSliceStudio}
+                  onDelete={handleDeleteSlice}
+                />
+              )}
             />
           )
         ) : activeSystemCategory === "mixed" ? (
@@ -1298,56 +1318,27 @@ export function App() {
               onScrollHandled={handleGridScrollHandled}
               initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item) => {
-                if (item.type === "slice") {
-                  const qIdx = mixedQueue.findIndex((q) => q.segment.id === item.segment.id);
-                  return (
-                    <SliceCard
-                      key={item.id}
-                      segment={item.segment}
-                      track={item.track}
-                      visibleItemIds={visibleItems}
-                      onPlay={() =>
-                        playSegmentInMode(
-                          "mixed",
-                          item.segment,
-                          item.track,
-                          mixedQueue,
-                          qIdx >= 0 ? qIdx : undefined,
-                          deferredQuery.trim()
-                            ? { type: "search", query: deferredQuery.trim(), count: mixedQueue.length, mode: "mixed" }
-                            : { type: "system", mode: "mixed" }
-                        )
-                      }
-                      onOpenStudio={() => openSliceStudio(item.track)}
-                      onDelete={handleDeleteSlice}
-                    />
-                  );
-                }
-                const qIdx = mixedQueue.findIndex(
-                  (q) => q.track.id === item.track.id && q.segment.id.startsWith("fallback_")
-                );
-                return (
+              renderItem={(item) =>
+                item.type === "slice" ? (
+                  <SliceCard
+                    key={item.id}
+                    segment={item.segment}
+                    track={item.track}
+                    visibleItemIds={visibleItems}
+                    onPlay={handlePlayMixedSlice}
+                    onOpenStudio={openSliceStudio}
+                    onDelete={handleDeleteSlice}
+                  />
+                ) : (
                   <TrackCard
                     key={item.id}
                     track={item.track}
                     onDelete={handleDeleteTrack}
                     visibleTrackIds={visibleItems}
-                    onPlay={() =>
-                      playSegmentInMode(
-                        "mixed",
-                        createDefaultFullSegment(item.track),
-                        item.track,
-                        mixedQueue,
-                        qIdx >= 0 ? qIdx : undefined,
-                        deferredQuery.trim()
-                          ? { type: "search", query: deferredQuery.trim(), count: mixedQueue.length, mode: "mixed" }
-                          : { type: "system", mode: "mixed" }
-                      )
-                    }
+                    onPlay={handlePlayMixedTrack}
                   />
-                );
-              }}
+                )
+              }
             />
           )
         ) : activeSystemCategory === "downloading_only" ? (
@@ -1492,29 +1483,15 @@ export function App() {
             onScrollHandled={handleGridScrollHandled}
             initialScrollOffset={targetScrollY}
             className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-            renderItem={(track) => {
-              const qIdx = originalQueue.findIndex((q) => q.track.id === track.id && q.segment.id.startsWith("fallback_"));
-              return (
-                <TrackCard
-                  key={track.id}
-                  track={track}
-                  onDelete={handleDeleteTrack}
-                  visibleTrackIds={visibleItems}
-                  onPlay={() =>
-                    playSegmentInMode(
-                      "original_only",
-                      createDefaultFullSegment(track),
-                      track,
-                      originalQueue,
-                      qIdx >= 0 ? qIdx : undefined,
-                      deferredQuery.trim()
-                        ? { type: "search", query: deferredQuery.trim(), count: originalQueue.length, mode: "original_only" }
-                        : { type: "system", mode: "original_only" }
-                    )
-                  }
-                />
-              );
-            }}
+            renderItem={(track) => (
+              <TrackCard
+                key={track.id}
+                track={track}
+                onDelete={handleDeleteTrack}
+                visibleTrackIds={visibleItems}
+                onPlay={handlePlayTrack}
+              />
+            )}
           />
         )}
           </div>

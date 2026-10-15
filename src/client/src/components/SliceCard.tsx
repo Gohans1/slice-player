@@ -14,8 +14,8 @@ interface SliceCardProps {
   segment: Segment;
   track: Track;
   visibleItemIds?: (string | SelectedItem)[];
-  onPlay: () => void;
-  onOpenStudio: () => void;
+  onPlay: (segment: Segment, track: Track) => unknown;
+  onOpenStudio: (track: Track) => void;
   onDelete?: (id: string) => void;
 }
 
@@ -25,7 +25,7 @@ export function SliceCardComponent({ segment, track, visibleItemIds, onPlay, onO
   const isSelected = useIsTrackSelected(segment.id);
   const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
-  const togglePlay = useGuardedPlayToggle((s) => s.activeSegment?.id === segment.id, onPlay);
+  const togglePlay = useGuardedPlayToggle((s) => s.activeSegment?.id === segment.id, () => onPlay(segment, track));
 
   const isReady = track.status === "ready" && track.duration > 0;
   const studioLabel = t("table.openStudio", "Open Slice Studio");
@@ -48,7 +48,7 @@ export function SliceCardComponent({ segment, track, visibleItemIds, onPlay, onO
       onToggleSelected={(shiftKey) => toggleTrack(segment.id, visibleItemIds, shiftKey, createSliceSelectedItem(segment, track.id))}
       actions={
         <>
-          <Button variant="ghost" size="icon-sm" disabled={!isReady} onClick={onOpenStudio} title={studioLabel} aria-label={studioLabel}>
+          <Button variant="ghost" size="icon-sm" disabled={!isReady} onClick={() => onOpenStudio(track)} title={studioLabel} aria-label={studioLabel}>
             <Scissors />
           </Button>
           <RowActionsMenu

@@ -224,6 +224,7 @@ describe("TrackCard", () => {
     });
 
     expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(onPlay).toHaveBeenCalledWith(readyTrack);
     expect(pauseSpy).not.toHaveBeenCalled();
 
     act(() => {

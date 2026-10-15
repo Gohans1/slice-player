@@ -15,7 +15,8 @@ interface TrackCardProps {
   onDelete: (id: string) => void;
   deleteTitle?: string;
   visibleTrackIds?: (string | SelectedItem)[];
-  onPlay?: () => void;
+  // Starts this track in the view's queue; without it the card plays the track on its own
+  onPlay?: (track: Track) => unknown;
 }
 
 export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackIds, onPlay }: TrackCardProps) {
@@ -36,7 +37,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
 
   const playFirstSlice = async () => {
     if (onPlay) {
-      onPlay();
+      onPlay(track);
       return;
     }
     const store = usePlayerStore.getState();
