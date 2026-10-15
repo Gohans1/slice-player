@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
 import { BulkActionBar } from "./BulkActionBar";
 import { useSelectionStore } from "../store/useSelectionStore";
 import { usePlayerStore } from "../store/usePlayerStore";
 import i18n from "../i18n";
+
+const originalPlayerState = usePlayerStore.getState();
 
 describe("BulkActionBar Component", () => {
   let container: HTMLDivElement;
@@ -14,16 +15,9 @@ describe("BulkActionBar Component", () => {
 
   beforeEach(async () => {
     await i18n.changeLanguage("en");
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    const happyWindow = new GlobalWindow();
-    (globalThis as any).window = happyWindow;
-    (globalThis as any).document = happyWindow.document;
-    (globalThis as any).HTMLElement = happyWindow.HTMLElement;
-    (globalThis as any).Event = happyWindow.Event;
-    (globalThis as any).KeyboardEvent = happyWindow.KeyboardEvent;
-
-    container = happyWindow.document.createElement("div") as unknown as HTMLDivElement;
-    happyWindow.document.body.appendChild(container as any);
+    // React/Base UI bind to the preloaded document at import time; keep that DOM realm.
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
 
     useSelectionStore.getState().clearSelection();
@@ -35,6 +29,7 @@ describe("BulkActionBar Component", () => {
     });
     container.remove();
     useSelectionStore.getState().clearSelection();
+    usePlayerStore.setState(originalPlayerState);
   });
 
   it("renders nothing when no items are selected", () => {
@@ -276,36 +271,30 @@ describe("BulkActionBar Component", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    // Verify CreatePlaylistModal opened in document.body
-    const dialog = (globalThis as any).document.querySelector('[role="dialog"]');
+    // Lazy dialog loading is asynchronous; observe the UI instead of assuming 50ms.
+    const deadline = performance.now() + 1000;
+    while (!document.querySelector('[role="dialog"]') && performance.now() < deadline) {
+      await act(async () => { await new Promise((fulfill) => setTimeout(fulfill, 0)); });
+    }
+    const dialog = document.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
 
-    const input = (globalThis as any).document.querySelector('input[placeholder*="Focus Chill"]') as HTMLInputElement;
+    const input = document.querySelector<HTMLInputElement>('input[placeholder*="Focus Chill"]');
     expect(input).not.toBeNull();
 
     // Set input value
     act(() => {
-      const reactPropsKey = Object.keys(input).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
-      if (reactPropsKey && (input as any)[reactPropsKey]?.onChange) {
-        (input as any)[reactPropsKey].onChange({ target: { value: "Workout Mix" }, currentTarget: { value: "Workout Mix" } });
-      } else {
-        input.value = "Workout Mix";
-        input.dispatchEvent(new (globalThis as any).Event("input", { bubbles: true }));
-        input.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true }));
-      }
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "Workout Mix");
+      input!.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
 
     // Submit form
-    const form = (globalThis as any).document.querySelector("form");
+    const form = document.querySelector<HTMLFormElement>("form");
     expect(form).not.toBeNull();
 
     await act(async () => {
-      const formPropsKey = Object.keys(form!).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
-      if (formPropsKey && (form as any)[formPropsKey]?.onSubmit) {
-        (form as any)[formPropsKey].onSubmit({ preventDefault: () => {} });
-      } else {
-        form!.dispatchEvent(new (globalThis as any).Event("submit", { bubbles: true, cancelable: true }));
-      }
+      form!.requestSubmit();
       await new Promise((r) => setTimeout(r, 50));
     });
 
