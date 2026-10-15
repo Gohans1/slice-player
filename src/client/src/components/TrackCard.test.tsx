@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { TrackCard } from "./TrackCard";
 import { usePlayerStore } from "../store/usePlayerStore";
-import type { Track } from "@/server/types";
+import type { Segment, Track } from "@/server/types";
 import i18n from "../i18n";
 
 describe("TrackCard", () => {
@@ -200,6 +200,33 @@ describe("TrackCard", () => {
         activeTrack: null,
         resume: origResume,
       });
+    });
+  });
+
+  it("starts the full track instead of pausing when one of its slices is the one playing", async () => {
+    const origPause = usePlayerStore.getState().pause;
+    const readyTrack: Track = { ...baseTrack, status: "ready" };
+    const chorus: Segment = { id: "seg_chorus", track_id: readyTrack.id, name: "Chorus", start_time: 30, end_time: 60, color: "#4385BE", sort_order: 0 };
+    const pauseSpy = mock(() => {});
+    const onPlay = mock(() => {});
+
+    act(() => {
+      usePlayerStore.setState({ isPlaying: true, activeTrack: readyTrack, activeSegment: chorus, pause: pauseSpy as any });
+      root.render(<TrackCard track={readyTrack} onDelete={() => {}} onPlay={onPlay} />);
+    });
+
+    const playBtn = container.querySelector<HTMLButtonElement>(`button[title="Play ${readyTrack.title}"]`);
+    expect(playBtn).not.toBeNull();
+
+    await act(async () => {
+      playBtn?.click();
+    });
+
+    expect(onPlay).toHaveBeenCalledTimes(1);
+    expect(pauseSpy).not.toHaveBeenCalled();
+
+    act(() => {
+      usePlayerStore.setState({ isPlaying: false, activeTrack: null, activeSegment: null, pause: origPause });
     });
   });
 

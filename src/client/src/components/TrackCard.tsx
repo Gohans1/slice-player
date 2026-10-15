@@ -5,8 +5,8 @@ import { Button } from "./ui/button";
 import { MediaTile } from "./MediaTile";
 import { RowActionsMenu } from "./RowActionsMenu";
 import { useGuardedPlayToggle } from "../hooks/use-guarded-play-toggle";
-import { cn, formatDuration, createDefaultFullSegment } from "../lib/utils";
-import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
+import { cn, formatDuration, createDefaultFullSegment, isFullTrackSegment } from "../lib/utils";
+import { usePlayerStore, isPlaybackMode, type PlayerState } from "../store/usePlayerStore";
 import { useIsTrackSelected, useSelectionStore, useIsSelectionActive, createTrackSelectedItem, type SelectedItem } from "../store/useSelectionStore";
 import type { Track, Segment } from "@/server/types";
 
@@ -26,7 +26,9 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   const isSelected = useIsTrackSelected(track.id);
   const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
-  const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeTrack?.id === track.id);
+  // The card stands for the full track; one of its slices playing is a different item
+  const isActiveItem = (s: PlayerState) => s.activeTrack?.id === track.id && isFullTrackSegment(s.activeSegment);
+  const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && isActiveItem(s));
 
   // Fetched slices go stale once the track's slice count changes
   const [fetchedSegments, setFetchedSegments] = React.useState<{ count?: number; list: Segment[] } | null>(null);
@@ -78,7 +80,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
     }
   };
 
-  const togglePlay = useGuardedPlayToggle((s) => s.activeTrack?.id === track.id, playFirstSlice);
+  const togglePlay = useGuardedPlayToggle(isActiveItem, playFirstSlice);
 
   const isReady = track.status === "ready" && track.duration > 0;
   const studioLabel = t("table.openStudio", "Open Slice Studio");

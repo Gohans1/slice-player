@@ -38,6 +38,11 @@ export function createDefaultFullSegment(track: Track): Segment {
   };
 }
 
+// No segment, or the synthetic `fallback_` one, means the whole track is playing rather than one of its slices
+export function isFullTrackSegment(segment: Pick<Segment, "id"> | null | undefined): boolean {
+  return !segment || segment.id.startsWith("fallback_");
+}
+
 export function compareDownloadingTracks(a: Track, b: Track): number {
   if (a.status === "downloading" && b.status !== "downloading") return -1;
   if (b.status === "downloading" && a.status !== "downloading") return 1;
