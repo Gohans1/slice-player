@@ -173,7 +173,7 @@ export function MediaTile({
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
           <p className="truncate font-mono text-2xs text-muted-foreground">{meta}</p>
         </div>
-        <div className="flex shrink-0 items-center">{actions}</div>
+        <div className={cn("flex shrink-0 items-center", REVEAL_ON_HOVER)}>{actions}</div>
       </div>
     </div>
   );
