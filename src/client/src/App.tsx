@@ -1280,12 +1280,11 @@ export function App() {
               onScrollHandled={handleGridScrollHandled}
               initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item, idx) => {
+              renderItem={(item) => {
                 const qIdx = sliceQueue.findIndex((q) => q.segment.id === item.segment.id);
                 return (
                   <SliceCard
                     key={item.id}
-                    index={idx}
                     segment={item.segment}
                     track={item.track}
                     onPlay={() =>
@@ -1342,14 +1341,12 @@ export function App() {
               onScrollHandled={handleGridScrollHandled}
               initialScrollOffset={targetScrollY}
               className={`transition-opacity duration-150 ${searchQuery !== deferredQuery ? "opacity-70" : "opacity-100"}`}
-              renderItem={(item, idx) => {
+              renderItem={(item) => {
                 if (item.type === "slice") {
                   const qIdx = mixedQueue.findIndex((q) => q.segment.id === item.segment.id);
                   return (
                     <SliceCard
                       key={item.id}
-                      index={idx}
-                      badgeLabel={t("table.slices")}
                       segment={item.segment}
                       track={item.track}
                       visibleItemIds={visibleItems}

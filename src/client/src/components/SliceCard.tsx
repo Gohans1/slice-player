@@ -1,264 +1,67 @@
 import * as React from "react";
-import { Play, Pause, Scissors, Disc, Check, Trash2 } from "lucide-react";
+import { Scissors } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { formatDuration } from "../lib/utils";
-import { TrackThumbnail } from "./TrackThumbnail";
+import { MediaTile } from "./MediaTile";
+import { RowActionsMenu } from "./RowActionsMenu";
+import { useGuardedPlayToggle } from "../hooks/use-guarded-play-toggle";
+import { formatDuration, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { useSelectionStore, useIsTrackSelected, useIsSelectionActive, createSliceSelectedItem, type SelectedItem } from "../store/useSelectionStore";
-import { useTranslation } from "react-i18next";
-import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
-import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
-import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
 
 interface SliceCardProps {
   segment: Segment;
   track: Track;
-  index: number;
-  badgeLabel?: string;
   visibleItemIds?: (string | SelectedItem)[];
   onPlay: () => void;
   onOpenStudio: () => void;
   onDelete?: (id: string) => void;
 }
 
-export function SliceCardComponent({
-  segment,
-  track,
-  index,
-  badgeLabel,
-  visibleItemIds,
-  onPlay,
-  onOpenStudio,
-  onDelete,
-}: SliceCardProps) {
+export function SliceCardComponent({ segment, track, visibleItemIds, onPlay, onOpenStudio, onDelete }: SliceCardProps) {
   const { t } = useTranslation();
-  const isCurrentActive = usePlayerStore((s) => s.activeSegment?.id === segment.id);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const isCurrentPlaying = isCurrentActive && isPlaying;
+  const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeSegment?.id === segment.id);
   const isSelected = useIsTrackSelected(segment.id);
   const isSelectionActive = useIsSelectionActive();
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
+  const togglePlay = useGuardedPlayToggle((s) => s.activeSegment?.id === segment.id, onPlay);
 
-  const onPlayRef = React.useRef(onPlay);
-  onPlayRef.current = onPlay;
-  const onOpenStudioRef = React.useRef(onOpenStudio);
-  onOpenStudioRef.current = onOpenStudio;
-  const onDeleteRef = React.useRef(onDelete);
-  onDeleteRef.current = onDelete;
-  const visibleItemIdsRef = React.useRef(visibleItemIds);
-  visibleItemIdsRef.current = visibleItemIds;
-
-  const isPlayBusyRef = React.useRef(false);
-  const lastPlayInitiatedRef = React.useRef(0);
-
-  const duration = Math.max(0, segment.end_time - segment.start_time);
+  const isReady = track.status === "ready" && track.duration > 0;
+  const studioLabel = t("table.openStudio", "Open Slice Studio");
 
   return (
-    <div
-      className={`group relative flex flex-col h-full rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
-        isSelected
-          ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
-          : isCurrentPlaying
-          ? "border-primary ring-1 ring-primary/40 bg-primary/5 shadow-md shadow-primary/10"
-          : "border-border"
-      }`}
-    >
-      {/* Thumbnail */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
-        <TrackThumbnail
-          src={track.thumbnail_url}
-          alt={track.title}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          fallback={
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-              <Disc className="h-10 w-10 opacity-40" />
-            </div>
-          }
-        />
-
-        {/* Kind Badge */}
-        <div className="absolute top-2 left-2">
-          <Badge variant="yellow" className="flex items-center gap-1 text-2xs py-0.5 font-mono shadow-xs">
-            <Scissors className="h-3 w-3" />
-            <span>{badgeLabel || t("table.sliceIndex", { index: index + 1, defaultValue: `Slice #${index + 1}` })}</span>
-          </Badge>
-        </div>
-
-        {/* Selection Checkbox */}
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={isSelected}
-          aria-label={t("trackCard.selectTrack", { title: segment.name, defaultValue: `Select ${segment.name}` })}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleTrack(segment.id, visibleItemIdsRef.current, e.shiftKey, {
-              id: segment.id,
-              type: "slice",
-              trackId: track.id,
-              segmentId: segment.id,
-              title: segment.name,
-            });
-          }}
-          className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-[background-color,color,opacity,box-shadow,transform] active:scale-90 motion-reduce:transform-none duration-150 cursor-pointer ${
-            isSelected
-              ? "bg-primary text-primary-foreground shadow-md opacity-100 ring-2 ring-background"
-              : "bg-black/60 text-white/80 hover:bg-black/80 hover:text-white backdrop-blur-xs opacity-40 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-          }`}
-        >
-          {isSelected ? (
-            <Check className="h-3.5 w-3.5 stroke-[3] animate-in zoom-in-75 duration-100 ease-out" />
-          ) : (
-            <div className="h-3.5 w-3.5 rounded-xs border-2 border-white/70" />
-          )}
-        </button>
-
-        {/* Duration badge */}
-        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-mono font-medium text-white backdrop-blur-xs">
-          {formatDuration(duration)}
-        </div>
-
-        {/* Active Playing Equalizer Badge */}
-        {isCurrentPlaying && (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-2xs font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-            <NowPlayingEqualizer />
-            <span className="uppercase text-2xs tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
-          </div>
-        )}
-
-        {/* Quick play overlay */}
-        <button
-          type="button"
-          onClick={async (e) => {
-            e.stopPropagation();
-            if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-              toggleTrack(segment.id, visibleItemIdsRef.current, e.shiftKey, createSliceSelectedItem(segment, track.id));
-              return;
-            }
-
-            const store = usePlayerStore.getState();
-            const isActive = store.activeSegment?.id === segment.id;
-
-            if (isActive) {
-              if (Date.now() - lastPlayInitiatedRef.current < 600) {
-                return;
-              }
-              if (isPlayBusyRef.current) return;
-              isPlayBusyRef.current = true;
-              setTimeout(() => {
-                isPlayBusyRef.current = false;
-              }, 300);
-
-              if (store.isPlaying) {
-                store.pause();
-              } else {
-                await store.resume();
-              }
-              return;
-            }
-
-            if (isPlayBusyRef.current) return;
-            isPlayBusyRef.current = true;
-            lastPlayInitiatedRef.current = Date.now();
-            try {
-              await onPlayRef.current();
-            } finally {
-              setTimeout(() => {
-                isPlayBusyRef.current = false;
-              }, 500);
-            }
-          }}
-          className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
-          title={
-            isSelectionActive
-              ? (isSelected
-                  ? t("trackCard.deselectTrack", { title: segment.name, defaultValue: `Deselect ${segment.name}` })
-                  : t("trackCard.selectTrack", { title: segment.name, defaultValue: `Select ${segment.name}` }))
-              : isCurrentPlaying
-              ? t("trackCard.pauseSliceTitle", { name: segment.name, defaultValue: `Pause slice "${segment.name}"` })
-              : t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })
-          }
-          aria-label={
-            isSelectionActive
-              ? (isSelected
-                  ? t("trackCard.deselectTrack", { title: segment.name, defaultValue: `Deselect ${segment.name}` })
-                  : t("trackCard.selectTrack", { title: segment.name, defaultValue: `Select ${segment.name}` }))
-              : isCurrentPlaying
-              ? t("trackCard.pauseSliceTitle", { name: segment.name, defaultValue: `Pause slice "${segment.name}"` })
-              : t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })
-          }
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform duration-100 hover:scale-110 active:scale-95">
-            {isCurrentPlaying ? (
-              <Pause className="h-6 w-6 fill-current" />
-            ) : (
-              <Play className="h-6 w-6 fill-current translate-x-0.5" />
-            )}
-          </div>
-        </button>
-      </div>
-
-      {/* Info */}
-      <div className="mt-3 flex-1 flex flex-col">
-        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] transition-colors ${
-          isCurrentPlaying ? "text-primary" : "text-foreground group-hover:text-primary"
-        }`}>
-          {segment.name}
-        </h3>
-        <p className="text-xs text-muted-foreground mt-1 truncate">
-          {track.title}
-        </p>
-
-        {/* Actions bar */}
-        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenStudioRef.current()}
-            disabled={track.status !== "ready" || track.duration <= 0}
-            title={t("table.openStudio", "Open Slice Studio")}
-            className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer shrink-0"
-          >
-            <Scissors className="h-3.5 w-3.5" />
-            <span>{t("table.studio", "Studio")}</span>
+    <MediaTile
+      thumbnailUrl={track.thumbnail_url}
+      sliceColor={segment.color || DEFAULT_SLICE_COLOR}
+      title={segment.name}
+      subtitle={track.title}
+      meta={t("table.sliceBadge", { start: formatDuration(segment.start_time), end: formatDuration(segment.end_time) })}
+      status={track.status}
+      isReady={isReady}
+      isCurrentPlaying={isCurrentPlaying}
+      isSelected={isSelected}
+      isSelectionActive={isSelectionActive}
+      playLabel={t("trackCard.playSliceTitle", { name: segment.name, defaultValue: `Play slice "${segment.name}"` })}
+      pauseLabel={t("trackCard.pauseSliceTitle", { name: segment.name, defaultValue: `Pause slice "${segment.name}"` })}
+      onPlayToggle={() => void togglePlay()}
+      onToggleSelected={(shiftKey) => toggleTrack(segment.id, visibleItemIds, shiftKey, createSliceSelectedItem(segment, track.id))}
+      actions={
+        <>
+          <Button variant="ghost" size="icon-sm" disabled={!isReady} onClick={onOpenStudio} title={studioLabel} aria-label={studioLabel}>
+            <Scissors />
           </Button>
-
-          <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
-            <CopyTrackLinkButton
-              sourceType={track.source_type}
-              sourceUri={track.source_uri}
-            />
-            <AddToPlaylistPopover
-              trackId={track.id}
-              segmentId={segment.id}
-              variant="ghost"
-              size="icon"
-              buttonClassName="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-              showText={false}
-            />
-            {onDelete && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteRef.current?.(segment.id);
-                }}
-                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer focus-visible:ring-1 focus-visible:ring-destructive focus-visible:opacity-100"
-                title={t("trackCard.deleteSlice", "Delete slice")}
-                aria-label={t("trackCard.deleteSlice", "Delete slice")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+          <RowActionsMenu
+            name={segment.name}
+            track={track}
+            segmentId={segment.id}
+            canAddToPlaylist={isReady}
+            deleteLabel={t("trackCard.deleteSlice", "Delete slice")}
+            onDelete={onDelete && (() => onDelete(segment.id))}
+          />
+        </>
+      }
+    />
   );
 }
 
@@ -273,12 +76,10 @@ export const SliceCard = React.memo(SliceCardComponent, (prev, next) => {
     prev.track.source_type === next.track.source_type &&
     prev.track.source_uri === next.track.source_uri &&
     prev.track.title === next.track.title &&
-    prev.track.artist === next.track.artist &&
     prev.track.status === next.track.status &&
+    prev.track.duration === next.track.duration &&
     prev.track.thumbnail_url === next.track.thumbnail_url &&
-    prev.index === next.index &&
-    prev.badgeLabel === next.badgeLabel &&
-    Boolean(prev.onDelete) === Boolean(next.onDelete) &&
+    prev.onDelete === next.onDelete &&
     prev.onPlay === next.onPlay &&
     prev.onOpenStudio === next.onOpenStudio &&
     prev.visibleItemIds === next.visibleItemIds

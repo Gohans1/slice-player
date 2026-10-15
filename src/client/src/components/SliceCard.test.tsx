@@ -1,30 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
+import { createRoot, type Root } from "react-dom/client";
 import { SliceCard } from "./SliceCard";
+import { usePlayerStore } from "../store/usePlayerStore";
 import type { Track, Segment } from "@/server/types";
 import i18n from "../i18n";
 
-describe("SliceCard Component", () => {
-  let window: any;
-  let container: any;
-  let root: any;
+describe("SliceCard", () => {
+  let container: HTMLElement;
+  let root: Root;
 
   beforeEach(async () => {
-    window = new GlobalWindow();
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    (globalThis as any).window = window;
-    (globalThis as any).document = window.document;
-    (globalThis as any).Node = window.Node;
-    (globalThis as any).Element = window.Element;
-    (globalThis as any).HTMLElement = window.HTMLElement;
-    (globalThis as any).HTMLImageElement = window.HTMLImageElement;
     await i18n.changeLanguage("en");
-
-    container = window.document.createElement("div");
-    window.document.body.appendChild(container);
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
   });
 
@@ -33,13 +23,6 @@ describe("SliceCard Component", () => {
       root.unmount();
     });
     container.remove();
-    delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
-    delete (globalThis as any).window;
-    delete (globalThis as any).document;
-    delete (globalThis as any).Node;
-    delete (globalThis as any).Element;
-    delete (globalThis as any).HTMLElement;
-    delete (globalThis as any).HTMLImageElement;
   });
 
   const baseTrack: Track = {
@@ -62,83 +45,73 @@ describe("SliceCard Component", () => {
     end_time: 35,
   };
 
-  it("renders segment name, track title, and delete button when onDelete is provided", () => {
-    const onDelete = mock(() => {});
+  const openMoreMenu = async () => {
+    const trigger = container.querySelector<HTMLElement>('button[aria-label^="More options for"]');
+    await act(async () => {
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    return (label: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((item) =>
+        item.textContent?.includes(label)
+      );
+  };
+
+  it("names the slice, its track and its time range", () => {
+    act(() => {
+      root.render(<SliceCard segment={baseSegment} track={baseTrack} onPlay={() => {}} onOpenStudio={() => {}} />);
+    });
+
+    expect(container.querySelector("h3")?.textContent).toBe("Chorus Slice");
+    expect(container.textContent).toContain("Test Track");
+    expect(container.textContent).toContain("Slice (0:10 - 0:35)");
+  });
+
+  it("deletes the slice from the More menu", async () => {
+    const onDelete = mock((_id: string) => {});
     act(() => {
       root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={baseTrack}
-          index={0}
-          onPlay={() => {}}
-          onOpenStudio={() => {}}
-          onDelete={onDelete}
-        />
+        <SliceCard segment={baseSegment} track={baseTrack} onPlay={() => {}} onOpenStudio={() => {}} onDelete={onDelete} />
       );
     });
 
-    expect(container.textContent).toContain("Chorus Slice");
-    expect(container.textContent).toContain("Test Track");
-
-    const deleteBtn = container.querySelector('button[title="Delete slice"]');
-    expect(deleteBtn).not.toBeNull();
-
-    act(() => {
-      deleteBtn.click();
+    const menuItem = await openMoreMenu();
+    await act(async () => {
+      menuItem("Delete slice")?.click();
     });
 
     expect(onDelete).toHaveBeenCalledWith("seg_1");
   });
 
-  it("does not render delete button when onDelete is omitted", () => {
+  it("offers no delete when onDelete is omitted", async () => {
     act(() => {
-      root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={baseTrack}
-          index={0}
-          onPlay={() => {}}
-          onOpenStudio={() => {}}
-        />
-      );
+      root.render(<SliceCard segment={baseSegment} track={baseTrack} onPlay={() => {}} onOpenStudio={() => {}} />);
     });
 
-    const deleteBtn = container.querySelector('button[title="Delete slice"]');
-    expect(deleteBtn).toBeNull();
+    const menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    expect(menuItem("Delete slice")).toBeUndefined();
   });
 
-  it("triggers onPlay and onOpenStudio when respective buttons are clicked", () => {
+  it("plays the slice from its artwork and opens Slice Studio from its button", () => {
     const onPlay = mock(() => {});
     const onOpenStudio = mock(() => {});
     act(() => {
-      root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={baseTrack}
-          index={0}
-          onPlay={onPlay}
-          onOpenStudio={onOpenStudio}
-        />
-      );
+      root.render(<SliceCard segment={baseSegment} track={baseTrack} onPlay={onPlay} onOpenStudio={onOpenStudio} />);
     });
 
-    const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
-    expect(studioBtn).not.toBeNull();
     act(() => {
-      studioBtn.click();
+      container.querySelector<HTMLButtonElement>('button[aria-label="Open Slice Studio"]')?.click();
     });
     expect(onOpenStudio).toHaveBeenCalledTimes(1);
 
-    const playBtn = container.querySelector('button[title=\'Play slice "Chorus Slice"\']');
-    expect(playBtn).not.toBeNull();
     act(() => {
-      playBtn.click();
+      container.querySelector<HTMLButtonElement>('button[title=\'Play slice "Chorus Slice"\']')?.click();
     });
     expect(onPlay).toHaveBeenCalledTimes(1);
   });
 
   it("renders pause button and calls pause when clicked while actively playing", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origPause = usePlayerStore.getState().pause;
     const pauseSpy = mock(() => {});
 
@@ -153,18 +126,17 @@ describe("SliceCard Component", () => {
         <SliceCard
           segment={baseSegment}
           track={baseTrack}
-          index={0}
           onPlay={() => {}}
           onOpenStudio={() => {}}
         />
       );
     });
 
-    const pauseBtn = container.querySelector('button[title=\'Pause slice "Chorus Slice"\']');
+    const pauseBtn = container.querySelector<HTMLButtonElement>('button[title=\'Pause slice "Chorus Slice"\']');
     expect(pauseBtn).not.toBeNull();
 
     act(() => {
-      pauseBtn.click();
+      pauseBtn?.click();
     });
 
     expect(pauseSpy).toHaveBeenCalledTimes(1);
@@ -180,7 +152,6 @@ describe("SliceCard Component", () => {
   });
 
   it("calls resume when clicked while active slice is paused", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origResume = usePlayerStore.getState().resume;
     const resumeSpy = mock(() => Promise.resolve());
 
@@ -195,18 +166,17 @@ describe("SliceCard Component", () => {
         <SliceCard
           segment={baseSegment}
           track={baseTrack}
-          index={0}
           onPlay={() => {}}
           onOpenStudio={() => {}}
         />
       );
     });
 
-    const playBtn = container.querySelector('button[title=\'Play slice "Chorus Slice"\']');
+    const playBtn = container.querySelector<HTMLButtonElement>('button[title=\'Play slice "Chorus Slice"\']');
     expect(playBtn).not.toBeNull();
 
     await act(async () => {
-      playBtn.click();
+      playBtn?.click();
     });
 
     expect(resumeSpy).toHaveBeenCalledTimes(1);
@@ -229,28 +199,26 @@ describe("SliceCard Component", () => {
         <SliceCard
           segment={baseSegment}
           track={baseTrack}
-          index={0}
           onPlay={onPlaySpy}
           onOpenStudio={() => {}}
         />
       );
     });
 
-    const playBtn = container.querySelector('button[title=\'Play slice "Chorus Slice"\']');
+    const playBtn = container.querySelector<HTMLButtonElement>('button[title=\'Play slice "Chorus Slice"\']');
     expect(playBtn).not.toBeNull();
 
     await act(async () => {
-      playBtn.click();
-      playBtn.click();
-      playBtn.click();
-      playBtn.click();
+      playBtn?.click();
+      playBtn?.click();
+      playBtn?.click();
+      playBtn?.click();
     });
 
     expect(onPlaySpy).toHaveBeenCalledTimes(1);
   });
 
   it("toggles slice selection and does not initiate playback when in selection mode", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const { useSelectionStore } = await import("../store/useSelectionStore");
 
     const onPlaySpy = mock(() => {});
@@ -270,7 +238,6 @@ describe("SliceCard Component", () => {
         <SliceCard
           segment={baseSegment}
           track={baseTrack}
-          index={0}
           onPlay={onPlaySpy}
           onOpenStudio={() => {}}
           visibleItemIds={[baseSegment.id, "existing_id"]}
@@ -281,7 +248,7 @@ describe("SliceCard Component", () => {
     expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
     expect(useSelectionStore.getState().selectedTrackIds.has(baseSegment.id)).toBe(false);
 
-    const playOverlayBtn = container.querySelector(`button[title='Select ${baseSegment.name}']`);
+    const playOverlayBtn = container.querySelector<HTMLButtonElement>(`button[title='Select ${baseSegment.name}']`);
     expect(playOverlayBtn).not.toBeNull();
 
     await act(async () => {
@@ -305,92 +272,31 @@ describe("SliceCard Component", () => {
     });
   });
 
-  it("applies uniform height and overflow prevention classes to card, title, and footer", () => {
+  it("copies the original video's link from the More menu without playing", async () => {
+    const writeText = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const onPlay = mock(() => {});
     act(() => {
-      root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={baseTrack}
-          index={0}
-          onPlay={() => {}}
-          onOpenStudio={() => {}}
-        />
-      );
+      root.render(<SliceCard segment={baseSegment} track={baseTrack} onPlay={onPlay} onOpenStudio={() => {}} />);
     });
 
-    const cardRoot = container.firstElementChild as HTMLElement;
-    expect(cardRoot.className).toContain("h-full");
-
-    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
-    expect(titleEl.className).toContain("min-h-[2.5rem]");
-
-    const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
-    expect(studioBtn).not.toBeNull();
-    const footerEl = studioBtn?.parentElement as HTMLElement;
-    expect(footerEl.className).toContain("mt-auto");
-    expect(footerEl.textContent).not.toContain("Playlist");
-  });
-
-  it("renders Copy YouTube link button for slices of youtube tracks and copies original video source_uri when clicked", async () => {
-    const writeTextSpy = mock((_text: string) => Promise.resolve());
-    Object.defineProperty(window.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-    Object.defineProperty(globalThis.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-
-    const onPlaySpy = mock(() => {});
-    act(() => {
-      root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={baseTrack}
-          index={0}
-          onPlay={onPlaySpy}
-          onOpenStudio={() => {}}
-        />
-      );
-    });
-
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
-    expect(copyBtn).not.toBeNull();
-
+    const menuItem = await openMoreMenu();
     await act(async () => {
-      copyBtn!.click();
+      menuItem("Copy YouTube link")?.click();
     });
 
-    // Must copy original video URL without timestamp
-    expect(writeTextSpy).toHaveBeenCalledTimes(1);
-    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=123");
-    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
-    expect(onPlaySpy).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith("https://www.youtube.com/watch?v=123");
+    expect(onPlay).not.toHaveBeenCalled();
   });
 
-  it("does not render Copy YouTube link button for slices of local audio tracks", () => {
-    const localTrack: Track = {
-      ...baseTrack,
-      id: "local_trk",
-      source_type: "local",
-      source_uri: "/music/local.flac",
-    };
-
+  it("has no copy link action for slices of local audio", async () => {
+    const localTrack: Track = { ...baseTrack, id: "local_trk", source_type: "local", source_uri: "/music/local.flac" };
     act(() => {
-      root.render(
-        <SliceCard
-          segment={baseSegment}
-          track={localTrack}
-          index={0}
-          onPlay={() => {}}
-          onOpenStudio={() => {}}
-        />
-      );
+      root.render(<SliceCard segment={baseSegment} track={localTrack} onPlay={() => {}} onOpenStudio={() => {}} />);
     });
 
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"]');
-    expect(copyBtn).toBeNull();
+    const menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    expect(menuItem("Copy YouTube link")).toBeUndefined();
   });
 });
-
