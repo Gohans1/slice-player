@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -28,6 +29,8 @@ interface RowActionsMenuProps {
   disabled?: boolean;
   deleteLabel?: string;
   onDelete?: () => void;
+  // Actions that sit inline in the row on wider screens; phones list them first in the menu
+  children?: React.ReactNode;
 }
 
 // Apple Music style "..." menu with a row's secondary actions
@@ -39,6 +42,7 @@ export function RowActionsMenu({
   disabled,
   deleteLabel,
   onDelete,
+  children,
 }: RowActionsMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -54,7 +58,7 @@ export function RowActionsMenu({
 
   const youtubeLink = track?.source_type === "youtube" ? track.source_uri : undefined;
   const showAddToPlaylist = Boolean(track) && canAddToPlaylist;
-  if (!showAddToPlaylist && !youtubeLink && !onDelete) return null;
+  if (!children && !showAddToPlaylist && !youtubeLink && !onDelete) return null;
 
   const copyLink = async () => {
     if (!youtubeLink || !(await copyToClipboard(youtubeLink))) return;
@@ -82,37 +86,49 @@ export function RowActionsMenu({
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          {track && showAddToPlaylist && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <FolderPlus />
-                {t("addToPlaylist.title")}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-56">
-                <AddToPlaylistItems
-                  trackId={track.id}
-                  segmentId={segmentId}
-                  onCreatePlaylist={() => {
-                    setOpen(false);
-                    setIsCreateModalOpen(true);
-                  }}
-                />
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+          {children && (
+            <>
+              <DropdownMenuGroup>{children}</DropdownMenuGroup>
+              {(showAddToPlaylist || youtubeLink) && <DropdownMenuSeparator />}
+            </>
           )}
-          {youtubeLink && (
-            <DropdownMenuItem closeOnClick={false} onClick={() => void copyLink()}>
-              {copied ? <Check /> : <Link2 />}
-              {copied ? t("trackCard.copiedLink", "Copied link!") : t("trackCard.copyLink", "Copy YouTube link")}
-            </DropdownMenuItem>
+          {(showAddToPlaylist || youtubeLink) && (
+            <DropdownMenuGroup>
+              {track && showAddToPlaylist && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FolderPlus />
+                    {t("addToPlaylist.title")}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-56">
+                    <AddToPlaylistItems
+                      trackId={track.id}
+                      segmentId={segmentId}
+                      onCreatePlaylist={() => {
+                        setOpen(false);
+                        setIsCreateModalOpen(true);
+                      }}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              {youtubeLink && (
+                <DropdownMenuItem closeOnClick={false} onClick={() => void copyLink()}>
+                  {copied ? <Check /> : <Link2 />}
+                  {copied ? t("trackCard.copiedLink", "Copied link!") : t("trackCard.copyLink", "Copy YouTube link")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
           )}
           {onDelete && (
             <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                <Trash2 />
-                {deleteLabel}
-              </DropdownMenuItem>
+              {(children || showAddToPlaylist || youtubeLink) && <DropdownMenuSeparator />}
+              <DropdownMenuGroup>
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash2 />
+                  {deleteLabel}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </>
           )}
         </DropdownMenuContent>

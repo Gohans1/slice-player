@@ -2640,6 +2640,149 @@ describe("PlaylistTableView", () => {
     );
     expect(plStudioBtns.length).toBe(1);
   });
+
+  describe("row selection checkboxes", () => {
+    afterEach(() => {
+      useSelectionStore.getState().clearSelection();
+    });
+
+    it("selects a row from its checkbox without playing it", async () => {
+      const playSegmentInMode = mock(async () => {});
+      usePlayerStore.setState({ activeSystemCategory: "mixed", playSegmentInMode });
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack, dummyTrack2]} />);
+      });
+
+      const checkbox = container.querySelector(".group[role='row'] [role='checkbox']") as HTMLElement;
+      await act(async () => {
+        checkbox.click();
+      });
+
+      expect(Array.from(useSelectionStore.getState().selectedTrackIds)).toEqual([dummyTrack.id]);
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+      expect(playSegmentInMode).not.toHaveBeenCalled();
+    });
+
+    it("marks select-all as mixed while only some rows are selected", async () => {
+      useSelectionStore.getState().selectTracks([dummyTrack.id]);
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack, dummyTrack2]} />);
+      });
+
+      const selectAll = container.querySelector("[role='columnheader'] [role='checkbox']") as HTMLElement;
+      expect(selectAll.getAttribute("aria-checked")).toBe("mixed");
+
+      await act(async () => {
+        selectAll.click();
+      });
+      expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
+      expect(selectAll.getAttribute("aria-checked")).toBe("true");
+    });
+  });
+
+  it("lets page shortcuts like Escape through from a row's action buttons, but not the row's play keys", async () => {
+    const playSegmentInMode = mock(async () => {});
+    usePlayerStore.setState({ activeSystemCategory: "mixed", playSegmentInMode });
+    await act(async () => {
+      root.render(<PlaylistTableView filteredTracks={[dummyTrack]} />);
+    });
+
+    const seen: string[] = [];
+    const onKeyDown = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", onKeyDown);
+    try {
+      const studioButton = container.querySelector("button[title='Open Slice Studio']") as HTMLElement;
+      await act(async () => {
+        studioButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        studioButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
+      expect(seen).toEqual(["Escape"]);
+      expect(playSegmentInMode).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", onKeyDown);
+    }
+  });
+
+  describe("narrow screens", () => {
+    // Phones get Apple Music style rows; the actions that sit inline on wider screens move into the "..." menu
+    beforeEach(() => {
+      window.happyDOM.setViewport({ width: 390, height: 844 });
+    });
+
+    it("moves a playlist row's reorder and studio actions into its menu", async () => {
+      const reorderPlaylist = mock(() => Promise.resolve(true));
+      const openSliceStudio = mock(() => {});
+      const origOpenSliceStudio = usePlayerStore.getState().openSliceStudio;
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        reorderPlaylist: reorderPlaylist as any,
+        openSliceStudio,
+      });
+
+      try {
+        await act(async () => {
+          root.render(<PlaylistTableView />);
+        });
+
+        expect(container.querySelectorAll("button[title='Move down']").length).toBe(0);
+
+        let items = await openRowMenu(0);
+        expect(findItem(items, /^Move up$/)?.hasAttribute("data-disabled")).toBe(true);
+        await act(async () => {
+          findItem(items, /^Move down$/)?.click();
+        });
+        expect(reorderPlaylist).toHaveBeenCalledWith("pl_custom_1", ["item_2", "item_1"]);
+
+        items = await openRowMenu(1);
+        await act(async () => {
+          findItem(items, /^Open Slice Studio$/)?.click();
+        });
+        expect(openSliceStudio).toHaveBeenCalledWith(dummyTrack);
+      } finally {
+        usePlayerStore.setState({ openSliceStudio: origOpenSliceStudio });
+      }
+    });
+
+    it("starts selecting from a row's menu, since phones have no hover to reveal checkboxes", async () => {
+      useSelectionStore.getState().clearSelection();
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack, dummyTrack2]} />);
+      });
+
+      try {
+        const items = await openRowMenu(1);
+        await act(async () => {
+          findItem(items, /^Select$/)?.click();
+        });
+        expect(Array.from(useSelectionStore.getState().selectedTrackIds)).toEqual([dummyTrack2.id]);
+      } finally {
+        useSelectionStore.getState().clearSelection();
+      }
+    });
+
+    it("offers retry from the menu of a track that failed to download", async () => {
+      const retryTrack = mock(async () => true);
+      const origRetryTrack = usePlayerStore.getState().retryTrack;
+      usePlayerStore.setState({ retryTrack });
+      const failedTrack: Track = { ...dummyTrack, id: "trk_failed", status: "error" };
+
+      try {
+        await act(async () => {
+          root.render(<PlaylistTableView filteredTracks={[failedTrack]} onDeleteTrack={() => {}} />);
+        });
+
+        expect(container.querySelectorAll("button[title='Retry']").length).toBe(0);
+        const items = await openRowMenu(0);
+        await act(async () => {
+          findItem(items, /^Retry$/)?.click();
+        });
+        expect(retryTrack).toHaveBeenCalledWith("trk_failed");
+      } finally {
+        usePlayerStore.setState({ retryTrack: origRetryTrack });
+      }
+    });
+  });
 });
 
 
