@@ -7,7 +7,7 @@ import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
-import { cn, formatDuration, DEFAULT_SLICE_COLOR } from "../lib/utils";
+import { cn, formatDuration, DEFAULT_SLICE_COLOR, REVEAL_ON_HOVER } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore, type PlaybackMode, type QueueItem } from "../store/usePlayerStore";
@@ -174,34 +174,34 @@ const QueueItemRow = React.memo(function QueueItemRow({
 
         {/* Mobile & Touchscreen reorder buttons */}
         <div className="flex flex-col [@media(pointer:fine)]:sm:hidden gap-0.5 shrink-0">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             data-action="move-up"
             disabled={idx === 0}
             onClick={(e) => {
               e.stopPropagation();
               onReorder(idx, idx - 1);
             }}
-            className="p-1 rounded disabled:opacity-20 text-muted-foreground hover:text-foreground hover:bg-accent flex items-center justify-center min-h-[24px] min-w-[24px] focus-visible:ring-1 focus-visible:ring-primary focus:outline-none"
             title={t("queue.moveUp", "Move up")}
             aria-label={t("queue.moveUp", "Move up")}
           >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
+            <ChevronUp />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             data-action="move-down"
             disabled={idx === totalItems - 1}
             onClick={(e) => {
               e.stopPropagation();
               onReorder(idx, idx + 1);
             }}
-            className="p-1 rounded disabled:opacity-20 text-muted-foreground hover:text-foreground hover:bg-accent flex items-center justify-center min-h-[24px] min-w-[24px] focus-visible:ring-1 focus-visible:ring-primary focus:outline-none"
             title={t("queue.moveDown", "Move down")}
             aria-label={t("queue.moveDown", "Move down")}
           >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
+            <ChevronDown />
+          </Button>
         </div>
 
         {/* Primary Clickable Play Area (no nested interactive elements inside) */}
@@ -296,19 +296,21 @@ const QueueItemRow = React.memo(function QueueItemRow({
         <span className="font-mono text-2xs text-muted-foreground">
           {formatDuration(segDuration)}
         </span>
-        <button
-          type="button"
-          data-action="remove"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(idx);
-          }}
-          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-destructive focus-visible:outline-none p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition duration-150"
-          title={t("queue.remove", "Remove from queue")}
-          aria-label={t("queue.remove", "Remove from queue")}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className={cn("flex", REVEAL_ON_HOVER)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            data-action="remove"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(idx);
+            }}
+            title={t("queue.remove", "Remove from queue")}
+            aria-label={t("queue.remove", "Remove from queue")}
+          >
+            <Trash2 />
+          </Button>
+        </div>
       </div>
     </div>
   );
