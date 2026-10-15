@@ -54,7 +54,7 @@ export function SliceSeekBar({ segment }: SliceSeekBarProps) {
     }
   };
 
-  const timeClass = "w-14 shrink-0 font-mono text-2xs text-muted-foreground tabular-nums";
+  const timeClass = "w-14 shrink-0 text-2xs text-muted-foreground tabular-nums";
 
   return (
     <div

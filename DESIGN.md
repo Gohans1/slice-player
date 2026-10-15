@@ -207,7 +207,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 
 **Display Font:** Plus Jakarta Sans (`'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`)
 **Body Font:** Plus Jakarta Sans (`'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`)
-**Label/Mono Font:** JetBrains Mono (`'JetBrains Mono', monospace`)
+**Label/Mono Font:** JetBrains Mono (`'JetBrains Mono', monospace`), chỉ cho ngữ cảnh kỹ thuật (xem The Tabular Time Rule)
 
 **Character:** Sự kết hợp hoàn hảo giữa nét hiện đại, hình học gọn ghẽ của Plus Jakarta Sans cho tiêu đề và nội dung thường ngày, cùng với chất kỹ thuật chính xác tuyệt đối của JetBrains Mono cho các con số thời gian và nhãn định danh.
 
@@ -219,7 +219,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Label** (Medium 500, 11px - 12px / 0.75rem, line-height 1, letter-spacing 0.025em): Đồng hồ đếm thời gian (`[01:12 → 01:45]`), số lượng bài hát, thẻ badge định dạng FLAC / YouTube.
 
 ### Named Rules
-**The Monospace Time Rule.** Toàn bộ thông số thời gian (thời lượng bài, điểm bắt đầu/kết thúc lát cắt, phần trăm âm lượng) bắt buộc phải hiển thị bằng `JetBrains Mono` có độ rộng ký tự cố định (tabular numbers) để các con số không bị nhảy giật khi thời gian chạy.
+**The Tabular Time Rule.** Mọi con số thay đổi theo thời gian hoặc xếp thành cột (thời lượng bài, điểm bắt đầu/kết thúc lát cắt, phần trăm âm lượng, số đếm) dùng chữ số đều nhau `tabular-nums` của font giao diện, như Apple Music dùng chữ số tabular của SF, để các con số không nhảy khi thời gian chạy. `JetBrains Mono` chỉ còn cho ngữ cảnh kỹ thuật: timecode khi chỉnh lát cắt trong Slice Studio, System Logs, phím tắt (keycap), URL và tên file lúc nhập.
 
 ## Layout
 
@@ -316,7 +316,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 
 ### Do:
 - **Do** sử dụng mã màu Flexoki đã được định nghĩa trong `index.css` khi viết component mới.
-- **Do** sử dụng font `JetBrains Mono` cho mọi hiển thị liên quan đến thời gian âm thanh (`00:00`), số thứ tự hàng đợi và nhãn kỹ thuật.
+- **Do** dùng `tabular-nums` cho mọi hiển thị thời gian âm thanh (`0:00`) và số đếm; `JetBrains Mono` chỉ cho ngữ cảnh kỹ thuật (Slice Studio, log, keycap, URL / tên file).
 - **Do** viết số đếm theo cách ngôn ngữ đang chọn viết số (`1,236` tiếng Anh, `1.236` tiếng Việt): trong bản dịch dùng `{{count, number}}` (cả `total`, `filtered`, `current`, `position`…), số đứng riêng như badge thì qua `useFormatNumber()`. Mã HTTP, phần trăm và số thứ tự hàng thì để nguyên.
 - **Do** giữ thanh điều khiển PlayerBar ở vị trí `fixed bottom-0` để người dùng có thể thao tác nhạc từ bất kỳ đâu.
 - **Do** áp dụng `pointer-events-none` và `user-select: none` cho các thành phần kéo thả thumbnail để tránh lỗi kéo nhầm hình ảnh của trình duyệt.

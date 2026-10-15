@@ -365,7 +365,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                     <FolderTree data-icon="inline-start" className="text-flexoki-purple" aria-hidden="true" />
                     <span className="max-w-40 truncate">{child.name}</span>
                     {child.item_count !== undefined && (
-                      <span className="font-mono text-muted-foreground">{formatNumber(child.item_count)}</span>
+                      <span className="text-muted-foreground tabular-nums">{formatNumber(child.item_count)}</span>
                     )}
                   </Button>
                 ))}

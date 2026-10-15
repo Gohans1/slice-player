@@ -1126,7 +1126,7 @@ export function App() {
                 <div className={cn("flex min-w-0 items-center gap-2.5", activePl && "reveal-past-playlist-title")}>
                   <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0 max-w-xs">
                     <span className="truncate">{headerMeta.title}</span>
-                    <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
+                    <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground tabular-nums shrink-0" aria-live="polite" aria-atomic="true">
                       {headerMeta.count}
                     </span>
                   </h1>

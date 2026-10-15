@@ -182,7 +182,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
               alt={item.track.title}
               className="h-full w-full object-cover select-none pointer-events-none"
               fallback={
-                <div className="flex h-full w-full items-center justify-center text-xs font-mono select-none">
+                <div className="flex h-full w-full items-center justify-center text-xs tabular-nums select-none">
                   {idx + 1}
                 </div>
               }
@@ -207,7 +207,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     {item.segment.name}
                   </span>
                   <span
-                    className="text-2xs font-mono text-muted-foreground shrink-0 select-none"
+                    className="text-2xs text-muted-foreground tabular-nums shrink-0 select-none"
                     title={`${formatDuration(item.segment.start_time)} - ${formatDuration(item.segment.end_time)}`}
                   >
                     [{formatDuration(item.segment.start_time)} - {formatDuration(item.segment.end_time)}]

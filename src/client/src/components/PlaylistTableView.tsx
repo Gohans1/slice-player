@@ -1531,7 +1531,7 @@ export function PlaylistTableView({
                   {isSlice && item.segment ? (
                     <Badge variant="yellow">
                       <Scissors data-icon="inline-start" />
-                      <span className="font-mono">
+                      <span className="tabular-nums">
                         {t("table.sliceBadge", {
                           start: formatDuration(item.segment.start_time),
                           end: formatDuration(item.segment.end_time),
@@ -2010,7 +2010,7 @@ export function PlaylistTableView({
                   {isSlice ? (
                     <Badge variant="yellow">
                       <Scissors data-icon="inline-start" />
-                      <span className="font-mono">
+                      <span className="tabular-nums">
                         {t("table.sliceBadge", {
                           start: formatDuration(item.segment.start_time),
                           end: formatDuration(item.segment.end_time),

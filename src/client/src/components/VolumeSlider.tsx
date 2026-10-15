@@ -39,7 +39,7 @@ export function VolumeSlider({
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-full left-(--volume-level) mb-2 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-0.5 font-mono text-2xs leading-none font-bold text-primary-foreground opacity-0 shadow-md transition-opacity duration-150 group-hover/volume:opacity-100 group-focus-within/volume:opacity-100 group-has-data-dragging/volume:opacity-100 group-has-data-disabled/volume:hidden"
+        className="pointer-events-none absolute bottom-full left-(--volume-level) mb-2 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-0.5 text-2xs tabular-nums leading-none font-bold text-primary-foreground opacity-0 shadow-md transition-opacity duration-150 group-hover/volume:opacity-100 group-focus-within/volume:opacity-100 group-has-data-dragging/volume:opacity-100 group-has-data-disabled/volume:hidden"
       >
         {percent}
       </span>

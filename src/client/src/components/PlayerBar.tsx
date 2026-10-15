@@ -422,7 +422,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                 {isShuffle && <Shuffle aria-hidden="true" />}
                 {isFromSearch && <Search aria-hidden="true" />}
                 <span className="min-w-0 truncate">{playingPlaylistName}</span>
-                {isFromSearch && <span className="shrink-0 font-mono">({formatNumber(searchCount)})</span>}
+                {isFromSearch && <span className="shrink-0 tabular-nums">({formatNumber(searchCount)})</span>}
               </Button>
               {displayPlaylists.length > 0 && (
                 <div role="group" className="flex flex-wrap items-center gap-1" aria-label={t("player.playlistsTagLabel", "Playlists")}>
@@ -455,7 +455,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
               <span className="text-xs font-medium text-flexoki-blue truncate">
                 {activeSegment.name}
               </span>
-              <span className="text-2xs text-muted-foreground font-mono">
+              <span className="text-2xs text-muted-foreground tabular-nums">
                 [{formatTime(activeSegment.start_time)} → {formatTime(activeSegment.end_time)}]
               </span>
             </div>
@@ -500,7 +500,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                         defaultValue: `Current Queue (${playingPlaylistName})`,
                       })}
                     </span>
-                    <span className="ml-auto font-mono text-muted-foreground">{formatNumber(queueLength)}</span>
+                    <span className="ml-auto text-muted-foreground tabular-nums">{formatNumber(queueLength)}</span>
                   </ContextMenuItem>
                 </ContextMenuGroup>
                 <ContextMenuSeparator />
@@ -524,7 +524,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                         <span className="ml-auto flex items-center gap-1.5">
                           {pl.id === lastShufflePlaylistId && <Badge variant="secondary">{t("player.lastUsed", "Recent")}</Badge>}
                           {typeof pl.item_count === "number" && (
-                            <span className="font-mono text-muted-foreground">{formatNumber(pl.item_count)}</span>
+                            <span className="text-muted-foreground tabular-nums">{formatNumber(pl.item_count)}</span>
                           )}
                         </span>
                       </ContextMenuItem>

@@ -275,7 +275,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         >
         {/* Selection count badge */}
         <Badge className="shrink-0">
-          <span key={selectedCount} className="font-mono font-bold inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>
+          <span key={selectedCount} className="font-bold tabular-nums inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>
           <span className="hidden sm:inline">{t("bulkActions.selected", "selected")}</span>
         </Badge>
 
