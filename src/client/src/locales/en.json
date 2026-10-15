@@ -124,6 +124,7 @@
   },
   "table": {
     "trackOrSlice": "Track / Slice",
+    "artist": "Artist",
     "type": "Type",
     "duration": "Duration",
     "actions": "Actions",
@@ -134,8 +135,6 @@
     "fullTrack": "Full Track",
     "sliceBadge": "Slice ({{start}} - {{end}})",
     "fullTrackIndex": "Full Track #{{index}}",
-    "slice": "Slice",
-    "studio": "Studio",
     "openStudio": "Open Slice Studio",
     "unknownArtist": "Unknown Artist",
     "emptyTracks": "No tracks found",
@@ -157,7 +156,6 @@
     "slicesCountBadge_other": "{{count, number}} slices",
     "moveUp": "Move up",
     "moveDown": "Move down",
-    "disableSearchToReorder": "Clear search to reorder items",
     "reordering": "Reordering…"
   },
   "player": {

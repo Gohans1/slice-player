@@ -2,12 +2,10 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualizer } from "@tanstack/react-virtual";
 import { Play, Pause, Scissors, Music, ChevronUp, ChevronDown, Shuffle, Clock, AlertCircle, RotateCcw, GripVertical, SquareCheck } from "lucide-react";
-import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Spinner } from "./ui/spinner";
 import { Checkbox } from "./ui/checkbox";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
-import { INLINE_ROW_ACTIONS_QUERY, useMediaQuery } from "../hooks/use-media-query";
 import { cn, formatDuration, createDefaultFullSegment, DEFAULT_SLICE_COLOR, REVEAL_ON_HOVER } from "../lib/utils";
 import {
   findActivePlaylistItemIndex,
@@ -38,28 +36,23 @@ import type { MixedItem } from "../lib/playlistSort";
 export type { MixedItem };
 
 const getEntityId = (item: { id: string }) => item.id;
-const PLAYLIST_ROW_HEIGHT = 50;
+const PLAYLIST_ROW_HEIGHT = 54;
 // Parks the drag preview off screen until the first dragover gives it a position
 const DRAG_PREVIEW_HIDDEN = "-9999px";
 
 interface TableRowState {
-  index: number;
   isSelected: boolean;
   isReady: boolean;
-  isCurrentPlaying: boolean;
   isDragging?: boolean;
   isDragTarget?: boolean;
 }
 
-// Flat Apple Music style rows: zebra stripes, a tint on the playing row and a ring on selected rows
-function tableRowClassName(
-  gridCols: string,
-  { index, isSelected, isReady, isCurrentPlaying, isDragging, isDragTarget }: TableRowState
-) {
+// Apple Music style rows: hairlines between them (the table-row-divider utility), a rounded tint on hover and a ring on
+// selected rows. The playing row isn't tinted: its artwork shows the equalizer and its title turns primary.
+function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
   return cn(
-    "group grid items-center gap-x-2 rounded-md px-3 py-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-x-4",
+    "group grid h-13.5 items-center gap-x-2 rounded-md px-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-x-4",
     gridCols,
-    index % 2 === 1 && "bg-muted/40",
     isSelected
       ? "bg-primary/10 ring-1 ring-primary/50"
       : isDragging
@@ -68,29 +61,65 @@ function tableRowClassName(
       ? "bg-accent ring-2 ring-primary/60"
       : !isReady
       ? "cursor-not-allowed opacity-60"
-      : cn("cursor-pointer", isCurrentPlaying ? "bg-primary/10" : "hover:bg-accent/60 has-data-popup-open:bg-accent/60")
+      : "cursor-pointer hover:bg-accent/60 has-data-popup-open:bg-accent/60"
   );
 }
 
-// Phones keep the number, the title, the duration (it also carries download status) and the "..." menu.
-// The third column (type, original track or slice count) waits for the table itself to be 48rem wide:
-// beside the sidebar and the queue panel the viewport is wide but the table is not, and the title would starve.
-const PLAYLIST_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[80px_minmax(0,1fr)_90px_128px] @3xl:grid-cols-[80px_minmax(0,1fr)_180px_90px_128px]";
-const LIBRARY_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_90px_104px] @3xl:grid-cols-[56px_minmax(0,1fr)_180px_90px_104px]";
-const TRACKS_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px_minmax(0,1fr)_100px_104px] @3xl:grid-cols-[56px_minmax(0,1fr)_160px_100px_104px]";
+// Tells the table-row-divider utility when a row is tinted, so the hairlines on both sides of it hide
+function tableRowTint({ isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
+  if (isSelected || isDragTarget) return "on";
+  return isReady && !isDragging ? "hover" : undefined;
+}
+
+// Columns follow Apple Music's Song | Artist | Album | Time | "...": the checkbox column, the song (artwork, title and,
+// while the artist column is hidden, the artist under it), the duration (it also carries download status) and the actions.
+// The artist and the third column (type, original track or slice count) wait for the table itself to be 42rem and 56rem
+// wide: beside the sidebar and the queue panel the viewport is wide but the table is not, and the title would starve.
+// Playlist rows also hold a drag handle beside their "..." button.
+const PLAYLIST_GRID = "grid-cols-[16px_minmax(0,1fr)_64px_28px] sm:grid-cols-[16px_minmax(0,1fr)_90px_52px] @2xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_90px_52px] @4xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_168px_90px_52px]";
+const LIBRARY_GRID = "grid-cols-[16px_minmax(0,1fr)_64px_28px] sm:grid-cols-[16px_minmax(0,1fr)_90px_28px] @2xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_90px_28px] @4xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_168px_90px_28px]";
+const TRACKS_GRID = "grid-cols-[16px_minmax(0,1fr)_64px_28px] sm:grid-cols-[16px_minmax(0,1fr)_100px_28px] @2xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_100px_28px] @4xl:grid-cols-[16px_minmax(0,1fr)_minmax(0,0.6fr)_112px_100px_28px]";
 
 const TABLE_HEADER_CLASS =
-  "grid items-center gap-x-2 border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground sm:gap-x-4";
+  "grid h-8 items-center gap-x-2 px-3 text-2xs font-semibold text-muted-foreground sm:gap-x-4";
 
-// Row actions stay out of the way until the row is hovered or focused, or while their menu is open; touch screens always show them
-const ROW_ACTIONS_CLASS =
-  "flex items-center justify-end transition-opacity [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-within:opacity-100 has-data-popup-open:opacity-100";
+// Like Apple Music, a row's "..." button always shows; the playlist drag handle beside it shows on hover or focus
+const ROW_ACTIONS_CLASS = "flex items-center justify-end gap-1";
 
-// Small 16:9 artwork; a slice also shows its color as a bar along the bottom
-function TableArtwork({ track, sliceColor }: { track?: Track | null; sliceColor?: string }) {
+const SONG_TITLE_CLASS = "truncate text-xs text-foreground group-aria-[current=true]:text-primary";
+const SONG_DETAIL_CLASS = "truncate text-xs text-muted-foreground";
+
+interface TableArtworkProps {
+  track?: Track | null;
+  sliceColor?: string;
+  isCurrentPlaying?: boolean;
+  // A click on the row plays it (or pauses it while it plays), so hovering the row shows that glyph on the artwork
+  canPlay?: boolean;
+}
+
+// Square artwork like Apple Music's song rows. It carries the row's playback state: the equalizer while the row plays
+// and, on hover, a play or pause glyph over the dimmed image. A slice also shows its color as a bar along the bottom.
+function TableArtwork({ track, sliceColor, isCurrentPlaying = false, canPlay = false }: TableArtworkProps) {
   return (
-    <div className="relative aspect-video h-8 shrink-0 overflow-hidden rounded bg-muted">
+    <div className="relative size-10 shrink-0 overflow-hidden rounded-md bg-muted">
       <TrackThumbnail src={track?.thumbnail_url} size="small" className="size-full object-cover" />
+      {(isCurrentPlaying || canPlay) && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-0 flex items-center justify-center bg-black/45 text-white transition-opacity",
+            !isCurrentPlaying && "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+          )}
+        >
+          {isCurrentPlaying && <NowPlayingEqualizer className={cn(canPlay && "group-hover:hidden group-focus-visible:hidden")} />}
+          {canPlay &&
+            (isCurrentPlaying ? (
+              <Pause className="hidden size-4 fill-current group-hover:block group-focus-visible:block" />
+            ) : (
+              <Play className="size-4 fill-current" />
+            ))}
+        </div>
+      )}
       {sliceColor && (
         <div
           data-slot="slice-color"
@@ -108,34 +137,19 @@ function stopRowPlayKeys(e: React.KeyboardEvent) {
 }
 
 interface RowLeadingCellProps {
-  index: number;
   // Names the row in the checkbox label
   title: string;
   isSelected: boolean;
   isSelectionActive: boolean;
-  isReady: boolean;
-  isCurrentPlaying: boolean;
   onToggleSelected: (shiftKey: boolean) => void;
-  // Extra controls before the checkbox, such as a playlist's drag handle
-  children?: React.ReactNode;
 }
 
-// The row number, an equalizer while it plays and a play or pause glyph on hover. The checkbox shows on
-// hover and stays visible while selecting; phones swap it in for the number only while selecting.
-function RowLeadingCell({
-  index,
-  title,
-  isSelected,
-  isSelectionActive,
-  isReady,
-  isCurrentPlaying,
-  onToggleSelected,
-  children,
-}: RowLeadingCellProps) {
+// Apple Music rows start with the artwork; ours keep a narrow column for the selection checkbox, which shows on hover
+// or focus and stays while selecting. Phones can't hover, so they show it only while selecting (their row menu starts it).
+function RowLeadingCell({ title, isSelected, isSelectionActive, onToggleSelected }: RowLeadingCellProps) {
   const { t } = useTranslation();
   return (
-    <div role="cell" className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground sm:gap-2">
-      {children}
+    <div role="cell" className="flex items-center">
       <span
         className={cn(
           "flex",
@@ -152,15 +166,6 @@ function RowLeadingCell({
           onKeyDown={stopRowPlayKeys}
         />
       </span>
-      <span className={cn("truncate", isSelected && "hidden", isSelectionActive && "max-sm:hidden", isReady && !isSelectionActive && "group-hover:hidden")}>
-        {isCurrentPlaying ? <NowPlayingEqualizer className="text-primary" /> : String(index + 1).padStart(2, "0")}
-      </span>
-      {isReady && !isSelectionActive &&
-        (isCurrentPlaying ? (
-          <Pause aria-hidden="true" className="hidden size-4 shrink-0 fill-current text-primary group-hover:block" />
-        ) : (
-          <Play aria-hidden="true" className="hidden size-4 shrink-0 fill-current text-primary group-hover:block" />
-        ))}
     </div>
   );
 }
@@ -175,7 +180,7 @@ interface SelectAllCellProps {
 function SelectAllCell({ hasRows, allSelected, partiallySelected, onToggle }: SelectAllCellProps) {
   const { t } = useTranslation();
   return (
-    <div role="columnheader" className="flex items-center gap-1.5 sm:gap-2">
+    <div role="columnheader" className="flex items-center">
       {hasRows && (
         <Checkbox
           checked={allSelected}
@@ -184,7 +189,6 @@ function SelectAllCell({ hasRows, allSelected, partiallySelected, onToggle }: Se
           onCheckedChange={onToggle}
         />
       )}
-      <span className="max-sm:hidden">#</span>
     </div>
   );
 }
@@ -329,7 +333,7 @@ function VirtualizedTableBody<T>({
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               role="presentation"
-              className="absolute inset-x-0 top-0 translate-y-(--virtual-start)"
+              className="table-row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
               style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
               onDragOver={(e) => {
                 if (draggedIdx !== null && draggedIdx !== undefined) {
@@ -399,8 +403,6 @@ export function PlaylistTableView({
 
   const selectedTrackIds = useSelectionStore((s) => s.selectedTrackIds);
   const isSelectionActive = useIsSelectionActive();
-  // Phones move a row's inline actions into its "..." menu
-  const showInlineRowActions = useMediaQuery(INLINE_ROW_ACTIONS_QUERY);
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const selectAllVisible = useSelectionStore((s) => s.selectAllVisible);
   const deselectAllVisible = useSelectionStore((s) => s.deselectAllVisible);
@@ -1355,7 +1357,8 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.trackOrSlice")}</span>
-          <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
+          <span role="columnheader" className="hidden @2xl:inline">{t("table.artist")}</span>
+          <span role="columnheader" className="hidden @4xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
@@ -1421,12 +1424,14 @@ export function PlaylistTableView({
             const isSelected = selectedTrackIds.has(item.id);
 
             const toggleSelected = (shiftKey: boolean) => toggleTrack(item.id, visiblePlaylistSelectedItems, shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
+            const rowState = { isSelected, isReady, isDragging, isDragTarget };
 
             return (
               <div
                 role="row"
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
+                data-tint={tableRowTint(rowState)}
                 style={shiftY !== 0 ? { "--drag-shift": `${shiftY}px` } : undefined}
                 aria-label={
                   isSelectionActive
@@ -1483,28 +1488,88 @@ export function PlaylistTableView({
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
                 className={cn(
-                  tableRowClassName(PLAYLIST_GRID, {
-                    index: idx,
-                    isSelected,
-                    isReady,
-                    isCurrentPlaying,
-                    isDragging,
-                    isDragTarget,
-                  }),
+                  tableRowClassName(PLAYLIST_GRID, rowState),
                   // FLIP: rows slide aside to open a gap under the dragged item
                   shiftY !== 0 && "translate-y-(--drag-shift)",
                   draggedIdx !== null && "transition duration-220 ease-standard"
                 )}
               >
-                {/* Index / Play indicator & Drag Handle */}
                 <RowLeadingCell
-                  index={idx}
                   title={isSlice && item.segment ? item.segment.name : (item.track?.title || "")}
                   isSelected={isSelected}
                   isSelectionActive={isSelectionActive}
-                  isReady={isReady}
-                  isCurrentPlaying={isCurrentPlaying}
                   onToggleSelected={toggleSelected}
+                />
+
+                {/* Song */}
+                <div role="cell" className="flex min-w-0 items-center gap-3">
+                  <TableArtwork
+                    track={item.track}
+                    sliceColor={isSlice ? (item.segment?.color || DEFAULT_SLICE_COLOR) : undefined}
+                    isCurrentPlaying={isCurrentPlaying}
+                    canPlay={isReady && !isSelectionActive}
+                  />
+                  <div className="min-w-0">
+                    <div className={SONG_TITLE_CLASS}>
+                      {isSlice && item.segment ? item.segment.name : item.track?.title}
+                    </div>
+                    {/* A slice always names its track; a full track's artist moves to the artist column once it shows */}
+                    <div className={cn(SONG_DETAIL_CLASS, !isSlice && "@2xl:hidden")}>
+                      {isSlice ? t("table.from", { title: item.track?.title }) : (item.track?.artist || t("table.unknownArtist"))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Artist */}
+                <div role="cell" className={cn(SONG_DETAIL_CLASS, "hidden @2xl:block")}>
+                  {item.track?.artist || t("table.unknownArtist")}
+                </div>
+
+                {/* Kind Badge */}
+                <div role="cell" className="hidden @4xl:flex items-center">
+                  {isSlice && item.segment ? (
+                    <Badge variant="yellow">
+                      <Scissors data-icon="inline-start" />
+                      <span className="font-mono">
+                        {t("table.sliceBadge", {
+                          start: formatDuration(item.segment.start_time),
+                          end: formatDuration(item.segment.end_time),
+                        })}
+                      </span>
+                    </Badge>
+                  ) : (
+                    // Plain text like Apple Music's Album column: full tracks are the default, slices are what stands out
+                    <span className="truncate text-xs text-muted-foreground">{t("table.fullTrack")}</span>
+                  )}
+                </div>
+
+                {/* Duration */}
+                <div role="cell" className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+                  <span>{formatDuration(duration)}</span>
+                  {item.track?.status === "downloading" ? (
+                    <Badge variant="outline">
+                      <Spinner data-icon="inline-start" />
+                      <span className="hidden sm:inline">{t("table.downloading")}</span>
+                    </Badge>
+                  ) : item.track?.status === "queued" ? (
+                    <Badge variant="outline">
+                      <Clock data-icon="inline-start" />
+                      <span className="hidden sm:inline">{t("table.queued")}</span>
+                    </Badge>
+                  ) : item.track?.status === "error" ? (
+                    <Badge variant="destructive">
+                      <AlertCircle data-icon="inline-start" />
+                      <span className="hidden sm:inline">{t("table.downloadError")}</span>
+                    </Badge>
+                  ) : null}
+                </div>
+
+                {/* Actions */}
+                <div
+                  role="cell"
+                  className={ROW_ACTIONS_CLASS}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={stopRowPlayKeys}
                 >
                   {showDragHandle && (
                     <div
@@ -1555,101 +1620,6 @@ export function PlaylistTableView({
                       <GripVertical className="pointer-events-none size-4" />
                     </div>
                   )}
-                </RowLeadingCell>
-
-                {/* Title & Artist */}
-                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
-                  <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment?.color || DEFAULT_SLICE_COLOR) : undefined} />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">
-                      {isSlice && item.segment ? item.segment.name : item.track?.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
-                      {isSlice ? t("table.from", { title: item.track?.title }) : (item.track?.artist || t("table.unknownArtist"))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Kind Badge */}
-                <div role="cell" className="hidden @3xl:flex items-center">
-                  {isSlice && item.segment ? (
-                    <Badge variant="yellow">
-                      <Scissors data-icon="inline-start" />
-                      <span className="font-mono">
-                        {t("table.sliceBadge", {
-                          start: formatDuration(item.segment.start_time),
-                          end: formatDuration(item.segment.end_time),
-                        })}
-                      </span>
-                    </Badge>
-                  ) : (
-                    // Plain text like Apple Music's Album column: full tracks are the default, slices are what stands out
-                    <span className="truncate text-xs text-muted-foreground">{t("table.fullTrack")}</span>
-                  )}
-                </div>
-
-                {/* Duration */}
-                <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
-                  <span>{formatDuration(duration)}</span>
-                  {item.track?.status === "downloading" ? (
-                    <Badge variant="outline">
-                      <Spinner data-icon="inline-start" />
-                      <span className="hidden sm:inline">{t("table.downloading")}</span>
-                    </Badge>
-                  ) : item.track?.status === "queued" ? (
-                    <Badge variant="outline">
-                      <Clock data-icon="inline-start" />
-                      <span className="hidden sm:inline">{t("table.queued")}</span>
-                    </Badge>
-                  ) : item.track?.status === "error" ? (
-                    <Badge variant="destructive">
-                      <AlertCircle data-icon="inline-start" />
-                      <span className="hidden sm:inline">{t("table.downloadError")}</span>
-                    </Badge>
-                  ) : null}
-                </div>
-
-                {/* Actions */}
-                <div
-                  role="cell"
-                  className={cn(ROW_ACTIONS_CLASS, "gap-0.5")}
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={stopRowPlayKeys}
-                >
-                  {showInlineRowActions && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canMoveUp}
-                        onClick={(e) => handleMoveItem(e, originalIdx, "up")}
-                        title={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveUp")}
-                        aria-label={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveUp")}
-                      >
-                        <ChevronUp />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canMoveDown}
-                        onClick={(e) => handleMoveItem(e, originalIdx, "down")}
-                        title={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveDown")}
-                        aria-label={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveDown")}
-                      >
-                        <ChevronDown />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={!isReady || isReordering}
-                        onClick={() => item.track && openSliceStudio(item.track)}
-                        title={t("table.openStudio")}
-                        aria-label={t("table.openStudio")}
-                      >
-                        <Scissors />
-                      </Button>
-                    </>
-                  )}
                   <RowActionsMenu
                     name={item.segment ? item.segment.name : (item.track?.title || "")}
                     track={item.track}
@@ -1670,9 +1640,11 @@ export function PlaylistTableView({
                           }
                     }
                   >
-                    {!showInlineRowActions && (
+                    {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
+                    {/* Only a playlist in manual order can move its rows (a mix follows its sources), and not while a
+                        search hides some of them; the drag handle goes away then too */}
+                    {isManualSort && !isSearching && (
                       <>
-                        {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
                         <DropdownMenuItem disabled={!canMoveUp} onClick={(e) => handleMoveItem(e, originalIdx, "up")}>
                           <ChevronUp />
                           {t("table.moveUp")}
@@ -1681,15 +1653,15 @@ export function PlaylistTableView({
                           <ChevronDown />
                           {t("table.moveDown")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={!isReady || isReordering}
-                          onClick={() => item.track && openSliceStudio(item.track)}
-                        >
-                          <Scissors />
-                          {t("table.openStudio")}
-                        </DropdownMenuItem>
                       </>
                     )}
+                    <DropdownMenuItem
+                      disabled={!isReady || isReordering}
+                      onClick={() => item.track && openSliceStudio(item.track)}
+                    >
+                      <Scissors />
+                      {t("table.openStudio")}
+                    </DropdownMenuItem>
                   </RowActionsMenu>
                 </div>
               </div>
@@ -1775,7 +1747,8 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.slices")}</span>
-          <span role="columnheader" className="hidden @3xl:inline">{t("table.originalTrack")}</span>
+          <span role="columnheader" className="hidden @2xl:inline">{t("table.artist")}</span>
+          <span role="columnheader" className="hidden @4xl:inline">{t("table.originalTrack")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
@@ -1794,12 +1767,14 @@ export function PlaylistTableView({
             const isSelected = selectedTrackIds.has(item.segment.id);
 
             const toggleSelected = (shiftKey: boolean) => toggleTrack(item.segment.id, visibleSliceSelectedItems, shiftKey, createSliceSelectedItem(item.segment, item.track.id));
+            const rowState = { isSelected, isReady };
 
             return (
               <div
                 role="row"
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
+                data-tint={tableRowTint(rowState)}
                 aria-label={
                   isSelectionActive
                     ? (isSelected ? t("trackCard.deselectTrack", { title: item.segment.name }) : t("trackCard.selectTrack", { title: item.segment.name }))
@@ -1825,67 +1800,57 @@ export function PlaylistTableView({
                   handlePlaySlice(item.segment, item.track);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName(LIBRARY_GRID, {
-                  index: idx,
-                  isSelected,
-                  isReady,
-                  isCurrentPlaying,
-                })}
+                className={tableRowClassName(LIBRARY_GRID, rowState)}
               >
-                {/* Index / Play icon */}
                 <RowLeadingCell
-                  index={idx}
                   title={item.segment.name}
                   isSelected={isSelected}
                   isSelectionActive={isSelectionActive}
-                  isReady={isReady}
-                  isCurrentPlaying={isCurrentPlaying}
                   onToggleSelected={toggleSelected}
                 />
 
-                {/* Title */}
-                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
-                  <TableArtwork track={item.track} sliceColor={item.segment.color || DEFAULT_SLICE_COLOR} />
+                {/* Song */}
+                <div role="cell" className="flex min-w-0 items-center gap-3">
+                  <TableArtwork
+                    track={item.track}
+                    sliceColor={item.segment.color || DEFAULT_SLICE_COLOR}
+                    isCurrentPlaying={isCurrentPlaying}
+                    canPlay={isReady && !isSelectionActive}
+                  />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate flex min-w-0 items-center gap-1.5">
-                      <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
+                    <div className={cn(SONG_TITLE_CLASS, "flex min-w-0 items-center gap-1.5")}>
+                      <Scissors className="size-3.5 shrink-0 text-flexoki-yellow" />
                       <span className="truncate">{item.segment.name}</span>
                     </div>
                     {/* Stands in for the Original Track column until the table is wide enough to show it */}
-                    <div className="text-xs text-muted-foreground truncate mt-0.5 @3xl:hidden">
+                    <div className={cn(SONG_DETAIL_CLASS, "@4xl:hidden")}>
                       {t("table.from", { title: item.track.title })}
                     </div>
                   </div>
                 </div>
 
+                {/* Artist */}
+                <div role="cell" className={cn(SONG_DETAIL_CLASS, "hidden @2xl:block")}>
+                  {item.track.artist || t("table.unknownArtist")}
+                </div>
+
                 {/* Original Track */}
-                <div role="cell" className="hidden @3xl:block text-xs text-muted-foreground truncate pr-2">
+                <div role="cell" className={cn(SONG_DETAIL_CLASS, "hidden @4xl:block")}>
                   {item.track.title}
                 </div>
 
                 {/* Duration */}
-                <div role="cell" className="text-xs font-mono text-muted-foreground">
+                <div role="cell" className="text-xs text-muted-foreground tabular-nums">
                   {formatDuration(duration)}
                 </div>
 
                 {/* Actions */}
                 <div
                   role="cell"
-                  className={cn(ROW_ACTIONS_CLASS, "gap-1")}
+                  className={ROW_ACTIONS_CLASS}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={stopRowPlayKeys}
                 >
-                  {showInlineRowActions && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => openSliceStudio(item.track)}
-                      disabled={!isReady}
-                      title={t("table.openStudio")}
-                    >
-                      <Scissors data-icon="inline-start" />
-                      <span className="hidden md:inline">{t("table.studio")}</span>
-                    </Button>
-                  )}
                   <RowActionsMenu
                     name={item.segment.name}
                     track={item.track}
@@ -1894,15 +1859,11 @@ export function PlaylistTableView({
                     deleteLabel={t("table.deleteSlice", "Delete slice")}
                     onDelete={onDeleteSlice && (() => onDeleteSlice(item.segment.id))}
                   >
-                    {!showInlineRowActions && (
-                      <>
-                        {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
-                        <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(item.track)}>
-                          <Scissors />
-                          {t("table.openStudio")}
-                        </DropdownMenuItem>
-                      </>
-                    )}
+                    {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
+                    <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(item.track)}>
+                      <Scissors />
+                      {t("table.openStudio")}
+                    </DropdownMenuItem>
                   </RowActionsMenu>
                 </div>
               </div>
@@ -1943,7 +1904,8 @@ export function PlaylistTableView({
             }}
           />
           <span role="columnheader">{t("table.trackOrSlice")}</span>
-          <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
+          <span role="columnheader" className="hidden @2xl:inline">{t("table.artist")}</span>
+          <span role="columnheader" className="hidden @4xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
           <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
@@ -1969,12 +1931,14 @@ export function PlaylistTableView({
             const isCurrentPlaying = isPlaying && isCurrentActive;
 
             const toggleSelected = (shiftKey: boolean) => toggleTrack(entityId, visibleMixedSelectedItems, shiftKey, isSlice ? createSliceSelectedItem(item.segment, item.track.id) : createTrackSelectedItem(item.track));
+            const rowState = { isSelected, isReady };
 
             return (
               <div
                 role="row"
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
+                data-tint={tableRowTint(rowState)}
                 aria-label={
                   isSelectionActive
                     ? (isSelected
@@ -2006,40 +1970,42 @@ export function PlaylistTableView({
                   handlePlayMixed(item);
                 }}
                 aria-current={isCurrentPlaying ? "true" : undefined}
-                className={tableRowClassName(LIBRARY_GRID, {
-                  index: idx,
-                  isSelected,
-                  isReady,
-                  isCurrentPlaying,
-                })}
+                className={tableRowClassName(LIBRARY_GRID, rowState)}
               >
-                {/* Index / Play indicator */}
                 <RowLeadingCell
-                  index={idx}
                   title={isSlice ? item.segment.name : item.track.title}
                   isSelected={isSelected}
                   isSelectionActive={isSelectionActive}
-                  isReady={isReady}
-                  isCurrentPlaying={isCurrentPlaying}
                   onToggleSelected={toggleSelected}
                 />
 
-                {/* Title & Artist */}
-                <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
-                  <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment.color || DEFAULT_SLICE_COLOR) : undefined} />
+                {/* Song */}
+                <div role="cell" className="flex min-w-0 items-center gap-3">
+                  <TableArtwork
+                    track={item.track}
+                    sliceColor={isSlice ? (item.segment.color || DEFAULT_SLICE_COLOR) : undefined}
+                    isCurrentPlaying={isCurrentPlaying}
+                    canPlay={isReady && !isSelectionActive}
+                  />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
-                      {isSlice && <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />}
+                    <div className={cn(SONG_TITLE_CLASS, "flex min-w-0 items-center gap-1.5")}>
+                      {isSlice && <Scissors className="size-3.5 shrink-0 text-flexoki-yellow" />}
                       <span className="truncate">{isSlice ? item.segment.name : item.track.title}</span>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate mt-0.5">
+                    {/* A slice always names its track; a full track's artist moves to the artist column once it shows */}
+                    <div className={cn(SONG_DETAIL_CLASS, !isSlice && "@2xl:hidden")}>
                       {isSlice ? t("table.from", { title: item.track.title }) : (item.track.artist || t("table.unknownArtist"))}
                     </div>
                   </div>
                 </div>
 
+                {/* Artist */}
+                <div role="cell" className={cn(SONG_DETAIL_CLASS, "hidden @2xl:block")}>
+                  {item.track.artist || t("table.unknownArtist")}
+                </div>
+
                 {/* Kind Badge */}
-                <div role="cell" className="hidden @3xl:flex items-center">
+                <div role="cell" className="hidden @4xl:flex items-center">
                   {isSlice ? (
                     <Badge variant="yellow">
                       <Scissors data-icon="inline-start" />
@@ -2057,7 +2023,7 @@ export function PlaylistTableView({
                 </div>
 
                 {/* Duration */}
-                <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
+                <div role="cell" className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
                   <span>{formatDuration(duration)}</span>
                   {item.track.status === "downloading" ? (
                     <Badge variant="outline">
@@ -2080,21 +2046,10 @@ export function PlaylistTableView({
                 {/* Actions */}
                 <div
                   role="cell"
-                  className={cn(ROW_ACTIONS_CLASS, "gap-1")}
+                  className={ROW_ACTIONS_CLASS}
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={stopRowPlayKeys}
                 >
-                  {showInlineRowActions && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => openSliceStudio(item.track)}
-                      disabled={!isReady}
-                      title={t("table.openStudio")}
-                    >
-                      <Scissors data-icon="inline-start" />
-                      <span className="hidden md:inline">{isSlice ? t("table.studio") : t("table.slice")}</span>
-                    </Button>
-                  )}
                   <RowActionsMenu
                     name={isSlice ? item.segment.name : item.track.title}
                     track={item.track}
@@ -2107,15 +2062,11 @@ export function PlaylistTableView({
                         : onDeleteTrack && (() => onDeleteTrack(item.track.id))
                     }
                   >
-                    {!showInlineRowActions && (
-                      <>
-                        {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
-                        <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(item.track)}>
-                          <Scissors />
-                          {t("table.openStudio")}
-                        </DropdownMenuItem>
-                      </>
-                    )}
+                    {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
+                    <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(item.track)}>
+                      <Scissors />
+                      {t("table.openStudio")}
+                    </DropdownMenuItem>
                   </RowActionsMenu>
                 </div>
               </div>
@@ -2155,7 +2106,8 @@ export function PlaylistTableView({
           }}
         />
         <span role="columnheader">{t("table.track")}</span>
-        <span role="columnheader" className="hidden @3xl:inline">{t("table.slices")}</span>
+        <span role="columnheader" className="hidden @2xl:inline">{t("table.artist")}</span>
+        <span role="columnheader" className="hidden @4xl:inline">{t("table.slices")}</span>
         <span role="columnheader">{t("table.duration")}</span>
         <span role="columnheader" className="sr-only">{t("table.actions")}</span>
       </div>
@@ -2189,12 +2141,14 @@ export function PlaylistTableView({
             : `${t("trackCard.error")}: ${track.title}`;
 
           const toggleSelected = (shiftKey: boolean) => toggleTrack(track.id, visibleTrackSelectedItems, shiftKey, createTrackSelectedItem(track));
+          const rowState = { isSelected, isReady };
 
           return (
             <div
               role="row"
               aria-rowindex={idx + 2}
               tabIndex={isSelectionActive || isReady ? 0 : -1}
+              data-tint={tableRowTint(rowState)}
               aria-label={rowAriaLabel}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -2216,51 +2170,45 @@ export function PlaylistTableView({
                 handlePlayTrack(track);
               }}
               aria-current={isCurrentPlaying ? "true" : undefined}
-              className={tableRowClassName(TRACKS_GRID, {
-                index: idx,
-                isSelected,
-                isReady,
-                isCurrentPlaying,
-              })}
+              className={tableRowClassName(TRACKS_GRID, rowState)}
             >
-              {/* Index & Selection Checkbox */}
               <RowLeadingCell
-                index={idx}
                 title={track.title}
                 isSelected={isSelected}
                 isSelectionActive={isSelectionActive}
-                isReady={isReady}
-                isCurrentPlaying={isCurrentPlaying}
                 onToggleSelected={toggleSelected}
               />
 
-              {/* Title & Artist */}
-              <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
-                <TableArtwork track={track} />
+              {/* Song */}
+              <div role="cell" className="flex min-w-0 items-center gap-3">
+                <TableArtwork track={track} isCurrentPlaying={isCurrentPlaying} canPlay={isReady && !isSelectionActive} />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {track.title}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate mt-0.5">
+                  <div className={SONG_TITLE_CLASS}>{track.title}</div>
+                  <div className={cn(SONG_DETAIL_CLASS, "@2xl:hidden")}>
                     {track.artist || t("table.unknownArtist")}
                   </div>
                   {track.status === "error" && track.error_message && (
-                    <div className="text-2xs text-destructive/90 truncate mt-0.5" title={track.error_message}>
+                    <div className="truncate text-2xs text-destructive/90" title={track.error_message}>
                       {track.error_message}
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* Artist */}
+              <div role="cell" className={cn(SONG_DETAIL_CLASS, "hidden @2xl:block")}>
+                {track.artist || t("table.unknownArtist")}
+              </div>
+
               {/* Segment count */}
-              <div role="cell" className="hidden @3xl:flex items-center">
+              <div role="cell" className="hidden @4xl:flex items-center">
                 <Badge variant="secondary">
                   {t("table.slicesCountBadge", { count: track.segment_count || 0 })}
                 </Badge>
               </div>
 
               {/* Duration */}
-              <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
+              <div role="cell" className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
                 <span>{formatDuration(track.duration)}</span>
                 {track.status === "downloading" ? (
                   <Badge variant="outline">
@@ -2283,32 +2231,10 @@ export function PlaylistTableView({
               {/* Actions */}
               <div
                 role="cell"
-                className={cn(ROW_ACTIONS_CLASS, "gap-1")}
+                className={ROW_ACTIONS_CLASS}
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={stopRowPlayKeys}
               >
-                {showInlineRowActions &&
-                  (track.status === "error" ? (
-                    <Button
-                      variant="destructive"
-                      disabled={isRetrying}
-                      onClick={() => void retryTrack(track.id)}
-                      title={isRetrying ? t("table.retrying") : t("table.retry")}
-                    >
-                      <RotateCcw data-icon="inline-start" className={cn(isRetrying && "animate-spin")} />
-                      <span className="hidden sm:inline">{isRetrying ? t("table.retrying") : t("table.retry")}</span>
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => openSliceStudio(track)}
-                      disabled={!isReady}
-                      title={t("table.openStudio")}
-                    >
-                      <Scissors data-icon="inline-start" />
-                      <span className="hidden md:inline">{t("table.slice")}</span>
-                    </Button>
-                  ))}
                 <RowActionsMenu
                   name={track.title}
                   track={track}
@@ -2316,21 +2242,17 @@ export function PlaylistTableView({
                   deleteLabel={t("table.deleteTrack")}
                   onDelete={onDeleteTrack && (() => onDeleteTrack(track.id))}
                 >
-                  {!showInlineRowActions && (
-                    <>
-                      {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
-                      {track.status === "error" ? (
-                        <DropdownMenuItem disabled={isRetrying} onClick={() => void retryTrack(track.id)}>
-                          <RotateCcw />
-                          {isRetrying ? t("table.retrying") : t("table.retry")}
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(track)}>
-                          <Scissors />
-                          {t("table.openStudio")}
-                        </DropdownMenuItem>
-                      )}
-                    </>
+                  {!isSelectionActive && <SelectRowMenuItem onSelect={() => toggleSelected(false)} />}
+                  {track.status === "error" ? (
+                    <DropdownMenuItem disabled={isRetrying} onClick={() => void retryTrack(track.id)}>
+                      <RotateCcw />
+                      {isRetrying ? t("table.retrying") : t("table.retry")}
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled={!isReady} onClick={() => openSliceStudio(track)}>
+                      <Scissors />
+                      {t("table.openStudio")}
+                    </DropdownMenuItem>
                   )}
                 </RowActionsMenu>
               </div>

@@ -124,6 +124,7 @@
   },
   "table": {
     "trackOrSlice": "Bài hát / Lát cắt",
+    "artist": "Nghệ sĩ",
     "type": "Loại",
     "duration": "Thời lượng",
     "actions": "Hành động",
@@ -134,8 +135,6 @@
     "fullTrack": "Toàn bài",
     "sliceBadge": "Lát cắt ({{start}} - {{end}})",
     "fullTrackIndex": "Toàn bài #{{index}}",
-    "slice": "Cắt đoạn",
-    "studio": "Studio",
     "openStudio": "Mở Studio Cắt Đoạn",
     "unknownArtist": "Không rõ ca sĩ",
     "emptyTracks": "Không có bài hát nào",
@@ -157,7 +156,6 @@
     "slicesCountBadge_other": "{{count, number}} đoạn",
     "moveUp": "Chuyển lên",
     "moveDown": "Chuyển xuống",
-    "disableSearchToReorder": "Xóa tìm kiếm để sắp xếp lại danh sách",
     "reordering": "Đang lưu thứ tự…"
   },
   "player": {

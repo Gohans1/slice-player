@@ -312,36 +312,42 @@ describe("PlaylistTableView", () => {
 
     expect(container.textContent).toContain("Test Table Slice");
     expect(container.textContent).toContain("Table Test Track");
-    expect(container.textContent).toContain("Studio");
   });
 
-  it("reorders playlist items when clicking move up / move down", async () => {
-    const originalReorder = usePlayerStore.getState().reorderPlaylist;
-    const reorderSpy = mock(() => Promise.resolve(true));
-    usePlayerStore.setState({
-      activePlaylistId: "pl_custom_1",
-      activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
-      reorderPlaylist: reorderSpy as any,
-    });
+  describe("columns", () => {
+    // Like Apple Music's Song | Artist | Album | Time, and each row has one cell per header so screen readers line them up
+    const sliceOfDummyTrack: PlaylistItemWithDetails = { ...dummyPlaylistItem2, segment_id: dummySegment.id, segment: dummySegment };
+    const views: [string, () => React.ReactElement][] = [
+      ["a playlist", () => {
+        usePlayerStore.setState({ activePlaylistId: "pl_custom_1", activePlaylistItems: [dummyPlaylistItem1, sliceOfDummyTrack], playlists: [dummyPlaylist] });
+        return <PlaylistTableView />;
+      }],
+      ["the library's tracks", () => <PlaylistTableView filteredTracks={[dummyTrack, dummyTrack]} />],
+      ["the library's slices", () => <PlaylistTableView sliceItems={[{ id: "seg_a", segment: dummySegment, track: dummyTrack }, { id: "seg_b", segment: { ...dummySegment, id: "seg_b" }, track: dummyTrack }]} />],
+      ["the library's mix of tracks and slices", () => (
+        <PlaylistTableView
+          mixedItems={[
+            { type: "track", id: "track_trk_tbl_1", track: dummyTrack, createdAt: 1000 },
+            { type: "slice", id: "slice_seg_tbl_1", track: dummyTrack, segment: dummySegment, createdAt: 1001 },
+          ]}
+        />
+      )],
+    ];
 
-    try {
-      await act(async () => {
-        root.render(<PlaylistTableView />);
+    for (const [view, render] of views) {
+      it(`gives the artist its own column in ${view}`, async () => {
+        await act(async () => {
+          root.render(render());
+        });
+
+        const headers = Array.from<HTMLElement>(container.querySelectorAll("[role='columnheader']"));
+        const artistColumn = headers.findIndex((header) => header.textContent === "Artist");
+        const rows = Array.from<HTMLElement>(container.querySelectorAll(".group[role='row']"));
+        expect(artistColumn).toBeGreaterThan(-1);
+        expect(rows.map((row) => row.querySelectorAll("[role='cell']").length)).toEqual([headers.length, headers.length]);
+        // A slice keeps the artist of the track it was cut from
+        expect(rows.map((row) => row.querySelectorAll("[role='cell']")[artistColumn]?.textContent)).toEqual(["Table Artist", "Table Artist"]);
       });
-
-      // Row 1 has move down button enabled (originalIdx: 0 -> canMoveUp: false, canMoveDown: true)
-      const moveDownButtons = container.querySelectorAll("button[title='Move down'], button[title='Di chuyển xuống']");
-      expect(moveDownButtons.length).toBe(2);
-
-      // Click move down on row 1
-      await act(async () => {
-        moveDownButtons[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-      });
-
-      expect(reorderSpy).toHaveBeenCalledTimes(1);
-      expect(reorderSpy).toHaveBeenCalledWith("pl_custom_1", ["item_2", "item_1"]);
-    } finally {
-      usePlayerStore.setState({ reorderPlaylist: originalReorder });
     }
   });
 
@@ -1080,7 +1086,7 @@ describe("PlaylistTableView", () => {
       volume: 0.5,
     };
 
-    it("renders error track with 'Lỗi tải' badge and 'Thử lại' button", async () => {
+    it("renders an error track with its error badge and reason, and offers retry from its menu", async () => {
       await act(async () => {
         root.render(
           <PlaylistTableView
@@ -1094,13 +1100,12 @@ describe("PlaylistTableView", () => {
       expect(text).toContain("Error YouTube Song");
       expect(text).toContain("Blocked Channel");
       expect(text).toMatch(/Error|Lỗi tải/);
-      expect(text).toMatch(/Retry|Thử lại/);
+      expect(text).toContain("Sign in to confirm you're not a bot");
 
-      const retryBtn = container.querySelector("button[title='Retry'], button[title='Thử tải lại bài hát'], button[title='Thử lại']");
-      expect(retryBtn).not.toBeNull();
+      expect(findItem(await openRowMenu(0), /^(Retry|Thử lại)$/)).toBeDefined();
     });
 
-    it("clicking retry button calls /api/tracks/:id/retry endpoint", async () => {
+    it("retrying from the menu calls /api/tracks/:id/retry endpoint", async () => {
       let retryUrl = "";
       const origFetch = globalThis.fetch;
       globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
@@ -1122,11 +1127,11 @@ describe("PlaylistTableView", () => {
           );
         });
 
-        const retryBtn = container.querySelector("button[title='Retry'], button[title='Thử tải lại bài hát'], button[title='Thử lại']");
-        expect(retryBtn).not.toBeNull();
+        const retryItem = findItem(await openRowMenu(0), /^(Retry|Thử lại)$/);
+        expect(retryItem).toBeDefined();
 
         await act(async () => {
-          retryBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+          retryItem?.click();
         });
 
         expect(retryUrl).toBe("/api/tracks/trk_err_1/retry");
@@ -2124,8 +2129,8 @@ describe("PlaylistTableView", () => {
         rows[1].dispatchEvent(dragOverEvent);
       });
 
-      // Item 1 (target) should shift UP by one row height to make room (-50px)
-      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-50px");
+      // Item 1 (target) should shift UP by one row height to make room (-54px)
+      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-54px");
       expect(rows[1].classList.contains("ease-standard")).toBe(true);
 
       // Now drop item 0 onto item 1
@@ -2193,7 +2198,7 @@ describe("PlaylistTableView", () => {
       await act(async () => {
         rows[1].dispatchEvent(dragOverItem1);
       });
-      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-50px");
+      expect((rows[1] as HTMLElement).style.getPropertyValue("--drag-shift")).toBe("-54px");
 
       // User changes mind and drags back over item 0 (original position)
       const dragOverItem0 = new window.Event("dragover", { bubbles: true }) as any;
@@ -2621,7 +2626,7 @@ describe("PlaylistTableView", () => {
 
     expect(findItem(await openRowMenu(1), copyLabel)).toBeUndefined();
 
-    // Also verify custom playlist view renders both Open Slice Studio and Copy YouTube link buttons
+    // A custom playlist row's menu offers both the studio and the YouTube link
     await act(async () => {
       usePlayerStore.setState({
         activePlaylistId: "pl_custom_1",
@@ -2635,11 +2640,9 @@ describe("PlaylistTableView", () => {
       root.render(<PlaylistTableView />);
     });
 
-    expect(findItem(await openRowMenu(0), /Copy YouTube link|Sao chép link YouTube/i)).toBeDefined();
-    const plStudioBtns = container.querySelectorAll(
-      'button[title="Open Slice Studio"], button[title="Mở Studio Cắt Đoạn"]'
-    );
-    expect(plStudioBtns.length).toBe(1);
+    const playlistRowItems = await openRowMenu(0);
+    expect(findItem(playlistRowItems, /Copy YouTube link|Sao chép link YouTube/i)).toBeDefined();
+    expect(findItem(playlistRowItems, /^Open Slice Studio$/)).toBeDefined();
   });
 
   describe("row selection checkboxes", () => {
@@ -2692,10 +2695,10 @@ describe("PlaylistTableView", () => {
     const onKeyDown = (e: KeyboardEvent) => seen.push(e.key);
     window.addEventListener("keydown", onKeyDown);
     try {
-      const studioButton = container.querySelector("button[title='Open Slice Studio']") as HTMLElement;
+      const menuButton = container.querySelector("button[title='More options for Table Test Track']") as HTMLElement;
       await act(async () => {
-        studioButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        studioButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        menuButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        menuButton.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       });
       expect(seen).toEqual(["Escape"]);
       expect(playSegmentInMode).not.toHaveBeenCalled();
@@ -2704,13 +2707,10 @@ describe("PlaylistTableView", () => {
     }
   });
 
-  describe("narrow screens", () => {
-    // Phones get Apple Music style rows; the actions that sit inline on wider screens move into the "..." menu
-    beforeEach(() => {
-      window.happyDOM.setViewport({ width: 390, height: 844 });
-    });
+  describe("row menu", () => {
+    // Like Apple Music, a row shows only its "..." button; reordering, the studio, retry and selecting live in its menu
 
-    it("moves a playlist row's reorder and studio actions into its menu", async () => {
+    it("reorders a playlist row and opens the studio from its menu", async () => {
       const reorderPlaylist = mock(() => Promise.resolve(true));
       const openSliceStudio = mock(() => {});
       const origOpenSliceStudio = usePlayerStore.getState().openSliceStudio;
@@ -2745,7 +2745,22 @@ describe("PlaylistTableView", () => {
       }
     });
 
-    it("starts selecting from a row's menu, since phones have no hover to reveal checkboxes", async () => {
+    it("leaves reordering out of a row's menu while a search filters the playlist", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+      });
+      await act(async () => {
+        root.render(<PlaylistTableView searchQuery="Table" />);
+      });
+
+      const labels = (await openRowMenu(0)).map((item) => item.textContent);
+      expect(labels).toContain("Open Slice Studio");
+      expect(labels).not.toContain("Move up");
+      expect(labels).not.toContain("Move down");
+    });
+
+    it("starts selecting from a row's menu, which touch screens need since they can't hover to reveal checkboxes", async () => {
       useSelectionStore.getState().clearSelection();
       await act(async () => {
         root.render(<PlaylistTableView filteredTracks={[dummyTrack, dummyTrack2]} />);
