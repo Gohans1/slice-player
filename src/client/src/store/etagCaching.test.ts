@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 
 // Mock Audio for headless test environment
 if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as any)?.removeAttribute) {
@@ -20,6 +20,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
 
 const { usePlayerStore, resetEtagCache } = await import("./usePlayerStore");
 import type { Track, Segment } from "@/server/types";
+const { audioEngine } = await import("../lib/audio");
 
 describe("Client ETag 304 Caching in usePlayerStore", () => {
   const origFetch = globalThis.fetch;
@@ -280,6 +281,40 @@ describe("Client ETag 304 Caching in usePlayerStore", () => {
     segmentsAvailable = true;
     await usePlayerStore.getState().fetchTracks(true);
     expect(usePlayerStore.getState().tracks[0].status).toBe("ready");
+  });
+
+  it("keeps newer playback and Studio selections when a segment refresh completes", async () => {
+    const a: Track = { ...track1, id: "refresh-a", title: "A" };
+    const b: Track = { ...track1, id: "refresh-b", title: "B" };
+    const sa: Segment = { ...segment1, id: "refresh-sa", track_id: a.id };
+    const sb: Segment = { ...segment1, id: "refresh-sb", track_id: b.id };
+    const queue = [{ track: a, segment: sa }, { track: b, segment: sb }];
+    usePlayerStore.setState({ tracks: [a, b], queue, queuesByMode: { mixed: queue, slices_only: [], original_only: [] },
+      queueIndex: 0, activeTrack: a, activeSegment: sa, sliceStudioTrack: a, activePlaylistPlayingId: null, isPlaying: true });
+    let finishSegments!: (response: Response) => void;
+    let enteredSegments!: () => void;
+    const waiting = new Promise<void>((fulfill) => { enteredSegments = fulfill; });
+    mockFetch(async (input) => {
+      if (String(input) === "/api/tracks") return Response.json([{ ...a, title: "A fresh" }, { ...b, title: "B fresh" }]);
+      enteredSegments();
+      return new Promise<Response>((fulfill) => { finishSegments = fulfill; });
+    });
+    const play = spyOn(audioEngine, "playSegment").mockResolvedValue(undefined);
+    try {
+      const refreshing = usePlayerStore.getState().fetchTracks(true);
+      await waiting;
+      await usePlayerStore.getState().playSegment(sb, b, 1);
+      usePlayerStore.setState({ sliceStudioTrack: b });
+      finishSegments(Response.json([sa, sb]));
+      await refreshing;
+      const state = usePlayerStore.getState();
+      expect(state.activeTrack?.id).toBe(b.id);
+      expect(state.activeSegment?.id).toBe(sb.id);
+      expect(state.queue[state.queueIndex].track.id).toBe(b.id);
+      expect(state.sliceStudioTrack?.id).toBe(b.id);
+    } finally {
+      play.mockRestore();
+    }
   });
 
   it("should NOT cache ETag if tracks response is not an array or fails JSON parsing", async () => {

@@ -903,11 +903,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         hasNewlyReady = finalTracks.some((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
       }
       const trackMap = new Map(finalTracks.map((t) => [t.id, t]));
-      const { activeTrack, activeSegment, sliceStudioTrack, queue, queueIndex } = get();
 
         // Escalate using this response, not a second conditional request whose 304
         // would otherwise pair the new validator with the old queued-track payload.
         if (!reconcileSegments && !hasNewlyReady) {
+          const { activeTrack, sliceStudioTrack, queue, queueIndex } = get();
           const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
           const { queuesByMode, playbackMode } = get();
           const updateQueueList = (list: QueueItem[], mode: PlaybackMode) => {
@@ -1084,6 +1084,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const segmentObjMap = new Map(validSegments.map((s) => [s.id, s]));
 
         const freshState = get();
+        const { activeTrack, activeSegment, sliceStudioTrack } = freshState;
         const currentQueue = freshState.queue;
         const currentQueueIndex = freshState.queueIndex;
         const currentActiveSegment = freshState.activeSegment;
