@@ -217,7 +217,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
               onPlay(item, idx);
             }
           }}
-          className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded p-1 -m-1"
+          className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-1 -m-1"
         >
           <div className="relative size-10 rounded overflow-hidden bg-muted shrink-0">
             <TrackThumbnail
@@ -1126,7 +1126,7 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
         aria-label={t("queue.regionAria", "Current playback queue")}
         tabIndex={-1}
         onKeyDown={handleListKeyDown}
-        className="flex-1 min-h-0 overflow-y-auto focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+        className="flex-1 min-h-0 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         onDragOver={(e) => {
           if (draggedIdxRef.current === null) return;
           e.preventDefault();

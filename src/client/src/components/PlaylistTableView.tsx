@@ -57,7 +57,7 @@ function tableRowClassName(
   { index, isSelected, isReady, isCurrentPlaying, isDragging, isDragTarget }: TableRowState
 ) {
   return cn(
-    "group grid items-center gap-x-2 rounded-md px-3 py-1 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 sm:gap-x-4",
+    "group grid items-center gap-x-2 rounded-md px-3 py-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-x-4",
     gridCols,
     index % 2 === 1 && "bg-muted/40",
     isSelected

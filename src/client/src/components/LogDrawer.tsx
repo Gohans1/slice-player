@@ -440,7 +440,7 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
           aria-label={t("logs.title")}
           tabIndex={0}
           onScroll={handleContainerScroll}
-          className="flex-1 overflow-y-auto p-3 text-xs select-text focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex-1 overflow-y-auto p-3 text-xs select-text outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
           {filteredLogs.length === 0 ? (
             <Empty className="h-full">
