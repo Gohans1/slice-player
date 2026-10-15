@@ -29,7 +29,7 @@ describe("LibrarySkeleton", () => {
     const statuses = Array.from(container.querySelectorAll("[role=status]")).filter(
       (el) => !el.closest("[aria-hidden=true]")
     );
-    expect(statuses.map((el) => el.textContent?.trim())).toEqual(["Loading tracks..."]);
+    expect(statuses.map((el) => el.textContent?.trim())).toEqual(["Loading tracks…"]);
     expect(container.querySelector("[data-slot=skeleton]")?.closest("[aria-hidden=true]")).not.toBeNull();
   });
 });

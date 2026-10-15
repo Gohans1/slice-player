@@ -918,7 +918,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                     />
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground animate-pulse">{t("studio.loadingWaveform", "Loading audio waveform...")}</p>
+                <p className="text-xs text-muted-foreground animate-pulse">{t("studio.loadingWaveform", "Loading audio waveform…")}</p>
               </div>
             )}
           </div>

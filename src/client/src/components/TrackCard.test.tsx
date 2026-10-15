@@ -57,7 +57,7 @@ describe("TrackCard", () => {
       root.render(<TrackCard track={baseTrack} onDelete={() => {}} />);
     });
 
-    expect(container.textContent).toContain("Queued...");
+    expect(container.textContent).toContain("Queued…");
     expect(studioButton()?.disabled).toBe(true);
     expect(container.querySelector(`button[title="Play ${baseTrack.title}"]`)).toBeNull();
   });
@@ -67,7 +67,7 @@ describe("TrackCard", () => {
       root.render(<TrackCard track={{ ...baseTrack, status: "downloading" }} onDelete={() => {}} />);
     });
 
-    expect(container.textContent).toContain("Downloading audio...");
+    expect(container.textContent).toContain("Downloading audio…");
     expect(studioButton()?.disabled).toBe(true);
   });
 
@@ -105,7 +105,7 @@ describe("TrackCard", () => {
         root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
       });
 
-      expect(container.textContent).not.toContain("Queued...");
+      expect(container.textContent).not.toContain("Queued…");
       expect(container.textContent).toContain("3 slices");
       expect(container.querySelector(`button[title="Play ${readyTrack.title}"]`)).not.toBeNull();
       act(() => {

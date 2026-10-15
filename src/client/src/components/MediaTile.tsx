@@ -125,13 +125,13 @@ export function MediaTile({
             {status === "queued" && (
               <>
                 <Clock className="size-5" />
-                {t("trackCard.queued", "Queued...")}
+                {t("trackCard.queued", "Queued…")}
               </>
             )}
             {status === "downloading" && (
               <>
                 <Spinner className="size-5" />
-                {t("trackCard.downloading", "Downloading audio...")}
+                {t("trackCard.downloading", "Downloading audio…")}
               </>
             )}
             {status === "error" && (

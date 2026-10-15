@@ -507,7 +507,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                   {isLoadingMemberships ? (
                     <ContextMenuItem disabled>
                       <Spinner />
-                      {t("common.loading", "Loading...")}
+                      {t("common.loading", "Loading…")}
                     </ContextMenuItem>
                   ) : containingPlaylists.length === 0 ? (
                     <ContextMenuItem disabled>

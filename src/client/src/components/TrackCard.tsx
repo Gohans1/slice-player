@@ -115,7 +115,7 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
       errorAction={
         <Button variant="destructive" size="sm" disabled={isRetrying} onClick={() => void retryTrack(track.id)}>
           <RotateCcw data-icon="inline-start" className={cn(isRetrying && "animate-spin")} />
-          {isRetrying ? t("trackCard.retrying", "Retrying...") : t("trackCard.retry", "Retry")}
+          {isRetrying ? t("trackCard.retrying", "Retrying…") : t("trackCard.retry", "Retry")}
         </Button>
       }
       actions={

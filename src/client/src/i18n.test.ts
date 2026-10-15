@@ -38,7 +38,7 @@ describe("i18n configuration & translation", () => {
 
     await i18n.changeLanguage("vi");
     expect(i18n.t("nav.shufflePlaylist", { name: "Acoustic Hits" })).toBe("Xáo trộn Acoustic Hits");
-    expect(i18n.t("localModal.processingProgress", { current: 1, total: 5 })).toBe("Đang nạp file (1/5)...");
+    expect(i18n.t("localModal.processingProgress", { current: 1, total: 5 })).toBe("Đang nạp file (1/5)…");
   });
 
   it("should handle pluralization correctly", async () => {
