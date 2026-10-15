@@ -333,7 +333,8 @@ function VirtualizedTableBody<T>({
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               role="presentation"
-              className="row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
+              // A drag slides rows aside while their wrappers stay put, so the hairlines would no longer sit between rows
+              className={cn(draggedIdx == null && "row-divider", "absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
               style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
               onDragOver={(e) => {
                 if (draggedIdx !== null && draggedIdx !== undefined) {

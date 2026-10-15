@@ -2151,6 +2151,35 @@ describe("PlaylistTableView", () => {
       expect(updatedRows[0].className).toContain("transition-colors");
     });
 
+    it("drops the row dividers while a row is dragged, since the rows sliding aside no longer line up with them", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_custom_1",
+        activePlaylistItems: [dummyPlaylistItem1, dummyPlaylistItem2],
+        playlists: [dummyPlaylist],
+        playlistSortMode: "manual",
+      });
+      await act(async () => {
+        root.render(<PlaylistTableView />);
+      });
+
+      const dividers = () => container.querySelectorAll(".row-divider").length;
+      expect(dividers()).toBe(2);
+
+      const rows = container.querySelectorAll(".group[role='row']");
+      const dragStartEvent = new window.Event("dragstart", { bubbles: true });
+      dragStartEvent.dataTransfer = { setData: () => {}, getData: () => "", effectAllowed: "none" };
+      await act(async () => {
+        container.querySelector('[data-drag-handle="true"]').dispatchEvent(new window.PointerEvent("pointerdown", { button: 0, bubbles: true }));
+        rows[0].dispatchEvent(dragStartEvent);
+      });
+      expect(dividers()).toBe(0);
+
+      await act(async () => {
+        rows[0].dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+      expect(dividers()).toBe(2);
+    });
+
     it("allows dragging back to original position to cancel reorder and restore rows", async () => {
       const reorderSpy = mock(() => Promise.resolve(true));
       usePlayerStore.setState({
