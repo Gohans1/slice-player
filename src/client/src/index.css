@@ -344,6 +344,9 @@ html {
 }
 
 .dark {
+  /* Native scrollbars, form controls and autofill follow the dark theme */
+  color-scheme: dark;
+
   /* Flexoki Official Dark Theme (Inky) */
   --flexoki-bg: #100F0F;      /* black */
   --flexoki-bg-2: #1C1B1A;    /* base-950 */
