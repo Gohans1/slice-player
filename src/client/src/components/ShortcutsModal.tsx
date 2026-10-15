@@ -25,6 +25,8 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
   const navShortcuts: ShortcutItem[] = [
     { keys: ["/", "Ctrl+K"], description: t("shortcutsModal.focusSearch", "Focus search box") },
     { keys: ["~", "F2"], description: t("shortcutsModal.systemLogs", "Toggle System Logs drawer") },
+    // Base UI's toast viewport takes focus on F6, so a failed change's toast can be read and dismissed
+    { keys: ["F6"], description: t("shortcutsModal.focusNotifications", "Jump to notifications") },
     { keys: ["?"], description: t("shortcutsModal.openHelp", "Open keyboard shortcuts cheatsheet") },
     { keys: ["Esc"], description: t("shortcutsModal.closeModal", "Close modal / Clear search / Dismiss") },
   ];

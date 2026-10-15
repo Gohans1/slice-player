@@ -502,6 +502,7 @@
     "navSection": "Navigation & Search",
     "focusSearch": "Focus search box",
     "systemLogs": "Toggle System Logs drawer",
+    "focusNotifications": "Jump to notifications",
     "openHelp": "Open keyboard shortcuts cheatsheet",
     "closeModal": "Close modal / Clear search / Dismiss",
     "studioSection": "Slice Studio (WaveSurfer)",
