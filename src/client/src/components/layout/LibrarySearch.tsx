@@ -65,6 +65,8 @@ export function LibrarySearch({ value, onChange }: LibrarySearchProps) {
             id="library-search"
             name="search"
             type="search"
+            autoComplete="off"
+            spellCheck={false}
             maxLength={200}
             aria-label={t("nav.searchAria")}
             placeholder={t("nav.searchPlaceholder")}
