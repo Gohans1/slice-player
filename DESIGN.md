@@ -223,12 +223,14 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 
 ## Layout
 
-Hệ thống layout được thiết kế cố định theo mô hình Studio Desktop:
-- **Thanh điều hướng trên cùng (Sticky Header)**: Chiều cao gọn gàng (48px - 56px), chứa logo, thanh tìm kiếm tức thời và 3 nút hành động chính (Shuffle đoạn, + File FLAC, + Link YouTube).
-- **Vùng nội dung trung tâm (Main Canvas)**: Thiết kế trải dài toàn màn hình (`w-full`) với padding linh hoạt (`px-4 sm:px-6 lg:px-8`), hiển thị lưới thẻ bài hát tự động co giãn từ 1 cột (mobile) lên đến 8+ cột (màn hình lớn / ultrawide / 4K), phản hồi mượt mà theo kích thước resize cửa sổ.
-- **Thanh phát cố định đáy màn hình (Fixed PlayerBar Dock)**: Vị trí `fixed bottom-0 left-0 right-0 z-40`, luôn hiển thị thumbnail bài đang phát, vạch màu lát cắt, cụm nút điều khiển trung tâm và thanh âm lượng.
-- **Hàng đợi kéo trượt (Queue Drawer)**: Bảng trượt từ mép phải (`fixed inset-y-0 right-0 w-full max-w-sm z-50`) cho phép kéo thả reorder và chọn 3 chế độ phát nhạc.
-- **Nhịp điệu khoảng cách (Spacing Rhythm)**: Bước nhảy theo thang bội số 4px/8px chuẩn mực (`4px`, `8px`, `12px`, `16px`, `24px`).
+Bố cục 3 cột theo Apple Music (macOS Tahoe 26), dựng bằng shadcn Base UI (`base-mira`):
+- **Sidebar trái (`AppSidebar`, shadcn `Sidebar collapsible="icon"`)**: rộng 16rem. Trên cùng là ô Search, rồi nhóm Library (Mix, Slices, Tracks, Downloading, Errors kèm số đếm), cây Playlists (playlist cha/con và mix), cuối cùng là các tiện ích (System Logs, Keyboard Shortcuts, Backup / Transfer, Language). Sidebar dừng ngay trên PlayerBar.
+- **Cột giữa (`SidebarInset`)**: header dính trên cùng gồm tiêu đề + số mục, sắp xếp (`ToggleGroup` Manual / Newest / Oldest / Random), chế độ xem (`ViewModeToggle`: Grid / List, mặc định List), nhập Local Audio / YouTube và âm lượng tổng; bên dưới là nội dung thư viện.
+- **Cột phải "Now Playing Queue" (`QueuePanel`)**: rộng `w-80`, dock cạnh nội dung, có 3 chế độ phát Mix / Slices / Tracks, sắp xếp bằng kéo thả hoặc nút lên/xuống.
+- **PlayerBar**: `fixed bottom-0` trải hết chiều ngang; chiều cao thật được đo vào biến `--player-bar-height` để sidebar và queue chừa chỗ.
+- **Breakpoint chính 1280px (`WIDE_LAYOUT_QUERY`, bằng `xl`)**: từ 1280px trở lên đủ 3 cột. Dưới 1280px sidebar thu về icon (vẫn mở tay được, giữ nguyên đến khi vượt lại breakpoint) và queue thành `Sheet` trượt từ phải, mở bằng nút Queue trên PlayerBar. Dưới 768px sidebar là `Sheet` của shadcn.
+- **Dưới 640px (`INLINE_ROW_ACTIONS_QUERY`, bằng `sm`)**: hành động inline của hàng bảng dồn vào menu "…", nhãn sort chỉ còn icon (vẫn giữ `aria-label`).
+- **Nhịp khoảng cách**: thang 4px; dùng `gap-*` thay cho `space-*`.
 
 ## Elevation & Depth
 
@@ -257,25 +259,33 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 ## Components
 
 ### Buttons
-- **Shape:** Bo góc nhẹ (`8px` hoặc `rounded-full` đối với nút icon).
-- **Primary:** Nền xanh mực `#4385BE` (Light: `#205EA6`), chữ trắng ngà `#FFFCF0`, padding `8px 16px`. Nảy nhẹ (`scale-105`) khi rê chuột.
-- **Destructive:** Nền đỏ Flexoki `#D14D41` (Dark) / `#AF3029` (Light), chữ `#FFFCF0`. Dùng cho nút "+ Link YouTube" và hành động xóa bài.
-- **Outline:** Nền thẻ `#1C1B1A`, viền `#343331`, chữ `#CECDC3`. Đổi màu viền và chữ sang màu tương ứng khi hover (ví dụ viền xanh lục cho nút Shuffle).
-- **Ghost:** Trong suốt, nền chuyển sang `#343331` khi hover.
+- Chỉ dùng shadcn `Button` với `variant` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`) và `size` (`xs`, `sm`, `default`, `lg`, `icon-xs`, `icon-sm`, `icon`, `icon-lg`). Không ghi đè màu, chữ, padding, bo góc hay hiệu ứng qua `className`; chỉ thêm class layout (`max-w-*`, `flex-1`, …).
+- Icon trong nút mang `data-icon="inline-start"` / `"inline-end"` và không gắn class kích thước. Nút chỉ có icon phải có `aria-label`. Vùng chạm tối thiểu 24px (`icon-sm`); `icon-xs` (20px) không dùng cho thao tác chính.
+- Nhóm nút liền nhau dùng `ButtonGroup`; chọn 1 trong vài phương án dùng `ToggleGroup`; nút bật/tắt dùng `Toggle`. Ngoại lệ: Shuffle / Loop track trong PlayerBar và Loop queue là `Button` đổi `variant` kèm `aria-pressed`, vì `Toggle` không có cỡ icon vuông 32px như hàng nút transport.
+- Nút đã ở đầu/cuối phạm vi (cuộn lên đầu trang, chuyển mục lên trên cùng) dùng `disabled`, không tự làm mờ bằng `opacity`.
+- Focus bàn phím luôn là vòng `ring-2 ring-ring` trên `focus-visible` (`ring-inset` với vùng cuộn).
 
-### Cards / Containers (TrackCard)
-- **Corner Style:** `rounded-xl` (`10px`).
-- **Background:** `#1C1B1A` (Flexoki 950).
-- **Border:** `1px solid #343331`, chuyển thành `#4385BE/40` khi hover.
-- **Thumbnail:** Tỉ lệ 16:9 (`aspect-video`), bo góc `rounded-lg`, gắn badge nguồn (YouTube / FLAC) ở góc trên bên trái và thời lượng ở góc dưới bên phải.
+### Song Table (List view)
+- `PlaylistTableView`: hàng ảo hoá cao 50px, thumbnail 16:9 cao 32px, tiêu đề + nghệ sĩ, nhãn loại (`Badge`), thời lượng font mono. Chọn nhiều bằng `Checkbox` (ô ở header có trạng thái indeterminate).
+- Hành động phụ (thêm vào playlist, copy link, xoá) nằm trong `RowActionsMenu` (nút "…" mở `DropdownMenu`). Trạng thái đang tải dùng `Badge` + `Spinner`.
 
-### Inputs / Fields
-- **Style:** Nền `#282726`, viền `#343331`, chữ `#CECDC3`, chiều cao `h-9` (`36px`), bo góc `rounded-md`.
-- **Focus:** Viền chuyển thành `#4385BE`, vòng focus mờ `ring-1 ring-[#4385BE]`.
+### Grid Tiles (`MediaTile`)
+- TrackCard, SliceCard và PlaylistItemCard dùng chung `MediaTile` và `useGuardedPlayToggle`: artwork 16:9 bo góc, bên dưới là tiêu đề, phụ đề và meta font mono (`text-2xs`), bên phải là nút Studio và "…".
+- Bấm artwork để phát/tạm dừng; khi đang chọn nhiều thì bấm để chọn. Checkbox góc trái trên và các nút trên artwork hiện khi hover qua `REVEAL_ON_HOVER` (chỉ ẩn trên thiết bị có chuột; màn cảm ứng luôn hiện). Với thành phần shadcn, `REVEAL_ON_HOVER` đặt ở `div` bọc ngoài chứ không đặt thẳng lên `Button`.
+- Lớp phủ trạng thái (queued / downloading / failed) che artwork; vạch màu lát cắt `bg-(--slice-color)` nằm ở chân artwork; `Badge` "Playing" khi đang phát.
+- Lưới ảo hoá, mỗi cột tối thiểu 240px, `gap-4`. Tile playlist (`PlaylistGrid`) vuông: bấm cover để mở, Play / Shuffle hiện khi hover, tile viền đứt cho New Playlist / Mix Playlists.
+- Lần tải đầu hiện `LibrarySkeleton` có hình theo chế độ xem hiện tại (hàng hoặc tile) và đúng một `role="status"`.
+
+### Forms & Dialogs
+- Hộp thoại dùng Base UI `Dialog` / `AlertDialog` qua shadcn (`Modal`, `ConfirmModal`); ngăn kéo dùng `Sheet`.
+- Form dùng `FieldGroup` + `Field` + `FieldLabel`: mọi ô nhập có nhãn hiển thị, lỗi hiện bằng `FieldError` kèm `aria-invalid`. Danh sách lựa chọn có sẵn dùng `Select` (Base UI, prop `items`), nhập nhiều dòng dùng `Textarea`.
+- Chọn 1 trong vài phương án có mô tả dùng `RadioGroup` dạng choice card (`FieldLabel` bọc `Field`); chọn nhiều dùng `Checkbox` dạng choice card. Danh sách thao tác áp dụng ngay (ví dụ chọn ảnh bìa) dùng `Item` render thành `button`, đánh dấu mục hiện tại bằng `aria-current` + dấu check; không dùng radio vì phím mũi tên sẽ áp dụng ngay.
+- Tiến trình dùng `Progress`, đang chờ dùng `Spinner`, cảnh báo dùng `Alert`, vùng trống / dropzone dùng `Empty` (dropzone là `div` viền đứt bọc `Empty`), nhiều phần nội dung dùng `Tabs`.
 
 ### Navigation & PlayerBar
-- **PlayerBar Dock:** Nền `#1C1B1A/95` kết hợp hiệu ứng `backdrop-blur-md`, thumbnail 44x44px có vạch màu chân lát cắt, thanh tiến trình lát cắt dạng slider xúc giác với con trỏ tròn trượt mượt mà.
-- **Drawer:** Ngăn kéo trượt bên phải hiển thị danh sách phát có tay cầm kéo thả (drag handle) và 3 nút chuyển chế độ phát nhanh.
+- **PlayerBar**: nền `bg-card/95` + `backdrop-blur-md`; artwork 44px có vạch màu lát cắt; tiêu đề bấm được để nhảy tới bài trong danh sách; chip "đang phát từ" là `Button` `secondary` `xs`, chip playlist là `Button` `outline` `xs` trong một `role="group"`, phần dư là `Badge` `outline`. Thanh tiến trình là slider xúc giác.
+- **Queue**: mỗi hàng có tay cầm kéo, nút lên/xuống (`Button` `ghost` `icon-sm`, chỉ hiện trên thiết bị cảm ứng hoặc màn hẹp) và nút xoá hiện khi hover.
+- **Cuộn nhanh**: `ButtonGroup` dọc gồm 2 `Button` `outline`; mỗi nút `disabled` khi trang đã ở đúng đầu đó.
 
 ### Signature Component: Slice Studio Waveform Deck
 - Khung hiển thị sóng âm WaveSurfer với nền `#100F0F`, sóng màu xám `#403E3C`, dải tiến trình đỏ `#D14D41`, con trỏ hồng `#CE5D97`.
@@ -293,5 +303,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 ### Don't:
 - **Don't** sử dụng nền trắng tinh (`#FFFFFF`) hoặc xám lạnh thông thường; toàn bộ bề mặt phải thuộc 14 nấc màu Base Flexoki ấm.
 - **Don't** sử dụng gradient màu bóng bẩy hoặc chữ gradient rườm rà.
-- **Don't** dùng các thư viện kéo thả hay modal nặng nề; ưu tiên các API DOM nguyên bản (`draggable`, `PointerEvent`, native `<input type="range">`).
+- **Don't** tự dựng component UI mà shadcn đã có: thêm bản Base UI bằng CLI (`bunx --bun shadcn@latest add <x>`). File trong `ui/` giữ nguyên như CLI sinh ra; sửa đổi cục bộ (checkbox, slider, badge, item) commit riêng kèm lý do. Kéo thả vẫn dùng API DOM (`draggable`, `PointerEvent`), không thêm thư viện kéo thả.
+- **Don't** dùng inline style cho giá trị động; đặt CSS variable rồi dùng class (`bg-(--slice-color)`, `h-(--bar-height)`).
+- **Don't** dùng `text-primary` cho chữ chỉ mang thông tin; màu nhấn dành cho hành động và trạng thái đang phát.
 - **Don't** làm mất đi tính xúc giác của thanh tiến trình: khi kéo tua, phải dừng phát tạm thời và cập nhật mượt mà theo từng pixel.
