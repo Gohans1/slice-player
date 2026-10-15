@@ -44,7 +44,9 @@ import { LibrarySearch } from "./LibrarySearch";
 import { SidebarUtilities } from "./SidebarUtilities";
 import { DeletePlaylistModal } from "../DeletePlaylistModal";
 import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
+import { PlaylistCover } from "../PlaylistCover";
 import { usePlayerStore, type SystemCategory } from "../../store/usePlayerStore";
+import { resolvePlaylistCover } from "../../lib/playlistCover";
 import { cn } from "../../lib/utils";
 import type { Playlist } from "@/server/types";
 
@@ -252,6 +254,7 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   const renameInputRef = React.useRef<HTMLInputElement>(null);
   const isEmpty = (playlist.item_count || 0) === 0;
   const Icon = playlist.is_mix ? Combine : ListMusic;
+  const hasArtwork = resolvePlaylistCover(playlist).kind !== "empty";
 
   const commitRename = () => {
     if (draftName === null) return;
@@ -290,6 +293,10 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
       <SidebarMenuButton size={size} isActive={isActive} tooltip={playlist.name} onClick={() => onOpen(playlist.id)}>
         {nowPlaying ? (
           <NowPlayingEqualizer isAnimated={nowPlaying === "playing"} className="w-4 justify-center text-primary" />
+        ) : hasArtwork ? (
+          // Each playlist's artwork, as in Apple Music's sidebar. Drawn at 20px in an icon's 16px box, so names
+          // line up with the icon rows and the artwork stays centred when the sidebar collapses to icons.
+          <PlaylistCover playlist={playlist} thumbnailSize="small" className="-m-0.5 size-5 shrink-0 rounded-sm" />
         ) : (
           <Icon className="text-primary" />
         )}

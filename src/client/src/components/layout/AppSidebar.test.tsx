@@ -237,4 +237,18 @@ describe("AppSidebar", () => {
     expect(menuButton("Rock 90s").innerHTML).not.toContain("animate-eq-1");
     expect(menuButton("Mix").innerHTML).not.toContain("animate-eq-1");
   });
+
+  it("shows each playlist's cover beside its name, and an icon for one without artwork", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        playlist("rock", "Rock", { cover_url: "https://i.ytimg.com/vi/rock_cover/maxresdefault.jpg" }),
+        playlist("empty", "Empty", { item_count: 0 }),
+      ],
+    });
+    await renderSidebar();
+
+    expect(menuButton("Rock").querySelector("img")?.getAttribute("src")).toBe("https://i.ytimg.com/vi/rock_cover/mqdefault.jpg");
+    expect(menuButton("Empty").querySelector("img")).toBeNull();
+    expect(menuButton("Empty").querySelector("svg")).not.toBeNull();
+  });
 });
