@@ -5,7 +5,7 @@ import { useFormatNumber } from "../hooks/use-format-number";
 import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { formatDuration } from "../lib/utils";
+import { formatDuration, REVEAL_ON_HOVER } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./Modal";
@@ -153,11 +153,12 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
 
   return (
     <>
-      {/* Apple Music style: artwork, a large title, labelled Play and Shuffle, and a "..." menu */}
+      {/* Apple Music style: large artwork, the title with a small detail line under it, Play and Shuffle, and a "..." menu.
+          Narrow screens stack it centered, like Apple Music at phone widths. */}
       <section data-testid="playlist-header" className="mb-6 flex flex-col gap-5">
-        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end">
-          <div className="group relative shrink-0 self-start sm:self-auto">
-            <PlaylistCover playlist={playlist} className="aspect-square w-36 rounded-xl shadow-xl shadow-black/50 sm:w-48" />
+        <div className="flex min-w-0 flex-col items-center gap-5 text-center sm:flex-row sm:items-end sm:text-left">
+          <div className="group relative shrink-0">
+            <PlaylistCover playlist={playlist} className="aspect-square w-48 rounded-lg shadow-xl shadow-black/50 sm:w-52 lg:w-67.5" />
             {!playlist.is_mix && (
               <button
                 type="button"
@@ -165,7 +166,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 data-testid="playlist-cover-hover-btn"
                 title={t("playlist.changeCover", "Đổi ảnh bìa")}
                 aria-label={t("playlist.changeCover", "Đổi ảnh bìa")}
-                className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl bg-black/60 text-xs font-semibold text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-black/60 text-xs font-semibold text-white opacity-0 backdrop-blur-xs transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 <ImageIcon className="size-5" />
                 <span>{t("playlist.changeCover", "Đổi bìa")}</span>
@@ -173,8 +174,8 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
             )}
           </div>
 
-          <div className="min-w-0 flex-1">
-            {parentPlaylist ? (
+          <div className="flex min-w-0 flex-1 flex-col max-sm:items-center">
+            {parentPlaylist && (
               <Breadcrumb className="mb-1.5">
                 <BreadcrumbList>
                   <BreadcrumbItem>
@@ -191,10 +192,6 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
-            ) : (
-              <span className="mb-1 block text-2xs font-bold tracking-wider text-primary uppercase">
-                {playlist.is_mix ? t("mixPlaylist.badge", "Mix Playlist") : t("playlist.customBadge", "Playlist")}
-              </span>
             )}
 
             {isEditingName ? (
@@ -233,27 +230,28 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 </Button>
               </form>
             ) : (
-              <div className="playlist-title-timeline flex flex-wrap items-center gap-2">
-                <h2 className="text-2xl font-extrabold tracking-tight text-balance break-words text-foreground sm:text-3xl lg:text-4xl">
-                  {playlist.name}
-                </h2>
+              <div className="playlist-title-timeline group flex flex-wrap items-center gap-2 max-sm:justify-center">
+                <h2 className="text-2xl font-bold text-balance break-words text-foreground">{playlist.name}</h2>
+                {/* Renaming also lives in the "..." menu, so the shortcut beside the title waits for hover or focus */}
                 {!playlist.is_mix && (
-                  <Button
-                    ref={renameButtonRef}
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleStartRename}
-                    data-testid="playlist-rename-btn"
-                    title={t("playlist.rename", "Đổi tên")}
-                    aria-label={t("playlist.rename", "Đổi tên")}
-                  >
-                    <Pencil />
-                  </Button>
+                  <div className={REVEAL_ON_HOVER}>
+                    <Button
+                      ref={renameButtonRef}
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleStartRename}
+                      data-testid="playlist-rename-btn"
+                      title={t("playlist.rename", "Đổi tên")}
+                      aria-label={t("playlist.rename", "Đổi tên")}
+                    >
+                      <Pencil />
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
 
-            <p className="mt-2 font-mono text-xs text-muted-foreground">{meta.join(" · ")}</p>
+            <p className="mt-1 text-2xs font-semibold text-muted-foreground">{meta.join(" · ")}</p>
 
             {playlist.is_mix && (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -275,7 +273,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
               </div>
             )}
 
-            <div data-testid="playlist-controls-row" className="mt-4 flex flex-wrap items-center gap-2">
+            <div data-testid="playlist-controls-row" className="mt-4 flex flex-wrap items-center gap-2 max-sm:justify-center">
               <Button
                 size="lg"
                 disabled={count === 0}
@@ -288,7 +286,6 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 {t("playlist.play", "Play")}
               </Button>
               <Button
-                variant="secondary"
                 size="lg"
                 disabled={count === 0}
                 onClick={() => buildPlaylistQueue(playlist.id, true)}
