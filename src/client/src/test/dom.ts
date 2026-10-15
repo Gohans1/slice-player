@@ -3,7 +3,8 @@ import { GlobalWindow } from "happy-dom";
 // Preloaded by bunfig.toml so a DOM exists before any module loads. React DOM and
 // Base UI read `window`/`document` at import time (canUseDOM, useIsoLayoutEffect);
 // without this, onChange never fires and Base UI popups never mount in tests.
-export const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
+// A reserved .test origin: App's WebSocket must never reach a dev server running on this machine.
+export const happyWindow = new GlobalWindow({ url: "http://slice-player.test" });
 
 // Fill in browser globals Bun lacks; keep Bun's own (fetch, Response, Blob, URL, ...)
 // so server tests keep running against the real runtime.
