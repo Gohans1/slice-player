@@ -2,6 +2,7 @@ import * as React from "react";
 import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, Repeat } from "lucide-react";
 import { useVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
@@ -339,6 +340,7 @@ const safeCancelRaf = (handle: number | null) => {
 
 function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
@@ -965,7 +967,7 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
               {t("queue.title", "Now Playing Queue")}
             </Title>
             <Badge variant="secondary" className="shrink-0">
-              {displayQueue.length}
+              {formatNumber(displayQueue.length)}
             </Badge>
           </div>
           <Button

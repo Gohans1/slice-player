@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:te
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import "../../i18n";
+import i18n from "../../i18n";
 import { AppSidebar } from "./AppSidebar";
 import { SidebarProvider } from "../ui/sidebar";
 import { TooltipProvider } from "../ui/tooltip";
@@ -98,6 +98,23 @@ describe("AppSidebar", () => {
     expect(badgeOf("Tracks")).toBe("3");
     expect(badgeOf("Downloading")).toBe("1");
     expect(badgeOf("Errors")).toBe("1");
+  });
+
+  it("writes large counts the way the reader's language writes numbers", async () => {
+    usePlayerStore.setState({ tracks: [track("a", "ready", 1234)] });
+    await renderSidebar();
+    expect(badgeOf("Slices")).toBe("1,234");
+
+    await act(async () => {
+      await i18n.changeLanguage("vi");
+    });
+    try {
+      expect(badgeOf("Lát cắt")).toBe("1.234");
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
   });
 
   it("marks the current category active and switches category on click", async () => {

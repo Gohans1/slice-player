@@ -41,6 +41,14 @@ describe("i18n configuration & translation", () => {
     expect(i18n.t("localModal.processingProgress", { current: 1, total: 5 })).toBe("Đang nạp file (1/5)…");
   });
 
+  it("writes counts the way each language writes numbers", async () => {
+    await i18n.changeLanguage("en");
+    expect(i18n.t("categories.itemsCount", { count: 1236 })).toBe("(1,236 items)");
+
+    await i18n.changeLanguage("vi");
+    expect(i18n.t("categories.itemsCount", { count: 1236 })).toBe("(1.236 mục)");
+  });
+
   it("should handle pluralization correctly", async () => {
     await i18n.changeLanguage("en");
     expect(i18n.t("nav.systemLogsUnread", { count: 1 })).toBe("Logs (1 error)");

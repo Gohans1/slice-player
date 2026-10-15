@@ -11,6 +11,7 @@ import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, formatDuration, cn, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { outputGain } from "../lib/audio";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { Track, Segment } from "@/server/types";
@@ -36,6 +37,7 @@ interface SliceStudioProps {
 
 export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const syncUpdatedSegment = usePlayerStore((s) => s.syncUpdatedSegment);
   const pause = usePlayerStore((s) => s.pause);
   const removeSegmentFromQueue = usePlayerStore((s) => s.removeSegmentFromQueue);
@@ -980,7 +982,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
               <span>{t("studio.slicesHeader")}</span>
-              <Badge variant="secondary">{segments.length}</Badge>
+              <Badge variant="secondary">{formatNumber(segments.length)}</Badge>
             </h3>
             <span className="text-xs text-muted-foreground">
               {t("studio.slicesSub")}

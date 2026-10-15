@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../../hooks/use-format-number";
 import { Archive, Keyboard, Languages, Terminal } from "lucide-react";
 import { SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { Kbd } from "../ui/kbd";
@@ -12,6 +13,7 @@ interface SidebarUtilitiesProps {
 
 export function SidebarUtilities({ onOpenShortcuts }: SidebarUtilitiesProps) {
   const { t, i18n } = useTranslation();
+  const formatNumber = useFormatNumber();
   const isLogsOpen = useLogStore((s) => s.isDrawerOpen);
   const toggleLogs = useLogStore((s) => s.toggleDrawer);
   const unreadErrorCount = useLogStore((s) => s.unreadErrorCount);
@@ -28,7 +30,7 @@ export function SidebarUtilities({ onOpenShortcuts }: SidebarUtilitiesProps) {
             <Terminal />
             <span>{t("nav.systemLogsAria")}</span>
           </SidebarMenuButton>
-          {unreadErrorCount > 0 && <SidebarMenuBadge>{unreadErrorCount}</SidebarMenuBadge>}
+          {unreadErrorCount > 0 && <SidebarMenuBadge>{formatNumber(unreadErrorCount)}</SidebarMenuBadge>}
         </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton tooltip={t("sidebar.shortcuts")} onClick={onOpenShortcuts}>

@@ -14,6 +14,7 @@ import {
 import { ConfirmModal } from "./ConfirmModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 import { cn } from "../lib/utils";
@@ -132,6 +133,7 @@ function BulkAddToPlaylistMenu({
 
 export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkActionBarProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const selectedTrackIds = useSelectionStore((s) => s.selectedTrackIds);
   const selectedItems = useSelectionStore((s) => s.selectedItems);
   const selectedCount = useSelectedTrackCount();
@@ -273,7 +275,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         >
         {/* Selection count badge */}
         <Badge className="shrink-0">
-          <span key={selectedCount} className="font-mono font-bold inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{selectedCount}</span>
+          <span key={selectedCount} className="font-mono font-bold inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>
           <span className="hidden sm:inline">{t("bulkActions.selected", "selected")}</span>
         </Badge>
 

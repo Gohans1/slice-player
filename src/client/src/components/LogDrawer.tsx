@@ -21,6 +21,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from ".
 import { Toggle } from "./ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 import { useLogStore, type LogFilterCategory } from "../store/useLogStore";
 import { normalizeVi, tokenizeQuery } from "../lib/search";
 import { cn } from "../lib/utils";
@@ -106,6 +107,7 @@ interface LogDrawerContentProps {
 // Mounted only while the sheet is open, so its state starts fresh each time
 function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const logs = useLogStore((s) => s.logs);
   const clearLogs = useLogStore((s) => s.clearLogs);
   const filterCategory = useLogStore((s) => s.filterCategory);
@@ -337,7 +339,7 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <SheetTitle>{t("logs.title")}</SheetTitle>
-                <Badge variant="secondary">{logs.length}</Badge>
+                <Badge variant="secondary">{formatNumber(logs.length)}</Badge>
                 {errorCount > 0 && <Badge variant="destructive">{t("logs.errorsCount", { count: errorCount })}</Badge>}
               </div>
               <SheetDescription>{t("logs.description")}</SheetDescription>
@@ -401,7 +403,7 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
               {filters.map((filter) => (
                 <ToggleGroupItem key={filter.id} value={filter.id}>
                   {filter.label}
-                  <Badge variant={filter.isError && filter.count > 0 ? "destructive" : "secondary"}>{filter.count}</Badge>
+                  <Badge variant={filter.isError && filter.count > 0 ? "destructive" : "secondary"}>{formatNumber(filter.count)}</Badge>
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>

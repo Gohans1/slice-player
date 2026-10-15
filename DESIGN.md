@@ -308,6 +308,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 ### Do:
 - **Do** sử dụng mã màu Flexoki đã được định nghĩa trong `index.css` khi viết component mới.
 - **Do** sử dụng font `JetBrains Mono` cho mọi hiển thị liên quan đến thời gian âm thanh (`00:00`), số thứ tự hàng đợi và nhãn kỹ thuật.
+- **Do** viết số đếm theo cách ngôn ngữ đang chọn viết số (`1,236` tiếng Anh, `1.236` tiếng Việt): trong bản dịch dùng `{{count, number}}` (cả `total`, `filtered`, `current`, `position`…), số đứng riêng như badge thì qua `useFormatNumber()`. Mã HTTP, phần trăm và số thứ tự hàng thì để nguyên.
 - **Do** giữ thanh điều khiển PlayerBar ở vị trí `fixed bottom-0` để người dùng có thể thao tác nhạc từ bất kỳ đâu.
 - **Do** áp dụng `pointer-events-none` và `user-select: none` cho các thành phần kéo thả thumbnail để tránh lỗi kéo nhầm hình ảnh của trình duyệt.
 - **Do** gán màu lát cắt (`activeSegment.color`) trực tiếp vào vạch màu thumbnail và thanh tiến trình để tạo dấu ấn thị giác nhận diện đoạn nhạc.

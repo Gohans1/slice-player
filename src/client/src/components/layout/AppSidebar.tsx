@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../../hooks/use-format-number";
 import {
   AlertCircle,
   Combine,
@@ -80,6 +81,7 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOpenShortcuts, ...props }: AppSidebarProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const tracks = usePlayerStore((s) => s.tracks);
   const playlists = usePlayerStore((s) => s.playlists);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
@@ -175,7 +177,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
                     )}
                     <span>{category.label}</span>
                   </SidebarMenuButton>
-                  <SidebarMenuBadge>{category.count}</SidebarMenuBadge>
+                  <SidebarMenuBadge>{formatNumber(category.count)}</SidebarMenuBadge>
                 </SidebarMenuItem>
               );
             })}
@@ -197,7 +199,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
                 <LibraryBig className="text-primary" />
                 <span>{t("sidebar.allPlaylists")}</span>
               </SidebarMenuButton>
-              <SidebarMenuBadge>{playlists.length}</SidebarMenuBadge>
+              <SidebarMenuBadge>{formatNumber(playlists.length)}</SidebarMenuBadge>
             </SidebarMenuItem>
             {tree.map(({ playlist, children }) => (
               <React.Fragment key={playlist.id}>

@@ -34,6 +34,7 @@ import { TrackThumbnail } from "./TrackThumbnail";
 import { useHeightCssVar } from "../hooks/use-height-css-var";
 import { usePlayerStore, normalizeTrackVolume } from "../store/usePlayerStore";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 
 interface PlayerBarProps {
   onToggleQueue: () => void;
@@ -44,6 +45,7 @@ interface PlayerBarProps {
 
 export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }: PlayerBarProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const footerRef = useHeightCssVar("--player-bar-height");
   const activeTrack = usePlayerStore((s) => s.activeTrack);
   const activeSegment = usePlayerStore((s) => s.activeSegment);
@@ -360,7 +362,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             >
               <ListMusic data-icon="inline-start" />
               <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-              <Badge variant="secondary">{queueLength}</Badge>
+              <Badge variant="secondary">{formatNumber(queueLength)}</Badge>
             </Button>
           </div>
         </div>
@@ -498,7 +500,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                         defaultValue: `Current Queue (${playingPlaylistName})`,
                       })}
                     </span>
-                    <span className="ml-auto font-mono text-muted-foreground">{queueLength}</span>
+                    <span className="ml-auto font-mono text-muted-foreground">{formatNumber(queueLength)}</span>
                   </ContextMenuItem>
                 </ContextMenuGroup>
                 <ContextMenuSeparator />
@@ -522,7 +524,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                         <span className="ml-auto flex items-center gap-1.5">
                           {pl.id === lastShufflePlaylistId && <Badge variant="secondary">{t("player.lastUsed", "Recent")}</Badge>}
                           {typeof pl.item_count === "number" && (
-                            <span className="font-mono text-muted-foreground">{pl.item_count}</span>
+                            <span className="font-mono text-muted-foreground">{formatNumber(pl.item_count)}</span>
                           )}
                         </span>
                       </ContextMenuItem>
@@ -637,7 +639,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
           >
             <ListMusic data-icon="inline-start" />
             <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-            <Badge variant="secondary">{queueLength}</Badge>
+            <Badge variant="secondary">{formatNumber(queueLength)}</Badge>
           </Button>
         </div>
       </div>

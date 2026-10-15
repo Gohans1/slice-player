@@ -1,6 +1,7 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useFormatNumber } from "../hooks/use-format-number";
 import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -37,6 +38,7 @@ interface PlaylistHeaderProps {
 
 export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeaderProps) {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
@@ -340,7 +342,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
               <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <FolderTree className="size-3.5 text-flexoki-purple" aria-hidden="true" />
                 {t("playlist.subPlaylists", "Sub-playlists")}
-                {childPlaylists.length > 0 && <Badge variant="secondary">{childPlaylists.length}</Badge>}
+                {childPlaylists.length > 0 && <Badge variant="secondary">{formatNumber(childPlaylists.length)}</Badge>}
               </span>
               <Button
                 type="button"
@@ -366,7 +368,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                     <FolderTree data-icon="inline-start" className="text-flexoki-purple" aria-hidden="true" />
                     <span className="max-w-40 truncate">{child.name}</span>
                     {child.item_count !== undefined && (
-                      <span className="font-mono text-muted-foreground">{child.item_count}</span>
+                      <span className="font-mono text-muted-foreground">{formatNumber(child.item_count)}</span>
                     )}
                   </Button>
                 ))}
