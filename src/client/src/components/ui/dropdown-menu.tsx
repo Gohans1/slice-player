@@ -3,7 +3,7 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
+function DropdownMenu<Payload = unknown>({ ...props }: MenuPrimitive.Root.Props<Payload>) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
 
@@ -11,7 +11,7 @@ function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
   return <MenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
 }
 
-function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
+function DropdownMenuTrigger<Payload = unknown>({ ...props }: MenuPrimitive.Trigger.Props<Payload>) {
   return <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
 }
 
