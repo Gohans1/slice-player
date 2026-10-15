@@ -406,6 +406,7 @@
     "title": "Tạo danh sách phát mới",
     "description": "Đặt tên cho danh sách phát để gom các bài hát hoặc lát cắt yêu thích.",
     "placeholder": "Ví dụ: Nhạc Buồn 3AM, Workout Gym, Lofi Chill...",
+    "nameLabel": "Tên",
     "cancel": "Hủy",
     "submit": "Tạo danh sách",
     "requiredError": "Vui lòng nhập tên danh sách phát",

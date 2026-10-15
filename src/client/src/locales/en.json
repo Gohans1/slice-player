@@ -406,6 +406,7 @@
     "title": "New Playlist",
     "description": "Enter a name for your custom playlist to group tracks and slices.",
     "placeholder": "e.g. Focus Chill, Gym Beats, Late Night...",
+    "nameLabel": "Name",
     "cancel": "Cancel",
     "submit": "Create Playlist",
     "requiredError": "Please enter a playlist name",
