@@ -1511,9 +1511,9 @@ export function PlaylistTableView({
                 {/* Kind Badge */}
                 <div role="cell" className="hidden sm:flex items-center">
                   {isSlice && item.segment ? (
-                    <Badge variant="yellow" className="text-2xs gap-1 font-mono">
-                      <Scissors className="h-3 w-3" />
-                      <span>
+                    <Badge variant="yellow">
+                      <Scissors data-icon="inline-start" />
+                      <span className="font-mono">
                         {t("table.sliceBadge", {
                           start: formatDuration(item.segment.start_time),
                           end: formatDuration(item.segment.end_time),
@@ -1521,8 +1521,8 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green" className="text-2xs gap-1 font-mono">
-                      <Disc className="h-3 w-3" />
+                    <Badge variant="green">
+                      <Disc data-icon="inline-start" />
                       <span>{t("table.fullTrack")}</span>
                     </Badge>
                   )}
@@ -1532,18 +1532,18 @@ export function PlaylistTableView({
                 <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                   <span>{formatDuration(duration)}</span>
                   {item.track?.status === "downloading" ? (
-                    <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                    <Badge variant="outline">
+                      <Loader2 data-icon="inline-start" className="animate-spin" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track?.status === "queued" ? (
-                    <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
-                      <Clock className="h-3 w-3 text-primary/80" />
+                    <Badge variant="outline">
+                      <Clock data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.queued")}</span>
                     </Badge>
                   ) : item.track?.status === "error" ? (
-                    <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal">
-                      <AlertCircle className="h-3 w-3" />
+                    <Badge variant="destructive">
+                      <AlertCircle data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.downloadError")}</span>
                     </Badge>
                   ) : null}
@@ -1561,33 +1561,30 @@ export function PlaylistTableView({
                     size="icon"
                     disabled={!canMoveUp}
                     onClick={(e) => handleMoveItem(e, originalIdx, "up")}
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
                     title={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveUp")}
                     aria-label={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveUp")}
                   >
-                    <ChevronUp className="h-3.5 w-3.5" />
+                    <ChevronUp />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     disabled={!canMoveDown}
                     onClick={(e) => handleMoveItem(e, originalIdx, "down")}
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
                     title={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveDown")}
                     aria-label={isSearching ? t("table.disableSearchToReorder") : isReordering ? t("table.reordering") : t("table.moveDown")}
                   >
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     disabled={!isReady || isReordering}
                     onClick={() => item.track && openSliceStudio(item.track)}
-                    className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:opacity-30"
                     title={t("table.openStudio")}
                     aria-label={t("table.openStudio")}
                   >
-                    <Scissors className="h-3.5 w-3.5" />
+                    <Scissors />
                   </Button>
                   <RowActionsMenu
                     name={item.segment ? item.segment.name : (item.track?.title || "")}
@@ -1635,7 +1632,7 @@ export function PlaylistTableView({
                 ? activePlaylistItems[draggedIdx].segment?.name
                 : activePlaylistItems[draggedIdx].track?.title || t("table.track", "Bài hát")}
             </span>
-            <Badge variant="outline" className="text-2xs py-0 px-1.5 font-mono border-primary/50 text-primary shrink-0">
+            <Badge variant="outline" className="shrink-0">
               #{draggedIdx + 1}
             </Badge>
           </div>
@@ -1844,13 +1841,11 @@ export function PlaylistTableView({
                 >
                   <Button
                     variant="ghost"
-                    size="sm"
                     onClick={() => openSliceStudio(item.track)}
                     disabled={!isReady}
-                    className="h-7 text-xs px-2 gap-1 text-primary hover:bg-primary/10 cursor-pointer"
                     title={t("table.openStudio")}
                   >
-                    <Scissors className="h-3.5 w-3.5" />
+                    <Scissors data-icon="inline-start" />
                     <span className="hidden md:inline">{t("table.studio")}</span>
                   </Button>
                   <RowActionsMenu
@@ -2068,9 +2063,9 @@ export function PlaylistTableView({
                 {/* Kind Badge */}
                 <div role="cell" className="hidden sm:flex items-center">
                   {isSlice ? (
-                    <Badge variant="yellow" className="text-2xs gap-1 font-mono">
-                      <Scissors className="h-3 w-3" />
-                      <span>
+                    <Badge variant="yellow">
+                      <Scissors data-icon="inline-start" />
+                      <span className="font-mono">
                         {t("table.sliceBadge", {
                           start: formatDuration(item.segment.start_time),
                           end: formatDuration(item.segment.end_time),
@@ -2078,8 +2073,8 @@ export function PlaylistTableView({
                       </span>
                     </Badge>
                   ) : (
-                    <Badge variant="green" className="text-2xs gap-1 font-mono">
-                      <Disc className="h-3 w-3" />
+                    <Badge variant="green">
+                      <Disc data-icon="inline-start" />
                       <span>{t("table.fullTrack")}</span>
                     </Badge>
                   )}
@@ -2089,18 +2084,18 @@ export function PlaylistTableView({
                 <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                   <span>{formatDuration(duration)}</span>
                   {item.track.status === "downloading" ? (
-                    <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                    <Badge variant="outline">
+                      <Loader2 data-icon="inline-start" className="animate-spin" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track.status === "queued" ? (
-                    <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
-                      <Clock className="h-3 w-3 text-primary/80" />
+                    <Badge variant="outline">
+                      <Clock data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.queued")}</span>
                     </Badge>
                   ) : item.track.status === "error" ? (
-                    <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal">
-                      <AlertCircle className="h-3 w-3" />
+                    <Badge variant="destructive">
+                      <AlertCircle data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.downloadError")}</span>
                     </Badge>
                   ) : null}
@@ -2115,13 +2110,11 @@ export function PlaylistTableView({
                 >
                   <Button
                     variant="ghost"
-                    size="sm"
                     onClick={() => openSliceStudio(item.track)}
                     disabled={!isReady}
-                    className="h-7 text-xs px-2 gap-1 text-primary hover:bg-primary/10 cursor-pointer"
                     title={isSlice ? t("table.openStudio") : t("table.openStudio")}
                   >
-                    <Scissors className="h-3.5 w-3.5" />
+                    <Scissors data-icon="inline-start" />
                     <span className="hidden md:inline">{isSlice ? t("table.studio") : t("table.slice")}</span>
                   </Button>
                   <RowActionsMenu
@@ -2319,7 +2312,7 @@ export function PlaylistTableView({
 
               {/* Segment count */}
               <div role="cell" className="hidden sm:flex items-center">
-                <Badge variant="secondary" className="text-2xs font-mono">
+                <Badge variant="secondary">
                   {t("table.slicesCountBadge", { count: track.segment_count || 0 })}
                 </Badge>
               </div>
@@ -2328,18 +2321,18 @@ export function PlaylistTableView({
               <div role="cell" className="font-mono text-xs text-muted-foreground flex items-center gap-1.5">
                 <span>{formatDuration(track.duration)}</span>
                 {track.status === "downloading" ? (
-                  <Badge variant="outline" className="text-2xs text-primary border-primary/30 gap-1 py-0 px-1.5 font-normal">
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                  <Badge variant="outline">
+                    <Loader2 data-icon="inline-start" className="animate-spin" />
                     <span className="hidden sm:inline">{t("table.downloading")}</span>
                   </Badge>
                 ) : track.status === "queued" ? (
-                  <Badge variant="outline" className="text-2xs text-muted-foreground border-border gap-1 py-0 px-1.5 font-normal">
-                    <Clock className="h-3 w-3 text-primary/80" />
+                  <Badge variant="outline">
+                    <Clock data-icon="inline-start" />
                     <span className="hidden sm:inline">{t("table.queued")}</span>
                   </Badge>
                 ) : track.status === "error" ? (
-                  <Badge variant="destructive" className="text-2xs gap-1 py-0 px-1.5 font-normal" title={track.error_message || t("trackCard.error")}>
-                    <AlertCircle className="h-3 w-3" />
+                  <Badge variant="destructive" title={track.error_message || t("trackCard.error")}>
+                    <AlertCircle data-icon="inline-start" />
                     <span className="hidden sm:inline">{t("table.downloadError")}</span>
                   </Badge>
                 ) : null}
@@ -2355,16 +2348,14 @@ export function PlaylistTableView({
                 {track.status === "error" ? (
                   <>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="destructive"
                       disabled={isRetrying}
                       onClick={async () => {
                         await retryTrack(track.id);
                       }}
-                      className="h-7 px-2 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       title={isRetrying ? t("table.retrying") : t("table.retry")}
                     >
-                      <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+                      <RotateCcw data-icon="inline-start" className={cn(isRetrying && "animate-spin")} />
                       <span className="hidden sm:inline">{isRetrying ? t("table.retrying") : t("table.retry")}</span>
                     </Button>
                   </>
@@ -2372,13 +2363,11 @@ export function PlaylistTableView({
                   <>
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={() => openSliceStudio(track)}
                       disabled={!isReady}
-                      className="h-7 px-2 text-xs gap-1 border-primary/30 hover:bg-primary/10 hover:text-primary"
                       title={t("table.openStudio")}
                     >
-                      <Scissors className="h-3 w-3" />
+                      <Scissors data-icon="inline-start" />
                       <span className="hidden md:inline">{t("table.slice")}</span>
                     </Button>
                   </>
