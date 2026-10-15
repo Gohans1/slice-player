@@ -1122,8 +1122,8 @@ export function App() {
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex flex-1 items-center gap-2.5 min-w-48">
                 <SidebarTrigger />
-                {/* An open playlist's header already names it; like Apple Music, the name joins the toolbar once that header scrolls under it */}
-                <div className={cn("flex min-w-0 items-center gap-2.5", activePl && "reveal-past-playlist-title")}>
+                {/* The page names itself in a large title (a playlist in its header); like Apple Music, the name joins the toolbar once that title scrolls under it */}
+                <div className="reveal-past-page-title flex min-w-0 items-center gap-2.5">
                   <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0 max-w-xs">
                     <span className="truncate">{headerMeta.title}</span>
                     <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground tabular-nums shrink-0" aria-live="polite" aria-atomic="true">
@@ -1162,6 +1162,16 @@ export function App() {
             aria-labelledby="library-view-title"
             className="animate-in fade-in duration-150 ease-out motion-reduce:animate-none"
           >
+        {/* Library views open with a large title like Apple Music's pages; a playlist's header plays that part */}
+        {!activePlaylistId && (
+          <div className="mb-6 flex flex-col gap-1">
+            <div className="page-title-timeline flex flex-wrap items-baseline gap-x-2">
+              <h2 className="text-2xl font-bold text-foreground">{headerMeta.title}</h2>
+              <span className="text-xs text-muted-foreground tabular-nums">{headerMeta.count}</span>
+            </div>
+            {headerMeta.description && <p className="text-2xs font-semibold text-muted-foreground">{headerMeta.description}</p>}
+          </div>
+        )}
         {isLoadingTracks && isLibraryEmpty ? (
           <LibrarySkeleton viewMode={viewMode} />
         ) : activePlaylistId ? (

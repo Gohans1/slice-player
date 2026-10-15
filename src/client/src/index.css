@@ -12,8 +12,8 @@ body {
 /* The sticky library toolbar covers the top of the page */
 html {
   scroll-padding-top: var(--library-toolbar-height, 0px);
-  /* Lets the toolbar follow the scroll timeline of the playlist header, which isn't its ancestor */
-  timeline-scope: --playlist-title;
+  /* Lets the toolbar follow the scroll timeline of the page's title, which isn't its ancestor */
+  timeline-scope: --page-title;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -37,22 +37,22 @@ html {
 }
 
 /*
-  Like Apple Music, an open playlist's name appears in the toolbar only once the name in its header has scrolled
-  under the toolbar (the timeline's inset is the page's scroll-padding). Driven by a scroll timeline, not JS;
-  browsers without scroll-driven animations keep the name in the toolbar.
+  Like Apple Music, a page's name (a playlist's header, a library view's large title) appears in the toolbar only once
+  it has scrolled under the toolbar (the timeline's inset is the page's scroll-padding). Driven by a scroll timeline,
+  not JS; browsers without scroll-driven animations, and pages without a large title, keep the name in the toolbar.
 */
-@utility playlist-title-timeline {
-  view-timeline: --playlist-title block;
+@utility page-title-timeline {
+  view-timeline: --page-title block;
   view-timeline-inset: auto;
 }
 
-@utility reveal-past-playlist-title {
-  animation: reveal-past-playlist-title linear both;
-  animation-timeline: --playlist-title;
+@utility reveal-past-page-title {
+  animation: reveal-past-page-title linear both;
+  animation-timeline: --page-title;
   animation-range: exit;
 }
 
-@keyframes reveal-past-playlist-title {
+@keyframes reveal-past-page-title {
   from {
     opacity: 0;
   }

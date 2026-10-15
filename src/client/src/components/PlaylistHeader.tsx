@@ -195,7 +195,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
             )}
 
             {isEditingName ? (
-              <form onSubmit={handleSaveRename} className="playlist-title-timeline my-1 flex max-w-md items-center gap-2">
+              <form onSubmit={handleSaveRename} className="page-title-timeline my-1 flex max-w-md items-center gap-2">
                 <Input
                   ref={renameInputRef}
                   type="text"
@@ -230,7 +230,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 </Button>
               </form>
             ) : (
-              <div className="playlist-title-timeline group flex flex-wrap items-center gap-2 max-sm:justify-center">
+              <div className="page-title-timeline group flex flex-wrap items-center gap-2 max-sm:justify-center">
                 <h2 className="text-2xl font-bold text-balance break-words text-foreground">{playlist.name}</h2>
                 {/* Renaming also lives in the "..." menu, so the shortcut beside the title waits for hover or focus */}
                 {!playlist.is_mix && (
