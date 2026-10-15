@@ -55,6 +55,27 @@ import type { Playlist, Segment, Track } from "@/server/types";
 
 const getItemEntityId = (item: { id: string }) => item.id;
 
+const isPlayable = (track: Track) => track.status === "ready" && (track.duration ?? 0) > 0;
+
+// A view's play queue, built when a card is played rather than on every keystroke of a search
+function sliceQueueOf(items: { id: string; segment: Segment; track: Track }[]): QueueItem[] {
+  return items.filter((it) => isPlayable(it.track)).map((it) => createQueueItem(it.segment, it.track, it.id));
+}
+
+function mixedQueueOf(items: MixedItem[]): QueueItem[] {
+  return items
+    .filter((it) => isPlayable(it.track))
+    .map((it) =>
+      it.type === "slice" && it.segment
+        ? createQueueItem(it.segment, it.track, it.id)
+        : createQueueItem(createDefaultFullSegment(it.track), it.track, it.id)
+    );
+}
+
+function trackQueueOf(tracks: Track[]): QueueItem[] {
+  return tracks.filter(isPlayable).map((track) => createQueueItem(createDefaultFullSegment(track), track, track.id));
+}
+
 export function App() {
   const { t } = useTranslation();
   const tracks = usePlayerStore((s) => s.tracks);
@@ -653,28 +674,6 @@ export function App() {
     }));
   }, [activePlaylistId, sortedPlaylistItems, deferredQuery]);
 
-  const sliceQueue = React.useMemo<QueueItem[]>(() => {
-    return filteredSliceItems
-      .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
-      .map((it) => createQueueItem(it.segment, it.track, it.id));
-  }, [filteredSliceItems]);
-
-  const mixedQueue = React.useMemo<QueueItem[]>(() => {
-    return filteredMixedItems
-      .filter((it) => it.track.status === "ready" && (it.track.duration ?? 0) > 0)
-      .map((it) =>
-        it.type === "slice" && it.segment
-          ? createQueueItem(it.segment, it.track, it.id)
-          : createQueueItem(createDefaultFullSegment(it.track), it.track, it.id)
-      );
-  }, [filteredMixedItems]);
-
-  const originalQueue = React.useMemo<QueueItem[]>(() => {
-    return filteredTracks
-      .filter((t) => t.status === "ready" && (t.duration ?? 0) > 0)
-      .map((t) => createQueueItem(createDefaultFullSegment(t), t, t.id));
-  }, [filteredTracks]);
-
   // Cards are memoized, so their handlers must be stable: an inline closure re-renders every visible card
   // each time the grid renders, which is every frame while the sidebar animates
   const playFromQueue = React.useCallback(
@@ -693,20 +692,20 @@ export function App() {
     [deferredQuery, playSegmentInMode]
   );
   const handlePlaySlice = React.useCallback(
-    (segment: Segment, track: Track) => playFromQueue("slices_only", sliceQueue, segment, track),
-    [playFromQueue, sliceQueue]
+    (segment: Segment, track: Track) => playFromQueue("slices_only", sliceQueueOf(filteredSliceItems), segment, track),
+    [playFromQueue, filteredSliceItems]
   );
   const handlePlayMixedSlice = React.useCallback(
-    (segment: Segment, track: Track) => playFromQueue("mixed", mixedQueue, segment, track),
-    [playFromQueue, mixedQueue]
+    (segment: Segment, track: Track) => playFromQueue("mixed", mixedQueueOf(filteredMixedItems), segment, track),
+    [playFromQueue, filteredMixedItems]
   );
   const handlePlayMixedTrack = React.useCallback(
-    (track: Track) => playFromQueue("mixed", mixedQueue, createDefaultFullSegment(track), track),
-    [playFromQueue, mixedQueue]
+    (track: Track) => playFromQueue("mixed", mixedQueueOf(filteredMixedItems), createDefaultFullSegment(track), track),
+    [playFromQueue, filteredMixedItems]
   );
   const handlePlayTrack = React.useCallback(
-    (track: Track) => playFromQueue("original_only", originalQueue, createDefaultFullSegment(track), track),
-    [playFromQueue, originalQueue]
+    (track: Track) => playFromQueue("original_only", trackQueueOf(filteredTracks), createDefaultFullSegment(track), track),
+    [playFromQueue, filteredTracks]
   );
 
   const currentViewKey = getViewScrollKey(activePlaylistId, activeSystemCategory);
