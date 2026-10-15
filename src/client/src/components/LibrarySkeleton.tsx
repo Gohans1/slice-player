@@ -29,8 +29,8 @@ export function LibrarySkeleton({ viewMode }: LibrarySkeletonProps) {
       ) : (
         <div aria-hidden="true" className="flex flex-col">
           {PLACEHOLDERS.map((n) => (
-            <div key={n} className="flex h-12.5 items-center gap-3 px-2">
-              <Skeleton className="aspect-video h-8" />
+            <div key={n} className="flex h-13.5 items-center gap-3 px-2">
+              <Skeleton className="size-10" />
               <div className="flex flex-1 flex-col gap-1.5">
                 <Skeleton className="h-3.5 w-2/5" />
                 <Skeleton className="h-3 w-1/4" />
