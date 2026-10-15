@@ -33,6 +33,13 @@ describe("FloatingScrollControls Component", () => {
     container.remove();
   });
 
+  // React commits a render when its act() scope ends, and the controls measure the page one frame
+  // after that, assuming the top until then; this lets that frame run
+  const measurePage = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
   it("renders scroll to top and scroll to bottom buttons with accessible labels", () => {
     act(() => {
       root.render(<FloatingScrollControls />);
@@ -47,23 +54,63 @@ describe("FloatingScrollControls Component", () => {
     expect(bottomBtn?.getAttribute("aria-label")).toBeTruthy();
   });
 
-  it("clicking scroll to top invokes window.scrollTo with top: 0", () => {
-    let scrollToArgs: any = null;
-    happyWindow.scrollTo = ((options: any) => {
-      scrollToArgs = options;
-    }) as any;
+  it("disables the button for whichever end of the page is already showing", async () => {
+    Object.defineProperty(happyWindow.document.documentElement, "scrollHeight", { value: 12500, configurable: true });
+    Object.defineProperty(happyWindow, "innerHeight", { value: 800, configurable: true });
+    Object.defineProperty(happyWindow, "scrollY", { value: 0, configurable: true, writable: true });
 
-    act(() => {
+    await act(async () => {
       root.render(<FloatingScrollControls />);
     });
+    await measurePage();
 
     const topBtn = container.querySelector('[data-testid="scroll-to-top"]') as HTMLButtonElement;
-    act(() => {
-      topBtn.click();
-    });
+    const bottomBtn = container.querySelector('[data-testid="scroll-to-bottom"]') as HTMLButtonElement;
+    expect(topBtn.disabled).toBe(true);
+    expect(bottomBtn.disabled).toBe(false);
 
-    expect(scrollToArgs).not.toBeNull();
-    expect(scrollToArgs.top).toBe(0);
+    await act(async () => {
+      (happyWindow as any).scrollY = 12500 - 800;
+      happyWindow.dispatchEvent(new happyWindow.Event("scroll"));
+    });
+    await measurePage();
+
+    expect(topBtn.disabled).toBe(false);
+    expect(bottomBtn.disabled).toBe(true);
+  });
+
+  it("re-measures when the page grows without scrolling", async () => {
+    // Library rows render after the controls mount, which changes the page height but fires no scroll event
+    const resizeCallbacks: Array<() => void> = [];
+    const OriginalResizeObserver = globalThis.ResizeObserver;
+    (globalThis as any).ResizeObserver = class {
+      constructor(callback: () => void) {
+        resizeCallbacks.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      Object.defineProperty(happyWindow.document.documentElement, "scrollHeight", { value: 800, configurable: true });
+      Object.defineProperty(happyWindow, "innerHeight", { value: 800, configurable: true });
+
+      await act(async () => {
+        root.render(<FloatingScrollControls />);
+      });
+      await measurePage();
+      const bottomBtn = container.querySelector('[data-testid="scroll-to-bottom"]') as HTMLButtonElement;
+      expect(bottomBtn.disabled).toBe(true);
+
+      Object.defineProperty(happyWindow.document.documentElement, "scrollHeight", { value: 12500, configurable: true });
+      await act(async () => {
+        resizeCallbacks.forEach((callback) => callback());
+      });
+      await measurePage();
+
+      expect(bottomBtn.disabled).toBe(false);
+    } finally {
+      globalThis.ResizeObserver = OriginalResizeObserver;
+    }
   });
 
   it("clicking scroll to bottom invokes window.scrollTo towards document height", async () => {
@@ -110,6 +157,7 @@ describe("FloatingScrollControls Component", () => {
     await act(async () => {
       root.render(<FloatingScrollControls />);
     });
+    await measurePage();
 
     const topBtn = container.querySelector('[data-testid="scroll-to-top"]') as HTMLButtonElement;
     await act(async () => {
@@ -138,6 +186,7 @@ describe("FloatingScrollControls Component", () => {
     await act(async () => {
       root.render(<FloatingScrollControls />);
     });
+    await measurePage();
 
     const topBtn = container.querySelector('[data-testid="scroll-to-top"]') as HTMLButtonElement;
     await act(async () => {
@@ -148,6 +197,8 @@ describe("FloatingScrollControls Component", () => {
     });
 
     const recordedCount = recordedScrollTops.length;
+    // The animation started before the wheel stopped it
+    expect(recordedCount).toBeGreaterThan(0);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });

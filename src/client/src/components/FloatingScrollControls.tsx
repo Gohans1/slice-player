@@ -1,6 +1,8 @@
 import * as React from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Button } from "./ui/button";
+import { ButtonGroup } from "./ui/button-group";
 import { cn } from "../lib/utils";
 
 function easeInOutCubic(t: number): number {
@@ -55,11 +57,15 @@ export function FloatingScrollControls({ className }: { className?: string }) {
     checkScrollBounds();
     window.addEventListener("scroll", checkScrollBounds, { passive: true });
     window.addEventListener("resize", checkScrollBounds, { passive: true });
+    // Rows that render or load after mount change the page height without any scroll event
+    const contentObserver = typeof ResizeObserver === "function" ? new ResizeObserver(checkScrollBounds) : null;
+    contentObserver?.observe(document.body);
 
     return () => {
       if (rafId !== null) safeCancelRaf(rafId);
       window.removeEventListener("scroll", checkScrollBounds);
       window.removeEventListener("resize", checkScrollBounds);
+      contentObserver?.disconnect();
     };
   }, []);
 
@@ -180,41 +186,37 @@ export function FloatingScrollControls({ className }: { className?: string }) {
   }, [smoothScrollTo]);
 
   return (
-    <aside
-      aria-label={t("scroll.navigation", "Quick scroll navigation")}
-      role="group"
+    // The wrapper floats the group over the library with a solid, blurred backing
+    <div
       className={cn(
-        "fixed z-30 bottom-24 right-4 sm:right-6 md:right-8 flex flex-col items-center bg-card/90 hover:bg-card/95 backdrop-blur-md border border-border/80 shadow-lg hover:shadow-xl rounded-full p-1 transition-all duration-200 gap-0.5 select-none animate-in fade-in zoom-in-95",
+        "fixed right-4 bottom-24 z-30 rounded-md bg-card/90 shadow-lg backdrop-blur-md select-none animate-in fade-in zoom-in-95 sm:right-6 md:right-8",
         className
       )}
     >
-      <button
-        type="button"
-        data-testid="scroll-to-top"
-        onClick={handleScrollToTop}
-        aria-label={t("scroll.scrollToTop", "Scroll to top")}
-        title={t("scroll.scrollToTop", "Scroll to top")}
-        className={`flex items-center justify-center h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 active:scale-90 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-          isAtTop ? "opacity-45 hover:opacity-100" : "opacity-100"
-        }`}
-      >
-        <ChevronUp className="h-4 w-4" />
-      </button>
-
-      <div role="separator" aria-orientation="horizontal" className="h-px w-3.5 bg-border/60 my-0.5" />
-
-      <button
-        type="button"
-        data-testid="scroll-to-bottom"
-        onClick={handleScrollToBottom}
-        aria-label={t("scroll.scrollToBottom", "Scroll to bottom")}
-        title={t("scroll.scrollToBottom", "Scroll to bottom")}
-        className={`flex items-center justify-center h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 active:scale-90 transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-          isAtBottom ? "opacity-45 hover:opacity-100" : "opacity-100"
-        }`}
-      >
-        <ChevronDown className="h-4 w-4" />
-      </button>
-    </aside>
+      <ButtonGroup orientation="vertical" aria-label={t("scroll.navigation", "Quick scroll navigation")}>
+        <Button
+          variant="outline"
+          size="icon-lg"
+          data-testid="scroll-to-top"
+          disabled={isAtTop}
+          onClick={handleScrollToTop}
+          aria-label={t("scroll.scrollToTop", "Scroll to top")}
+          title={t("scroll.scrollToTop", "Scroll to top")}
+        >
+          <ChevronUp />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-lg"
+          data-testid="scroll-to-bottom"
+          disabled={isAtBottom}
+          onClick={handleScrollToBottom}
+          aria-label={t("scroll.scrollToBottom", "Scroll to bottom")}
+          title={t("scroll.scrollToBottom", "Scroll to bottom")}
+        >
+          <ChevronDown />
+        </Button>
+      </ButtonGroup>
+    </div>
   );
 }
