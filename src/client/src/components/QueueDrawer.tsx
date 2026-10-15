@@ -316,6 +316,13 @@ const QueueItemRow = React.memo(function QueueItemRow({
   );
 });
 
+// Controls inside a queue row (or the whole list) in tab order. Each row puts its touch-only reorder buttons first,
+// and a fine pointer hides them, so a row's first and last controls are its first and last rendered ones
+const FOCUSABLE_SELECTOR = 'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])';
+function getShownFocusables(container: Element | null | undefined): HTMLElement[] {
+  return Array.from(container?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? []).filter((el) => el.checkVisibility());
+}
+
 const ESTIMATED_ITEM_HEIGHT = 54;
 const INITIAL_DRAWER_RECT = { width: 384, height: 600 };
 const estimateItemSize = () => ESTIMATED_ITEM_HEIGHT;
@@ -693,66 +700,26 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
     }
     const rowEl = listRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
     if (rowEl) {
-      const isVisibleFocusable = (el: HTMLElement | null): el is HTMLElement => {
-        if (!el || (el as HTMLButtonElement).disabled) return false;
-        if (typeof el.checkVisibility === "function") {
-          if (!el.checkVisibility()) return false;
-        } else {
-          if (el.offsetParent === null && (!el.getClientRects || el.getClientRects().length === 0)) return false;
-        }
-        if (el.closest?.('[hidden], .hidden')) return false;
-        const isFinePointerDesktop = typeof window !== "undefined" && window.matchMedia?.("(min-width: 640px) and (pointer: fine)").matches;
-        let curr: HTMLElement | null = el;
-        while (curr && curr !== rowEl) {
-          if (
-            isFinePointerDesktop &&
-            (curr.classList?.contains("sm:hidden") ||
-              (typeof curr.className === "string" && curr.className.includes("sm:hidden")))
-          ) {
-            return false;
-          }
-          curr = curr.parentElement;
-        }
-        return true;
-      };
+      const isVisibleFocusable = (el: HTMLElement | null): el is HTMLElement =>
+        el !== null && !(el as HTMLButtonElement).disabled && el.checkVisibility();
 
       let elToFocus: HTMLElement | null = null;
       if (target === "handle") {
-        const handle = rowEl.querySelector<HTMLElement>('[data-drag-handle="true"]:not([disabled])');
-        if (isVisibleFocusable(handle)) elToFocus = handle;
+        elToFocus = rowEl.querySelector<HTMLElement>('[data-drag-handle="true"]');
       } else if (target === "up") {
-        const upBtn = rowEl.querySelector<HTMLElement>('button[data-action="move-up"]:not([disabled])');
-        if (isVisibleFocusable(upBtn)) elToFocus = upBtn;
+        elToFocus = rowEl.querySelector<HTMLElement>('button[data-action="move-up"]');
       } else if (target === "down") {
-        const downBtn = rowEl.querySelector<HTMLElement>('button[data-action="move-down"]:not([disabled])');
-        if (isVisibleFocusable(downBtn)) elToFocus = downBtn;
+        elToFocus = rowEl.querySelector<HTMLElement>('button[data-action="move-down"]');
       } else if (target === "delete") {
-        const delBtn = rowEl.querySelector<HTMLElement>('button[data-action="remove"]:not([disabled])');
-        if (isVisibleFocusable(delBtn)) elToFocus = delBtn;
-      } else if (target === "last") {
-        const focusables = Array.from(
-          rowEl.querySelectorAll<HTMLElement>(
-            'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-          )
-        ).filter(isVisibleFocusable);
-        if (focusables.length > 0) {
-          elToFocus = focusables[focusables.length - 1];
-        }
+        elToFocus = rowEl.querySelector<HTMLElement>('button[data-action="remove"]');
+      } else if (target === "any") {
+        elToFocus = getShownFocusables(rowEl)[0] ?? null;
+      } else {
+        elToFocus = getShownFocusables(rowEl).at(-1) ?? null;
       }
+      // A reorder whose button has gone (moved to an end, or hidden under a fine pointer) keeps focus on the moved row
       if (!isVisibleFocusable(elToFocus)) {
-        const candidates = [
-          rowEl.querySelector<HTMLElement>('[data-drag-handle="true"]:not([disabled])'),
-          rowEl.querySelector<HTMLElement>('[role="button"][data-action="play"]:not([disabled])'),
-          rowEl.querySelector<HTMLElement>('button[data-action="remove"]:not([disabled])'),
-          rowEl.querySelector<HTMLElement>('button[data-action="move-up"]:not([disabled])'),
-          rowEl.querySelector<HTMLElement>('button[data-action="move-down"]:not([disabled])'),
-          ...Array.from(
-            rowEl.querySelectorAll<HTMLElement>(
-              'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])'
-            )
-          ),
-        ];
-        elToFocus = candidates.find(isVisibleFocusable) || null;
+        elToFocus = [rowEl.querySelector<HTMLElement>('[data-drag-handle="true"]'), ...getShownFocusables(rowEl)].find(isVisibleFocusable) ?? null;
       }
       if (elToFocus) {
         elToFocus.focus();
@@ -927,31 +894,24 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
     const currentRowEl = activeEl?.closest<HTMLElement>("[data-index]");
     const currentRowIdx = currentRowEl ? Number(currentRowEl.getAttribute("data-index")) : NaN;
     if (!currentRowEl || isNaN(currentRowIdx)) return;
-    const focusable = 'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]:not([disabled])';
-    const isShown = (el: HTMLElement) => el.offsetParent !== null || el.getClientRects().length > 0;
-
     if (e.shiftKey) {
-      if (currentRowIdx === 0 || activeEl !== currentRowEl.querySelector<HTMLElement>(focusable)) return;
+      if (currentRowIdx === 0 || activeEl !== getShownFocusables(currentRowEl)[0]) return;
       e.preventDefault();
       const prevIdx = currentRowIdx - 1;
       rowVirtualizerRef.current?.scrollToIndex(prevIdx, { align: "auto" });
-      const prevFocusables = Array.from(
-        list.querySelector(`[data-index="${prevIdx}"]`)?.querySelectorAll<HTMLElement>(focusable) ?? []
-      ).filter(isShown);
-      const lastInPrevRow = prevFocusables[prevFocusables.length - 1];
+      const lastInPrevRow = getShownFocusables(list.querySelector(`[data-index="${prevIdx}"]`)).at(-1);
       if (lastInPrevRow) lastInPrevRow.focus();
       else pendingFocusRef.current = { index: prevIdx, target: "last", timestamp: Date.now() };
       return;
     }
 
-    const listFocusables = Array.from(list.querySelectorAll<HTMLElement>(focusable)).filter(isShown);
-    if (activeEl !== listFocusables[listFocusables.length - 1] || currentRowIdx >= displayQueueRef.current.length - 1) {
+    if (activeEl !== getShownFocusables(list).at(-1) || currentRowIdx >= displayQueueRef.current.length - 1) {
       return;
     }
     e.preventDefault();
     const nextIdx = currentRowIdx + 1;
     rowVirtualizerRef.current?.scrollToIndex(nextIdx, { align: "auto" });
-    const nextFocusable = list.querySelector(`[data-index="${nextIdx}"]`)?.querySelector<HTMLElement>(focusable);
+    const nextFocusable = getShownFocusables(list.querySelector(`[data-index="${nextIdx}"]`))[0];
     if (nextFocusable) nextFocusable.focus();
     else pendingFocusRef.current = { index: nextIdx, target: "any", timestamp: Date.now() };
   }, []);

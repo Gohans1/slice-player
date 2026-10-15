@@ -1206,6 +1206,92 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     expect(row0.contains(document.activeElement)).toBe(true);
   });
 
+  // A fine pointer hides each row's touch-only Move up / Move down buttons, which still come first in the row's DOM
+  const hideTouchReorderButtons = () => {
+    const style = document.createElement("style");
+    style.textContent = '[data-action="move-up"], [data-action="move-down"] { display: none; }';
+    document.head.appendChild(style);
+  };
+  // Names the focused control by its row and action, e.g. "3:play"
+  const focusedControl = () => {
+    const el = document.activeElement;
+    const action = el?.getAttribute("data-action") ?? (el?.hasAttribute("data-drag-handle") ? "handle" : el?.tagName);
+    return `${el?.closest("[data-index]")?.getAttribute("data-index")}:${action}`;
+  };
+
+  it("QueueDrawer's Shift+Tab off a row's play area lands on the previous row's last control when the touch reorder buttons are hidden", () => {
+    hideTouchReorderButtons();
+    usePlayerStore.setState({
+      queue: [
+        { segment: dummySegment, track: dummyTrack },
+        { segment: dummySegment2, track: dummyTrack2 },
+      ],
+      queueIndex: 0,
+    });
+
+    act(() => {
+      root.render(<QueuePanel onClose={() => {}} />);
+    });
+
+    const playArea = document.querySelector<HTMLElement>('[data-index="1"] [data-action="play"]');
+    act(() => {
+      playArea?.focus();
+    });
+    expect(focusedControl()).toBe("1:play");
+
+    const shiftTabEvt = new window.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      playArea?.dispatchEvent(shiftTabEvt);
+    });
+
+    expect(shiftTabEvt.defaultPrevented).toBe(true);
+    expect(focusedControl()).toBe("0:remove");
+  });
+
+  it("QueueDrawer's Tab off the last rendered row lands on the next row's play area when the touch reorder buttons are hidden", () => {
+    hideTouchReorderButtons();
+    usePlayerStore.setState({
+      queue: Array.from({ length: 30 }, (_, i) => ({
+        queueItemId: `queue_tab_${i}`,
+        segment: { ...dummySegment, id: `seg_tab_${i}`, name: `Tab Segment ${i}` },
+        track: dummyTrack,
+      })),
+      queueIndex: 0,
+    });
+
+    act(() => {
+      root.render(<QueuePanel onClose={() => {}} />);
+    });
+
+    // happy-dom has no layout, so give the list the scroll geometry a browser would
+    const listEl = document.querySelector<HTMLElement>('[role="region"][aria-label="Danh sách phát hiện tại"]');
+    if (!listEl) throw new Error("The queue list did not render");
+    Object.defineProperty(listEl, "scrollHeight", { value: 30 * 54, configurable: true });
+    Object.defineProperty(listEl, "clientHeight", { value: 600, configurable: true });
+
+    const lastRow = Array.from(listEl.querySelectorAll<HTMLElement>("[data-index]")).at(-1);
+    const nextIdx = Number(lastRow?.getAttribute("data-index")) + 1;
+    const removeBtn = lastRow?.querySelector<HTMLElement>('[data-action="remove"]');
+    act(() => {
+      removeBtn?.focus();
+    });
+    expect(focusedControl()).toBe(`${nextIdx - 1}:remove`);
+
+    const tabEvt = new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    act(() => {
+      removeBtn?.dispatchEvent(tabEvt);
+    });
+    expect(tabEvt.defaultPrevented).toBe(true);
+
+    // The list scrolled the next row into view; a browser follows that with a scroll event, which mounts it
+    expect(listEl.scrollTop).toBeGreaterThan(0);
+    act(() => {
+      listEl.dispatchEvent(new window.Event("scroll"));
+    });
+
+    expect(focusedControl()).toBe(`${nextIdx}:play`);
+  });
+
   it("QueueDrawer does NOT show 'Khôi phục thứ tự ban đầu' button when queue is empty even if isShuffle is true", () => {
     usePlayerStore.setState({
       isShuffle: true,
