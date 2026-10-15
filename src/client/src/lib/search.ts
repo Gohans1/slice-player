@@ -71,20 +71,30 @@ export function tokenizeQuery(query: string): string[] {
 }
 
 interface PreparedField {
-  canonicalText: string;
-  words: string[];
-  compact: string;
-  wordStarts: Set<number>;
+  readonly canonicalText: string;
+  readonly words: readonly string[];
+  readonly compact: string;
+  readonly wordStarts: ReadonlySet<number>;
 }
 
+const EMPTY_FIELD: PreparedField = { canonicalText: "", words: [], compact: "", wordStarts: new Set() };
+
+// The same titles, artists and slice names are searched on every keystroke, so each is prepared once.
+// Capped so text from renamed or deleted items can't grow it without bound.
+const PREPARED_FIELD_CACHE_LIMIT = 20_000;
+const preparedFields = new Map<string, PreparedField>();
+
 function prepareField(text: string | null | undefined): PreparedField {
-  if (!text) {
-    return { canonicalText: "", words: [], compact: "", wordStarts: new Set() };
+  if (!text) return EMPTY_FIELD;
+  let field = preparedFields.get(text);
+  if (!field) {
+    if (preparedFields.size >= PREPARED_FIELD_CACHE_LIMIT) preparedFields.clear();
+    const words = toCanonicalWords(text);
+    const { compact, startIndices } = toCompactWithWordStarts(words);
+    field = { canonicalText: words.join(" "), words, compact, wordStarts: startIndices };
+    preparedFields.set(text, field);
   }
-  const words = toCanonicalWords(text);
-  const canonicalText = words.join(" ");
-  const { compact, startIndices } = toCompactWithWordStarts(words);
-  return { canonicalText, words, compact, wordStarts: startIndices };
+  return field;
 }
 
 function tokenMatchesField(
