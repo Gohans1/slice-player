@@ -1,6 +1,9 @@
 import * as React from "react";
 import { Modal } from "./Modal";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
+import { Field, FieldContent, FieldLabel, FieldTitle } from "./ui/field";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Spinner } from "./ui/spinner";
 import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +26,7 @@ export function DeletePlaylistModal({
   const { t } = useTranslation();
   const allPlaylists = usePlayerStore((s) => s.playlists);
   const [keepChildren, setKeepChildren] = React.useState(false);
+  const strategyPromptId = React.useId();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const childPlaylists = React.useMemo(() => {
@@ -61,68 +65,43 @@ export function DeletePlaylistModal({
       }}
       title={t("playlist.deletePlaylistTitle", "Delete playlist?")}
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {hasChildren ? (
-          <div className="space-y-3">
-            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
+          <>
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertDescription id={strategyPromptId}>
                 {t("playlist.deleteParentPrompt", {
                   count: childPlaylists.length,
                   defaultValue: `This playlist contains ${childPlaylists.length} sub-playlist(s). How would you like to proceed?`,
                 })}
-              </span>
-            </div>
+              </AlertDescription>
+            </Alert>
 
-            <fieldset className="space-y-2 pt-1">
-              <legend className="sr-only">{t("playlist.deletePlaylistTitle")}</legend>
-              <label
-                className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                  !keepChildren
-                    ? "border-destructive/40 bg-destructive/5 text-foreground"
-                    : "border-border hover:bg-secondary/40 text-muted-foreground"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="subPlaylistDeleteStrategy"
-                  checked={!keepChildren}
-                  onChange={() => setKeepChildren(false)}
-                  disabled={isSubmitting}
-                  className="mt-0.5 text-destructive focus:ring-destructive cursor-pointer"
-                />
-                <span className="text-xs font-medium">
-                  {t(
-                    "playlist.deleteCascadeOption",
-                    "Delete parent and all sub-playlists"
-                  )}
-                </span>
-              </label>
-
-              <label
-                className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                  keepChildren
-                    ? "border-primary/40 bg-primary/5 text-foreground"
-                    : "border-border hover:bg-secondary/40 text-muted-foreground"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="subPlaylistDeleteStrategy"
-                  checked={keepChildren}
-                  onChange={() => setKeepChildren(true)}
-                  disabled={isSubmitting}
-                  className="mt-0.5 text-primary focus:ring-primary cursor-pointer"
-                />
-                <span className="text-xs font-medium">
-                  {t(
-                    "playlist.deleteKeepOption",
-                    "Keep sub-playlists as standalone playlists"
-                  )}
-                </span>
-              </label>
-            </fieldset>
-          </div>
+            <RadioGroup
+              aria-labelledby={strategyPromptId}
+              value={keepChildren ? "keep" : "cascade"}
+              onValueChange={(value) => setKeepChildren(value === "keep")}
+              disabled={isSubmitting}
+            >
+              <FieldLabel htmlFor="delete-strategy-cascade">
+                <Field orientation="horizontal">
+                  <RadioGroupItem value="cascade" id="delete-strategy-cascade" />
+                  <FieldContent>
+                    <FieldTitle>{t("playlist.deleteCascadeOption", "Delete parent and all sub-playlists")}</FieldTitle>
+                  </FieldContent>
+                </Field>
+              </FieldLabel>
+              <FieldLabel htmlFor="delete-strategy-keep">
+                <Field orientation="horizontal">
+                  <RadioGroupItem value="keep" id="delete-strategy-keep" />
+                  <FieldContent>
+                    <FieldTitle>{t("playlist.deleteKeepOption", "Keep sub-playlists as standalone playlists")}</FieldTitle>
+                  </FieldContent>
+                </Field>
+              </FieldLabel>
+            </RadioGroup>
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
             {t("playlist.confirmDelete", {
@@ -132,7 +111,7 @@ export function DeletePlaylistModal({
           </p>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="outline"
@@ -146,7 +125,6 @@ export function DeletePlaylistModal({
             variant="destructive"
             disabled={isSubmitting}
             data-testid="delete-playlist-submit-btn"
-            className="cursor-pointer"
           >
             {isSubmitting && <Spinner data-icon="inline-start" />}
             {t("playlist.delete", "Delete playlist")}

@@ -64,8 +64,8 @@ describe("DeletePlaylistModal Component (TDD)", () => {
 
     const dialog = document.body.querySelector("[role='dialog']");
     expect(dialog).not.toBeNull();
-    // No radio fieldset when 0 children
-    expect(dialog?.querySelector("fieldset")).toBeNull();
+    // No retention choice when there are no sub-playlists
+    expect(dialog?.querySelector("[role='radiogroup']")).toBeNull();
     expect(dialog?.textContent).toContain('Delete playlist "Standalone"?');
 
     const submitBtn = dialog?.querySelector("[data-testid='delete-playlist-submit-btn']") as HTMLButtonElement;
@@ -113,14 +113,16 @@ describe("DeletePlaylistModal Component (TDD)", () => {
 
     const dialog = document.body.querySelector("[role='dialog']");
     expect(dialog).not.toBeNull();
-    expect(dialog?.querySelector("fieldset")).not.toBeNull();
-    expect(dialog?.textContent).toContain("contains 1 sub-playlist");
+    // The choice is named by the sub-playlist warning
+    const group = dialog?.querySelector("[role='radiogroup']");
+    const labelId = group?.getAttribute("aria-labelledby");
+    expect(labelId ? document.getElementById(labelId)?.textContent : null).toContain("contains 1 sub-playlist");
 
-    const radios = Array.from(dialog?.querySelectorAll("input[type='radio']") || []) as HTMLInputElement[];
+    const radios = Array.from(group?.querySelectorAll("[role='radio']") || []) as HTMLElement[];
     expect(radios.length).toBe(2);
     // Cascade is checked by default
-    expect(radios[0].checked).toBe(true);
-    expect(radios[1].checked).toBe(false);
+    expect(radios[0].getAttribute("aria-checked")).toBe("true");
+    expect(radios[1].getAttribute("aria-checked")).toBe("false");
 
     // Click confirm with cascade (keepChildren = false)
     const submitBtn = dialog?.querySelector("[data-testid='delete-playlist-submit-btn']") as HTMLButtonElement;
@@ -167,14 +169,14 @@ describe("DeletePlaylistModal Component (TDD)", () => {
     });
 
     const dialog = document.body.querySelector("[role='dialog']");
-    const radios = Array.from(dialog?.querySelectorAll("input[type='radio']") || []) as HTMLInputElement[];
+    const radios = Array.from(dialog?.querySelectorAll("[role='radio']") || []) as HTMLElement[];
 
     // Switch to keepChildren = true
     await act(async () => {
       radios[1].click();
     });
 
-    expect(radios[1].checked).toBe(true);
+    expect(radios[1].getAttribute("aria-checked")).toBe("true");
 
     const submitBtn = dialog?.querySelector("[data-testid='delete-playlist-submit-btn']") as HTMLButtonElement;
     await act(async () => {
