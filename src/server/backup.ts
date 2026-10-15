@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, extname } from "node:path";
 import { initDatabase, closeDatabase, healTrackFilePaths } from "./db";
-import { abortIngestProcesses, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
+import { abortIngestProcesses, pauseIngestOperations, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
 import { logEvent } from "./logger";
@@ -190,6 +190,7 @@ export async function importLibraryArchive(
   }
 
   isRestoring = true;
+  const resumeIngest = pauseIngestOperations();
 
   const targetDbPath = resolve(paths.dbPath || "./data/music.db");
   const targetAudioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
@@ -394,6 +395,7 @@ export async function importLibraryArchive(
     return { success: true, manifest, message: msg };
   } finally {
     isRestoring = false;
+    resumeIngest();
     if (!keepRecoveryFiles) {
       for (const stageDir of stageDirs.values()) {
         try { rmSync(stageDir, { recursive: true, force: true }); } catch (error) {

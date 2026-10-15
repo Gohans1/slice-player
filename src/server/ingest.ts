@@ -63,7 +63,27 @@ const activeMetadataProcs = new Set<ReturnType<typeof Bun.spawn>>();
 const MAX_CONCURRENT_METADATA = 2;
 let activeMetadataCount = 0;
 const metadataWaitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
-let activeLocalIngests = 0;
+const activeIngestOperations = new Set<Promise<void>>();
+let ingestDrain: Promise<void> | null = null;
+let ingestPauseDepth = 0;
+
+/** Hold intake closed until the caller has finished its library-wide operation. */
+export function pauseIngestOperations(): () => void {
+  ingestPauseDepth++;
+  return () => { ingestPauseDepth--; };
+}
+const INGEST_PAUSED_MESSAGE = "Thư viện đang tạm dừng nạp nhạc, vui lòng thử lại sau.";
+
+function beginIngestOperation(): (() => void) | null {
+  if (ingestPauseDepth > 0) return null;
+  let settle!: () => void;
+  const pending = new Promise<void>((fulfill) => { settle = fulfill; });
+  activeIngestOperations.add(pending);
+  return () => {
+    activeIngestOperations.delete(pending);
+    settle();
+  };
+}
 
 export { killProcessSafely } from "./processUtils";
 
@@ -343,6 +363,8 @@ export async function ingestYouTubeUrl(rawUrl: string, signal?: AbortSignal): Pr
     return { success: false, message: "URL không hợp lệ. Chỉ chấp nhận link YouTube (youtube.com, m.youtube.com, music.youtube.com, hoặc youtu.be)!" };
   }
 
+  const finish = beginIngestOperation();
+  if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
   try {
     logEvent("info", "download", `Bắt đầu quét metadata YouTube: ${url}`);
     // Stage 1: Fast metadata extraction via yt-dlp
@@ -628,6 +650,8 @@ export async function ingestYouTubeUrl(rawUrl: string, signal?: AbortSignal): Pr
     const msg = err instanceof Error ? err.message : String(err);
     logEvent("error", "download", `Lỗi xử lý YouTube: ${msg}`, { url, error: msg });
     return { success: false, message: `Lỗi xử lý YouTube: ${msg}` };
+  } finally {
+    finish();
   }
 }
 
@@ -662,12 +686,23 @@ export function isIngestBusy(): boolean {
     activeMetadataProcs.size > 0 ||
     activeMetadataCount > 0 ||
     metadataWaitQueue.length > 0 ||
-    activeLocalIngests > 0 ||
+    activeIngestOperations.size > 0 ||
+    ingestPauseDepth > 0 ||
     isWaveformBusy()
   );
 }
 
-export async function abortIngestProcesses(): Promise<void> {
+export function abortIngestProcesses(): Promise<void> {
+  if (ingestDrain) return ingestDrain;
+  const resume = pauseIngestOperations();
+  ingestDrain = drainIngestOperations().finally(() => {
+    resume();
+    ingestDrain = null;
+  });
+  return ingestDrain;
+}
+
+async function drainIngestOperations(): Promise<void> {
   downloadQueue.length = 0;
   queuedTrackIdsSet.clear();
   while (metadataWaitQueue.length > 0) {
@@ -688,6 +723,12 @@ export async function abortIngestProcesses(): Promise<void> {
     await killProcessSafely(activeDownloadProc);
     activeDownloadProc = null;
   }
+
+  // Killing a subprocess is not completion: metadata, uploads/extraction and local
+  // ingestion may still write files or reconcile slices after their next await.
+  await Promise.allSettled([...activeIngestOperations]);
+  downloadQueue.length = 0;
+  queuedTrackIdsSet.clear();
 }
 
 export async function cancelDownloadIfActive(trackId: string, preReadFiles?: string[]): Promise<void> {
@@ -723,6 +764,7 @@ export async function cancelDownloadIfActive(trackId: string, preReadFiles?: str
 }
 
 function triggerDownloadWorker(trackId: string, url: string, shouldLog = true) {
+  if (ingestPauseDepth > 0) return;
   if (currentDownloadingTrackId === trackId || queuedTrackIdsSet.has(trackId)) return;
   if (shouldLog) {
     const existing = getTrack(trackId);
@@ -795,6 +837,8 @@ export function requeueErrorTracks(trackIds?: string[]): { requeued: number } {
 
 async function processDownloadQueue() {
   if (isDownloading || downloadQueue.length === 0) return;
+  const finish = beginIngestOperation();
+  if (!finish) return;
   isDownloading = true;
 
   let trackId = "";
@@ -1098,6 +1142,7 @@ async function processDownloadQueue() {
     currentDownloadToken = null;
     isDownloading = false;
     setTimeout(processDownloadQueue, didAttemptDownload ? 1000 : 0);
+    finish();
   }
 }
 
@@ -1105,7 +1150,8 @@ async function processDownloadQueue() {
  * Handle Local FLAC or Audio File
  */
 export async function ingestLocalFile(rawPath: string, preferredTitle?: string): Promise<IngestResult> {
-  activeLocalIngests++;
+  const finish = beginIngestOperation();
+  if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
   let newlyExtractedPath: string | null = null;
   try {
     const cleanedPath = rawPath.trim().replace(/^["']|["']$/g, "");
@@ -1309,7 +1355,7 @@ export async function ingestLocalFile(rawPath: string, preferredTitle?: string):
     logEvent("error", "download", `Lỗi nạp file local: ${msg}`);
     return { success: false, message: `Lỗi đọc file local: ${msg}` };
   } finally {
-    activeLocalIngests--;
+    finish();
   }
 }
 
@@ -1324,6 +1370,8 @@ export async function ingestLocalDirectory(rawDir: string): Promise<IngestResult
     return { success: false, message: pathCheck.message || "Đường dẫn thư mục không hợp lệ" };
   }
 
+  const finish = beginIngestOperation();
+  if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
   try {
     const fullDir = resolve(cleanedDir);
     if (!existsSync(fullDir) || !statSync(fullDir).isDirectory()) {
@@ -1372,6 +1420,8 @@ export async function ingestLocalDirectory(rawDir: string): Promise<IngestResult
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Lỗi đọc thư mục: ${msg}` };
+  } finally {
+    finish();
   }
 }
 
@@ -1407,6 +1457,8 @@ export async function ingestUploadedFile(file: File, fallbackName?: string): Pro
   let finalPath = "";
   let alreadyExists = false;
 
+  const finish = beginIngestOperation();
+  if (!finish) return { success: false, message: INGEST_PAUSED_MESSAGE };
   try {
     // Stream directly to disk using Bun.write (zero-copy streaming)
     await Bun.write(tempPath, file);
@@ -1455,6 +1507,8 @@ export async function ingestUploadedFile(file: File, fallbackName?: string): Pro
     }
     const msg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Lỗi xử lý file upload: ${msg}` };
+  } finally {
+    finish();
   }
 }
 
