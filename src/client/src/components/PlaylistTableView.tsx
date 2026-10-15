@@ -68,7 +68,7 @@ function tableRowClassName(
       ? "bg-accent ring-2 ring-primary/60"
       : !isReady
       ? "cursor-not-allowed opacity-60"
-      : cn("cursor-pointer", isCurrentPlaying ? "bg-primary/10" : "hover:bg-accent/60")
+      : cn("cursor-pointer", isCurrentPlaying ? "bg-primary/10" : "hover:bg-accent/60 has-data-popup-open:bg-accent/60")
   );
 }
 
@@ -82,9 +82,9 @@ const TRACKS_GRID = "grid-cols-[28px_minmax(0,1fr)_64px_24px] sm:grid-cols-[56px
 const TABLE_HEADER_CLASS =
   "grid items-center gap-x-2 border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground sm:gap-x-4";
 
-// Row actions stay out of the way until the row is hovered or focused; touch screens always show them
+// Row actions stay out of the way until the row is hovered or focused, or while their menu is open; touch screens always show them
 const ROW_ACTIONS_CLASS =
-  "flex items-center justify-end transition-opacity [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-within:opacity-100";
+  "flex items-center justify-end transition-opacity [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 focus-within:opacity-100 has-data-popup-open:opacity-100";
 
 // Small 16:9 artwork; a slice also shows its color as a bar along the bottom
 function TableArtwork({ track, sliceColor }: { track?: Track | null; sliceColor?: string }) {

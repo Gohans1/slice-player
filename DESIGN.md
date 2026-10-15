@@ -267,15 +267,15 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Focus bàn phím luôn là vòng `ring-2 ring-ring` trên `focus-visible` (`ring-inset` với vùng cuộn).
 
 ### Song Table (List view)
-- `PlaylistTableView`: hàng ảo hoá cao 50px, thumbnail 16:9 cao 32px, tiêu đề + nghệ sĩ, cột loại, thời lượng font mono. Cột loại như cột Album của Apple Music: full track (mặc định) là chữ thường `text-muted-foreground`, chỉ lát cắt mới có `Badge` vàng kèm khoảng thời gian, để lát cắt nổi bật (Slices Over Full Tracks). Grip kéo thả và các hành động của hàng chỉ hiện khi hover / focus (màn cảm ứng luôn hiện). Chọn nhiều bằng `Checkbox` (ô ở header có trạng thái indeterminate).
+- `PlaylistTableView`: hàng ảo hoá cao 50px, thumbnail 16:9 cao 32px, tiêu đề + nghệ sĩ, cột loại, thời lượng font mono. Cột loại như cột Album của Apple Music: full track (mặc định) là chữ thường `text-muted-foreground`, chỉ lát cắt mới có `Badge` vàng kèm khoảng thời gian, để lát cắt nổi bật (Slices Over Full Tracks). Grip kéo thả và các hành động của hàng chỉ hiện khi hover / focus, hoặc khi menu "…" của hàng đang mở (lúc đó hàng giữ nền hover, như context menu của macOS); màn cảm ứng luôn hiện. Chọn nhiều bằng `Checkbox` (ô ở header có trạng thái indeterminate).
 - Cột thứ 3 (nhãn loại / bài gốc / số slice) chỉ hiện khi **chính bảng** rộng từ 48rem (container query `@3xl`, `@container` gắn trên `role="table"`), không theo viewport: cạnh sidebar và queue, viewport 1280px chỉ chừa cho bảng khoảng 630px. Khi cột bài gốc bị ẩn, dòng phụ "From: …" dưới tên slice thay thế nó.
 - Hành động phụ (thêm vào playlist, copy link, xoá) nằm trong `RowActionsMenu` (nút "…" mở `DropdownMenu`). Trạng thái đang tải dùng `Badge` + `Spinner`.
 
 ### Grid Tiles (`MediaTile`)
 - TrackCard, SliceCard và PlaylistItemCard dùng chung `MediaTile` và `useGuardedPlayToggle`: artwork 16:9 bo góc, bên dưới là tiêu đề, phụ đề và meta font mono (`text-2xs`), bên phải là nút Studio và "…".
-- Bấm artwork để phát/tạm dừng; khi đang chọn nhiều thì bấm để chọn. Checkbox góc trái trên và các nút trên artwork hiện khi hover qua `REVEAL_ON_HOVER` (chỉ ẩn trên thiết bị có chuột; màn cảm ứng luôn hiện). Với thành phần shadcn, `REVEAL_ON_HOVER` đặt ở `div` bọc ngoài chứ không đặt thẳng lên `Button`.
+- Bấm artwork để phát/tạm dừng; khi đang chọn nhiều thì bấm để chọn. Checkbox góc trái trên và các nút trên artwork hiện khi hover qua `REVEAL_ON_HOVER` (chỉ ẩn trên thiết bị có chuột; màn cảm ứng luôn hiện). Menu mở từ bên trong (`has-data-popup-open`) giữ chúng hiện, vì khi chuột đã vào popup thì tile hết hover. Với thành phần shadcn, `REVEAL_ON_HOVER` đặt ở `div` bọc ngoài chứ không đặt thẳng lên `Button`.
 - Lớp phủ trạng thái (queued / downloading / failed) che artwork; vạch màu lát cắt `bg-(--slice-color)` nằm ở chân artwork; `Badge` "Playing" khi đang phát.
-- Lưới ảo hoá, mỗi cột tối thiểu 240px, `gap-4`. Tile playlist (`PlaylistGrid`) vuông: bấm cover để mở, Play / Shuffle hiện khi hover, tile viền đứt cho New Playlist / Mix Playlists.
+- Lưới ảo hoá, mỗi cột tối thiểu 240px, khe 20px (`GRID_GAP`). Tile playlist (`PlaylistGrid`) vuông: bấm cover để mở, Play / Shuffle hiện khi hover, tile viền đứt cho New Playlist / Mix Playlists.
 - Lần tải đầu hiện `LibrarySkeleton` có hình theo chế độ xem hiện tại (hàng hoặc tile) và đúng một `role="status"`.
 
 ### Forms & Dialogs
