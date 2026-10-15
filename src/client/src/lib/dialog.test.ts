@@ -22,6 +22,11 @@ describe("isDialogOpen", () => {
     expect(isDialogOpen()).toBe(true);
   });
 
+  it("ignores dialogs that declare themselves nonmodal, as toasts do", () => {
+    addDialog("alertdialog", { "aria-modal": "false" });
+    expect(isDialogOpen()).toBe(false);
+  });
+
   it("ignores dialogs matching the exception", () => {
     addDialog("dialog", { "data-drawer": "log-drawer" });
     expect(isDialogOpen('[data-drawer="log-drawer"]')).toBe(false);

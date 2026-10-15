@@ -6,6 +6,8 @@ import "./i18n";
 import { App } from "./App";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useSelectionStore } from "./store/useSelectionStore";
+import { toast } from "./components/ui/toast";
+import { notifyChangeFailed } from "./lib/sendChange";
 import type { Track } from "@/server/types";
 
 const track: Track = {
@@ -59,7 +61,10 @@ describe("Global keyboard shortcuts", () => {
   });
 
   afterEach(() => {
-    act(() => root.unmount());
+    act(() => {
+      toast.close();
+      root.unmount();
+    });
     container.remove();
     globalThis.fetch = originalFetch;
     usePlayerStore.setState({ pause: originalPause, resume: originalResume, togglePlay: originalTogglePlay });
@@ -84,6 +89,23 @@ describe("Global keyboard shortcuts", () => {
 
     expect(pause).toHaveBeenCalledTimes(1);
     expect(togglePlay).not.toHaveBeenCalled();
+  });
+
+  it("keeps Space as play/pause while a failed change's toast is on screen", async () => {
+    await act(async () => {
+      root.render(<App />);
+    });
+    await act(async () => {
+      notifyChangeFailed("renamePlaylist", new TypeError("Failed to fetch"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(document.querySelector('[data-slot="toast"]')).not.toBeNull();
+
+    await act(async () => {
+      document.body.dispatchEvent(new window.KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true, cancelable: true }));
+    });
+
+    expect(togglePlay).toHaveBeenCalledTimes(1);
   });
 
   it("lets Space on a row in selection mode toggle the selection only", async () => {
