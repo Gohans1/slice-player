@@ -191,7 +191,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Base 800** (`#403E3C`): Viền active Dark Mode (`ui-3`), sóng âm WaveSurfer.
 - **Base 850** (`#343331`): Viền ô nhập và nền `accent` Dark Mode (`ui-2` / `input`).
 - **Base 900** (`#282726`): Đường viền chính, nền `secondary` / `muted` Dark Mode (`ui` / `border`).
-- **Base 950** (`#1C1B1A`): Bề mặt thẻ Card, PlayerBar dock, Modal (`bg-2` / `card`).
+- **Base 950** (`#1C1B1A`): Bề mặt thẻ Card, nền kính của capsule PlayerBar (70%), Modal (`bg-2` / `card`).
 - **Black** (`#100F0F`): Nền chính Dark Mode (`bg` / `background`), chữ chính Light Mode (`tx`).
 
 ### Named Rules
@@ -222,7 +222,7 @@ Bố cục 3 cột theo Apple Music (macOS Tahoe 26), dựng bằng shadcn Base 
 - **Sidebar trái (`AppSidebar`, shadcn `Sidebar collapsible="icon"`)**: rộng 16rem. Trên cùng là ô Search, rồi nhóm Library (Mix, Slices, Tracks, Downloading, Errors kèm số đếm), cây Playlists (playlist cha/con và mix; mỗi playlist có artwork 20px như Apple Music, vẽ trong ô 16px của icon bằng `-m-0.5` để tên thẳng hàng; playlist chưa có ảnh dùng icon), cuối cùng là các tiện ích (System Logs, Keyboard Shortcuts, Backup / Transfer, Language). Sidebar dừng ngay trên PlayerBar.
 - **Cột giữa (`SidebarInset`)**: header dính trên cùng gồm tiêu đề + số mục, sắp xếp (`ToggleGroup` Manual / Newest / Oldest / Random), chế độ xem (`ViewModeToggle`: Grid / List, mặc định List), nhập Local Audio / YouTube và âm lượng tổng; bên dưới là nội dung thư viện. Chiều cao header đo vào `--library-toolbar-height` và làm `scroll-padding-top` của trang, nên focus và anchor không bị header che. Như các trang của Apple Music, mỗi trang tự mở đầu bằng tiêu đề lớn: playlist bằng header của nó, các mục thư viện (Mix, Slices, Tracks, Downloading, Errors, Playlists) bằng tên `text-2xl font-bold`, số đếm `text-xs text-muted-foreground` và mô tả `text-2xs font-semibold`. Vì vậy tiêu đề trên header dính ẩn đi và chỉ hiện dần khi tiêu đề lớn cuộn khuất dưới header (scroll-driven animation `view-timeline` qua utility `page-title-timeline` / `reveal-past-page-title`, không dùng JS; trình duyệt không hỗ trợ thì luôn hiện).
 - **Cột phải "Now Playing Queue" (`QueuePanel`)**: rộng `w-80`, dock cạnh nội dung, có 3 chế độ phát Mix / Slices / Tracks, sắp xếp bằng kéo thả hoặc nút lên/xuống.
-- **PlayerBar**: `fixed bottom-0` trải hết chiều ngang; chiều cao thật được đo vào biến `--player-bar-height` để sidebar và queue chừa chỗ.
+- **PlayerBar (capsule)**: như Apple Music, một capsule kính nổi ở chân cột nội dung: là phần tử cuối của `SidebarInset` với `sticky bottom-3 mt-auto`, rộng tối đa `max-w-2xl` (672px, AM 668px), nên tự canh giữa giữa sidebar và queue dock mà không cần JS; sidebar và queue cao hết màn hình. Chiều cao thật đo vào `--player-bar-height` cho những thứ phải né nó: toast, nút cuộn nhanh, thanh thao tác hàng loạt, và `scroll-padding-bottom` để phần tử đang focus bằng bàn phím không nằm dưới capsule.
 - **Breakpoint chính 1280px (`WIDE_LAYOUT_QUERY`, bằng `xl`)**: từ 1280px trở lên đủ 3 cột. Dưới 1280px sidebar thu về icon (vẫn mở tay được, giữ nguyên đến khi vượt lại breakpoint) và queue thành `Sheet` trượt từ phải, mở bằng nút Queue trên PlayerBar. Dưới 768px sidebar là `Sheet` của shadcn.
 - **Header dính là `@container`** để luôn nằm trên một hàng thay vì wrap khi cột giữa hẹp (mở queue, sidebar mở): nhãn sort và Grid / List chỉ hiện khi header rộng từ `@6xl` (72rem), nhãn + Local Audio / + YouTube từ `@4xl` (56rem); hẹp hơn chỉ còn icon, tên vẫn nằm ở `aria-label` và tooltip `title`.
 - **Nhịp khoảng cách**: thang 4px; dùng `gap-*` thay cho `space-*`.
@@ -237,7 +237,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Lớp 3 (Active & Input): `#343331` (Flexoki 850) / `#DAD8CE` (Flexoki 150) - Trạng thái bấm giữ, nền `accent` và viền ô nhập (`input`).
 
 ### Shadow Vocabulary
-- **Dock Ambient** (`shadow-2xl` + `border-t`): PlayerBar cố định đáy màn hình, tách dock khỏi canvas bên dưới.
+- **Capsule nổi** (`shadow-xl` + `border` + kính `backdrop-blur-lg backdrop-saturate-200`): PlayerBar trôi trên chân cột nội dung, nội dung cuộn bên dưới lớp kính.
 - **Overlay** (bóng có sẵn của shadcn: `shadow-md` cho menu, `shadow-lg` cho Sheet): Không tự đặt bóng riêng cho hộp thoại hay menu.
 - **Tile không đổ bóng**: Tile được chọn hoặc là đích thả dùng vòng `ring-2 ring-primary ring-offset-2`, không dùng glow màu.
 
@@ -290,7 +290,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Tiến trình dùng `Progress`, đang chờ dùng `Spinner`, cảnh báo dùng `Alert`, vùng trống / dropzone dùng `Empty` (dropzone là `div` viền đứt bọc `Empty`), nhiều phần nội dung dùng `Tabs`.
 
 ### Navigation & PlayerBar
-- **PlayerBar**: nền `bg-card/95` + `backdrop-blur-md`; artwork 44px có vạch màu lát cắt; tiêu đề bấm được để nhảy tới bài trong danh sách; chip "đang phát từ" là `Button` `secondary` `xs`, chip playlist là `Button` `outline` `xs` trong một `role="group"`, phần dư là `Badge` `outline`. Thanh tiến trình là slider xúc giác.
+- **PlayerBar**: capsule `rounded-full` cao 56px (`h-14`), nền `bg-card/70` + `backdrop-blur-lg backdrop-saturate-200` + `shadow-xl`, là landmark `<section aria-label="Player">`. Trái là cụm transport (Shuffle, Previous, Play/Pause, Next, Loop track; `Button` `icon-lg`, nút đang bật dùng `secondary` + glyph `text-primary`). Giữa là "LCD" (`bg-muted/50`): artwork 34px có vạch màu lát cắt, tên bài Semi-bold bấm được để nhảy tới bài, dòng phụ thay cho "Artist — Album" (lát cắt hiện tên lát cắt màu xanh, khoảng thời gian nằm trong tooltip; bài đầy đủ hiện nghệ sĩ), chip "đang phát từ" (`Button` `secondary` `xs`) bên phải, và seek bar lát cắt ở đáy kèm `vị trí / độ dài`. Phải là menu "…" (`DropdownMenu`: các playlist chứa bài, bấm để mở; thay cho dãy chip playlist cũ), nút loa mở `Popover` âm lượng riêng của bài (nút Mute + slider), và nút Queue (glyph `text-primary` khi queue mở). Cột hẹp hơn một hàng (container query `@xl`, 576px) thì capsule thành card `rounded-3xl` hai hàng: LCD ở trên, nút ở dưới; lúc chưa phát gì capsule vẫn giữ một hàng.
 - **Queue**: hàng theo "Up Next" của Apple Music: artwork 40px sát mép trái, tên `text-xs` chữ thường (bài đang phát màu `primary`), dòng phụ `text-xs text-muted-foreground`, thời lượng `tabular-nums` bên phải, đường kẻ mảnh giữa các hàng (`row-divider`, như bảng). Với chuột, thời lượng nhường chỗ cho tay cầm kéo và nút xoá khi hover / focus (hai lớp chồng trong cùng một ô grid, nên tên không bị chừa chỗ cho nút); màn cảm ứng không hover được nên hiện cả hai cạnh nhau, kèm nút lên/xuống (`Button` `ghost` `icon-sm`, chỉ hiện trên thiết bị cảm ứng hoặc màn hẹp) ở đầu hàng.
 - **Cuộn nhanh**: `ButtonGroup` dọc gồm 2 `Button` `outline`; mỗi nút `disabled` khi trang đã ở đúng đầu đó.
 
@@ -299,7 +299,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Thay đổi không còn chỗ nào để báo (menu đã đóng, cập nhật lạc quan đã lặng lẽ rollback) gửi qua `sendChange` (`lib/sendChange.ts`). Lỗi hiện `toast` của shadcn: project là Base UI nên dùng Base UI Toast, không dùng Sonner (Sonner dành cho Radix). Toast lỗi có `type: "error"`, `priority: "high"` (screen reader đọc ngay), `timeout: 0` (ở lại tới khi tắt). Mỗi loại thay đổi chỉ có 1 toast (`id` cố định), thất bại lặp lại thì cập nhật toast đó. Chi tiết ghi vào System Logs bằng tiếng Anh.
 - Chỉ báo khi chính request thất bại, không báo khi phần xử lý sau một response thành công bị lỗi. Lỗi mạng và 502/503/504 (proxy không tới được server) đều là "Can't reach the server".
 - Giọng theo copy sẵn có: tiêu đề "Failed to …" / "Không thể …", mô tả nói cách xử lý.
-- `Toaster` nằm trong `AppShell`; viewport đặt trên PlayerBar (`bottom` = `--player-bar-height` + 1rem) để không che nút điều khiển.
+- `Toaster` nằm trong `AppShell`; viewport đặt trên capsule PlayerBar (`bottom` = `--player-bar-height` + 1rem) để không che nút điều khiển.
 - Toast là dialog không modal (`aria-modal="false"`), nên `isDialogOpen` bỏ qua nó: toast lỗi đang mở không được khoá phím tắt (Space, Q, F2, tìm kiếm). Người dùng bàn phím tới toast bằng F6 (Base UI), có ghi trong bảng phím tắt.
 - Thử tải lại: tải chạy rồi lại thất bại thì server ghi lý do vào track và track tự hiện lỗi, không toast. Mọi lỗi khác của request thử lại đều báo bằng toast.
 
@@ -313,7 +313,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - **Do** sử dụng mã màu Flexoki đã được định nghĩa trong `index.css` khi viết component mới.
 - **Do** dùng `tabular-nums` cho mọi hiển thị thời gian âm thanh (`0:00`) và số đếm; `JetBrains Mono` chỉ cho ngữ cảnh kỹ thuật (Slice Studio, log, keycap, URL / tên file).
 - **Do** viết số đếm theo cách ngôn ngữ đang chọn viết số (`1,236` tiếng Anh, `1.236` tiếng Việt): trong bản dịch dùng `{{count, number}}` (cả `total`, `filtered`, `current`, `position`…), số đứng riêng như badge thì qua `useFormatNumber()`. Mã HTTP, phần trăm và số thứ tự hàng thì để nguyên.
-- **Do** giữ thanh điều khiển PlayerBar ở vị trí `fixed bottom-0` để người dùng có thể thao tác nhạc từ bất kỳ đâu.
+- **Do** giữ capsule PlayerBar dính chân cột nội dung (`sticky bottom-3`) để người dùng có thể thao tác nhạc từ bất kỳ đâu.
 - **Do** áp dụng `pointer-events-none` và `user-select: none` cho các thành phần kéo thả thumbnail để tránh lỗi kéo nhầm hình ảnh của trình duyệt.
 - **Do** gán màu lát cắt (`activeSegment.color`) trực tiếp vào vạch màu thumbnail và thanh tiến trình để tạo dấu ấn thị giác nhận diện đoạn nhạc.
 - **Do** dùng `TrackThumbnail size="small"` (hoặc `PlaylistCover thumbnailSize="small"`) cho ô ảnh nhỏ: hàng bảng, queue, PlayerBar, danh sách. Với YouTube nó tải bản 320px `mqdefault` thay vì `maxresdefault` 1280px (nhẹ hơn khoảng 8 lần), lỗi thì quay về ảnh gốc. Tile grid và header playlist giữ ảnh lớn. Ảnh bìa của file local (thường 3000px, ~2,8MB) luôn đi qua `/api/thumbs/…?size=small|large`: server thu nhỏ bằng ffmpeg về 192px hoặc 640px (không phóng to), làm 1 lần rồi dùng lại tới khi ảnh bìa đổi, lưu ở `data/cache/thumbs-sized` (dữ liệu dẫn xuất, không vào backup).
