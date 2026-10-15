@@ -266,6 +266,12 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Nút đã ở đầu/cuối phạm vi (cuộn lên đầu trang, chuyển mục lên trên cùng) dùng `disabled`, không tự làm mờ bằng `opacity`.
 - Focus bàn phím luôn là vòng `ring-2 ring-ring` trên `focus-visible` (`ring-inset` với vùng cuộn).
 
+### Playlist Header (`PlaylistHeader`)
+- Theo header playlist của Apple Music: artwork vuông lớn (`rounded-lg`, 270px từ `lg`), bên phải là tên `text-2xl font-bold` (26px), dòng chi tiết nhỏ `text-2xs font-semibold text-muted-foreground` (số mục, số lát cắt, tổng thời lượng; như dòng "Updated …" của Apple), rồi Play và Shuffle cùng là nút `default` (như hai nút màu chủ đạo của Apple Music trên macOS) và nút "…". Không có nhãn "Playlist" phía trên tên.
+- Sub-playlist có `Breadcrumb` về playlist cha phía trên tên; mix có dòng nguồn (`Combine`, `text-flexoki-magenta`) và nút Edit sources dưới dòng chi tiết.
+- Nút đổi tên (bút chì) cạnh tên chỉ hiện khi hover / focus (`REVEAL_ON_HOVER`), vì đổi tên cũng có trong menu "…".
+- Dưới `sm`, header xếp dọc và căn giữa (artwork, tên, chi tiết, các nút) như Apple Music trên điện thoại.
+
 ### Song Table (List view)
 - `PlaylistTableView` theo hàng bài hát của Apple Music (đo trên music.apple.com): hàng ảo hoá cao 54px, artwork vuông 40px, tiêu đề `text-xs` (13px) chữ thường, cột Artist riêng, cột loại, thời lượng `tabular-nums` (không dùng font mono). Header cột `text-2xs font-semibold`, không có viền dưới.
 - Giữa các hàng là đường kẻ mảnh ở mép trên mỗi hàng thay cho sọc zebra (utility `table-row-divider` trong `index.css`, gắn trên wrapper của virtualizer). Hàng đang tô nền (hover hoặc đang mở menu nếu phát được: `data-tint="hover"`; đang chọn hoặc là đích thả: `data-tint="on"`) ẩn đường kẻ ở cả hai phía, để nền đọc thành một khối bo tròn như Apple Music.
