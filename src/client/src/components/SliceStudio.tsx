@@ -2,8 +2,11 @@ import * as React from "react";
 import WaveSurfer from "wavesurfer.js";
 import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
 import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { ButtonGroup } from "./ui/button-group";
 import { Input } from "./ui/input";
+import { EmptyState } from "./EmptyState";
 import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, formatDuration, cn, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { outputGain } from "../lib/audio";
@@ -11,6 +14,9 @@ import { useTranslation } from "react-i18next";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
 import type { Track, Segment } from "@/server/types";
+
+// Staggers the loading bars' pulse so the placeholder ripples like a waveform
+const LOADING_BAR_DELAYS = ["delay-0", "delay-120", "delay-240", "delay-360", "delay-480"];
 
 const FLEXOKI_COLORS = [
   "#4385BE", // Blue
@@ -848,14 +854,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             </p>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleCloseStudio}
-            aria-label={t("studio.doneButton")}
-            className="rounded-full"
-          >
-            <X className="h-5 w-5" />
+          <Button variant="ghost" size="icon-lg" onClick={handleCloseStudio} aria-label={t("studio.doneButton")}>
+            <X />
           </Button>
         </div>
 
@@ -865,40 +865,38 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
             <span className="font-medium">{t("studio.waveform")}</span>
             <div className="flex items-center gap-3">
               {/* Zoom Controls */}
-              <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5 border border-border/50">
+              <ButtonGroup>
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => handleZoomChange(zoomLevel - 20)}
                   disabled={!isWaveSurferReady || zoomLevel <= 0}
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
                   aria-label={t("studio.zoomOut")}
                   title={t("studio.zoomOut")}
                 >
-                  <ZoomOut className="h-3.5 w-3.5" />
+                  <ZoomOut />
                 </Button>
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleZoomChange(zoomLevel === 0 ? 40 : 0)}
                   disabled={!isWaveSurferReady}
-                  className="px-1.5 py-0.5 text-2xs font-mono text-muted-foreground hover:text-foreground rounded transition-colors disabled:opacity-30"
                   title={t("studio.zoomFit")}
                   aria-label={t("studio.zoomFit")}
                 >
                   {zoomLevel === 0 ? "1x" : `${Math.round(1 + zoomLevel / 20)}x`}
-                </button>
+                </Button>
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => handleZoomChange(zoomLevel + 20)}
                   disabled={!isWaveSurferReady || zoomLevel >= 200}
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
                   aria-label={t("studio.zoomIn")}
                   title={t("studio.zoomIn")}
                 >
-                  <ZoomIn className="h-3.5 w-3.5" />
+                  <ZoomIn />
                 </Button>
-              </div>
+              </ButtonGroup>
 
               <span className="font-mono text-foreground font-semibold">
                 {formatTime(currentPlayTime)} / {formatTime(track.duration)}
@@ -915,11 +913,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                   {Array.from({ length: 24 }).map((_, i) => (
                     <div
                       key={i}
-                      className="w-1 bg-primary/40 rounded-full animate-pulse"
-                      style={{
-                        height: `${20 + Math.sin(i * 0.5) * 60 + 20}%`,
-                        animationDelay: `${(i % 5) * 120}ms`,
-                      }}
+                      className={cn("h-(--bar-height) w-1 animate-pulse rounded-full bg-primary/40", LOADING_BAR_DELAYS[i % LOADING_BAR_DELAYS.length])}
+                      style={{ "--bar-height": `${40 + Math.sin(i * 0.5) * 60}%` }}
                     />
                   ))}
                 </div>
@@ -931,14 +926,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           {/* Controls below waveform */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleToggleWavePlay}
-                className="gap-1.5"
-              >
-                {isPlayingWave ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                <span>{isPlayingWave ? t("studio.pause") : t("studio.playWaveform")}</span>
+              <Button variant="outline" size="sm" onClick={handleToggleWavePlay}>
+                {isPlayingWave ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                {isPlayingWave ? t("studio.pause") : t("studio.playWaveform")}
               </Button>
 
               <Button
@@ -949,10 +939,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                   setCurrentPlayTime(0);
                   wavesurferRef.current?.seekTo(0);
                 }}
-                className="gap-1 text-xs text-muted-foreground"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>{t("studio.reset")}</span>
+                <RotateCcw data-icon="inline-start" />
+                {t("studio.reset")}
               </Button>
             </div>
 
@@ -962,15 +951,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 variant="ghost"
                 size="icon"
                 onClick={handleToggleMute}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
                 aria-label={isMuted ? t("player.unmute") : t("player.mute")}
                 title={isMuted ? t("player.unmute") : t("player.mute")}
               >
-                {isMuted ? (
-                  <VolumeX className="h-4 w-4 text-destructive" />
-                ) : (
-                  <Volume2 className="h-4 w-4 text-foreground" />
-                )}
+                {isMuted ? <VolumeX className="text-destructive" /> : <Volume2 />}
               </Button>
               <VolumeSlider
                 value={volume}
@@ -984,14 +968,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
               </span>
             </div>
 
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleAddNewSegment}
-              className="gap-1.5 shadow-md"
-            >
-              <Plus className="h-4 w-4" />
-              <span>{t("studio.addSlice")}</span>
+            <Button size="sm" onClick={handleAddNewSegment}>
+              <Plus data-icon="inline-start" />
+              {t("studio.addSlice")}
             </Button>
           </div>
         </div>
@@ -1001,9 +980,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
               <span>{t("studio.slicesHeader")}</span>
-              <span className="rounded-full bg-accent px-2 py-0.5 text-xs text-accent-foreground font-mono">
-                {segments.length}
-              </span>
+              <Badge variant="secondary">{segments.length}</Badge>
             </h3>
             <span className="text-xs text-muted-foreground">
               {t("studio.slicesSub")}
@@ -1011,16 +988,13 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           </div>
 
           {segments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-dashed border-border text-center animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-              <Scissors className="h-8 w-8 text-muted-foreground/50 mb-2" />
-              <p className="text-sm font-medium text-muted-foreground">{t("studio.empty")}</p>
-              <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm">
-                {t("studio.emptyHint")}
-              </p>
-              <Button size="sm" onClick={handleAddNewSegment} className="mt-4 gap-1.5">
-                <Plus className="h-4 w-4" />
-                <span>{t("studio.addFirst")}</span>
-              </Button>
+            <div className="rounded-xl border border-dashed">
+              <EmptyState icon={Scissors} title={t("studio.empty")} description={t("studio.emptyHint")}>
+                <Button size="sm" onClick={handleAddNewSegment}>
+                  <Plus data-icon="inline-start" />
+                  {t("studio.addFirst")}
+                </Button>
+              </EmptyState>
             </div>
           ) : (
             <div className="grid gap-2.5">
@@ -1031,34 +1005,33 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 return (
                   <div
                     key={seg.id}
-                    className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border transition-[border-color,background-color,box-shadow] duration-150 ${
-                      isActive
-                        ? "border-primary bg-primary/5 shadow-sm"
-                        : "border-border bg-card hover:border-border/80"
-                    }`}
+                    className={cn(
+                      "flex flex-col items-start justify-between gap-3 rounded-lg border p-3 transition-colors sm:flex-row sm:items-center",
+                      isActive ? "border-primary bg-primary/5" : "bg-card"
+                    )}
                   >
                     <div className="flex items-center gap-3 flex-1 w-full sm:w-auto">
                       <div
-                        className="w-3 h-8 rounded-full shrink-0"
-                        style={{ backgroundColor: seg.color || DEFAULT_SLICE_COLOR }}
+                        data-slot="slice-color"
+                        className="h-8 w-3 shrink-0 rounded-full bg-(--slice-color)"
+                        style={{ "--slice-color": seg.color || DEFAULT_SLICE_COLOR }}
                       />
 
                       <Button
                         variant={isActive ? "default" : "outline"}
-                        size="icon"
+                        size="icon-lg"
                         onClick={() => handlePreviewSegment(seg)}
-                        className="h-8 w-8 shrink-0"
                         title={t("studio.preview")}
                         aria-label={t("studio.preview")}
                       >
-                        <Play className="h-4 w-4 fill-current" />
+                        <Play className="fill-current" />
                       </Button>
 
                       <div className="flex-1 min-w-0">
                         <Input
                           value={seg.name}
                           onChange={(e) => handleUpdateName(seg.id, e.target.value)}
-                          className="h-8 text-xs font-medium bg-background/50 max-w-xs"
+                          className="max-w-xs"
                           placeholder={t("studio.slicePlaceholder")}
                         />
                       </div>
@@ -1067,47 +1040,47 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                     <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-border">
                       <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
                         <div className="flex items-center gap-0.5">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="xs"
                             onClick={() => handleNudgeSegment(seg.id, "start", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeStartBack", "-0.1s start")}
-                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
-                          </button>
+                          </Button>
                           <span className="text-foreground font-medium px-1">{formatTime(seg.start_time)}</span>
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="xs"
                             onClick={() => handleNudgeSegment(seg.id, "start", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeStartForward", "+0.1s start")}
-                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
-                          </button>
+                          </Button>
                         </div>
                         <span>→</span>
                         <div className="flex items-center gap-0.5">
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="xs"
                             onClick={() => handleNudgeSegment(seg.id, "end", -0.1)}
                             title="-0.1s"
                             aria-label={t("studio.nudgeEndBack", "-0.1s end")}
-                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             -0.1s
-                          </button>
+                          </Button>
                           <span className="text-foreground font-medium px-1">{formatTime(seg.end_time)}</span>
-                          <button
-                            type="button"
+                          <Button
+                            variant="secondary"
+                            size="xs"
                             onClick={() => handleNudgeSegment(seg.id, "end", 0.1)}
                             title="+0.1s"
                             aria-label={t("studio.nudgeEndForward", "+0.1s end")}
-                            className="h-5 px-1 rounded text-2xs bg-secondary/80 hover:bg-secondary active:scale-90 motion-reduce:transform-none text-muted-foreground hover:text-foreground cursor-pointer transition-all duration-75 border border-border/40"
                           >
                             +0.1s
-                          </button>
+                          </Button>
                         </div>
                         <span className="text-2xs text-flexoki-cyan">
                           ({duration.toFixed(1)}s)
@@ -1120,11 +1093,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteSegment(seg.id)}
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         title={t("studio.delete")}
                         aria-label={t("studio.delete")}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 />
                       </Button>
                     </div>
                   </div>
@@ -1136,7 +1108,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
         {/* Footer */}
         <div className="mt-8 pt-4 border-t border-border flex justify-end">
-          <Button onClick={handleCloseStudio} className="px-6">
+          <Button size="lg" onClick={handleCloseStudio}>
             {t("studio.doneButton")}
           </Button>
         </div>
