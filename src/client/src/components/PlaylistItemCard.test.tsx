@@ -1,29 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-
-if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as any)?.removeAttribute) {
-  (globalThis as any).Audio = class {
-    crossOrigin = "";
-    preload = "";
-    currentTime = 0;
-    src = "";
-    addEventListener() {}
-    removeEventListener() {}
-    pause() {}
-    play() {
-      return Promise.resolve();
-    }
-    load() {}
-    removeAttribute(attr: string) {
-      if (attr === "src") this.src = "";
-    }
-  };
-}
-
 import * as React from "react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
+import { createRoot, type Root } from "react-dom/client";
 import { PlaylistItemCardComponent } from "./PlaylistItemCard";
+import { usePlayerStore } from "../store/usePlayerStore";
+import i18n from "../i18n";
 import type { Track, Segment, PlaylistItemWithDetails } from "@/server/types";
 
 const dummyTrack: Track = {
@@ -58,21 +39,22 @@ const dummyPlaylistItem: PlaylistItemWithDetails = {
   segment: dummySegment,
 };
 
+const fullTrackItem: PlaylistItemWithDetails = {
+  id: "pli_full_1",
+  playlist_id: "pl_card_1",
+  track_id: "trk_card_1",
+  segment_id: null,
+  sort_order: 0,
+  added_at: 1000,
+  track: { ...dummyTrack, source_uri: "https://www.youtube.com/watch?v=playlist_yt_1", segment_count: 3 },
+};
+
 describe("PlaylistItemCardComponent", () => {
-  let window: InstanceType<typeof GlobalWindow>;
-  let document: Document;
-  let container: HTMLDivElement;
-  let root: any;
+  let container: HTMLElement;
+  let root: Root;
 
-  beforeEach(() => {
-    window = new GlobalWindow();
-    document = window.document as unknown as Document;
-    (globalThis as any).window = window;
-    (globalThis as any).document = document;
-    (globalThis as any).navigator = window.navigator;
-    (globalThis as any).HTMLElement = window.HTMLElement;
-
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  beforeEach(async () => {
+    await i18n.changeLanguage("en");
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -83,40 +65,96 @@ describe("PlaylistItemCardComponent", () => {
       root.unmount();
     });
     container.remove();
-    delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
   });
 
-  it("renders AddToPlaylist button in playlist item card", async () => {
+  const openMoreMenu = async () => {
+    const trigger = container.querySelector<HTMLElement>('button[aria-label^="More options for"]');
     await act(async () => {
-      root.render(
-        <PlaylistItemCardComponent
-          item={dummyPlaylistItem}
-          index={0}
-          onPlay={mock()}
-          onDelete={mock()}
-        />
-      );
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
+    return (label: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((item) =>
+        item.textContent?.includes(label)
+      );
+  };
 
-    const addButtons = container.querySelectorAll("button[title='Thêm vào danh sách'], button[title='Add to Playlist']");
-    expect(addButtons.length).toBe(1);
-  });
+  const withOpenPlaylist = (coverTrackId: string | null) => {
+    const setPlaylistCover = mock(async () => true);
+    const original = usePlayerStore.getState();
+    usePlayerStore.setState({
+      activePlaylistId: "pl_card_1",
+      playlists: [{ id: "pl_card_1", name: "Drive", created_at: 1, updated_at: 1, item_count: 1, cover_track_id: coverTrackId }],
+      setPlaylistCover,
+    });
+    return {
+      setPlaylistCover,
+      restore: () =>
+        usePlayerStore.setState({
+          activePlaylistId: original.activePlaylistId,
+          playlists: original.playlists,
+          setPlaylistCover: original.setPlaylistCover,
+        }),
+    };
+  };
 
-  it("shows a remove button only when the playlist allows removing (not in a mix)", async () => {
-    const removeSelector = "button[title='Remove from Playlist'], button[title='Xóa khỏi danh sách phát']";
+  it("shows a slice with its source track and time range", async () => {
     await act(async () => {
       root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
     });
-    expect(container.querySelectorAll(removeSelector).length).toBe(1);
+
+    expect(container.querySelector("h3")?.textContent).toBe("Card Slice 1");
+    expect(container.textContent).toContain("Card Test Track");
+    expect(container.textContent).toContain("Slice (0:10 - 0:50)");
+  });
+
+  it("shows a full track with its artist and slice count", async () => {
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={fullTrackItem} index={0} onPlay={mock()} onDelete={mock()} />);
+    });
+
+    expect(container.querySelector("h3")?.textContent).toBe("Card Test Track");
+    expect(container.textContent).toContain("Card Artist");
+    expect(container.textContent).toContain("3 slices");
+  });
+
+  it("keeps add to playlist and the original video's link in the More menu", async () => {
+    const writeText = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={fullTrackItem} index={0} onPlay={mock()} onDelete={mock()} />);
+    });
+
+    const menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    await act(async () => {
+      menuItem("Copy YouTube link")?.click();
+    });
+
+    expect(writeText).toHaveBeenCalledWith("https://www.youtube.com/watch?v=playlist_yt_1");
+  });
+
+  it("removes the item from the More menu only when the playlist allows it (not in a mix)", async () => {
+    const onDelete = mock((_id: string, _name: string) => {});
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={onDelete} />);
+    });
+
+    let menuItem = await openMoreMenu();
+    await act(async () => {
+      menuItem("Remove from Playlist")?.click();
+    });
+    expect(onDelete).toHaveBeenCalledWith("pli_card_1", "Card Slice 1");
 
     await act(async () => {
       root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} />);
     });
-    expect(container.querySelectorAll(removeSelector).length).toBe(0);
+    menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    expect(menuItem("Remove from Playlist")).toBeUndefined();
   });
 
   it("renders pause button and calls pause when clicked while actively playing", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origPause = usePlayerStore.getState().pause;
     const pauseSpy = mock(() => {});
 
@@ -161,7 +199,6 @@ describe("PlaylistItemCardComponent", () => {
   });
 
   it("calls resume when clicked while active item is paused", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origResume = usePlayerStore.getState().resume;
     const resumeSpy = mock(() => Promise.resolve());
 
@@ -233,7 +270,6 @@ describe("PlaylistItemCardComponent", () => {
   });
 
   it("toggles item selection when clicking play overlay or button in selection mode", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const { useSelectionStore } = await import("../store/useSelectionStore");
 
     const onPlaySpy = mock(() => {});
@@ -371,170 +407,61 @@ describe("PlaylistItemCardComponent", () => {
     expect(container.querySelector("[data-drag-handle='true']")).toBeNull();
   });
 
-  it("applies isDragging and isDragTarget styling to card container", async () => {
-    // isDragging = true
+  it("marks the tile while it's dragged and while it's the drop target", async () => {
+    const dragProps = { canDrag: true, isDragging: true, isDragTarget: false, onPointerDownHandle: mock(), onKeyDownHandle: mock() };
+    await act(async () => {
+      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} dragProps={dragProps} />);
+    });
+    const tile = container.firstElementChild;
+    expect(tile?.hasAttribute("data-dragging")).toBe(true);
+    expect(tile?.hasAttribute("data-drop-target")).toBe(false);
+
     await act(async () => {
       root.render(
         <PlaylistItemCardComponent
           item={dummyPlaylistItem}
           index={0}
           onPlay={mock()}
-          onDelete={mock()}
-          dragProps={{
-            canDrag: true,
-            isDragging: true,
-            isDragTarget: false,
-            onPointerDownHandle: mock(),
-            onKeyDownHandle: mock(),
-          }}
+          dragProps={{ ...dragProps, isDragging: false, isDragTarget: true }}
         />
       );
     });
-
-    const cardContainer = container.firstElementChild as HTMLElement;
-    expect(cardContainer.className).toContain("opacity-35");
-    expect(cardContainer.className).toContain("border-dashed");
-
-    // isDragTarget = true
-    await act(async () => {
-      root.render(
-        <PlaylistItemCardComponent
-          item={dummyPlaylistItem}
-          index={0}
-          onPlay={mock()}
-          onDelete={mock()}
-          dragProps={{
-            canDrag: true,
-            isDragging: false,
-            isDragTarget: true,
-            onPointerDownHandle: mock(),
-            onKeyDownHandle: mock(),
-          }}
-        />
-      );
-    });
-
-    expect(cardContainer.className).toContain("ring-2 ring-primary");
-    expect(cardContainer.className).toContain("scale-[1.02]");
+    expect(tile?.hasAttribute("data-dragging")).toBe(false);
+    expect(tile?.hasAttribute("data-drop-target")).toBe(true);
   });
-  it("sets this item's track as the open playlist's cover", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
-    const origSetCover = usePlayerStore.getState().setPlaylistCover;
-    const setCoverSpy = mock(async () => true);
-    usePlayerStore.setState({
-      activePlaylistId: "pl_card_1",
-      playlists: [{ id: "pl_card_1", name: "Drive", created_at: 1, updated_at: 1, item_count: 1, cover_track_id: null }],
-      setPlaylistCover: setCoverSpy,
-    });
 
+  it("sets this item's track as the open playlist's cover from the More menu", async () => {
+    const { setPlaylistCover, restore } = withOpenPlaylist(null);
     try {
       await act(async () => {
         root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
       });
-      const coverBtn = container.querySelector("button[aria-label='Set as playlist cover']") as HTMLButtonElement;
-      expect(coverBtn.getAttribute("aria-pressed")).toBe("false");
-
+      const menuItem = await openMoreMenu();
       await act(async () => {
-        coverBtn.click();
+        menuItem("Set as playlist cover")?.click();
       });
 
-      expect(setCoverSpy).toHaveBeenCalledWith("pl_card_1", "trk_card_1");
+      expect(setPlaylistCover).toHaveBeenCalledWith("pl_card_1", "trk_card_1");
     } finally {
-      usePlayerStore.setState({ setPlaylistCover: origSetCover, activePlaylistId: null, playlists: [] });
+      restore();
     }
   });
 
   it("clears the cover when this item's track is already the cover", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
-    const origSetCover = usePlayerStore.getState().setPlaylistCover;
-    const setCoverSpy = mock(async () => true);
-    usePlayerStore.setState({
-      activePlaylistId: "pl_card_1",
-      playlists: [{ id: "pl_card_1", name: "Drive", created_at: 1, updated_at: 1, item_count: 1, cover_track_id: "trk_card_1" }],
-      setPlaylistCover: setCoverSpy,
-    });
-
+    const { setPlaylistCover, restore } = withOpenPlaylist("trk_card_1");
     try {
       await act(async () => {
         root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
       });
-      const coverBtn = container.querySelector("button[aria-label='Set as playlist cover']") as HTMLButtonElement;
-      expect(coverBtn.getAttribute("aria-pressed")).toBe("true");
-
+      const menuItem = await openMoreMenu();
+      expect(menuItem("Set as playlist cover")).toBeUndefined();
       await act(async () => {
-        coverBtn.click();
+        menuItem("Remove playlist cover")?.click();
       });
 
-      expect(setCoverSpy).toHaveBeenCalledWith("pl_card_1", null);
+      expect(setPlaylistCover).toHaveBeenCalledWith("pl_card_1", null);
     } finally {
-      usePlayerStore.setState({ setPlaylistCover: origSetCover, activePlaylistId: null, playlists: [] });
+      restore();
     }
   });
-
-  it("applies uniform height and overflow prevention classes to card, title, and footer", async () => {
-    await act(async () => {
-      root.render(<PlaylistItemCardComponent item={dummyPlaylistItem} index={0} onPlay={mock()} onDelete={mock()} />);
-    });
-
-    const cardRoot = container.firstElementChild as HTMLElement;
-    expect(cardRoot.className).toContain("h-full");
-
-    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
-    expect(titleEl.className).toContain("min-h-[2.5rem]");
-
-    const studioBtn = container.querySelector('button[title="Open Slice Studio"]');
-    expect(studioBtn).not.toBeNull();
-    const footerEl = studioBtn?.closest(".mt-auto") as HTMLElement;
-    expect(footerEl).not.toBeNull();
-    expect(footerEl.className).toContain("mt-auto");
-    expect(footerEl.textContent).not.toContain("Playlist");
-  });
-
-  it("unifies visual layout with TrackCard for full tracks and SliceCard for slices, and copies original YouTube link", async () => {
-    const writeTextSpy = mock((_text: string) => Promise.resolve());
-    Object.defineProperty(window.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-    Object.defineProperty(globalThis.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-
-    const fullTrackItem: PlaylistItemWithDetails = {
-      id: "pli_full_1",
-      playlist_id: "pl_card_1",
-      track_id: "trk_card_1",
-      segment_id: null,
-      sort_order: 0,
-      added_at: 1000,
-      track: {
-        ...dummyTrack,
-        source_type: "youtube",
-        source_uri: "https://www.youtube.com/watch?v=playlist_yt_1",
-        segment_count: 3,
-      },
-      segment: undefined,
-    };
-
-    await act(async () => {
-      root.render(<PlaylistItemCardComponent item={fullTrackItem} index={0} onPlay={mock()} onDelete={mock()} />);
-    });
-
-    // Full track should show YouTube source badge and slices count badge (not Full Track #1 or redundant Play button)
-    expect(container.textContent).toContain("YouTube");
-    expect(container.textContent).not.toContain("Full Track #1");
-    expect(container.textContent).toContain("3 slices");
-
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"], button[title="Sao chép link YouTube"]') as HTMLButtonElement | null;
-    expect(copyBtn).not.toBeNull();
-
-    await act(async () => {
-      copyBtn!.click();
-    });
-
-    expect(writeTextSpy).toHaveBeenCalledTimes(1);
-    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=playlist_yt_1");
-  });
 });
-
