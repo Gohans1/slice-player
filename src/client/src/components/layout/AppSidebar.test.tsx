@@ -117,6 +117,23 @@ describe("AppSidebar", () => {
     }
   });
 
+  it("writes counts like the translations do in a regional language", async () => {
+    usePlayerStore.setState({ tracks: [track("a", "ready", 1234567)] });
+    await act(async () => {
+      await i18n.changeLanguage("en-IN");
+    });
+    try {
+      await renderSidebar();
+
+      expect(i18n.t("categories.itemsCount", { count: 1234567 })).toBe("(12,34,567 items)");
+      expect(badgeOf("Slices")).toBe("12,34,567");
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
+  });
+
   it("marks the current category active and switches category on click", async () => {
     await renderSidebar();
     expect(menuButton("Mix").hasAttribute("data-active")).toBe(true);
