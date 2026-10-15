@@ -15,7 +15,9 @@ export default defineConfig({
     },
   },
   server: {
+    // The API only accepts requests from this dev origin; on any other port every write would get 403
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',
