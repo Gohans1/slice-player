@@ -269,6 +269,9 @@ describe("PlaylistHeader Component (TDD)", () => {
     // 1. Set track as cover
     const trackOption = document.body.querySelector("[data-testid='cover-option-track_1']") as HTMLElement;
     expect(trackOption).not.toBeNull();
+    // The playlist has no chosen cover yet, so the automatic mosaic is the current one
+    expect(document.body.querySelector("[data-testid='cover-option-reset']")?.getAttribute("aria-current")).toBe("true");
+    expect(trackOption.hasAttribute("aria-current")).toBe(false);
 
     await act(async () => {
       trackOption.click();

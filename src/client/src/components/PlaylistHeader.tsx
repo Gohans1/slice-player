@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { formatDuration, cn } from "../lib/utils";
+import { formatDuration } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./Modal";
@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
 import type { Playlist, PlaylistItemWithDetails } from "@/server/types";
 
 interface PlaylistHeaderProps {
@@ -402,72 +403,70 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
         title={t("playlist.changeCoverTitle", "Chọn ảnh bìa đại diện")}
         className="sm:max-w-md"
       >
-        <div className="space-y-3 py-1">
+        <div className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
             {t("playlist.coverPickerHint", "Chọn bài hát trong danh sách để làm ảnh bìa hoặc đặt lại về ảnh ghép 4 ô.")}
           </p>
 
-          <button
-            type="button"
+          {/* Each option applies at once, so these are buttons; the current cover is marked with aria-current */}
+          <Item
+            variant="outline"
+            size="sm"
+            render={<button type="button" />}
             data-testid="cover-option-reset"
+            aria-current={!playlist.cover_track_id || undefined}
             onClick={async () => {
               await setPlaylistCover(playlist.id, null);
               setIsCoverModalOpen(false);
             }}
-            className={cn(
-              "w-full flex items-center gap-3 p-2.5 rounded-lg border text-left text-xs transition-colors cursor-pointer",
-              !playlist.cover_track_id
-                ? "border-primary bg-primary/10 text-primary font-bold"
-                : "border-border hover:bg-secondary text-foreground"
-            )}
           >
-            <div className="w-10 h-10 rounded-md bg-secondary/80 flex items-center justify-center border border-border shrink-0">
-              <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold">{t("playlist.coverAutoMosaic", "Tự động (Ảnh ghép 4 ô)")}</div>
-              <div className="text-2xs text-muted-foreground">{t("playlist.coverAutoDesc", "Tự động ghép ảnh từ 4 bài đầu")}</div>
-            </div>
-          </button>
+            <ItemMedia variant="icon">
+              <ImageIcon />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>{t("playlist.coverAutoMosaic", "Tự động (Ảnh ghép 4 ô)")}</ItemTitle>
+              <ItemDescription>{t("playlist.coverAutoDesc", "Tự động ghép ảnh từ 4 bài đầu")}</ItemDescription>
+            </ItemContent>
+            {!playlist.cover_track_id && (
+              <ItemActions>
+                <Check />
+              </ItemActions>
+            )}
+          </Item>
 
-          <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+          <ul className="flex max-h-60 flex-col gap-1.5 overflow-y-auto pr-1">
             {distinctTracks.map((trk) => {
               const isSelected = playlist.cover_track_id === trk.id;
               return (
-                <button
-                  key={trk.id}
-                  type="button"
-                  data-testid={`cover-option-${trk.id}`}
-                  onClick={async () => {
-                    await setPlaylistCover(playlist.id, trk.id);
-                    setIsCoverModalOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-2 rounded-lg border text-left text-xs transition-colors cursor-pointer",
-                    isSelected
-                      ? "border-primary bg-primary/10 text-primary font-bold"
-                      : "border-border hover:bg-secondary text-foreground"
-                  )}
-                >
-                  {trk.thumbnail_url ? (
-                    <img
-                      src={trk.thumbnail_url}
-                      alt=""
-                      className="w-10 h-10 rounded-md object-cover border border-border shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-md bg-secondary flex items-center justify-center shrink-0">
-                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate font-semibold">{trk.title}</div>
-                    {trk.artist && <div className="truncate text-2xs text-muted-foreground">{trk.artist}</div>}
-                  </div>
-                </button>
+                <li key={trk.id}>
+                  <Item
+                    variant="outline"
+                    size="sm"
+                    render={<button type="button" />}
+                    data-testid={`cover-option-${trk.id}`}
+                    aria-current={isSelected || undefined}
+                    onClick={async () => {
+                      await setPlaylistCover(playlist.id, trk.id);
+                      setIsCoverModalOpen(false);
+                    }}
+                  >
+                    <ItemMedia variant={trk.thumbnail_url ? "image" : "icon"}>
+                      {trk.thumbnail_url ? <img src={trk.thumbnail_url} alt="" /> : <ImageIcon />}
+                    </ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle>{trk.title}</ItemTitle>
+                      {trk.artist && <ItemDescription>{trk.artist}</ItemDescription>}
+                    </ItemContent>
+                    {isSelected && (
+                      <ItemActions>
+                        <Check />
+                      </ItemActions>
+                    )}
+                  </Item>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
       </Modal>
     </>
