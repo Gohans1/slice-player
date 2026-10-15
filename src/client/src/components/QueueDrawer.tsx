@@ -133,7 +133,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
           aria-label={t("queue.dragHandleAria", { name: itemName, position: idx + 1, total: totalItems, defaultValue: `Reorder ${itemName}, position ${idx + 1} of ${totalItems}` })}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
           aria-description={t("queue.dragHandleDesc", "Press Up/Down arrow or Home/End to change position in queue")}
-          className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/60 hover:text-foreground shrink-0 transition-[color,opacity] [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary rounded"
+          className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/60 hover:text-foreground shrink-0 transition [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
           title={t("queue.dragHandleTitle", "Drag or press Up/Down arrows, Home/End to reorder")}
           onMouseDown={(e) => {
             if (e.button === 0) onHandleMouseDown();
@@ -231,8 +231,8 @@ const QueueItemRow = React.memo(function QueueItemRow({
               }
             />
             <div
-              className="absolute bottom-0 left-0 right-0 h-0.5"
-              style={{ backgroundColor: item.segment.color || DEFAULT_SLICE_COLOR }}
+              className="absolute inset-x-0 bottom-0 h-0.5 bg-(--slice-color)"
+              style={{ "--slice-color": item.segment.color || DEFAULT_SLICE_COLOR }}
             />
           </div>
 
@@ -303,7 +303,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
             e.stopPropagation();
             onRemove(idx);
           }}
-          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 focus-visible:ring-1 focus-visible:ring-destructive focus:outline-none p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-[color,background-color,opacity] duration-150"
+          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-destructive focus-visible:outline-none p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition duration-150"
           title={t("queue.remove", "Remove from queue")}
           aria-label={t("queue.remove", "Remove from queue")}
         >
@@ -1227,11 +1227,8 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
           <div
             role="list"
             aria-label={t("queue.regionAria", "Current playback queue")}
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
+            className="relative h-(--virtual-size) w-full"
+            style={{ "--virtual-size": `${rowVirtualizer.getTotalSize()}px` }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const item = displayQueue[virtualRow.index];
@@ -1255,14 +1252,8 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
                   aria-current={isCurrent ? "true" : undefined}
                   aria-setsize={displayQueue.length}
                   aria-posinset={virtualRow.index + 1}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  className="pb-0.5"
+                  className="absolute inset-x-0 top-0 translate-y-(--virtual-start) pb-0.5"
+                  style={{ "--virtual-start": `${virtualRow.start}px` }}
                 >
                   <QueueItemRow
                     item={item}

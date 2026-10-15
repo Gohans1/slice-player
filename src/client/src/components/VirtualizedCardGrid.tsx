@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useWindowVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { GripVertical } from "lucide-react";
+import { cn } from "../lib/utils";
 
 export interface CardDragProps {
   canDrag: boolean;
@@ -28,6 +29,8 @@ export interface VirtualizedCardGridProps<T> {
   getItemThumbnail?: (item: T) => string | undefined;
 }
 
+// Parks the drag preview off screen until the first dragover gives it a position
+const DRAG_PREVIEW_HIDDEN = "-9999px";
 const MIN_CARD_WIDTH = 240;
 const GRID_GAP = 16;
 const MAX_COLUMNS = 8;
@@ -230,8 +233,8 @@ export function VirtualizedCardGrid<T>({
   // Floating preview position updater
   const updatePreviewPosition = React.useCallback((clientX: number, clientY: number) => {
     if (floatingPreviewRef.current) {
-      floatingPreviewRef.current.style.opacity = "1";
-      floatingPreviewRef.current.style.transform = `translate3d(${clientX + 16}px, ${clientY + 16}px, 0)`;
+      floatingPreviewRef.current.style.setProperty("--drag-x", `${clientX + 16}px`);
+      floatingPreviewRef.current.style.setProperty("--drag-y", `${clientY + 16}px`);
     }
   }, []);
 
@@ -244,8 +247,8 @@ export function VirtualizedCardGrid<T>({
     setDraggedIdx(null);
     setDragOverIdx(null);
     if (floatingPreviewRef.current) {
-      floatingPreviewRef.current.style.opacity = "0";
-      floatingPreviewRef.current.style.transform = "translate3d(-9999px, -9999px, 0)";
+      floatingPreviewRef.current.style.setProperty("--drag-x", DRAG_PREVIEW_HIDDEN);
+      floatingPreviewRef.current.style.setProperty("--drag-y", DRAG_PREVIEW_HIDDEN);
     }
   }, [stopAutoScroll]);
 
@@ -482,26 +485,24 @@ export function VirtualizedCardGrid<T>({
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <div ref={containerRef} className={`relative ${className || ""}`} style={{ overflowAnchor: "none" }}>
+    <div ref={containerRef} className={cn("relative [overflow-anchor:none]", className)}>
       {/* Floating Drag Preview */}
       {draggedIdx !== null && items[draggedIdx] && (
         <div
           ref={floatingPreviewRef}
-          className="pointer-events-none fixed top-0 left-0 z-[9999] flex items-center gap-2.5 rounded-lg border border-primary/40 bg-card/95 px-3 py-2 text-xs font-medium text-foreground shadow-2xl shadow-primary/30 ring-1 ring-primary/20 backdrop-blur-md transition-none will-change-transform"
-          style={{
-            opacity: 0,
-            transform: "translate3d(-9999px, -9999px, 0)",
-          }}
+          aria-hidden="true"
+          className="pointer-events-none fixed top-0 left-0 z-50 flex translate-x-(--drag-x) translate-y-(--drag-y) items-center gap-2.5 rounded-lg border border-primary/40 bg-card/95 px-3 py-2 text-xs font-medium text-foreground shadow-2xl shadow-primary/30 ring-1 ring-primary/20 backdrop-blur-md"
+          style={{ "--drag-x": DRAG_PREVIEW_HIDDEN, "--drag-y": DRAG_PREVIEW_HIDDEN }}
         >
-          <GripVertical className="h-4 w-4 text-primary shrink-0" />
+          <GripVertical className="size-4 shrink-0 text-primary" />
           {getItemThumbnail?.(items[draggedIdx]) && (
             <img
               src={getItemThumbnail(items[draggedIdx])}
               alt=""
-              className="h-7 w-7 rounded object-cover shrink-0"
+              className="size-7 shrink-0 rounded object-cover"
             />
           )}
-          <span className="max-w-[200px] truncate text-xs font-semibold">
+          <span className="max-w-50 truncate text-xs font-semibold">
             {getItemName?.(items[draggedIdx]) ?? `Item ${draggedIdx + 1}`}
           </span>
         </div>
@@ -509,11 +510,8 @@ export function VirtualizedCardGrid<T>({
 
       <div
         role="presentation"
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: "100%",
-          position: "relative",
-        }}
+        className="relative h-(--virtual-size) w-full"
+        style={{ "--virtual-size": `${virtualizer.getTotalSize()}px` }}
       >
         {virtualRows.map((virtualRow) => {
           const rowItems = rows[virtualRow.index] || [];
@@ -525,16 +523,11 @@ export function VirtualizedCardGrid<T>({
               data-index={virtualRow.index}
               ref={virtualizer.measureElement}
               role="presentation"
+              className="absolute inset-x-0 top-0 grid translate-y-(--virtual-start) grid-cols-(--card-columns) gap-4 pb-4 sm:gap-5 sm:pb-5"
               style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
-                display: "grid",
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px`,
+                "--card-columns": `repeat(${cols}, minmax(0, 1fr))`,
               }}
-              className="gap-4 sm:gap-5 pb-4 sm:pb-5"
             >
               {rowItems.map((item, colIdx) => {
                 const itemIndex = baseIndex + colIdx;

@@ -459,7 +459,10 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
               )}
             </Empty>
           ) : (
-            <div className="relative w-full font-mono" style={{ height: rowVirtualizer.getTotalSize() }}>
+            <div
+              className="relative h-(--virtual-size) w-full font-mono"
+              style={{ "--virtual-size": `${rowVirtualizer.getTotalSize()}px` }}
+            >
               {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                 const item = filteredLogs[virtualRow.index];
                 if (!item) return null;
@@ -493,8 +496,8 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
                     key={item.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtualRow.index}
-                    style={{ transform: `translateY(${virtualRow.start}px)` }}
-                    className="absolute top-0 left-0 w-full pb-1.5"
+                    className="absolute inset-x-0 top-0 translate-y-(--virtual-start) pb-1.5"
+                    style={{ "--virtual-start": `${virtualRow.start}px` }}
                   >
                     <div
                       className={`rounded-md border p-2 transition-colors ${borderColor}`}

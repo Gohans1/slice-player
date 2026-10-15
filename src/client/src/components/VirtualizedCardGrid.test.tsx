@@ -37,12 +37,12 @@ describe("VirtualizedCardGrid Component", () => {
         <VirtualizedCardGrid
           items={testItems}
           getItemKey={(item) => item.id}
-          renderItem={(item) => <div className="card-item">{item.title}</div>}
+          renderItem={(item) => <div data-testid="card-item">{item.title}</div>}
         />
       );
     });
 
-    const cardElements = container.querySelectorAll(".card-item");
+    const cardElements = container.querySelectorAll("[data-testid='card-item']");
     expect(cardElements.length).toBeGreaterThan(0);
 
     await act(async () => {
@@ -66,13 +66,13 @@ describe("VirtualizedCardGrid Component", () => {
         <VirtualizedCardGrid
           items={[]}
           getItemKey={(item: any) => item.id}
-          renderItem={(item: any) => <div className="card-item">{item.id}</div>}
+          renderItem={(item: any) => <div data-testid="card-item">{item.id}</div>}
         />
       );
     });
 
     // Container is preserved for scrollMargin measurements, but 0 item cards exist
-    expect(container.querySelectorAll(".card-item").length).toBe(0);
+    expect(container.querySelectorAll("[data-testid='card-item']").length).toBe(0);
     expect(container.querySelector("[data-index]")).toBeNull();
     expect(container.children.length).toBe(1);
 
@@ -166,7 +166,7 @@ describe("VirtualizedCardGrid Component", () => {
         <VirtualizedCardGrid
           items={testItems}
           getItemKey={(item) => item.id}
-          renderItem={(item) => <div className="card-item">{item.title}</div>}
+          renderItem={(item) => <div data-testid="card-item">{item.title}</div>}
           scrollRequest={{ index: 10, requestId: 42 }}
           onScrollHandled={(reqId) => {
             handledId = reqId;
@@ -218,7 +218,7 @@ describe("VirtualizedCardGrid Component", () => {
             reorderedTo = to;
           }}
           renderItem={(item, idx, dragProps) => (
-            <div className="card-item" data-index={idx}>
+            <div data-testid="card-item" data-index={idx}>
               <button
                 data-drag-handle="true"
                 data-drag-handle-index={idx}
@@ -234,7 +234,7 @@ describe("VirtualizedCardGrid Component", () => {
       );
     });
 
-    const cardWrappers = container.querySelectorAll(".card-item");
+    const cardWrappers = container.querySelectorAll("[data-testid='card-item']");
     expect(cardWrappers.length).toBeGreaterThanOrEqual(4);
 
     const firstHandle = cardWrappers[0].querySelector("[data-drag-handle='true']") as unknown as HTMLElement;
@@ -319,7 +319,7 @@ describe("VirtualizedCardGrid Component", () => {
             lastReorder = [from, to];
           }}
           renderItem={(item, idx, dragProps) => (
-            <div className="card-item">
+            <div data-testid="card-item">
               <button
                 data-drag-handle="true"
                 data-drag-handle-index={idx}
@@ -390,12 +390,12 @@ describe("VirtualizedCardGrid Component", () => {
           onReorder={() => {
             reorderCalled = true;
           }}
-          renderItem={(item) => <div className="card-item">{item.title}</div>}
+          renderItem={(item) => <div data-testid="card-item">{item.title}</div>}
         />
       );
     });
 
-    const card = container.querySelector(".card-item")?.parentElement as unknown as HTMLElement;
+    const card = container.querySelector("[data-testid='card-item']")?.parentElement as unknown as HTMLElement;
     const dropEvent = new (happyWindow as any).CustomEvent("drop", { bubbles: true, cancelable: true });
     (dropEvent as any).dataTransfer = {
       getData: () => "0",

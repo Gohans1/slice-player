@@ -610,9 +610,8 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     // Virtual container should have total height (25 items * ~62px = ~1550px)
     const virtualWrapper = scrollContainer?.querySelector('[role="list"]');
     expect(virtualWrapper).not.toBeNull();
-    const styleAttr = virtualWrapper?.getAttribute("style") || "";
-    expect(styleAttr).toContain("position: relative");
-    expect(styleAttr).toContain("height:");
+    // The wrapper spans every row so the scrollbar reflects the whole queue
+    expect(Number.parseFloat((virtualWrapper as HTMLElement).style.getPropertyValue("--virtual-size"))).toBeGreaterThan(0);
 
     // Rendered items should have role="listitem", absolute positioning and translateY
     const renderedRows = virtualWrapper?.querySelectorAll('[data-index]');

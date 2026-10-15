@@ -24,8 +24,8 @@ describe("NowPlayingEqualizer", () => {
   });
 
   it("applies custom className", () => {
-    const html = renderToString(<NowPlayingEqualizer className="text-primary my-test-class" />);
-    expect(html).toContain("my-test-class");
+    const html = renderToString(<NowPlayingEqualizer className="text-primary rotate-45" />);
+    expect(html).toContain("rotate-45");
     expect(html).toContain("text-primary");
   });
 });
