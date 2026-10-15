@@ -108,7 +108,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
                   >
                     <span
                       className={cn(
-                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold font-mono",
+                        "flex size-5 shrink-0 items-center justify-center rounded-full border text-2xs font-bold font-mono",
                         isPicked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
                       )}
                     >
