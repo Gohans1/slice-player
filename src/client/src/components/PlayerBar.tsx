@@ -376,7 +376,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
           <button
             type="button"
             onClick={handleActiveTagClick}
-            className="relative h-11 w-11 rounded-md overflow-hidden bg-muted shrink-0 border border-border cursor-pointer group hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-left p-0"
+            className="relative size-11 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border bg-muted p-0 text-left outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
             title={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
             aria-label={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
           >
@@ -399,53 +399,51 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
               <button
                 type="button"
                 onClick={handleActiveTagClick}
-                className="font-semibold text-xs text-foreground truncate max-w-[160px] sm:max-w-[200px] hover:underline cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-xs p-0 border-none bg-transparent"
+                className="max-w-40 cursor-pointer truncate rounded-xs text-left text-xs font-semibold text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring sm:max-w-50"
                 title={t("player.jumpToTrack", { defaultValue: "Click to jump to active track in view" })}
               >
                 {activeTrack.title}
               </button>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="xs"
                 onClick={handleActiveTagClick}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/40 shrink-0 max-w-[170px] sm:max-w-[220px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                 title={badgeTitle}
                 aria-label={badgeTitle}
+                className="max-w-44 sm:max-w-56"
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isPlaying ? "bg-flexoki-green animate-pulse" : "bg-muted-foreground/60"} shrink-0`} aria-hidden="true" />
-                {isShuffle && <Shuffle className="h-2.5 w-2.5 text-flexoki-green shrink-0" aria-hidden="true" />}
-                {isFromSearch && <Search className="h-2.5 w-2.5 text-primary/80 shrink-0" aria-hidden="true" />}
-                <span className="truncate min-w-0">{playingPlaylistName}</span>
-                {isFromSearch && (
-                  <span className="font-mono text-2xs opacity-80 shrink-0">
-                    ({searchCount})
-                  </span>
-                )}
-              </button>
+                <span
+                  className={cn("size-1.5 shrink-0 rounded-full", isPlaying ? "animate-pulse bg-flexoki-green" : "bg-muted-foreground/60")}
+                  aria-hidden="true"
+                />
+                {isShuffle && <Shuffle aria-hidden="true" />}
+                {isFromSearch && <Search aria-hidden="true" />}
+                <span className="min-w-0 truncate">{playingPlaylistName}</span>
+                {isFromSearch && <span className="shrink-0 font-mono">({searchCount})</span>}
+              </Button>
               {displayPlaylists.length > 0 && (
-                <div className="flex items-center gap-1 flex-wrap" aria-label={t("player.playlistsTagLabel", "Playlists")}>
+                <div role="group" className="flex flex-wrap items-center gap-1" aria-label={t("player.playlistsTagLabel", "Playlists")}>
                   {displayPlaylists.slice(0, 2).map((pl) => (
-                    <button
+                    <Button
                       key={pl.id}
-                      type="button"
+                      variant="outline"
+                      size="xs"
                       onClick={async () => {
                         await setActivePlaylist(pl.id);
                         requestScrollToActiveTrack(`playlist:${pl.id}`);
                       }}
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-normal bg-secondary/80 text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/40 hover:border-border/80 shrink-0 max-w-[100px] truncate cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                      className="max-w-25"
                       title={t("player.openPlaylist", { name: pl.name, defaultValue: `Open playlist: ${pl.name}` })}
                       aria-label={t("player.openPlaylist", { name: pl.name, defaultValue: `Open playlist: ${pl.name}` })}
                     >
-                      <Folder className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />
-                      <span className="truncate">{pl.name}</span>
-                    </button>
+                      <Folder data-icon="inline-start" aria-hidden="true" />
+                      <span className="min-w-0 truncate">{pl.name}</span>
+                    </Button>
                   ))}
                   {displayPlaylists.length > 2 && (
-                    <span
-                      className="inline-flex items-center px-1 py-0.5 rounded text-2xs font-mono text-muted-foreground bg-secondary/50 border border-border/30 select-none shrink-0"
-                      title={displayPlaylists.slice(2).map((p) => p.name).join(", ")}
-                    >
+                    <Badge variant="outline" title={displayPlaylists.slice(2).map((p) => p.name).join(", ")}>
                       +{displayPlaylists.length - 2}
-                    </span>
+                    </Badge>
                   )}
                 </div>
               )}
