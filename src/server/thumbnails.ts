@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, readdirSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
-import { killProcessSafely } from "./processUtils";
 
 // Cover art embedded in local files is often 3000px square, but the client shows it a few dozen to a few hundred
 // pixels wide. It asks for a slot size, and the server answers with a copy scaled to that size's width.
@@ -58,17 +57,16 @@ export function resizedThumbnail(sourcePath: string, width: number, variantsDir:
 async function scaleDown(sourcePath: string, width: number, variantPath: string): Promise<string | null> {
   // Written under another name and renamed into place, so a request never reads a half-written file
   const partialPath = `${variantPath}.partial.jpg`;
-  let proc: ReturnType<typeof Bun.spawn> | null = null;
-  const timer = setTimeout(() => void killProcessSafely(proc), RESIZE_TIMEOUT_MS);
   try {
     mkdirSync(dirname(variantPath), { recursive: true });
-    proc = Bun.spawn(
+    const proc = Bun.spawn(
       [
         "ffmpeg", "-v", "error", "-y", "-i", sourcePath,
         "-vf", `scale='min(iw,${width})':'min(ih,${width})':force_original_aspect_ratio=decrease`,
         "-frames:v", "1", "-update", "1", "-q:v", "3", partialPath,
       ],
-      { stdout: "ignore", stderr: "ignore" }
+      // SIGKILL, so a stuck ffmpeg can't hold its request and its slot past the deadline
+      { stdout: "ignore", stderr: "ignore", timeout: RESIZE_TIMEOUT_MS, killSignal: "SIGKILL" }
     );
     if ((await proc.exited) !== 0 || !existsSync(partialPath)) return null;
     renameSync(partialPath, variantPath);
@@ -76,7 +74,6 @@ async function scaleDown(sourcePath: string, width: number, variantPath: string)
   } catch {
     return null;
   } finally {
-    clearTimeout(timer);
     if (existsSync(partialPath)) {
       try { unlinkSync(partialPath); } catch {}
     }
