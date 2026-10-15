@@ -1357,7 +1357,7 @@ export function PlaylistTableView({
           <span role="columnheader">{t("table.trackOrSlice")}</span>
           <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
-          <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
+          <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
 
         {/* Rows */}
@@ -1777,7 +1777,7 @@ export function PlaylistTableView({
           <span role="columnheader">{t("table.slices")}</span>
           <span role="columnheader" className="hidden @3xl:inline">{t("table.originalTrack")}</span>
           <span role="columnheader">{t("table.duration")}</span>
-          <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
+          <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
 
         {/* Rows */}
@@ -1945,7 +1945,7 @@ export function PlaylistTableView({
           <span role="columnheader">{t("table.trackOrSlice")}</span>
           <span role="columnheader" className="hidden @3xl:inline">{t("table.type")}</span>
           <span role="columnheader">{t("table.duration")}</span>
-          <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
+          <span role="columnheader" className="sr-only">{t("table.actions")}</span>
         </div>
 
         {/* Rows */}
@@ -2157,7 +2157,7 @@ export function PlaylistTableView({
         <span role="columnheader">{t("table.track")}</span>
         <span role="columnheader" className="hidden @3xl:inline">{t("table.slices")}</span>
         <span role="columnheader">{t("table.duration")}</span>
-        <span role="columnheader" className="text-right max-sm:sr-only">{t("table.actions")}</span>
+        <span role="columnheader" className="sr-only">{t("table.actions")}</span>
       </div>
 
       {/* Rows */}
