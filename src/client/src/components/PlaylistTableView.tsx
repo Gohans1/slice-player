@@ -8,7 +8,7 @@ import { Spinner } from "./ui/spinner";
 import { Checkbox } from "./ui/checkbox";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { INLINE_ROW_ACTIONS_QUERY, useMediaQuery } from "../hooks/use-media-query";
-import { cn, formatDuration, createDefaultFullSegment, DEFAULT_SLICE_COLOR } from "../lib/utils";
+import { cn, formatDuration, createDefaultFullSegment, DEFAULT_SLICE_COLOR, REVEAL_ON_HOVER } from "../lib/utils";
 import {
   findActivePlaylistItemIndex,
   findActiveMixedItemIndex,
@@ -1523,7 +1523,7 @@ export function PlaylistTableView({
                         "shrink-0 rounded p-0.5 transition-colors select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none max-sm:hidden",
                         isReordering
                           ? "cursor-not-allowed opacity-30"
-                          : "cursor-grab text-muted-foreground/40 hover:text-foreground active:cursor-grabbing"
+                          : cn("cursor-grab text-muted-foreground/40 hover:text-foreground active:cursor-grabbing", REVEAL_ON_HOVER)
                       )}
                       title={isReordering ? t("table.reordering") : t("queue.dragHandleTitle")}
                       onPointerDown={(e) => {
