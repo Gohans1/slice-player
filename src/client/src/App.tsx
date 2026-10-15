@@ -18,7 +18,7 @@ import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
 import { EmptyState } from "./components/EmptyState";
-import { Music, Loader2, Scissors, AlertCircle, Check, RefreshCw, SearchX } from "lucide-react";
+import { Music, Scissors, AlertCircle, Check, RefreshCw, SearchX } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
 import { showsItemsOf } from "./lib/mixPlaylist";
@@ -31,6 +31,7 @@ import {
 } from "./lib/activeItemIndex";
 import { PlaylistSortSelector } from "./components/PlaylistSortSelector";
 import { ViewModeToggle } from "./components/ViewModeToggle";
+import { LibrarySkeleton } from "./components/LibrarySkeleton";
 import {
   getSortedPlaylistItems,
   getSortedMixedItems,
@@ -1122,21 +1123,7 @@ export function App() {
             className="animate-in fade-in duration-150 ease-out motion-reduce:animate-none"
           >
         {isLoadingTracks && isLibraryEmpty ? (
-          <div className="flex flex-col items-center justify-center py-6 px-4 animate-in fade-in duration-200">
-            <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 min-[2048px]:grid-cols-7 min-[2560px]:grid-cols-8 gap-4 mb-6">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="rounded-xl border border-border/50 bg-card/40 p-3 space-y-3 animate-pulse">
-                  <div className="aspect-video w-full rounded-lg bg-secondary/60" />
-                  <div className="h-4 w-3/4 rounded bg-secondary/60" />
-                  <div className="h-3 w-1/2 rounded bg-secondary/40" />
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <p className="text-sm">{t("library.loading")}</p>
-            </div>
-          </div>
+          <LibrarySkeleton viewMode={viewMode} />
         ) : activePlaylistId ? (
           /* Custom Playlist Active */
           <>
