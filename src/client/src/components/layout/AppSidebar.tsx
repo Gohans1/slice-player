@@ -140,9 +140,9 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
       playlist={playlist}
       size={size}
       isActive={activePlaylistId === playlist.id}
-      nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? { isAnimated: isPlaying } : null}
-      onOpen={() => setActivePlaylist(playlist.id)}
-      onDelete={() => setPlaylistToDelete(playlist)}
+      nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? (isPlaying ? "playing" : "paused") : null}
+      onOpen={setActivePlaylist}
+      onDelete={setPlaylistToDelete}
     />
   );
 
@@ -230,12 +230,21 @@ interface PlaylistMenuItemProps {
   playlist: SidebarPlaylist;
   size: "default" | "sm";
   isActive: boolean;
-  nowPlaying: { isAnimated: boolean } | null;
-  onOpen: () => void;
-  onDelete: () => void;
+  nowPlaying: "playing" | "paused" | null;
+  onOpen: (playlistId: string) => void;
+  onDelete: (playlist: SidebarPlaylist) => void;
 }
 
-function PlaylistMenuItem({ playlist, size, isActive, nowPlaying, onOpen, onDelete }: PlaylistMenuItemProps) {
+// Memoized with stable props: the sidebar re-renders on every keystroke in its search field, and each item
+// carries its own tooltip and actions menu
+const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
+  playlist,
+  size,
+  isActive,
+  nowPlaying,
+  onOpen,
+  onDelete,
+}: PlaylistMenuItemProps) {
   const { t } = useTranslation();
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
@@ -278,9 +287,9 @@ function PlaylistMenuItem({ playlist, size, isActive, nowPlaying, onOpen, onDele
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton size={size} isActive={isActive} tooltip={playlist.name} onClick={onOpen}>
+      <SidebarMenuButton size={size} isActive={isActive} tooltip={playlist.name} onClick={() => onOpen(playlist.id)}>
         {nowPlaying ? (
-          <NowPlayingEqualizer isAnimated={nowPlaying.isAnimated} className="w-4 justify-center text-primary" />
+          <NowPlayingEqualizer isAnimated={nowPlaying === "playing"} className="w-4 justify-center text-primary" />
         ) : (
           <Icon className="text-primary" />
         )}
@@ -305,7 +314,7 @@ function PlaylistMenuItem({ playlist, size, isActive, nowPlaying, onOpen, onDele
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(playlist)}>
               <Trash2 />
               {t("playlist.delete")}
             </DropdownMenuItem>
@@ -314,4 +323,4 @@ function PlaylistMenuItem({ playlist, size, isActive, nowPlaying, onOpen, onDele
       </DropdownMenu>
     </SidebarMenuItem>
   );
-}
+});
