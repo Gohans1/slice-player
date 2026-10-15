@@ -274,7 +274,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 
 ### Song Table (List view)
 - `PlaylistTableView` theo hàng bài hát của Apple Music (đo trên music.apple.com): hàng ảo hoá cao 54px, artwork vuông 40px, tiêu đề `text-xs` (13px) chữ thường, cột Artist riêng, cột loại, thời lượng `tabular-nums` (không dùng font mono). Header cột `text-2xs font-semibold`, không có viền dưới.
-- Giữa các hàng là đường kẻ mảnh ở mép trên mỗi hàng thay cho sọc zebra (utility `table-row-divider` trong `index.css`, gắn trên wrapper của virtualizer). Hàng đang tô nền (hover hoặc đang mở menu nếu phát được: `data-tint="hover"`; đang chọn hoặc là đích thả: `data-tint="on"`) ẩn đường kẻ ở cả hai phía, để nền đọc thành một khối bo tròn như Apple Music.
+- Giữa các hàng là đường kẻ mảnh ở mép trên mỗi hàng thay cho sọc zebra (utility `row-divider` trong `index.css`, gắn trên wrapper của virtualizer, dùng chung với queue). Hàng đang tô nền (hover hoặc đang mở menu nếu phát được: `data-tint="hover"`; đang chọn hoặc là đích thả: `data-tint="on"`) ẩn đường kẻ ở cả hai phía, để nền đọc thành một khối bo tròn như Apple Music.
 - Không có cột số thứ tự: Apple Music không đánh số hàng có artwork. Trạng thái phát nằm trên artwork. Hover một hàng phát được thì artwork tối đi (`bg-black/45`) dưới glyph Play, hoặc Pause nếu hàng đang phát. Hàng đang phát hiện equalizer trên artwork và tiêu đề màu `primary` (theo `aria-current` của hàng), không tô nền. Tiêu đề màu `primary` nghĩa là đang phát, giống tile grid và queue.
 - Cột loại như cột Album của Apple Music: full track (mặc định) là chữ thường `text-muted-foreground`, chỉ lát cắt mới có `Badge` vàng kèm khoảng thời gian, để lát cắt nổi bật (Slices Over Full Tracks).
 - Các cột theo độ rộng của **chính bảng** (container query, `@container` gắn trên `role="table"`), không theo viewport: cạnh sidebar và queue, viewport rộng nhưng bảng thì hẹp. Như Apple Music bỏ cột Album rồi Artist khi cửa sổ hẹp lại, cột Artist hiện từ `@2xl` (42rem), cột thứ 3 (nhãn loại / bài gốc / số slice) từ `@4xl` (56rem). Khi chưa có cột Artist, nghệ sĩ nằm ở dòng phụ dưới tiêu đề. Lát cắt luôn có dòng phụ "From: …"; riêng danh sách Slices chỉ hiện dòng này khi cột bài gốc bị ẩn.
@@ -296,7 +296,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 
 ### Navigation & PlayerBar
 - **PlayerBar**: nền `bg-card/95` + `backdrop-blur-md`; artwork 44px có vạch màu lát cắt; tiêu đề bấm được để nhảy tới bài trong danh sách; chip "đang phát từ" là `Button` `secondary` `xs`, chip playlist là `Button` `outline` `xs` trong một `role="group"`, phần dư là `Badge` `outline`. Thanh tiến trình là slider xúc giác.
-- **Queue**: mỗi hàng có tay cầm kéo, nút lên/xuống (`Button` `ghost` `icon-sm`, chỉ hiện trên thiết bị cảm ứng hoặc màn hẹp) và nút xoá hiện khi hover.
+- **Queue**: hàng theo "Up Next" của Apple Music: artwork 40px sát mép trái, tên `text-xs` chữ thường (bài đang phát màu `primary`), dòng phụ `text-xs text-muted-foreground`, thời lượng `tabular-nums` bên phải, đường kẻ mảnh giữa các hàng (`row-divider`, như bảng). Với chuột, thời lượng nhường chỗ cho tay cầm kéo và nút xoá khi hover / focus (hai lớp chồng trong cùng một ô grid, nên tên không bị chừa chỗ cho nút); màn cảm ứng không hover được nên hiện cả hai cạnh nhau, kèm nút lên/xuống (`Button` `ghost` `icon-sm`, chỉ hiện trên thiết bị cảm ứng hoặc màn hẹp) ở đầu hàng.
 - **Cuộn nhanh**: `ButtonGroup` dọc gồm 2 `Button` `outline`; mỗi nút `disabled` khi trang đã ở đúng đầu đó.
 
 ### Feedback & Errors
