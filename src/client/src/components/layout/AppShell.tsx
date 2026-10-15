@@ -37,12 +37,11 @@ export function AppShell({ children, ...sidebarProps }: AppShellProps) {
               {t("nav.skipToContent")}
             </a>
           </div>
-          {/* The docked player bar spans the full width, so the sidebar stops above it */}
-          <AppSidebar {...sidebarProps} className="bottom-[var(--player-bar-height,0px)] h-auto" />
+          <AppSidebar {...sidebarProps} />
           {children}
         </SidebarProvider>
       </RowActionsMenuProvider>
-      {/* Toasts stack above the docked player bar rather than over its controls */}
+      {/* Toasts stack above the player capsule rather than over its controls */}
       <Toaster className="bottom-[calc(var(--player-bar-height,0px)+1rem)]" />
     </TooltipProvider>
   );

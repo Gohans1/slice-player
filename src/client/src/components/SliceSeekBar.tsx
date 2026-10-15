@@ -54,16 +54,13 @@ export function SliceSeekBar({ segment }: SliceSeekBarProps) {
     }
   };
 
-  const timeClass = "w-14 shrink-0 text-2xs text-muted-foreground tabular-nums";
-
   return (
     <div
       onKeyDownCapture={handleKeyDownCapture}
       // The played part of the bar takes the slice colour
       style={{ "--primary": segment.color || DEFAULT_SLICE_COLOR }}
-      className="flex w-full max-w-xl items-center gap-2"
+      className="flex w-full items-center gap-2"
     >
-      <span className={`${timeClass} text-right`}>{formatTime(position)}</span>
       <Slider
         value={[position]}
         min={0}
@@ -95,7 +92,9 @@ export function SliceSeekBar({ segment }: SliceSeekBarProps) {
           if (shouldResume) usePlayerStore.getState().resume();
         }}
       />
-      <span className={timeClass}>{formatTime(duration)}</span>
+      <span className="shrink-0 text-2xs leading-3 text-muted-foreground tabular-nums">
+        {formatTime(position)} / {formatTime(duration)}
+      </span>
     </div>
   );
 }

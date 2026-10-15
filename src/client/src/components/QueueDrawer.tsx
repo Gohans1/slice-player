@@ -1252,7 +1252,7 @@ export function QueuePanel({ onClose }: QueueContentProps) {
     <aside
       id="queue-drawer"
       aria-labelledby="queue-drawer-title"
-      className="sticky top-0 flex h-[calc(100svh-var(--player-bar-height,0px))] w-80 shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+      className="sticky top-0 flex h-svh w-80 shrink-0 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
     >
       <QueueContent onClose={onClose} />
     </aside>

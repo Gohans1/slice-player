@@ -189,7 +189,7 @@ export function FloatingScrollControls({ className }: { className?: string }) {
     // The wrapper floats the group over the library with a solid, blurred backing
     <div
       className={cn(
-        "fixed right-4 bottom-24 z-30 rounded-md bg-card/90 shadow-lg backdrop-blur-md select-none animate-in fade-in zoom-in-95 sm:right-6 md:right-8",
+        "fixed right-4 bottom-[calc(var(--player-bar-height,0px)+1.5rem)] z-30 rounded-md bg-card/90 shadow-lg backdrop-blur-md select-none animate-in fade-in zoom-in-95 sm:right-6 md:right-8",
         className
       )}
     >

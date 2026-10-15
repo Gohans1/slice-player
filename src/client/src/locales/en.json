@@ -161,6 +161,7 @@
   "player": {
     "noTrack": "No track selected. Click any track or slice to play.",
     "nowPlaying": "Playing",
+    "landmark": "Player",
     "paused": "Paused",
     "previous": "Previous slice",
     "next": "Next slice",

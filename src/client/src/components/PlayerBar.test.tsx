@@ -17,6 +17,16 @@ describe("PlayerBar Component", () => {
     target?.dispatchEvent(
       new (globalThis as any).window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 10, clientY: 10 })
     );
+  // The More ("…") menu, like the shuffle menu, renders in a portal
+  const menuItemTexts = () => Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map((item) => item.textContent ?? "");
+  const pressMore = async (title: string) => {
+    const moreBtn = container.querySelector<HTMLButtonElement>(`button[aria-label="More options for ${title}"]`);
+    expect(moreBtn).not.toBeNull();
+    await act(async () => {
+      moreBtn?.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  };
   // Menus unmount once their exit animation finishes
   const settle = () =>
     act(async () => {
@@ -129,9 +139,17 @@ describe("PlayerBar Component", () => {
     expect(container.querySelector('button[aria-label*="log" i], button[aria-label*="nhật ký" i]')).toBeNull();
     expect(container.querySelector("svg.lucide-terminal")).toBeNull();
 
-    // Verify queue and volume controls exist
     expect(container.querySelector('button[title*="Queue"], button[title*="Hàng đợi"], button[aria-label*="queue" i]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Track volume"], [aria-label="Âm lượng bài hát"]')).not.toBeNull();
+
+    // Like Apple Music, the track volume opens from the speaker button
+    expect(document.querySelector('[aria-label="Track volume"]') === null).toBe(true);
+    const volumeBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Volume"]');
+    expect(volumeBtn).not.toBeNull();
+    await act(async () => {
+      volumeBtn?.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(document.querySelector('[aria-label="Track volume"]') !== null).toBe(true);
   });
 
   it("renders loop track button and toggles isLoopTrack when clicked", async () => {
@@ -315,14 +333,9 @@ describe("PlayerBar Component", () => {
     ) as HTMLButtonElement | null;
     expect(prevBtn).not.toBeNull();
 
-    // Verify DOM position: shuffle button parent container comes before previous button
-    const controlsContainer = prevBtn?.closest(".flex.items-center.gap-3");
-    expect(controlsContainer).not.toBeNull();
-    const children = Array.from(controlsContainer?.children || []);
-    const shuffleWrapper = shuffleBtn?.closest(".relative");
-    const shuffleIndex = children.indexOf(shuffleWrapper as Element);
-    const prevIndex = children.indexOf(prevBtn as Element);
-    expect(shuffleIndex).toBeLessThan(prevIndex);
+    // Shuffle comes before Previous, as in Apple Music's transport
+    const order = prevBtn ? shuffleBtn?.compareDocumentPosition(prevBtn) ?? 0 : 0;
+    expect(Boolean(order & (shuffleBtn?.DOCUMENT_POSITION_FOLLOWING ?? 0))).toBe(true);
 
     // Left-click toggles shuffle
     expect(usePlayerStore.getState().isShuffle).toBe(false);
@@ -496,7 +509,7 @@ describe("PlayerBar Component", () => {
     expect(shuffleMenus().length).toBe(0);
   });
 
-  it("renders interactive playlist tags next to track title and closes menu on Escape", async () => {
+  it("lists every playlist containing the playing song in its More menu and opens the one chosen", async () => {
     const origFetch = globalThis.fetch;
     const mockTrack: Track = {
       id: "track-tags-test",
@@ -562,21 +575,57 @@ describe("PlayerBar Component", () => {
         await new Promise((r) => setTimeout(r, 10));
       });
 
-      // Check tags rendering
-      expect(container.textContent).toContain("V-Pop Hits");
-      expect(container.textContent).toContain("Acoustic Chill");
-      // Third tag truncated with +1
-      expect(container.textContent).toContain("+1");
+      // The capsule shows no playlist chips; its More menu lists them all
+      expect(container.textContent).not.toContain("V-Pop Hits");
+      await pressMore("Tag Song Title");
+      expect(menuItemTexts()).toEqual([
+        expect.stringContaining("V-Pop Hits"),
+        expect.stringContaining("Acoustic Chill"),
+        expect.stringContaining("Workout"),
+      ]);
 
-      // Verify tags are clickable buttons that trigger setActivePlaylist
-      const tagButtons = container.querySelectorAll('button[aria-label*="V-Pop Hits"], button[title*="V-Pop Hits"]');
-      expect(tagButtons.length).toBeGreaterThan(0);
+      const vPop = Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((item) =>
+        item.textContent?.includes("V-Pop Hits")
+      );
       await act(async () => {
-        (tagButtons[0] as HTMLButtonElement).click();
+        vPop?.click();
       });
       expect(activePlaylistIdCalled).toBe("pl_tag1");
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 
-      // Open menu via right click
+  it("closes the shuffle menu on Escape", async () => {
+    const origFetch = globalThis.fetch;
+    const mockTrack: Track = {
+      id: "track-escape-test",
+      source_type: "local",
+      source_uri: "local://test.mp3",
+      title: "Escape Song",
+      duration: 150,
+      status: "ready",
+    };
+    const mockSegment: Segment = {
+      id: "seg-escape-test",
+      track_id: "track-escape-test",
+      name: "Seg",
+      start_time: 0,
+      end_time: 30,
+    };
+    usePlayerStore.setState({
+      activeTrack: mockTrack,
+      activeSegment: mockSegment,
+      queue: [{ track: mockTrack, segment: mockSegment }],
+      queueIndex: 0,
+    });
+    globalThis.fetch = (async () => new Response("[]", { status: 200 })) as any;
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+
       const shuffleBtn = container.querySelector(
         'button[aria-label*="shuffle" i], button[aria-label*="ngẫu nhiên" i]'
       ) as HTMLButtonElement | null;
@@ -585,7 +634,6 @@ describe("PlayerBar Component", () => {
       });
       expect(shuffleMenus().length).toBe(1);
 
-      // Press Escape to close menu
       await act(async () => {
         (document.activeElement ?? document.body).dispatchEvent(
           new (globalThis as any).window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })
@@ -681,12 +729,9 @@ describe("PlayerBar Component", () => {
       });
       expect(navigatedPlaylistId).toBe("pl_phuongly");
 
-      // In containing playlists, "pl_phuongly" MUST BE DEDUPLICATED:
-      // Only "chill vibes" should be rendered in the containing playlists folder tag, NOT a second "phương ly" folder badge!
-      const folderTags = Array.from(container.querySelectorAll('div[aria-label*="Playlists"] button'));
-      expect(folderTags.length).toBe(1);
-      expect(folderTags[0]?.textContent).toContain("chill vibes");
-      expect(folderTags[0]?.textContent).not.toContain("phương ly");
+      // The More menu lists the other playlists containing the song, not the one playing
+      await pressMore("Phương Ly – My Sun");
+      expect(menuItemTexts()).toEqual([expect.stringContaining("chill vibes")]);
     } finally {
       globalThis.fetch = origFetch;
     }

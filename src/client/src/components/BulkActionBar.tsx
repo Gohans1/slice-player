@@ -265,7 +265,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
 
   return (
     <>
-      <div className="fixed bottom-24 inset-x-0 z-40 flex justify-center pointer-events-none px-4">
+      <div className="fixed bottom-[calc(var(--player-bar-height,0px)+1.5rem)] inset-x-0 z-40 flex justify-center pointer-events-none px-4">
         <aside
           aria-label={t("bulkActions.barLabel", "Bulk actions")}
           className={cn(

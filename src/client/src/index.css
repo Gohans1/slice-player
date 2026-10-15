@@ -9,9 +9,10 @@ body {
   overflow-anchor: none;
 }
 
-/* The sticky library toolbar covers the top of the page */
+/* The sticky library toolbar covers the top of the page, and the player capsule (bottom-3) its foot */
 html {
   scroll-padding-top: var(--library-toolbar-height, 0px);
+  scroll-padding-bottom: calc(var(--player-bar-height, 0px) + 0.75rem);
   /* Lets the toolbar follow the scroll timeline of the page's title, which isn't its ancestor */
   timeline-scope: --page-title;
 }

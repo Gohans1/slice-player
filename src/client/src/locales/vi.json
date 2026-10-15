@@ -161,6 +161,7 @@
   "player": {
     "noTrack": "Chưa chọn bài hát. Bấm vào bài hát để nghe.",
     "nowPlaying": "Đang phát",
+    "landmark": "Trình phát",
     "paused": "Tạm dừng",
     "previous": "Đoạn trước",
     "next": "Đoạn kế tiếp",

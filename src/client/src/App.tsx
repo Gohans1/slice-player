@@ -1153,8 +1153,8 @@ export function App() {
           </div>
         </header>
 
-        {/* Content Area (bottom padding clears the fixed player bar) */}
-        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28 sm:pb-32">
+        {/* Content Area */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6">
           <div
             id="main-library-panel"
             role="region"
@@ -1515,6 +1515,13 @@ export function App() {
         )}
           </div>
         </div>
+
+        {/* The player capsule floats over the foot of this column */}
+        <PlayerBar
+          onToggleQueue={toggleQueue}
+          isQueueOpen={isQueueOpen}
+          isQueueDocked={isQueueDocked}
+        />
       </SidebarInset>
 
       {isQueueDocked && isQueueOpen && <QueuePanel onClose={closeQueue} />}
@@ -1622,13 +1629,6 @@ export function App() {
       {/* Quick Scroll Navigation Widget (Floating Controls) */}
       {/* Clear the docked queue panel (w-80) plus the usual right-8 gap */}
       <FloatingScrollControls className={isQueueDocked && isQueueOpen ? "md:right-88" : undefined} />
-
-      {/* Player Bar */}
-      <PlayerBar
-        onToggleQueue={toggleQueue}
-        isQueueOpen={isQueueOpen}
-        isQueueDocked={isQueueDocked}
-      />
     </AppShell>
   );
 }
