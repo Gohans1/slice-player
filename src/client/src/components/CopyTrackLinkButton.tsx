@@ -3,19 +3,15 @@ import { Link2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { copyToClipboard } from "../lib/clipboard";
+import { cn } from "../lib/utils";
 import type { Track } from "@/server/types";
 
 interface CopyTrackLinkButtonProps {
   sourceType?: Track["source_type"];
   sourceUri?: string;
-  size?: "card" | "table";
 }
 
-export function CopyTrackLinkButton({
-  sourceType,
-  sourceUri,
-  size = "card",
-}: CopyTrackLinkButtonProps) {
+export function CopyTrackLinkButton({ sourceType, sourceUri }: CopyTrackLinkButtonProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,13 +46,14 @@ export function CopyTrackLinkButton({
     ? t("trackCard.copiedLink", "Copied link!")
     : t("trackCard.copyLink", "Copy YouTube link");
 
-  const sizeClass = size === "table" ? "h-7 w-7" : "h-8 w-8";
+  // The two icons cross-fade with a blur instead of swapping abruptly
+  const iconClass = "transition duration-300 ease-out";
 
   return (
     <Button
       type="button"
       variant="ghost"
-      size="icon"
+      size="icon-lg"
       onClick={handleCopy}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -64,30 +61,21 @@ export function CopyTrackLinkButton({
         }
       }}
       data-copied={copied ? "true" : "false"}
-      className={`${sizeClass} cursor-pointer active:scale-[0.96] transition-[color,background-color,transform] duration-150 ${
-        copied
-          ? "text-emerald-500 bg-emerald-500/10 hover:text-emerald-500 hover:bg-emerald-500/15"
-          : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-      }`}
       title={label}
       aria-label={label}
     >
-      <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+      <span className="relative flex size-3.5 items-center justify-center">
         <Link2
           aria-hidden="true"
-          className={`h-3.5 w-3.5 transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${
-            copied
-              ? "scale-[0.25] opacity-0 blur-[4px]"
-              : "scale-100 opacity-100 blur-0"
-          }`}
+          className={cn(iconClass, "size-3.5", copied ? "scale-25 opacity-0 blur-xs" : "scale-100 opacity-100 blur-none")}
         />
         <Check
           aria-hidden="true"
-          className={`absolute inset-0 h-3.5 w-3.5 transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${
-            copied
-              ? "scale-100 opacity-100 blur-0"
-              : "scale-[0.25] opacity-0 blur-[4px]"
-          }`}
+          className={cn(
+            iconClass,
+            "absolute inset-0 size-3.5 text-flexoki-green",
+            copied ? "scale-100 opacity-100 blur-none" : "scale-25 opacity-0 blur-xs"
+          )}
         />
       </span>
     </Button>
