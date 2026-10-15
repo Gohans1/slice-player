@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { removeThumbnailVariants, resizedThumbnail, sweepThumbnailVariants } from "./thumbnails";
+import { removeThumbnailVariants, resizedThumbnail, sweepThumbnailVariants, withResizeSlot } from "./thumbnails";
 
 // Cover art as local files embed it: a single frame, often 3000px square
 async function coverArt(path: string, size: number) {
@@ -99,5 +99,39 @@ describe("resizedThumbnail", () => {
     await Bun.write(source, "not an image");
 
     expect(await resizedThumbnail(source, 192, variants)).toBeNull();
+  });
+});
+
+describe("withResizeSlot", () => {
+  it("never runs more than two resizes, even when one arrives just as another finishes", async () => {
+    let running = 0;
+    let peak = 0;
+    let draining = false;
+    const finishers: Array<() => void> = [];
+    const resize = () =>
+      withResizeSlot(async () => {
+        running++;
+        peak = Math.max(peak, running);
+        if (!draining) await new Promise<void>((resolve) => finishers.push(resolve));
+        running--;
+      });
+    const resizes = [resize(), resize(), resize()];
+
+    // One resize finishes while new requests keep arriving, one on each of the next few ticks
+    finishers.shift()!();
+    let tick = Promise.resolve();
+    for (let i = 0; i < 10; i++) {
+      tick = tick.then(() => {
+        resizes.push(resize());
+      });
+    }
+    await tick;
+
+    // Let every resize run to the end
+    draining = true;
+    for (const finish of finishers.splice(0)) finish();
+    await Promise.all(resizes);
+
+    expect(peak).toBe(2);
   });
 });

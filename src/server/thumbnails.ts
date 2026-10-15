@@ -19,15 +19,17 @@ const inFlight = new Map<string, Promise<string | null>>();
 let runningResizes = 0;
 const waitingResizes: Array<() => void> = [];
 
-// A page of local tracks asks for many covers at once; scaling them a couple at a time keeps the server responsive
-async function withResizeSlot<T>(task: () => Promise<T>): Promise<T> {
-  if (runningResizes >= MAX_CONCURRENT_RESIZES) await new Promise<void>((resolve) => waitingResizes.push(resolve));
-  runningResizes++;
+// A page of local tracks asks for many covers at once; scaling them a couple at a time keeps the server responsive.
+// A finished resize hands its slot straight to the next one waiting, so a request arriving in between can't take it too.
+export async function withResizeSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (runningResizes < MAX_CONCURRENT_RESIZES) runningResizes++;
+  else await new Promise<void>((resolve) => waitingResizes.push(resolve));
   try {
     return await task();
   } finally {
-    runningResizes--;
-    waitingResizes.shift()?.();
+    const next = waitingResizes.shift();
+    if (next) next();
+    else runningResizes--;
   }
 }
 
