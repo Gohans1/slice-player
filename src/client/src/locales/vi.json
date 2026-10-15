@@ -417,6 +417,7 @@
     "editTitle": "Nguồn của {{name}}",
     "description": "Danh sách gộp phát lần lượt các danh sách nguồn và tự cập nhật mỗi khi chúng thay đổi. Danh sách gốc giữ nguyên.",
     "pickHint": "Chọn ít nhất 2 danh sách, theo thứ tự muốn phát",
+    "positionLabel": "Thứ tự",
     "nameLabel": "Tên danh sách gộp",
     "namePlaceholder": "Tên danh sách gộp",
     "moveUp": "Đưa {{name}} lên",

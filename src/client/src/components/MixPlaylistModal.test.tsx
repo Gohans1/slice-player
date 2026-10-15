@@ -43,8 +43,17 @@ describe("MixPlaylistModal", () => {
   });
 
   const body = () => document.body;
+  // A checkbox's name is the text of the label it points at, the way assistive tech reads it
+  const nameOf = (el: Element) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent ?? "";
   const rowFor = (name: string) =>
-    Array.from(body().querySelectorAll("[role='checkbox']")).find((el) => el.textContent?.includes(name)) as HTMLElement | undefined;
+    Array.from(body().querySelectorAll("[role='checkbox']")).find((el) => nameOf(el).includes(name)) as HTMLElement | undefined;
+  // Users tick a source by clicking its row; happy-dom double-toggles a click on the checkbox box itself
+  const clickRow = (name: string) =>
+    (Array.from(body().querySelectorAll("[data-slot='field-content']")).find((el) => el.textContent?.includes(name)) as HTMLElement).click();
+  const controlLabelled = (text: string) => {
+    const label = Array.from(body().querySelectorAll("label")).find((l) => l.textContent?.trim() === text);
+    return label ? document.getElementById(label.getAttribute("for") ?? "") : null;
+  };
   const buttonWithText = (text: string) =>
     Array.from(body().querySelectorAll("button")).find((b) => b.textContent?.trim() === text) as HTMLButtonElement | undefined;
 
@@ -57,13 +66,16 @@ describe("MixPlaylistModal", () => {
       root.render(<MixPlaylistModal isOpen onClose={() => {}} onCreated={onCreated} />);
     });
     await act(async () => {
-      rowFor("Gym")!.click();
+      clickRow("Gym");
     });
     await act(async () => {
-      rowFor("Chill")!.click();
+      clickRow("Chill");
     });
 
-    expect((body().querySelector("input") as HTMLInputElement).value).toBe("Gym + Chill");
+    // Ticked rows announce the position they will play in
+    expect(nameOf(rowFor("Gym")!)).toContain("Position 1");
+    expect(nameOf(rowFor("Chill")!)).toContain("Position 2");
+    expect((controlLabelled("Mix name") as HTMLInputElement).value).toBe("Gym + Chill");
 
     await act(async () => {
       buttonWithText("Create Mix")!.click();
@@ -87,7 +99,7 @@ describe("MixPlaylistModal", () => {
       root.render(<MixPlaylistModal isOpen onClose={() => {}} />);
     });
     await act(async () => {
-      rowFor("Chill")!.click();
+      clickRow("Chill");
     });
 
     expect(buttonWithText("Create Mix")!.disabled).toBe(true);

@@ -418,6 +418,7 @@
     "editTitle": "Sources of {{name}}",
     "description": "A mix plays its playlists one after another and updates itself whenever they change. The original playlists stay as they are.",
     "pickHint": "Tick at least 2 playlists, in the order they should play",
+    "positionLabel": "Position",
     "nameLabel": "Mix name",
     "namePlaceholder": "Mix name",
     "moveUp": "Move {{name}} up",

@@ -2,8 +2,12 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Modal } from "./Modal";
-import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { ButtonGroup } from "./ui/button-group";
+import { Checkbox } from "./ui/checkbox";
+import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "./ui/field";
+import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -84,89 +88,84 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
       title={mix ? t("mixPlaylist.editTitle", { name: mix.name }) : t("mixPlaylist.title")}
       description={t("mixPlaylist.description")}
     >
-      <div className="space-y-4">
-        <div>
-          <p className="mb-2 text-xs font-semibold text-muted-foreground">{t("mixPlaylist.pickHint")}</p>
-          <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+      <div className="flex flex-col gap-4">
+        <FieldSet>
+          <FieldLegend variant="label">{t("mixPlaylist.pickHint")}</FieldLegend>
+          <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto pr-1">
             {candidates.map((pl) => {
               const order = picked.indexOf(pl.id);
               const isPicked = order > -1;
+              const checkboxId = `mix-source-${pl.id}`;
               return (
-                <li
-                  key={pl.id}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg border p-1.5 transition-colors",
-                    isPicked ? "border-primary/60 bg-primary/5" : "border-border hover:border-muted-foreground/40"
-                  )}
-                >
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={isPicked}
-                    onClick={() => toggle(pl.id)}
-                    disabled={isSubmitting}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md"
-                  >
-                    <span
-                      className={cn(
-                        "flex size-5 shrink-0 items-center justify-center rounded-full border text-2xs font-bold font-mono",
-                        isPicked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
+                <li key={pl.id} className="flex items-center gap-2">
+                  <FieldLabel htmlFor={checkboxId} className="min-w-0 flex-1">
+                    <Field orientation="horizontal">
+                      <Checkbox
+                        id={checkboxId}
+                        checked={isPicked}
+                        onCheckedChange={() => toggle(pl.id)}
+                        disabled={isSubmitting}
+                      />
+                      <PlaylistCover playlist={pl} className="w-9 shrink-0 rounded-md" />
+                      <FieldContent className="min-w-0">
+                        <FieldTitle>{pl.name}</FieldTitle>
+                        <FieldDescription>{t("playlist.itemCount", { count: pl.item_count || 0 })}</FieldDescription>
+                      </FieldContent>
+                      {/* The position joins the checkbox's name, so the play order is heard as well as seen */}
+                      {isPicked && (
+                        <Badge variant="secondary">
+                          <span className="sr-only">{t("mixPlaylist.positionLabel")} </span>
+                          {order + 1}
+                        </Badge>
                       )}
-                    >
-                      {isPicked ? order + 1 : ""}
-                    </span>
-                    <PlaylistCover playlist={pl} className="w-9 shrink-0 rounded-md" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{pl.name}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                      {t("playlist.itemCount", { count: pl.item_count || 0 })}
-                    </span>
-                  </button>
-                  {isPicked && (
-                    <span className="flex shrink-0 gap-1">
+                    </Field>
+                  </FieldLabel>
+                  {/* Always laid out, so ticking a row doesn't change its width; hidden rows keep the buttons out of reach */}
+                  <div className={cn(!isPicked && "invisible")}>
+                    <ButtonGroup>
                       <Button
-                        type="button"
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7"
                         disabled={order === 0 || isSubmitting}
                         onClick={() => move(pl.id, -1)}
                         aria-label={t("mixPlaylist.moveUp", { name: pl.name })}
                       >
-                        <ChevronUp className="h-3.5 w-3.5" />
+                        <ChevronUp />
                       </Button>
                       <Button
-                        type="button"
                         variant="outline"
                         size="icon"
-                        className="h-7 w-7"
                         disabled={order === picked.length - 1 || isSubmitting}
                         onClick={() => move(pl.id, 1)}
                         aria-label={t("mixPlaylist.moveDown", { name: pl.name })}
                       >
-                        <ChevronDown className="h-3.5 w-3.5" />
+                        <ChevronDown />
                       </Button>
-                    </span>
-                  )}
+                    </ButtonGroup>
+                  </div>
                 </li>
               );
             })}
           </ul>
-        </div>
+        </FieldSet>
 
         {!mix && (
-          <Input
-            value={name}
-            onChange={(e) => setCustomName(e.target.value)}
-            placeholder={t("mixPlaylist.namePlaceholder")}
-            aria-label={t("mixPlaylist.nameLabel")}
-            disabled={isSubmitting}
-            maxLength={100}
-          />
+          <Field>
+            <FieldLabel htmlFor="mix-playlist-name">{t("mixPlaylist.nameLabel")}</FieldLabel>
+            <Input
+              id="mix-playlist-name"
+              value={name}
+              onChange={(e) => setCustomName(e.target.value)}
+              placeholder={t("mixPlaylist.namePlaceholder")}
+              disabled={isSubmitting}
+              maxLength={100}
+            />
+          </Field>
         )}
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <FieldError>{error}</FieldError>}
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
             {t("mixPlaylist.cancel")}
           </Button>
