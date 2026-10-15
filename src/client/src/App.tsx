@@ -52,6 +52,7 @@ import { useSelectionStore, type SelectedItem } from "./store/useSelectionStore"
 import { useLogStore } from "./store/useLogStore";
 import { getViewScrollKey } from "./store/usePlayerStore";
 import { isDialogOpen } from "./lib/dialog";
+import { sendChange } from "./lib/sendChange";
 import type { Playlist, Segment, Track } from "@/server/types";
 
 const getItemEntityId = (item: { id: string }) => item.id;
@@ -479,12 +480,13 @@ export function App() {
     setIsDeletingTarget(true);
     try {
       if (deleteTarget.type === "track") {
-        if (usePlayerStore.getState().activeTrack?.id === deleteTarget.id) {
-          audioEngine.unload();
-        }
-        removeTrackFromQueue(deleteTarget.id);
-        const res = await fetch(`/api/tracks/${encodeURIComponent(deleteTarget.id)}`, { method: "DELETE" });
-        if (res.ok) {
+        // Playback and the queues change only once the server has deleted it, as bulk delete does:
+        // a delete that fails leaves the track playing and queued
+        if (await sendChange("deleteTracks", `/api/tracks/${encodeURIComponent(deleteTarget.id)}`, { method: "DELETE" })) {
+          if (usePlayerStore.getState().activeTrack?.id === deleteTarget.id) {
+            audioEngine.unload();
+          }
+          removeTrackFromQueue(deleteTarget.id);
           await fetchTracks(true);
         }
       } else if (deleteTarget.type === "playlist_item") {
