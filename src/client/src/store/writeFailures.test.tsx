@@ -6,11 +6,24 @@ import { Toaster, toast } from "../components/ui/toast";
 import { flushTrackVolume, usePlayerStore } from "./usePlayerStore";
 import { useLogStore } from "./useLogStore";
 import i18n from "../i18n";
-import type { Playlist } from "@/server/types";
+import type { Playlist, Track } from "@/server/types";
 
 const originalFetch = globalThis.fetch;
 const initialState = usePlayerStore.getState();
 const rock: Playlist & { item_count: number } = { id: "pl_rock", name: "Rock", created_at: 1, updated_at: 1, item_count: 2 };
+const failedDownload: Track = {
+  id: "trk_failed",
+  source_type: "youtube",
+  source_uri: "https://www.youtube.com/watch?v=failed",
+  title: "Failed Song",
+  artist: "Artist",
+  duration: 180,
+  status: "error",
+  error_message: "Sign in to confirm you're not a bot",
+  thumbnail_url: "",
+  volume: 0.5,
+  created_at: 1,
+};
 
 // Every request gets this status, or fails the way fetch does when the server is down
 function serverResponds(status: number) {
@@ -31,7 +44,8 @@ function downloadFailsAgain(message: string) {
   globalThis.fetch = Object.assign(
     async (input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : input.toString();
-      return url.endsWith("/retry") ? Response.json({ success: false, message }, { status: 400 }) : Response.json([]);
+      if (url.endsWith("/retry")) return Response.json({ success: false, message }, { status: 400 });
+      return Response.json(url.endsWith("/api/tracks") ? [{ ...failedDownload, error_message: message }] : []);
     },
     { preconnect: originalFetch.preconnect }
   );
@@ -152,11 +166,22 @@ describe("failed changes", () => {
   });
 
   it("leaves a download that failed again to its track, which shows the new reason", async () => {
+    usePlayerStore.setState({ tracks: [failedDownload] });
     downloadFailsAgain("Video unavailable");
 
-    await settle(() => usePlayerStore.getState().retryTrack("trk_1"));
+    await settle(() => usePlayerStore.getState().retryTrack(failedDownload.id));
 
+    expect(usePlayerStore.getState().tracks.find((t) => t.id === failedDownload.id)?.error_message).toBe("Video unavailable");
     expect(shownToasts()).toHaveLength(0);
+  });
+
+  it("tells the user when the server refuses a retry without trying the download", async () => {
+    serverResponds(400);
+
+    await settle(() => usePlayerStore.getState().retryTrack(failedDownload.id));
+
+    expect(shownToasts()).toHaveLength(1);
+    expect(shownToasts()[0].textContent).toContain("HTTP 400");
   });
 
   it("tells the user when the volume saved on closing Slice Studio fails", async () => {
