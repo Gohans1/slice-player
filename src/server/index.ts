@@ -12,6 +12,7 @@ import {
 import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploadedFile, validateSafeLocalAudioPath, abortIngestProcesses, cancelDownloadIfActive, unlinkWithRetry, isIngestBusy, recoverIncompleteIngests, resetCookiesStatus, getDownloadQueueOrder, requeueErrorTracks, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
+import { forwardServerEvents } from "./websocketEvents";
 import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
@@ -1597,42 +1598,7 @@ export function broadcastWs(msg: object) {
   checkIdleShutdown();
 }
 
-serverEvents.on("track_updated", (payload) => {
-  broadcastWs({ type: "track_updated", ...payload });
-});
-serverEvents.on("track_created", (payload) => {
-  broadcastWs({ type: "track_created", ...payload });
-});
-serverEvents.on("track_deleted", (payload) => {
-  broadcastWs({ type: "track_deleted", ...payload });
-});
-serverEvents.on("segment_deleted", (payload) => {
-  broadcastWs({ type: "segment_deleted", ...payload });
-});
-serverEvents.on("segment_updated", (payload) => {
-  broadcastWs({ type: "segment_updated", ...payload });
-});
-serverEvents.on("playlist_created", (payload) => {
-  broadcastWs({ type: "playlist_created", ...payload });
-});
-serverEvents.on("playlist_updated", (payload) => {
-  broadcastWs({ type: "playlist_updated", ...payload });
-});
-serverEvents.on("playlist_deleted", (payload) => {
-  broadcastWs({ type: "playlist_deleted", ...payload });
-});
-serverEvents.on("playlist_items_changed", (payload) => {
-  broadcastWs({ type: "playlist_items_changed", ...payload });
-});
-serverEvents.on("app_log", (payload) => {
-  broadcastWs({ type: "app_log", ...payload });
-});
-serverEvents.on("logs_cleared", () => {
-  broadcastWs({ type: "logs_cleared" });
-});
-serverEvents.on("library_restored", (payload) => {
-  broadcastWs({ type: "library_restored", ...payload });
-});
+forwardServerEvents(broadcastWs);
 
 export { server };
 
