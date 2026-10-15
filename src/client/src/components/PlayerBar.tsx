@@ -27,12 +27,13 @@ import {
   ContextMenuTrigger,
 } from "./ui/context-menu";
 import { Spinner } from "./ui/spinner";
+import { SliceSeekBar } from "./SliceSeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { useHeightCssVar } from "../hooks/use-height-css-var";
-import { usePlayerStore, normalizeTrackVolume, type Segment } from "../store/usePlayerStore";
+import { usePlayerStore, normalizeTrackVolume } from "../store/usePlayerStore";
 import { useTranslation } from "react-i18next";
 
 interface PlayerBarProps {
@@ -40,243 +41,6 @@ interface PlayerBarProps {
   isQueueOpen: boolean;
   // A docked queue is a plain show/hide panel; otherwise the toggle opens a dialog sheet
   isQueueDocked?: boolean;
-}
-
-interface TrackProgressBarProps {
-  activeSegment: Segment;
-}
-
-function TrackProgressBar({ activeSegment }: TrackProgressBarProps) {
-  const { t } = useTranslation();
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const seek = usePlayerStore((s) => s.seek);
-  const pause = usePlayerStore((s) => s.pause);
-  const resume = usePlayerStore((s) => s.resume);
-  const togglePlay = usePlayerStore((s) => s.togglePlay);
-
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [dragRatio, setDragRatio] = React.useState<number | null>(null);
-  const progressBarRef = React.useRef<HTMLDivElement>(null);
-  const wasPlayingRef = React.useRef(false);
-  const activePointerIdRef = React.useRef<number | null>(null);
-  const rectCacheRef = React.useRef<DOMRect | null>(null);
-  const rafIdRef = React.useRef<number | null>(null);
-  const pendingRatioRef = React.useRef<number | null>(null);
-
-  const resetDragState = React.useCallback(() => {
-    const pointerId = activePointerIdRef.current;
-    activePointerIdRef.current = null;
-    rectCacheRef.current = null;
-    wasPlayingRef.current = false;
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    pendingRatioRef.current = null;
-    setIsDragging(false);
-    setDragRatio(null);
-
-    if (pointerId !== null && progressBarRef.current) {
-      try {
-        if (progressBarRef.current.hasPointerCapture(pointerId)) {
-          progressBarRef.current.releasePointerCapture(pointerId);
-        }
-      } catch {}
-    }
-  }, []);
-
-  const activeSegmentId = activeSegment?.id;
-  React.useEffect(() => {
-    if (activeSegmentId !== undefined) {
-      resetDragState();
-    }
-    return () => {
-      resetDragState();
-    };
-  }, [activeSegmentId, resetDragState]);
-
-  const segmentDuration = activeSegment.end_time - activeSegment.start_time;
-  const elapsedInSegment = Math.max(0, currentTime - activeSegment.start_time);
-  const currentRatio = isDragging && dragRatio !== null
-    ? dragRatio
-    : (segmentDuration > 0 ? Math.max(0, Math.min(1, elapsedInSegment / segmentDuration)) : 0);
-  const displayedElapsed = currentRatio * segmentDuration;
-  const effectiveProgressPercent = currentRatio * 100;
-
-  const getSafeSeekTarget = (rawTarget: number) => {
-    if (!activeSegment || segmentDuration <= 0) return 0;
-    const clampMargin = Math.min(0.05, segmentDuration * 0.02);
-    return Math.max(
-      activeSegment.start_time,
-      Math.min(activeSegment.end_time - clampMargin, rawTarget)
-    );
-  };
-
-  const calculateRatio = (clientX: number) => {
-    const rect = rectCacheRef.current || progressBarRef.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0) return 0;
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!activeSegment || segmentDuration <= 0) return;
-    if (e.button !== 0) return;
-    if (activePointerIdRef.current !== null) return;
-
-    activePointerIdRef.current = e.pointerId;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {}
-
-    if (progressBarRef.current) {
-      rectCacheRef.current = progressBarRef.current.getBoundingClientRect();
-    }
-
-    wasPlayingRef.current = isPlaying;
-    if (isPlaying) {
-      pause();
-    }
-
-    const ratio = calculateRatio(e.clientX);
-    pendingRatioRef.current = ratio;
-    setIsDragging(true);
-    setDragRatio(ratio);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (activePointerIdRef.current === null || e.pointerId !== activePointerIdRef.current) return;
-    const ratio = calculateRatio(e.clientX);
-    pendingRatioRef.current = ratio;
-    if (rafIdRef.current === null) {
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        if (pendingRatioRef.current !== null) {
-          setDragRatio(pendingRatioRef.current);
-        }
-      });
-    }
-  };
-
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (activePointerIdRef.current === null || e.pointerId !== activePointerIdRef.current) return;
-
-    const ratio = typeof e.clientX === "number"
-      ? calculateRatio(e.clientX)
-      : (pendingRatioRef.current ?? dragRatio ?? 0);
-    const shouldResume = wasPlayingRef.current;
-
-    resetDragState();
-
-    if (activeSegment && segmentDuration > 0) {
-      const rawTarget = activeSegment.start_time + ratio * segmentDuration;
-      const safeTarget = getSafeSeekTarget(rawTarget);
-      seek(safeTarget);
-      if (shouldResume) {
-        resume();
-      }
-    }
-  };
-
-  const handlePointerCancel = (e?: React.PointerEvent<HTMLDivElement>) => {
-    if (activePointerIdRef.current === null) return;
-    if (e && e.pointerId !== activePointerIdRef.current) {
-      return;
-    }
-
-    const shouldResume = wasPlayingRef.current;
-    resetDragState();
-
-    if (shouldResume) {
-      resume();
-    }
-  };
-
-  const handleLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (activePointerIdRef.current !== null && e.pointerId === activePointerIdRef.current) {
-      handlePointerCancel();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!activeSegment || segmentDuration <= 0) return;
-    if (activePointerIdRef.current !== null) return;
-
-    const cur = usePlayerStore.getState().currentTime;
-    const step = Math.min(5, Math.max(0.1, segmentDuration * 0.05));
-    const pageStep = Math.min(15, Math.max(1, segmentDuration * 0.2));
-
-    if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-      e.preventDefault();
-      seek(getSafeSeekTarget(cur - step));
-    } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-      e.preventDefault();
-      seek(getSafeSeekTarget(cur + step));
-    } else if (e.key === "PageDown") {
-      e.preventDefault();
-      seek(getSafeSeekTarget(cur - pageStep));
-    } else if (e.key === "PageUp") {
-      e.preventDefault();
-      seek(getSafeSeekTarget(cur + pageStep));
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      seek(activeSegment.start_time);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      seek(getSafeSeekTarget(activeSegment.end_time));
-    } else if (e.key === " " || e.key === "Enter") {
-      e.preventDefault();
-      togglePlay();
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2 w-full max-w-xl text-2xs font-mono text-muted-foreground">
-      <span className="w-12 text-right">{formatTime(displayedElapsed)}</span>
-      <div
-        ref={progressBarRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onLostPointerCapture={handleLostPointerCapture}
-        onKeyDown={handleKeyDown}
-        role="slider"
-        tabIndex={0}
-        aria-label={t("player.seekAria", "Seek slice")}
-        aria-orientation="horizontal"
-        aria-valuemin={0}
-        aria-valuemax={Number(segmentDuration.toFixed(1))}
-        aria-valuenow={Number.isFinite(displayedElapsed) ? Number(displayedElapsed.toFixed(1)) : 0}
-        aria-valuetext={`${formatTime(displayedElapsed)} / ${formatTime(segmentDuration)}`}
-        className="group relative flex-1 py-2.5 cursor-pointer select-none touch-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-        title={t("player.seekTitle", "Drag or click to seek in slice")}
-      >
-        <div className="relative h-2 w-full rounded-full bg-secondary overflow-hidden group-hover:scale-y-125 transition-transform duration-150 origin-center">
-          <div
-            className={`absolute inset-0 rounded-full origin-left ${
-              isDragging ? "transition-none" : "transition-transform duration-100 ease-linear"
-            }`}
-            style={{
-              transform: `scaleX(${Math.max(0, Math.min(100, effectiveProgressPercent)) / 100})`,
-              backgroundColor: activeSegment.color || DEFAULT_SLICE_COLOR,
-            }}
-          />
-        </div>
-        <div
-          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md pointer-events-none ${
-            isDragging
-              ? "scale-100 opacity-100 transition-none"
-              : "scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100 transition-[transform,opacity] duration-150 ease-out"
-          }`}
-          style={{
-            left: `${effectiveProgressPercent}%`,
-          }}
-        />
-      </div>
-      <span className="w-12 text-left">{formatTime(segmentDuration)}</span>
-    </div>
-  );
 }
 
 export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }: PlayerBarProps) {
@@ -842,8 +606,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             </Button>
           </div>
 
-          {/* Segment Progress Bar */}
-          <TrackProgressBar activeSegment={activeSegment} />
+          <SliceSeekBar segment={activeSegment} />
         </div>
 
         {/* Volume & Queue Button */}

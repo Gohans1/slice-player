@@ -1224,66 +1224,6 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     expect(restoreBtn).toBeNull();
   });
 
-  it("PlayerBar handles pointer scrubbing on progress slider and seeks audio", () => {
-    let seekedTime: number | null = null;
-    const origSeek = usePlayerStore.getState().seek;
-    usePlayerStore.setState({
-      activeTrack: dummyTrack,
-      activeSegment: dummySegment,
-      currentTime: 10,
-      isPlaying: true,
-      seek: ((time: number) => {
-        seekedTime = time;
-      }) as any,
-    });
-
-    try {
-      act(() => {
-        root.render(
-          <PlayerBar
-            onToggleQueue={() => {}}
-            isQueueOpen={false}
-          />
-        );
-      });
-
-      const slider = container.querySelector('[role="slider"]') as HTMLElement | null;
-      expect(slider).not.toBeNull();
-
-      Object.defineProperty(slider!, "getBoundingClientRect", {
-        value: () => ({
-          left: 0,
-          top: 0,
-          right: 100,
-          bottom: 10,
-          width: 100,
-          height: 10,
-          x: 0,
-          y: 0,
-          toJSON: () => {},
-        }),
-        configurable: true,
-        writable: true,
-      });
-
-      act(() => {
-        const pDown = new window.MouseEvent("pointerdown", { bubbles: true, clientX: 50, clientY: 5 });
-        (pDown as any).pointerId = 1;
-        slider!.dispatchEvent(pDown);
-      });
-
-      act(() => {
-        const pUp = new window.MouseEvent("pointerup", { bubbles: true, clientX: 50, clientY: 5 });
-        (pUp as any).pointerId = 1;
-        slider!.dispatchEvent(pUp);
-      });
-
-      expect<number | null>(seekedTime).toBe(25);
-    } finally {
-      usePlayerStore.setState({ seek: origSeek });
-    }
-  });
-
   it("PlayerBar skip buttons handle 1-item queue and empty queue correctly", () => {
     usePlayerStore.setState({
       activeTrack: dummyTrack,
