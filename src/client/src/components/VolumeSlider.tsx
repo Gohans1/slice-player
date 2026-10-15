@@ -34,7 +34,7 @@ export function VolumeSlider({
   return (
     <div
       title={title}
-      style={{ "--volume-level": `${percent}%` } as React.CSSProperties}
+      style={{ "--volume-level": `${percent}%` }}
       className={cn("group/volume relative flex items-center", className)}
     >
       <span

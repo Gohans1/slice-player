@@ -60,7 +60,7 @@ export function SliceSeekBar({ segment }: SliceSeekBarProps) {
     <div
       onKeyDownCapture={handleKeyDownCapture}
       // The played part of the bar takes the slice colour
-      style={{ "--primary": segment.color || DEFAULT_SLICE_COLOR } as React.CSSProperties}
+      style={{ "--primary": segment.color || DEFAULT_SLICE_COLOR }}
       className="flex w-full max-w-xl items-center gap-2"
     >
       <span className={`${timeClass} text-right`}>{formatTime(position)}</span>

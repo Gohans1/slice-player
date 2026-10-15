@@ -390,7 +390,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             />
             <div
               className="absolute inset-x-0 bottom-0 h-1 bg-(--slice-color)"
-              style={{ "--slice-color": activeSegment.color || DEFAULT_SLICE_COLOR } as React.CSSProperties}
+              style={{ "--slice-color": activeSegment.color || DEFAULT_SLICE_COLOR }}
             />
           </button>
 
