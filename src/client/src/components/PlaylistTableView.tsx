@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowVirtualizer, defaultRangeExtractor, type Range, type Virtualizer } from "@tanstack/react-virtual";
-import { Play, Pause, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Loader2, Clock, AlertCircle, RotateCcw, GripVertical, SquareCheck } from "lucide-react";
+import { Play, Pause, Scissors, Music, Disc, ChevronUp, ChevronDown, Shuffle, Clock, AlertCircle, RotateCcw, GripVertical, SquareCheck } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { Spinner } from "./ui/spinner";
 import { Checkbox } from "./ui/checkbox";
 import { DropdownMenuItem } from "./ui/dropdown-menu";
 import { INLINE_ROW_ACTIONS_QUERY, useMediaQuery } from "../hooks/use-media-query";
@@ -1592,7 +1593,7 @@ export function PlaylistTableView({
                   <span>{formatDuration(duration)}</span>
                   {item.track?.status === "downloading" ? (
                     <Badge variant="outline">
-                      <Loader2 data-icon="inline-start" className="animate-spin" />
+                      <Spinner data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track?.status === "queued" ? (
@@ -2056,7 +2057,7 @@ export function PlaylistTableView({
                   <span>{formatDuration(duration)}</span>
                   {item.track.status === "downloading" ? (
                     <Badge variant="outline">
-                      <Loader2 data-icon="inline-start" className="animate-spin" />
+                      <Spinner data-icon="inline-start" />
                       <span className="hidden sm:inline">{t("table.downloading")}</span>
                     </Badge>
                   ) : item.track.status === "queued" ? (
@@ -2259,7 +2260,7 @@ export function PlaylistTableView({
                 <span>{formatDuration(track.duration)}</span>
                 {track.status === "downloading" ? (
                   <Badge variant="outline">
-                    <Loader2 data-icon="inline-start" className="animate-spin" />
+                    <Spinner data-icon="inline-start" />
                     <span className="hidden sm:inline">{t("table.downloading")}</span>
                   </Badge>
                 ) : track.status === "queued" ? (

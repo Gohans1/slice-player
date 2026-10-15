@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Modal } from "./Modal";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { defaultMixName } from "../lib/mixPlaylist";
@@ -170,8 +171,8 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
             {t("mixPlaylist.cancel")}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            <span>{mix ? t("mixPlaylist.save") : t("mixPlaylist.submit")}</span>
+            {isSubmitting && <Spinner data-icon="inline-start" />}
+            {mix ? t("mixPlaylist.save") : t("mixPlaylist.submit")}
           </Button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FolderPlus, Loader2, Plus } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Spinner } from "./ui/spinner";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { getHierarchicalPlaylists } from "../lib/playlistHierarchy";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
@@ -110,7 +111,7 @@ export function AddToPlaylistItems({ trackId, segmentId, onCreatePlaylist }: Add
       <DropdownMenuGroup>
         <DropdownMenuLabel>
           {t("addToPlaylist.title")}
-          {loading && <Loader2 className="ml-1.5 inline animate-spin" />}
+          {loading && <Spinner className="ml-1.5 inline" />}
         </DropdownMenuLabel>
         <DropdownMenuItem onClick={onCreatePlaylist}>
           <Plus />
@@ -137,7 +138,7 @@ export function AddToPlaylistItems({ trackId, segmentId, onCreatePlaylist }: Add
                 </span>
               )}
               <span className="truncate">{playlist.name}</span>
-              {busyPlaylistId === playlist.id && <Loader2 className="animate-spin" />}
+              {busyPlaylistId === playlist.id && <Spinner />}
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>

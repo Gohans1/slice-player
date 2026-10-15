@@ -1,7 +1,8 @@
 import * as React from "react";
 import { Modal } from "./Modal";
 import { Button } from "./ui/button";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Spinner } from "./ui/spinner";
+import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore } from "../store/usePlayerStore";
 import type { Playlist } from "@/server/types";
@@ -147,8 +148,8 @@ export function DeletePlaylistModal({
             data-testid="delete-playlist-submit-btn"
             className="cursor-pointer"
           >
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            <span>{t("playlist.delete", "Delete playlist")}</span>
+            {isSubmitting && <Spinner data-icon="inline-start" />}
+            {t("playlist.delete", "Delete playlist")}
           </Button>
         </div>
       </form>
