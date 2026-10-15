@@ -1,30 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { GlobalWindow } from "happy-dom";
+import { createRoot, type Root } from "react-dom/client";
 import { TrackCard } from "./TrackCard";
+import { usePlayerStore } from "../store/usePlayerStore";
 import type { Track } from "@/server/types";
 import i18n from "../i18n";
 
-describe("TrackCard Component - Status & Thumbnail Indicators", () => {
-  let window: any;
-  let container: any;
-  let root: any;
+describe("TrackCard", () => {
+  let container: HTMLElement;
+  let root: Root;
 
   beforeEach(async () => {
-    window = new GlobalWindow();
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    (globalThis as any).window = window;
-    (globalThis as any).document = window.document;
-    (globalThis as any).Node = window.Node;
-    (globalThis as any).Element = window.Element;
-    (globalThis as any).HTMLElement = window.HTMLElement;
-    (globalThis as any).HTMLImageElement = window.HTMLImageElement;
     await i18n.changeLanguage("en");
-
-    container = window.document.createElement("div");
-    window.document.body.appendChild(container);
+    container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
   });
 
@@ -33,13 +23,6 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       root.unmount();
     });
     container.remove();
-    delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
-    delete (globalThis as any).window;
-    delete (globalThis as any).document;
-    delete (globalThis as any).Node;
-    delete (globalThis as any).Element;
-    delete (globalThis as any).HTMLElement;
-    delete (globalThis as any).HTMLImageElement;
   });
 
   const baseTrack: Track = {
@@ -54,58 +37,86 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
     volume: 0.5,
   };
 
-  it("renders 'Queued...' overlay and badge when track status is queued", () => {
+  const studioButton = () => container.querySelector<HTMLButtonElement>('button[aria-label="Open Slice Studio"]');
+
+  const openMoreMenu = async () => {
+    const trigger = container.querySelector<HTMLElement>('button[aria-label^="More options for"]');
+    await act(async () => {
+      trigger?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    return (label: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((item) =>
+        item.textContent?.includes(label)
+      );
+  };
+
+  it("covers the artwork with the download status and disables Slice Studio while queued", () => {
     act(() => {
       root.render(<TrackCard track={baseTrack} onDelete={() => {}} />);
     });
 
-    const textContent = container.textContent || "";
-    expect(textContent).toContain("Queued...");
-    expect(textContent).toContain("In download queue");
-    expect(textContent).not.toContain("Slice");
+    expect(container.textContent).toContain("Queued...");
+    expect(studioButton()?.disabled).toBe(true);
+    expect(container.querySelector(`button[title="Play ${baseTrack.title}"]`)).toBeNull();
   });
 
-  it("renders 'Downloading audio...' overlay and badge when track status is downloading", () => {
-    const downloadingTrack: Track = { ...baseTrack, status: "downloading" };
+  it("shows download progress and disables Slice Studio while downloading", () => {
     act(() => {
-      root.render(<TrackCard track={downloadingTrack} onDelete={() => {}} />);
+      root.render(<TrackCard track={{ ...baseTrack, status: "downloading" }} onDelete={() => {}} />);
     });
 
-    const textContent = container.textContent || "";
-    expect(textContent).toContain("Downloading audio...");
-    expect(textContent).not.toContain("Slice");
+    expect(container.textContent).toContain("Downloading audio...");
+    expect(studioButton()?.disabled).toBe(true);
   });
 
-  it("renders error overlay and retry button when track status is error", () => {
-    const errorTrack: Track = {
-      ...baseTrack,
-      status: "error",
-      error_message: "Network unreachable",
-    };
-    act(() => {
-      root.render(<TrackCard track={errorTrack} onDelete={() => {}} />);
-    });
+  it("shows why a download failed and retries it", async () => {
+    const retryTrack = mock(async () => true);
+    const origRetry = usePlayerStore.getState().retryTrack;
+    usePlayerStore.setState({ retryTrack });
+    const errorTrack: Track = { ...baseTrack, status: "error", error_message: "Network unreachable" };
 
-    const textContent = container.textContent || "";
-    expect(textContent).toContain("Download failed");
-    expect(textContent).toContain("Network unreachable");
-    expect(textContent).toContain("Retry");
+    try {
+      act(() => {
+        root.render(<TrackCard track={errorTrack} onDelete={() => {}} />);
+      });
+
+      expect(container.textContent).toContain("Download failed");
+      expect(container.textContent).toContain("Network unreachable");
+      const retry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Retry"));
+      await act(async () => {
+        retry?.click();
+      });
+      expect(retryTrack).toHaveBeenCalledWith(errorTrack.id);
+    } finally {
+      usePlayerStore.setState({ retryTrack: origRetry });
+    }
   });
 
-  it("renders ready state with active buttons and without queue/downloading overlays", () => {
-    const readyTrack: Track = { ...baseTrack, status: "ready" };
-    act(() => {
-      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
-    });
+  it("offers play and Slice Studio once ready", () => {
+    const openSliceStudio = mock(() => {});
+    const origOpen = usePlayerStore.getState().openSliceStudio;
+    usePlayerStore.setState({ openSliceStudio });
+    const readyTrack: Track = { ...baseTrack, status: "ready", segment_count: 3 };
 
-    const textContent = container.textContent || "";
-    expect(textContent).toContain("Slice");
-    expect(textContent).not.toContain("Queued...");
-    expect(textContent).not.toContain("Downloading audio...");
+    try {
+      act(() => {
+        root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+      });
+
+      expect(container.textContent).not.toContain("Queued...");
+      expect(container.textContent).toContain("3 slices");
+      expect(container.querySelector(`button[title="Play ${readyTrack.title}"]`)).not.toBeNull();
+      act(() => {
+        studioButton()?.click();
+      });
+      expect(openSliceStudio).toHaveBeenCalledWith(readyTrack);
+    } finally {
+      usePlayerStore.setState({ openSliceStudio: origOpen });
+    }
   });
 
   it("renders active playing equalizer badge and border when current track is playing", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const readyTrack: Track = { ...baseTrack, status: "ready" };
 
     act(() => {
@@ -129,7 +140,6 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
   });
 
   it("renders pause button and calls pause when clicking thumbnail overlay while playing", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origPause = usePlayerStore.getState().pause;
     const readyTrack: Track = { ...baseTrack, status: "ready" };
     const pauseSpy = mock(() => {});
@@ -143,11 +153,11 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
     });
 
-    const overlayBtn = container.querySelector(`button[title="Pause ${readyTrack.title}"]`);
+    const overlayBtn = container.querySelector<HTMLButtonElement>(`button[title="Pause ${readyTrack.title}"]`);
     expect(overlayBtn).not.toBeNull();
 
     act(() => {
-      overlayBtn.click();
+      overlayBtn?.click();
     });
 
     expect(pauseSpy).toHaveBeenCalledTimes(1);
@@ -162,7 +172,6 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
   });
 
   it("calls resume when clicking thumbnail overlay while active track is paused", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origResume = usePlayerStore.getState().resume;
     const readyTrack: Track = { ...baseTrack, status: "ready" };
     const resumeSpy = mock(() => Promise.resolve());
@@ -176,11 +185,11 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
     });
 
-    const overlayBtn = container.querySelector(`button[title="Play ${readyTrack.title}"]`);
+    const overlayBtn = container.querySelector<HTMLButtonElement>(`button[title="Play ${readyTrack.title}"]`);
     expect(overlayBtn).not.toBeNull();
 
     await act(async () => {
-      overlayBtn.click();
+      overlayBtn?.click();
     });
 
     expect(resumeSpy).toHaveBeenCalledTimes(1);
@@ -195,7 +204,6 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
   });
 
   it("prevents repeated play initiation when spam clicking thumbnail play button", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const origPlaySegmentInMode = usePlayerStore.getState().playSegmentInMode;
     const readyTrack: Track = { ...baseTrack, id: "spam_track", status: "ready" };
     const playSegmentInModeSpy = mock(() => Promise.resolve());
@@ -211,15 +219,15 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
       root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
     });
 
-    const overlayBtn = container.querySelector(`button[title="Play ${readyTrack.title}"]`);
+    const overlayBtn = container.querySelector<HTMLButtonElement>(`button[title="Play ${readyTrack.title}"]`);
     expect(overlayBtn).not.toBeNull();
 
     // Rapid spam clicks
     await act(async () => {
-      overlayBtn.click();
-      overlayBtn.click();
-      overlayBtn.click();
-      overlayBtn.click();
+      overlayBtn?.click();
+      overlayBtn?.click();
+      overlayBtn?.click();
+      overlayBtn?.click();
     });
 
     // Should only initiate playback once despite rapid spam clicks
@@ -235,7 +243,6 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
   });
 
   it("toggles track selection and does not initiate playback when in selection mode", async () => {
-    const { usePlayerStore } = await import("../store/usePlayerStore");
     const { useSelectionStore } = await import("../store/useSelectionStore");
 
     const playSegmentInModeSpy = mock(() => Promise.resolve());
@@ -268,12 +275,12 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
     expect(useSelectionStore.getState().selectedTrackIds.size).toBe(1);
     expect(useSelectionStore.getState().selectedTrackIds.has("target_trk")).toBe(false);
 
-    const overlayBtn = container.querySelector(`button[title="Select Target Track"]`);
+    const overlayBtn = container.querySelector<HTMLButtonElement>(`button[title="Select Target Track"]`);
     expect(overlayBtn).not.toBeNull();
 
     // Click play overlay while in selection mode
     await act(async () => {
-      overlayBtn.click();
+      overlayBtn?.click();
     });
 
     // Should be selected now!
@@ -298,120 +305,78 @@ describe("TrackCard Component - Status & Thumbnail Indicators", () => {
     });
   });
 
-  it("applies uniform height and overflow prevention classes to card, title, badge, and footer", () => {
+  it("selects the track from its artwork checkbox without playing it", async () => {
+    const { useSelectionStore } = await import("../store/useSelectionStore");
+    const playSegmentInMode = mock(() => Promise.resolve());
+    const origPlay = usePlayerStore.getState().playSegmentInMode;
+    usePlayerStore.setState({ playSegmentInMode });
+    const readyTrack: Track = { ...baseTrack, status: "ready" };
+
+    try {
+      act(() => {
+        useSelectionStore.getState().clearSelection();
+        root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+      });
+
+      const checkbox = container.querySelector<HTMLElement>(`[role="checkbox"][aria-label="Select ${readyTrack.title}"]`);
+      await act(async () => {
+        checkbox?.click();
+      });
+
+      expect(useSelectionStore.getState().selectedTrackIds.has(readyTrack.id)).toBe(true);
+      expect(checkbox?.getAttribute("aria-checked")).toBe("true");
+      expect(playSegmentInMode).not.toHaveBeenCalled();
+    } finally {
+      act(() => {
+        useSelectionStore.getState().clearSelection();
+      });
+      usePlayerStore.setState({ playSegmentInMode: origPlay });
+    }
+  });
+
+  it("keeps add to playlist, copy link and delete in the More menu", async () => {
+    const onDelete = mock((_id: string) => {});
     const readyTrack: Track = { ...baseTrack, status: "ready" };
     act(() => {
-      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
+      root.render(<TrackCard track={readyTrack} onDelete={onDelete} />);
     });
 
-    const cardRoot = container.firstElementChild as HTMLElement;
-    expect(cardRoot.className).toContain("h-full");
-
-    const titleEl = cardRoot.querySelector("h3") as HTMLElement;
-    expect(titleEl.className).toContain("min-h-[2.5rem]");
-
-    const slicesBadge = Array.from(cardRoot.querySelectorAll('[data-slot="badge"]')).find(
-      (el) => el.textContent?.includes("slices")
-    );
-    expect(slicesBadge).toBeDefined();
-    expect(slicesBadge?.className).toContain("whitespace-nowrap");
-    expect(slicesBadge?.className).toContain("shrink-0");
-
-    const footerEl = slicesBadge?.parentElement as HTMLElement;
-    expect(footerEl.className).toContain("mt-auto");
-
-    // AddToPlaylistPopover should not show text 'Playlist' to avoid overflowing the footer
-    expect(footerEl.textContent).not.toContain("Playlist");
-  });
-
-  it("renders Copy YouTube link button for youtube tracks and copies source_uri to clipboard when clicked", async () => {
-    const writeTextSpy = mock((_text: string) => Promise.resolve());
-    Object.defineProperty(window.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-    Object.defineProperty(globalThis.navigator, "clipboard", {
-      value: { writeText: writeTextSpy },
-      configurable: true,
-    });
-
-    const readyTrack: Track = {
-      ...baseTrack,
-      status: "ready",
-      source_type: "youtube",
-      source_uri: "https://www.youtube.com/watch?v=test_vid_99",
-    };
-
-    act(() => {
-      root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
-    });
-
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
-    expect(copyBtn).not.toBeNull();
+    const menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    expect(menuItem("Copy YouTube link")).toBeDefined();
 
     await act(async () => {
-      copyBtn!.click();
+      menuItem("Delete track")?.click();
     });
-
-    expect(writeTextSpy).toHaveBeenCalledTimes(1);
-    expect(writeTextSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=test_vid_99");
-    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
+    expect(onDelete).toHaveBeenCalledWith(readyTrack.id);
   });
 
-  it("does not render Copy YouTube link button for local audio tracks", () => {
-    const localTrack: Track = {
-      ...baseTrack,
-      id: "local_1",
-      source_type: "local",
-      source_uri: "/music/song.flac",
-      status: "ready",
-    };
-
-    act(() => {
-      root.render(<TrackCard track={localTrack} onDelete={() => {}} />);
-    });
-
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"]');
-    expect(copyBtn).toBeNull();
-  });
-
-  it("falls back to execCommand('copy') and still transitions to Copied state when navigator.clipboard.writeText rejects", async () => {
-    const rejectSpy = mock((_text: string) => Promise.reject(new Error("Write permission denied")));
-    Object.defineProperty(window.navigator, "clipboard", {
-      value: { writeText: rejectSpy },
-      configurable: true,
-    });
-    Object.defineProperty(globalThis.navigator, "clipboard", {
-      value: { writeText: rejectSpy },
-      configurable: true,
-    });
-    const execCommandSpy = mock((_cmd: string) => true);
-    (window.document as any).execCommand = execCommandSpy;
-    (globalThis.document as any).execCommand = execCommandSpy;
-
-    const readyTrack: Track = {
-      ...baseTrack,
-      status: "ready",
-      source_type: "youtube",
-      source_uri: "https://www.youtube.com/watch?v=fallback_vid",
-    };
-
+  it("copies a YouTube track's link from the More menu", async () => {
+    const writeText = mock((_text: string) => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const readyTrack: Track = { ...baseTrack, status: "ready", source_uri: "https://www.youtube.com/watch?v=test_vid_99" };
     act(() => {
       root.render(<TrackCard track={readyTrack} onDelete={() => {}} />);
     });
 
-    const copyBtn = container.querySelector('button[title="Copy YouTube link"]') as HTMLButtonElement | null;
-    expect(copyBtn).not.toBeNull();
-
+    const menuItem = await openMoreMenu();
     await act(async () => {
-      copyBtn!.click();
+      menuItem("Copy YouTube link")?.click();
     });
 
-    expect(rejectSpy).toHaveBeenCalledWith("https://www.youtube.com/watch?v=fallback_vid");
-    expect(execCommandSpy).toHaveBeenCalledWith("copy");
-    expect(copyBtn!.getAttribute("title")).toBe("Copied link!");
-    expect(copyBtn!.getAttribute("data-copied")).toBe("true");
+    expect(writeText).toHaveBeenCalledWith("https://www.youtube.com/watch?v=test_vid_99");
+    expect(menuItem("Copied link!")).toBeDefined();
+  });
+
+  it("has no copy link action for local audio", async () => {
+    act(() => {
+      root.render(
+        <TrackCard track={{ ...baseTrack, source_type: "local", source_uri: "/music/song.flac", status: "ready" }} onDelete={() => {}} />
+      );
+    });
+
+    const menuItem = await openMoreMenu();
+    expect(menuItem("Add to Playlist")).toBeDefined();
+    expect(menuItem("Copy YouTube link")).toBeUndefined();
   });
 });
-
-

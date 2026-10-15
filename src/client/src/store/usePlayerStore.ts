@@ -203,7 +203,7 @@ export interface QueueOrigin {
   mode?: PlaybackMode;
 }
 
-interface PlayerState {
+export interface PlayerState {
   tracks: Track[];
   isLoadingTracks: boolean;
   activeTrack: Track | null;

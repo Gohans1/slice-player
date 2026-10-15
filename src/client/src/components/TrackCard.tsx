@@ -1,24 +1,14 @@
 import * as React from "react";
-import { Scissors, Play, Pause, Trash2, Disc, Loader2, AlertCircle, RotateCcw, Clock, Check } from "lucide-react";
+import { RotateCcw, Scissors } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { formatDuration, createDefaultFullSegment } from "../lib/utils";
-import { TrackThumbnail } from "./TrackThumbnail";
+import { MediaTile } from "./MediaTile";
+import { RowActionsMenu } from "./RowActionsMenu";
+import { useGuardedPlayToggle } from "../hooks/use-guarded-play-toggle";
+import { cn, formatDuration, createDefaultFullSegment } from "../lib/utils";
 import { usePlayerStore, isPlaybackMode } from "../store/usePlayerStore";
 import { useIsTrackSelected, useSelectionStore, useIsSelectionActive, createTrackSelectedItem, type SelectedItem } from "../store/useSelectionStore";
-import { useTranslation } from "react-i18next";
-import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
-import { CopyTrackLinkButton } from "./CopyTrackLinkButton";
-import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
-
-function YoutubeIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-    </svg>
-  );
-}
 
 interface TrackCardProps {
   track: Track;
@@ -38,343 +28,115 @@ export function TrackCardComponent({ track, onDelete, deleteTitle, visibleTrackI
   const toggleTrack = useSelectionStore((s) => s.toggleTrack);
   const isCurrentPlaying = usePlayerStore((s) => s.isPlaying && s.activeTrack?.id === track.id);
 
-  const onPlayRef = React.useRef(onPlay);
-  onPlayRef.current = onPlay;
-  const onDeleteRef = React.useRef(onDelete);
-  onDeleteRef.current = onDelete;
-  const visibleTrackIdsRef = React.useRef(visibleTrackIds);
-  visibleTrackIdsRef.current = visibleTrackIds;
+  // Fetched slices go stale once the track's slice count changes
+  const [fetchedSegments, setFetchedSegments] = React.useState<{ count?: number; list: Segment[] } | null>(null);
+  const segments = fetchedSegments && fetchedSegments.count === track.segment_count ? fetchedSegments.list : null;
 
-  const [segments, setSegments] = React.useState<Segment[] | null>(null);
-
-  const handleRetry = async (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    await retryTrack(track.id);
-  };
-
-  React.useEffect(() => {
-    setSegments(null);
-  }, [track.segment_count]);
-
-  const isPlayBusyRef = React.useRef(false);
-  const lastPlayInitiatedRef = React.useRef(0);
-
-  const handlePlayFirst = async (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (useSelectionStore.getState().selectedTrackIds.size > 0) {
-      toggleTrack(track.id, visibleTrackIdsRef.current, e?.shiftKey, createTrackSelectedItem(track));
+  const playFirstSlice = async () => {
+    if (onPlay) {
+      onPlay();
       return;
     }
-    if (track.status !== "ready" || track.duration <= 0) return;
-
     const store = usePlayerStore.getState();
-    const isActive = store.activeTrack?.id === track.id;
+    const { activeSystemCategory, playbackMode, playSegmentInMode } = store;
+    const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
 
-    if (isActive) {
-      // Prevent rapid spam clicks immediately after initiating playback
-      if (Date.now() - lastPlayInitiatedRef.current < 600) {
-        return;
-      }
-      if (isPlayBusyRef.current) return;
-      isPlayBusyRef.current = true;
-      setTimeout(() => {
-        isPlayBusyRef.current = false;
-      }, 300);
-
-      if (store.isPlaying) {
-        store.pause();
-      } else {
-        await store.resume();
-      }
+    if (targetMode === "original_only" || targetMode === "mixed") {
+      await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
       return;
     }
 
-    if (isPlayBusyRef.current) return;
-    isPlayBusyRef.current = true;
-    lastPlayInitiatedRef.current = Date.now();
+    // Check if player store queue already has custom slices for this track
+    const queue = store.queuesByMode[targetMode] || store.queue;
+    const queuedTrackSlices = queue
+      .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
+      .map((it) => it.segment);
+    if (queuedTrackSlices.length > 0) {
+      await playSegmentInMode(targetMode, queuedTrackSlices[0], track);
+      return;
+    }
 
-    try {
-      if (onPlayRef.current) {
-        onPlayRef.current();
-        return;
-      }
-      const { activeSystemCategory, playbackMode, playSegmentInMode } = store;
-      const targetMode = isPlaybackMode(activeSystemCategory) ? activeSystemCategory : playbackMode;
-
-      if (targetMode === "original_only" || targetMode === "mixed") {
-        await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
-        return;
-      }
-
-      // Check if player store queue already has custom slices for this track
-      const queue = store.queuesByMode[targetMode] || store.queue;
-      const queuedTrackSlices = queue
-        .filter((it) => it.track.id === track.id && !it.segment.id.startsWith("fallback_"))
-        .map((it) => it.segment);
-      if (queuedTrackSlices.length > 0) {
-        await playSegmentInMode(targetMode, queuedTrackSlices[0], track);
-        return;
-      }
-
-      let segList = segments;
-      if (!segList) {
-        try {
-          const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
-          if (res.ok) {
-            segList = await res.json();
-            setSegments(segList);
-          }
-        } catch (e) {
-          console.error(e);
+    let segList = segments;
+    if (!segList) {
+      try {
+        const res = await fetch(`/api/tracks/${encodeURIComponent(track.id)}/segments`);
+        if (res.ok) {
+          const list: Segment[] = await res.json();
+          segList = list;
+          setFetchedSegments({ count: track.segment_count, list });
         }
+      } catch (e) {
+        console.error(e);
       }
+    }
 
-      if (segList && segList.length > 0) {
-        await playSegmentInMode(targetMode, segList[0], track);
-      } else {
-        // Create a default full-length segment if none exists
-        await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
-      }
-    } finally {
-      setTimeout(() => {
-        isPlayBusyRef.current = false;
-      }, 500);
+    if (segList && segList.length > 0) {
+      await playSegmentInMode(targetMode, segList[0], track);
+    } else {
+      // Create a default full-length segment if none exists
+      await playSegmentInMode(targetMode, createDefaultFullSegment(track), track);
     }
   };
+
+  const togglePlay = useGuardedPlayToggle((s) => s.activeTrack?.id === track.id, playFirstSlice);
 
   const isReady = track.status === "ready" && track.duration > 0;
+  const studioLabel = t("table.openStudio", "Open Slice Studio");
 
   return (
-    <div
-      className={`group relative flex flex-col h-full rounded-xl border bg-card p-4 transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 ${
-        isSelected
-          ? "ring-2 ring-primary border-primary bg-primary/5 shadow-md shadow-primary/10"
-          : isCurrentPlaying
-          ? "border-primary ring-1 ring-primary/40 bg-primary/5 shadow-md shadow-primary/10"
-          : !isReady ? "opacity-85 border-border" : "border-border"
-      }`}
-    >
-      {/* Thumbnail */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
-        <TrackThumbnail
-          src={track.thumbnail_url}
-          alt={track.title}
-          className={`h-full w-full object-cover transition-transform duration-300 ${
-            !isReady ? "opacity-70 brightness-90" : "group-hover:scale-105"
-          }`}
-          fallback={
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-              <Disc className="h-10 w-10 opacity-40" />
-            </div>
-          }
-        />
-
-        {/* Source Badge */}
-        <div className="absolute top-2 left-2">
-          {track.source_type === "youtube" ? (
-            <Badge variant="destructive" className="flex items-center gap-1 text-2xs py-0.5">
-              <YoutubeIcon className="h-3 w-3" />
-              <span>YouTube</span>
-            </Badge>
-          ) : (
-            <Badge variant="cyan" className="flex items-center gap-1 text-2xs py-0.5">
-              <Disc className="h-3 w-3" />
-              <span>{t("trackCard.flacLocal", "FLAC Local")}</span>
-            </Badge>
-          )}
-        </div>
-
-        {/* Selection Checkbox */}
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={isSelected}
-          aria-label={t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` })}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleTrack(track.id, visibleTrackIdsRef.current, e.shiftKey, createTrackSelectedItem(track));
-          }}
-          className={`absolute top-2 right-2 z-20 flex h-6 w-6 items-center justify-center rounded-md transition-[background-color,color,opacity,box-shadow,transform] active:scale-90 motion-reduce:transform-none duration-150 cursor-pointer ${
-            isSelected
-              ? "bg-primary text-primary-foreground shadow-md opacity-100 ring-2 ring-background"
-              : "bg-black/60 text-white/80 hover:bg-black/80 hover:text-white backdrop-blur-xs opacity-40 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-          }`}
-        >
-          {isSelected ? (
-            <Check className="h-3.5 w-3.5 stroke-[3] animate-in zoom-in-75 duration-100 ease-out" />
-          ) : (
-            <div className="h-3.5 w-3.5 rounded-xs border-2 border-white/70" />
-          )}
-        </button>
-
-        {/* Duration badge */}
-        <div className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-mono font-medium text-white backdrop-blur-xs">
-          {formatDuration(track.duration)}
-        </div>
-
-        {/* Active Playing Equalizer Badge */}
-        {isCurrentPlaying && (
-          <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5 rounded bg-primary px-1.5 py-0.5 text-2xs font-mono font-semibold text-primary-foreground shadow-sm animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-            <NowPlayingEqualizer />
-            <span className="uppercase text-2xs tracking-wider font-sans">{t("player.nowPlaying", "Playing")}</span>
-          </div>
-        )}
-
-        {/* Quick play overlay */}
-        {isReady && (
-          <button
-            type="button"
-            onClick={handlePlayFirst}
-            className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
-            title={
-              isSelectionActive
-                ? (isSelected
-                    ? t("trackCard.deselectTrack", { title: track.title, defaultValue: `Deselect ${track.title}` })
-                    : t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` }))
-                : isCurrentPlaying
-                ? t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })
-                : t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })
-            }
-            aria-label={
-              isSelectionActive
-                ? (isSelected
-                    ? t("trackCard.deselectTrack", { title: track.title, defaultValue: `Deselect ${track.title}` })
-                    : t("trackCard.selectTrack", { title: track.title, defaultValue: `Select ${track.title}` }))
-                : isCurrentPlaying
-                ? t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })
-                : t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })
-            }
+    <MediaTile
+      thumbnailUrl={track.thumbnail_url}
+      title={track.title}
+      subtitle={track.artist || t("table.unknownArtist", "Unknown Artist")}
+      meta={
+        track.status === "error" ? (
+          <span className="text-destructive" title={track.error_message || undefined}>
+            {track.error_message || t("trackCard.unknownError", "Unknown error")}
+          </span>
+        ) : (
+          <>
+            {formatDuration(track.duration)} ·{" "}
+            {t("table.slicesCountBadge", { count: track.segment_count ?? segments?.length ?? 0 })}
+          </>
+        )
+      }
+      status={track.status}
+      isReady={isReady}
+      isCurrentPlaying={isCurrentPlaying}
+      isSelected={isSelected}
+      isSelectionActive={isSelectionActive}
+      playLabel={t("trackCard.playTitle", { title: track.title, defaultValue: `Play ${track.title}` })}
+      pauseLabel={t("trackCard.pauseTitle", { title: track.title, defaultValue: `Pause ${track.title}` })}
+      onPlayToggle={() => void togglePlay()}
+      onToggleSelected={(shiftKey) => toggleTrack(track.id, visibleTrackIds, shiftKey, createTrackSelectedItem(track))}
+      errorAction={
+        <Button variant="destructive" size="sm" disabled={isRetrying} onClick={() => void retryTrack(track.id)}>
+          <RotateCcw data-icon="inline-start" className={cn(isRetrying && "animate-spin")} />
+          {isRetrying ? t("trackCard.retrying", "Retrying...") : t("trackCard.retry", "Retry")}
+        </Button>
+      }
+      actions={
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!isReady}
+            onClick={() => openSliceStudio(track)}
+            title={studioLabel}
+            aria-label={studioLabel}
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform duration-100 hover:scale-110 active:scale-95">
-              {isCurrentPlaying ? (
-                <Pause className="h-6 w-6 fill-current" />
-              ) : (
-                <Play className="h-6 w-6 fill-current translate-x-0.5" />
-              )}
-            </div>
-          </button>
-        )}
-
-        {/* Status Indicator */}
-        {track.status === "queued" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs gap-1.5 p-2 text-center">
-            <Clock className="h-6 w-6 text-primary/90 animate-pulse" />
-            <span className="text-xs font-medium text-primary-foreground/90">{t("trackCard.queued", "Queued...")}</span>
-            <span className="text-2xs text-muted-foreground">{t("trackCard.inQueue", "In download queue")}</span>
-          </div>
-        )}
-
-        {track.status === "downloading" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-xs gap-2">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-xs font-medium text-primary">{t("trackCard.downloading", "Downloading audio...")}</span>
-          </div>
-        )}
-
-        {track.status === "error" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-3 text-center z-10">
-            <AlertCircle className="h-5 w-5 text-destructive mb-1 shrink-0" />
-            <span className="text-xs text-destructive font-semibold">{t("trackCard.error", "Download failed")}</span>
-            <span className="text-2xs text-muted-foreground mt-0.5 mb-2 line-clamp-2" title={track.error_message || ""}>
-              {track.error_message || t("trackCard.unknownError", "Unknown error")}
-            </span>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleRetry}
-              disabled={isRetrying}
-              className="h-7 text-xs px-3 gap-1.5 shadow-md cursor-pointer hover:bg-destructive/90"
-            >
-              <RotateCcw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
-              <span>{isRetrying ? t("trackCard.retrying", "Retrying...") : t("trackCard.retry", "Retry")}</span>
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="mt-3 flex-1 flex flex-col">
-        <h3 className={`font-semibold text-sm leading-snug line-clamp-2 min-h-[2.5rem] transition-colors ${
-          isCurrentPlaying ? "text-primary" : "text-foreground group-hover:text-primary"
-        }`}>
-          {track.title}
-        </h3>
-        {track.artist && (
-          <p className="text-xs text-muted-foreground mt-1 truncate">
-            {track.artist}
-          </p>
-        )}
-
-        {/* Segment badge & actions */}
-        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-1.5">
-          <Badge variant="secondary" className="font-mono text-2xs font-normal whitespace-nowrap shrink-0">
-            {t("trackCard.slicesCount", {
-              count: track.segment_count ?? segments?.length ?? 0,
-              defaultValue: `${track.segment_count ?? segments?.length ?? 0} slices`,
-            })}
-          </Badge>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {track.status === "error" ? (
-              <Badge variant="destructive" className="h-8 text-xs gap-1.5 border-destructive/40 font-normal shrink-0">
-                <AlertCircle className="h-3.5 w-3.5" />
-                <span>{t("table.downloadError", "Error")}</span>
-              </Badge>
-            ) : track.status === "downloading" ? (
-              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 text-primary px-2.5 font-normal shrink-0">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>{t("table.downloading", "Downloading...")}</span>
-              </Badge>
-            ) : track.status === "queued" ? (
-              <Badge variant="outline" className="h-8 text-xs gap-1.5 border-border text-muted-foreground px-2.5 font-normal shrink-0">
-                <Clock className="h-3.5 w-3.5 text-primary/80" />
-                <span>{t("table.queued", "Queued...")}</span>
-              </Badge>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openSliceStudio(track)}
-                disabled={!isReady}
-                className="h-8 text-xs gap-1 px-2 border-primary/30 hover:bg-primary/10 hover:text-primary cursor-pointer shrink-0"
-              >
-                <Scissors className="h-3.5 w-3.5" />
-                <span>{t("trackCard.slice", "Slice")}</span>
-              </Button>
-            )}
-
-            <div className="flex items-center gap-0.5 opacity-90 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity duration-150 shrink-0">
-              <CopyTrackLinkButton
-                sourceType={track.source_type}
-                sourceUri={track.source_uri}
-              />
-              {isReady && (
-                <AddToPlaylistPopover
-                  trackId={track.id}
-                  disabled={!isReady}
-                  variant="ghost"
-                  size="icon"
-                  buttonClassName="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-                  showText={false}
-                />
-              )}
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => onDeleteRef.current(track.id)}
-                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer focus-visible:ring-1 focus-visible:ring-destructive focus-visible:opacity-100"
-                title={deleteTitle || t("trackCard.delete", "Delete track")}
-                aria-label={deleteTitle || t("trackCard.delete", "Delete track")}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            <Scissors />
+          </Button>
+          <RowActionsMenu
+            name={track.title}
+            track={track}
+            canAddToPlaylist={isReady}
+            deleteLabel={deleteTitle || t("trackCard.delete", "Delete track")}
+            onDelete={() => onDelete(track.id)}
+          />
+        </>
+      }
+    />
   );
 }
 
@@ -386,6 +148,7 @@ export const TrackCard = React.memo(TrackCardComponent, (prev, next) => {
     prev.track.title === next.track.title &&
     prev.track.artist === next.track.artist &&
     prev.track.status === next.track.status &&
+    prev.track.error_message === next.track.error_message &&
     prev.track.duration === next.track.duration &&
     prev.track.thumbnail_url === next.track.thumbnail_url &&
     prev.track.segment_count === next.track.segment_count &&
