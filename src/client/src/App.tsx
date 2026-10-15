@@ -17,11 +17,12 @@ import { PlaylistHeader } from "./components/PlaylistHeader";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
-import { Music, Loader2, LayoutGrid, List, Scissors, AlertCircle, Check, RefreshCw } from "lucide-react";
+import { EmptyState } from "./components/EmptyState";
+import { Music, Loader2, LayoutGrid, List, Scissors, AlertCircle, Check, RefreshCw, SearchX } from "lucide-react";
 import { audioEngine } from "./lib/audio";
 import { filterTracks, searchItems } from "./lib/search";
 import { showsItemsOf } from "./lib/mixPlaylist";
-import { compareDownloadingTracks, createDefaultFullSegment } from "./lib/utils";
+import { cn, compareDownloadingTracks, createDefaultFullSegment } from "./lib/utils";
 import {
   findActivePlaylistItemIndex,
   findActiveMixedItemIndex,
@@ -36,6 +37,7 @@ import {
   getSortedTracks,
   type MixedItem,
 } from "./lib/playlistSort";
+import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 import { AppShell } from "./components/layout/AppShell";
@@ -1181,25 +1183,21 @@ export function App() {
               initialScrollOffset={targetScrollY}
             />
           ) : activePlaylistItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Music className="h-7 w-7" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                {t("library.emptyPlaylistTitle")}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                {t("library.emptyPlaylistDesc", { name: activePl?.name })}
-              </p>
-            </div>
+            <EmptyState
+              icon={Music}
+              title={t("library.emptyPlaylistTitle")}
+              description={t("library.emptyPlaylistDesc", { name: activePl?.name })}
+            />
           ) : displayedPlaylistItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noResultsTitle")}
+              description={t("library.noResultsDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : (
             <VirtualizedCardGrid
               key={`playlist_${activePlaylistId}`}
@@ -1231,13 +1229,15 @@ export function App() {
         ) : activeSystemCategory === "playlists" ? (
           /* Playlists library: one cover card per custom playlist */
           displayedPlaylists.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noResultsTitle")}
+              description={t("library.noResultsDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : (
             <PlaylistGrid
               playlists={displayedPlaylists}
@@ -1249,25 +1249,21 @@ export function App() {
         ) : activeSystemCategory === "slices_only" ? (
           /* Slices Only Category */
           allSliceItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Scissors className="h-7 w-7" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                {t("library.noSlicesTitle")}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                {t("library.noSlicesDesc")}
-              </p>
-            </div>
+            <EmptyState
+              icon={Scissors}
+              title={t("library.noSlicesTitle")}
+              description={t("library.noSlicesDesc")}
+            />
           ) : filteredSliceItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noSlicesSearchTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noSlicesSearchDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noSlicesSearchTitle")}
+              description={t("library.noSlicesSearchDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : viewMode === "list" ? (
             <PlaylistTableView
               sliceItems={filteredSliceItems}
@@ -1314,25 +1310,21 @@ export function App() {
         ) : activeSystemCategory === "mixed" ? (
           /* Mixed Category (Trộn Cả 2) */
           isLibraryEmpty || allMixedItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Music className="h-7 w-7" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                {t("library.emptyLibraryTitle")}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                {t("library.emptyLibraryDesc")}
-              </p>
-            </div>
+            <EmptyState
+              icon={Music}
+              title={t("library.emptyLibraryTitle")}
+              description={t("library.emptyLibraryDesc")}
+            />
           ) : filteredMixedItems.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noResultsTitle")}
+              description={t("library.noResultsDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : viewMode === "list" ? (
             <PlaylistTableView
               mixedItems={filteredMixedItems}
@@ -1407,28 +1399,22 @@ export function App() {
         ) : activeSystemCategory === "downloading_only" ? (
           /* Downloading Only Category (Đang Tải) */
           downloadingTracks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Check className="h-7 w-7 text-flexoki-green" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                {t("categories.noDownloadingTitle")}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                {t("categories.noDownloadingDesc")}
-              </p>
-            </div>
+            <EmptyState
+              icon={Check}
+              tone="success"
+              title={t("categories.noDownloadingTitle")}
+              description={t("categories.noDownloadingDesc")}
+            />
           ) : filteredDownloadingTracks.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Loader2 className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noResultsTitle")}
+              description={t("library.noResultsDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : viewMode === "list" ? (
             <PlaylistTableView
               filteredTracks={filteredDownloadingTracks}
@@ -1456,51 +1442,40 @@ export function App() {
         ) : activeSystemCategory === "error_only" ? (
           /* Error Only Category (Bài Lỗi) */
           errorTracks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <Check className="h-7 w-7 text-flexoki-green" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                {t("categories.noErrorsTitle")}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                {t("categories.noErrorsDesc")}
-              </p>
-            </div>
+            <EmptyState
+              icon={Check}
+              tone="success"
+              title={t("categories.noErrorsTitle")}
+              description={t("categories.noErrorsDesc")}
+            />
           ) : filteredErrorTracks.length === 0 && isSearching ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-                <AlertCircle className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">{t("library.noResultsTitle")}</h2>
-              <p className="text-xs text-muted-foreground mt-1">{t("library.noResultsDesc")}</p>
-              <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="mt-4 text-xs">
+            <EmptyState
+              icon={SearchX}
+              title={t("library.noResultsTitle")}
+              description={t("library.noResultsDesc")}
+            >
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
                 {t("library.clearSearch")}
               </Button>
-            </div>
+            </EmptyState>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-destructive/10 border border-destructive/25 text-foreground">
-                <div className="flex items-center gap-2.5">
-                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-                  <span className="text-xs sm:text-sm font-medium">
-                    {t("categories.errorsDesc")}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-mono">
-                    ({errorTracks.length})
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={isRetryingAll}
-                  onClick={() => retryAllErrors()}
-                  className="gap-1.5 text-xs font-semibold shadow-xs"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isRetryingAll ? "animate-spin" : ""}`} />
-                  <span>{isRetryingAll ? t("categories.retryingAll") : t("categories.retryAll", { count: errorTracks.length })}</span>
-                </Button>
-              </div>
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>{t("categories.errorsDesc")}</AlertTitle>
+                <AlertDescription>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={isRetryingAll}
+                    onClick={() => retryAllErrors()}
+                    className="mt-1.5"
+                  >
+                    <RefreshCw data-icon="inline-start" className={cn(isRetryingAll && "animate-spin")} />
+                    {isRetryingAll ? t("categories.retryingAll") : t("categories.retryAll", { count: errorTracks.length })}
+                  </Button>
+                </AlertDescription>
+              </Alert>
 
               {viewMode === "list" ? (
                 <PlaylistTableView
@@ -1530,38 +1505,22 @@ export function App() {
           )
         ) : isLibraryEmpty || originalTracks.length === 0 ? (
           /* Empty Library State (No tracks in DB) */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-              <Music className="h-7 w-7" />
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {t("library.emptyLibraryTitle")}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1 max-w-md">
-              {t("library.emptyLibraryDesc")}
-            </p>
-          </div>
+          <EmptyState
+            icon={Music}
+            title={t("library.emptyLibraryTitle")}
+            description={t("library.emptyLibraryDesc")}
+          />
         ) : filteredTracks.length === 0 ? (
           /* No search results found */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center bg-card/40 animate-in fade-in zoom-in-95 duration-150 ease-out motion-reduce:animate-none">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-4 border border-primary/20">
-              <Music className="h-7 w-7" />
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {t("library.noResultsTitle")}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1 max-w-md">
-              {t("library.noResultsDesc")}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSearchQuery("")}
-              className="mt-4 text-xs"
-            >
+          <EmptyState
+            icon={SearchX}
+            title={t("library.noResultsTitle")}
+            description={t("library.noResultsDesc")}
+          >
+            <Button variant="outline" onClick={() => setSearchQuery("")}>
               {t("library.clearSearch")}
             </Button>
-          </div>
+          </EmptyState>
         ) : viewMode === "list" ? (
           <PlaylistTableView
             filteredTracks={filteredTracks}
