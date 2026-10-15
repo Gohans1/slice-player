@@ -322,7 +322,7 @@ describe("PlaylistTableView", () => {
         usePlayerStore.setState({ activePlaylistId: "pl_custom_1", activePlaylistItems: [dummyPlaylistItem1, sliceOfDummyTrack], playlists: [dummyPlaylist] });
         return <PlaylistTableView />;
       }],
-      ["the library's tracks", () => <PlaylistTableView filteredTracks={[dummyTrack, dummyTrack]} />],
+      ["the library's tracks", () => <PlaylistTableView filteredTracks={[dummyTrack, { ...dummyTrack, id: "trk_tbl_1_copy" }]} />],
       ["the library's slices", () => <PlaylistTableView sliceItems={[{ id: "seg_a", segment: dummySegment, track: dummyTrack }, { id: "seg_b", segment: { ...dummySegment, id: "seg_b" }, track: dummyTrack }]} />],
       ["the library's mix of tracks and slices", () => (
         <PlaylistTableView
