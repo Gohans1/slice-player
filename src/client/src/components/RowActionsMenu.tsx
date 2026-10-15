@@ -46,6 +46,14 @@ export function RowActionsMenuProvider({ children }: { children: React.ReactNode
   const [copied, setCopied] = React.useState(false);
   const [createFor, setCreateFor] = React.useState<{ trackId: string; segmentId?: string | null } | null>(null);
   const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Counts opens, closes and moves to another row's trigger. The menu is shared, so a copy started
+  // for one row checks it before touching whichever row the menu shows by the time the copy finishes.
+  const openingRef = React.useRef(0);
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
 
   React.useEffect(() => {
     return () => {
@@ -54,8 +62,10 @@ export function RowActionsMenuProvider({ children }: { children: React.ReactNode
   }, []);
 
   const copyLink = async (link: string) => {
-    if (!(await copyToClipboard(link))) return;
+    const opening = openingRef.current;
+    if (!(await copyToClipboard(link)) || opening !== openingRef.current) return;
     setCopied(true);
+    clearCloseTimer();
     closeTimerRef.current = setTimeout(() => handle.close(), COPIED_CLOSE_DELAY_MS);
   };
 
@@ -65,6 +75,9 @@ export function RowActionsMenuProvider({ children }: { children: React.ReactNode
       <DropdownMenu
         handle={handle}
         onOpenChange={(open) => {
+          // Base UI also reports a move to another row's trigger as an open
+          openingRef.current += 1;
+          clearCloseTimer();
           if (open) setCopied(false);
         }}
       >
