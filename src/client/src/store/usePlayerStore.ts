@@ -84,6 +84,7 @@ export function clearShuffleHistory() {
 }
 
 let activeInitiationCount = 0;
+let playbackIntentId = 0;
 let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 let latestPlaybackModeRequestId = 0;
 let latestFetchTracksRequestId = 0;
@@ -1264,6 +1265,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playSegment: async (segment: Segment, track: Track, overrideIndex?: number, seekTime?: number) => {
+    playbackIntentId++;
     const currentMode = get().playbackMode;
     dismissedSegmentIdsByMode[currentMode].delete(segment.id);
     if (segment.id.startsWith("fallback_")) {
@@ -1416,6 +1418,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setBuffering: (isBuffering: boolean) => set({ isBuffering }),
 
   pause: () => {
+    playbackIntentId++;
     if (autoSkipTimer) {
       clearTimeout(autoSkipTimer);
       autoSkipTimer = null;
@@ -1435,10 +1438,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return;
     }
 
+    const intentId = ++playbackIntentId;
     audioEngine.updateCurrentSegmentBounds(activeSegment.start_time, activeSegment.end_time);
     audioEngine.setOnSegmentEnd(() => get().nextSegment(true));
 
     const ok = await audioEngine.resume();
+    if (intentId !== playbackIntentId || ok === null) return;
     if (ok) {
       set({ isPlaying: true });
     } else {

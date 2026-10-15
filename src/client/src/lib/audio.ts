@@ -210,8 +210,10 @@ class AudioEngine {
     onTimeUpdate?: (t: number) => void,
     segmentStartTime?: number
   ) {
+    const requestId = ++this.currentPlayRequestId;
     this.init();
     await this.resumeContext();
+    if (this.currentPlayRequestId !== requestId) return;
 
     this.pauseRequestId++;
     if (this.pauseTimer) {
@@ -222,8 +224,6 @@ class AudioEngine {
       this.activeSeekCleanup();
     }
     this.isFadingOut = false;
-
-    const requestId = ++this.currentPlayRequestId;
 
     // Disarm boundary checks during load and seek transition
     this.currentSegmentStart = null;
@@ -411,7 +411,9 @@ class AudioEngine {
     this.onSegmentEndCallback = cb;
   }
 
-  public async resume(): Promise<boolean> {
+  /** true: resumed; false: needs reload fallback; null: cancelled by a newer intent. */
+  public async resume(): Promise<boolean | null> {
+    const requestId = ++this.currentPlayRequestId;
     this.pauseRequestId++;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
@@ -420,8 +422,10 @@ class AudioEngine {
     this.isFadingOut = false;
 
     await this.resumeContext();
+    if (this.currentPlayRequestId !== requestId) return null;
     try {
       await this.audioEl.play();
+      if (this.currentPlayRequestId !== requestId) return null;
       this.startRafLoop();
       this.startTicker();
       if (this.fadeGainNode && this.audioCtx) {
@@ -432,6 +436,7 @@ class AudioEngine {
       }
       return true;
     } catch (err) {
+      if (this.currentPlayRequestId !== requestId) return null;
       console.warn("[AudioEngine] Resume prevented:", err);
       return false;
     }
