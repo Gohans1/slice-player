@@ -178,6 +178,21 @@ export function App() {
 
     let wsDebounceTimer: any = null;
     let playlistWsDebounceTimer: any = null;
+    let pendingSegmentReconciliation = false;
+
+    function scheduleLibraryRefresh(reconcileSegments: boolean, delay: number) {
+      pendingSegmentReconciliation ||= reconcileSegments;
+      clearTimeout(wsDebounceTimer);
+      wsDebounceTimer = setTimeout(() => {
+        const reconcile = pendingSegmentReconciliation;
+        pendingSegmentReconciliation = false;
+        fetchTracks(reconcile);
+        fetchSegments();
+        fetchPlaylists();
+        const activePl = usePlayerStore.getState().activePlaylistId;
+        if (activePl) setActivePlaylist(activePl, true);
+      }, delay);
+    }
 
     function connectWs() {
       if (isUnmounted) return;
@@ -286,29 +301,10 @@ export function App() {
               data.type === "segments_deleted" ||
               data.type === "segment_updated"
             ) {
-              const shouldReconcileSegments = data.type !== "track_updated" || data.reason !== "volume";
-              clearTimeout(wsDebounceTimer);
-              wsDebounceTimer = setTimeout(() => {
-                fetchTracks(shouldReconcileSegments);
-                fetchSegments();
-                fetchPlaylists();
-                const activePl = usePlayerStore.getState().activePlaylistId;
-                if (activePl) {
-                  setActivePlaylist(activePl, true);
-                }
-              }, 250);
+              scheduleLibraryRefresh(data.type !== "track_updated" || data.reason !== "volume", 250);
             }
             if (data.type === "library_restored") {
-              clearTimeout(wsDebounceTimer);
-              wsDebounceTimer = setTimeout(() => {
-                fetchTracks(true);
-                fetchSegments();
-                fetchPlaylists();
-                const activePl = usePlayerStore.getState().activePlaylistId;
-                if (activePl) {
-                  setActivePlaylist(activePl, true);
-                }
-              }, 100);
+              scheduleLibraryRefresh(true, 100);
             }
           } catch {}
         };
