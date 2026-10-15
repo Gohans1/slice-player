@@ -18,6 +18,7 @@ import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "./ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./ui/input-group";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "./ui/sheet";
+import { Toggle } from "./ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { useTranslation } from "react-i18next";
 import { useLogStore, type LogFilterCategory } from "../store/useLogStore";
@@ -344,17 +345,17 @@ function LogDrawerContent({ searchInputRef }: LogDrawerContentProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button
-              variant={autoScroll ? "secondary" : "ghost"}
+            <Toggle
+              variant="outline"
               size="lg"
-              onClick={handleToggleAutoScroll}
+              pressed={autoScroll}
+              onPressedChange={handleToggleAutoScroll}
               title={autoScroll ? t("logs.autoScrollOn") : t("logs.autoScrollOff")}
               aria-label={t("logs.autoScroll")}
-              aria-pressed={autoScroll}
             >
-              <ArrowDownToLine data-icon="inline-start" className={cn(autoScroll ? "text-primary" : "opacity-60")} />
+              <ArrowDownToLine data-icon="inline-start" />
               <span className="hidden md:inline">{t("logs.autoScroll")}</span>
-            </Button>
+            </Toggle>
             <Button
               variant="outline"
               size="lg"
