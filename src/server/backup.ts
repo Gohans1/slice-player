@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, renameSync, lstatSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve, dirname, extname } from "node:path";
-import { getDb, initDatabase, closeDatabase, healTrackFilePaths } from "./db";
+import { initDatabase, closeDatabase, healTrackFilePaths } from "./db";
 import { abortIngestProcesses, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
@@ -65,6 +66,29 @@ export const MAX_AUDIO_FILE_BYTES = 350 * 1024 * 1024; // 350 MB
 export const MAX_THUMB_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
 export const MAX_DB_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
 
+function readLibrarySnapshot(dbPath: string) {
+  const snapshotDir = mkdtempSync(join(tmpdir(), "slice-export-"));
+  let source: Database | undefined;
+  let snapshot: Database | undefined;
+  try {
+    source = new Database(dbPath, { readonly: true });
+    const snapshotPath = join(snapshotDir, "music.db");
+    // VACUUM INTO includes committed WAL frames even when another reader blocks checkpointing.
+    source.query("VACUUM INTO ?").run(snapshotPath);
+    snapshot = new Database(snapshotPath, { readonly: true });
+    return {
+      bytes: readFileSync(snapshotPath),
+      trackCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM tracks").get()!.count,
+      segmentCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM segments").get()!.count,
+      playlistCount: snapshot.query<{ count: number }, []>("SELECT COUNT(*) as count FROM playlists").get()!.count,
+    };
+  } finally {
+    snapshot?.close();
+    source?.close();
+    rmSync(snapshotDir, { recursive: true, force: true });
+  }
+}
+
 /**
  * Export the entire library (music.db, audio cache, thumbs, cookies.txt, manifest) into a gzipped tar archive.
  */
@@ -72,8 +96,8 @@ export async function exportLibraryArchive(
   paths: BackupPaths = {},
   options: { includeCookies?: boolean } = {}
 ): Promise<Blob> {
-  if (isExporting) {
-    throw new Error("Một tiến trình xuất thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
+  if (isExporting || isRestoring) {
+    throw new Error("Một tiến trình xuất hoặc khôi phục thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
   }
   isExporting = true;
   try {
@@ -82,20 +106,7 @@ export async function exportLibraryArchive(
     const thumbCacheDir = resolve(paths.thumbCacheDir || "./data/cache/thumbs");
     const cookiePath = resolve(paths.cookiePath || "./data/cookies.txt");
 
-    const db = getDb();
-    // Checkpoint SQLite WAL to truncate write-ahead log into main database file
-    try {
-      db.run("PRAGMA wal_checkpoint(TRUNCATE);");
-    } catch {}
-
-    const dbFile = Bun.file(dbPath);
-    if (!(await dbFile.exists())) {
-      throw new Error(`Database file not found at: ${dbPath}`);
-    }
-
-    const trackCount = (db.query("SELECT COUNT(*) as count FROM tracks").get() as any)?.count ?? 0;
-    const segmentCount = (db.query("SELECT COUNT(*) as count FROM segments").get() as any)?.count ?? 0;
-    const playlistCount = (db.query("SELECT COUNT(*) as count FROM playlists").get() as any)?.count ?? 0;
+    const { bytes: dbBytes, trackCount, segmentCount, playlistCount } = readLibrarySnapshot(dbPath);
 
     const manifest: LibraryManifest = {
       version: 1,
@@ -108,7 +119,7 @@ export async function exportLibraryArchive(
 
     const archiveFiles: Record<string, any> = {};
     archiveFiles["manifest.json"] = JSON.stringify(manifest, null, 2);
-    archiveFiles["music.db"] = await dbFile.bytes();
+    archiveFiles["music.db"] = dbBytes;
 
     // Only include cookies if explicitly requested (prevents session token leaks)
     if (options.includeCookies && existsSync(cookiePath)) {
@@ -169,8 +180,8 @@ export async function importLibraryArchive(
   archiveInput: Uint8Array | Blob,
   paths: BackupPaths = {}
 ): Promise<{ success: boolean; manifest?: LibraryManifest; message: string }> {
-  if (isRestoring) {
-    throw new Error("Một tiến trình khôi phục thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
+  if (isRestoring || isExporting) {
+    throw new Error("Một tiến trình xuất hoặc khôi phục thư viện đang diễn ra. Vui lòng đợi trong giây lát.");
   }
 
   const inputSize = archiveInput instanceof Blob ? archiveInput.size : archiveInput?.byteLength ?? 0;
@@ -185,10 +196,29 @@ export async function importLibraryArchive(
   const targetThumbCacheDir = resolve(paths.thumbCacheDir || "./data/cache/thumbs");
   const targetCookiePath = resolve(paths.cookiePath || "./data/cookies.txt");
 
-  const incomingTmpPath = `${targetDbPath}.incoming.tmp`;
-  const rollbackBakPath = `${targetDbPath}.rollback.bak`;
-  const rollbackWalPath = `${targetDbPath}-wal.rollback.bak`;
-  const rollbackShmPath = `${targetDbPath}-shm.rollback.bak`;
+  const stageDirs = new Map<string, string>();
+  const staged: { target: string; incoming?: string; previous: string; moved: boolean; installed: boolean }[] = [];
+  let keepRecoveryFiles = false;
+  let fileIndex = 0;
+
+  function prepareFile(target: string): (typeof staged)[number] {
+    const parent = dirname(target);
+    let stageDir = stageDirs.get(parent);
+    if (!stageDir) {
+      mkdirSync(parent, { recursive: true });
+      stageDir = mkdtempSync(join(parent, ".slice-restore-"));
+      stageDirs.set(parent, stageDir);
+    }
+    return { target, previous: join(stageDir, `${fileIndex++}.previous`), incoming: undefined, moved: false, installed: false };
+  }
+
+  async function stageFile(target: string, bytes: Uint8Array) {
+    const entry = prepareFile(target);
+    entry.incoming = `${entry.previous}.incoming`;
+    await Bun.write(entry.incoming, bytes);
+    staged.push(entry);
+    return entry.incoming;
+  }
 
   try {
     let archive: any;
@@ -198,7 +228,7 @@ export async function importLibraryArchive(
       files = await archive.files();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Không thể giải nén file backup: ${msg}`);
+      throw new Error(`Không thể giải nén file backup: ${msg}`, { cause: err });
     }
 
     if (!files.has("music.db")) {
@@ -248,7 +278,7 @@ export async function importLibraryArchive(
       throw new Error(`File cơ sở dữ liệu vượt quá giới hạn cho phép (${(dbBytes.length / (1024 * 1024)).toFixed(1)}MB > 500MB).`);
     }
     totalExtractedBytes += dbBytes.length;
-    await Bun.write(incomingTmpPath, dbBytes);
+    const incomingTmpPath = await stageFile(targetDbPath, dbBytes);
 
     let tempDb: Database | null = null;
     try {
@@ -268,114 +298,88 @@ export async function importLibraryArchive(
       }
     }
 
-    // Abort active background ingest/waveform operations and close database connection
-    try { await abortIngestProcesses(); } catch {}
-    try { await abortWaveformProcesses(); } catch {}
-    closeDatabase();
-
-    // Create rollback backup of current active database if it exists
-    let hasBackup = false;
-    if (existsSync(targetDbPath)) {
-      try {
-        copyFileSync(targetDbPath, rollbackBakPath);
-        if (existsSync(`${targetDbPath}-wal`)) copyFileSync(`${targetDbPath}-wal`, rollbackWalPath);
-        if (existsSync(`${targetDbPath}-shm`)) copyFileSync(`${targetDbPath}-shm`, rollbackShmPath);
-        hasBackup = true;
-      } catch (backupErr) {
-        console.warn("[backup] Không thể sao lưu dự phòng trước khi ghi đè:", backupErr);
+    // Validate and stage EVERY payload before replacing live files, one at a time to bound memory.
+    for (const [archivePath, file] of files) {
+      let target: string;
+      let limit: number;
+      if (archivePath === "cookies.txt") {
+        target = targetCookiePath;
+        limit = MAX_COOKIE_FILE_BYTES;
+      } else if (archivePath.startsWith("cache/audio/")) {
+        target = join(targetAudioCacheDir, archivePath.slice("cache/audio/".length));
+        limit = MAX_AUDIO_FILE_BYTES;
+      } else if (archivePath.startsWith("cache/thumbs/")) {
+        target = join(targetThumbCacheDir, archivePath.slice("cache/thumbs/".length));
+        limit = MAX_THUMB_FILE_BYTES;
+      } else {
+        continue;
       }
+      if (file.size > limit) {
+        throw new Error(`File ${archivePath} vượt quá giới hạn cho phép.`);
+      }
+      const bytes = await file.bytes();
+      totalExtractedBytes += bytes.length;
+      if (bytes.length > limit || totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
+        throw new Error(`File ${archivePath} hoặc tổng dung lượng giải nén vượt quá giới hạn cho phép.`);
+      }
+      await stageFile(target, bytes);
     }
 
-    // Ensure target directories exist
-    mkdirSync(targetAudioCacheDir, { recursive: true });
-    mkdirSync(targetThumbCacheDir, { recursive: true });
+    await abortIngestProcesses();
+    await abortWaveformProcesses();
+    closeDatabase();
 
+    // Keep sidecars together with the original DB, including when checkpointing is blocked.
+    for (const suffix of ["-wal", "-shm"]) {
+      const target = `${targetDbPath}${suffix}`;
+      if (existsSync(target)) staged.unshift(prepareFile(target));
+    }
+    const databaseEntry = staged.find((entry) => entry.target === targetDbPath)!;
     try {
-      // Atomic swap: Copy validated incoming database over target database
-      copyFileSync(incomingTmpPath, targetDbPath);
-      try { unlinkSync(incomingTmpPath); } catch {}
-      try { unlinkSync(`${targetDbPath}-wal`); } catch {}
-      try { unlinkSync(`${targetDbPath}-shm`); } catch {}
-
-      // Write cookies.txt if present
-      if (files.has("cookies.txt")) {
-        try {
-          const cookieFile = files.get("cookies.txt");
-          const cookieBytes = await cookieFile.bytes();
-          if (cookieBytes.length > MAX_COOKIE_FILE_BYTES) {
-            throw new Error(`File cookies.txt vượt quá giới hạn cho phép (${(cookieBytes.length / (1024 * 1024)).toFixed(1)}MB > 5MB).`);
+      // Synchronous renames keep the commit free of event-loop interleaving. Originals stay
+      // beside their destination (same filesystem) until the new DB has initialized.
+      for (const entry of staged) {
+        if (existsSync(entry.target)) {
+          if (!lstatSync(entry.target).isFile()) {
+            throw new Error(`Restore destination is not a regular file: ${entry.target}`);
           }
-          totalExtractedBytes += cookieBytes.length;
-          if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
-            throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
-          }
-          await Bun.write(targetCookiePath, cookieBytes);
-        } catch (cookieErr: any) {
-          if (cookieErr?.message?.includes("vượt quá giới hạn")) throw cookieErr;
+          renameSync(entry.target, entry.previous);
+          entry.moved = true;
+        }
+        if (entry.incoming) {
+          renameSync(entry.incoming, entry.target);
+          entry.installed = true;
         }
       }
-
-      // Write audio and thumbnail files with traversal and decompression limits protection
-      for (const [archivePath, file] of files) {
-        if (archivePath.startsWith("cache/audio/")) {
-          const fileName = archivePath.slice("cache/audio/".length);
-          if (isSafeArchiveFilename(fileName)) {
-            const fileBytes = await file.bytes();
-            if (fileBytes.length > MAX_AUDIO_FILE_BYTES) {
-              throw new Error(`File âm thanh ${fileName} vượt quá giới hạn cho phép (${(fileBytes.length / (1024 * 1024)).toFixed(1)}MB > 350MB).`);
-            }
-            totalExtractedBytes += fileBytes.length;
-            if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
-              throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
-            }
-            const dest = join(targetAudioCacheDir, fileName);
-            await Bun.write(dest, fileBytes);
-          }
-        } else if (archivePath.startsWith("cache/thumbs/")) {
-          const fileName = archivePath.slice("cache/thumbs/".length);
-          if (isSafeArchiveFilename(fileName)) {
-            const fileBytes = await file.bytes();
-            if (fileBytes.length > MAX_THUMB_FILE_BYTES) {
-              throw new Error(`File ảnh bìa ${fileName} vượt quá giới hạn cho phép (${(fileBytes.length / (1024 * 1024)).toFixed(1)}MB > 15MB).`);
-            }
-            totalExtractedBytes += fileBytes.length;
-            if (totalExtractedBytes > MAX_TOTAL_EXTRACTED_BYTES) {
-              throw new Error("Tổng dung lượng giải nén vượt quá giới hạn an toàn 5GB.");
-            }
-            const dest = join(targetThumbCacheDir, fileName);
-            await Bun.write(dest, fileBytes);
-          }
-        }
-      }
-
-      // Re-initialize database with self-healing paths
       initDatabase(targetDbPath);
       healTrackFilePaths(targetAudioCacheDir);
-
-      // On successful restore, remove rollback backups
-      if (hasBackup) {
-        try { unlinkSync(rollbackBakPath); } catch {}
-        try { unlinkSync(rollbackWalPath); } catch {}
-        try { unlinkSync(rollbackShmPath); } catch {}
-      }
-    } catch (stageErr) {
-      // Rollback to original database on any failure
-      console.error("[backup] Lỗi trong quá trình khôi phục, tiến hành rollback về DB cũ:", stageErr);
-      if (hasBackup && existsSync(rollbackBakPath)) {
-        try {
-          copyFileSync(rollbackBakPath, targetDbPath);
-          if (existsSync(rollbackWalPath)) copyFileSync(rollbackWalPath, `${targetDbPath}-wal`);
-          if (existsSync(rollbackShmPath)) copyFileSync(rollbackShmPath, `${targetDbPath}-shm`);
-          try { unlinkSync(rollbackBakPath); } catch {}
-          try { unlinkSync(rollbackWalPath); } catch {}
-          try { unlinkSync(rollbackShmPath); } catch {}
-          initDatabase(targetDbPath);
-          console.log("[backup] Đã rollback về DB cũ an toàn.");
-        } catch (rbErr) {
-          console.error("[backup] Rollback thất bại nghiêm trọng:", rbErr);
+    } catch (restoreError) {
+      closeDatabase();
+      const rollbackErrors: unknown[] = [];
+      if (databaseEntry.installed) {
+        for (const suffix of ["-wal", "-shm"]) {
+          try { rmSync(`${targetDbPath}${suffix}`, { force: true }); } catch (error) { rollbackErrors.push(error); }
         }
       }
-      throw stageErr;
+      for (const entry of [...staged].reverse()) {
+        try {
+          if (entry.installed) unlinkSync(entry.target);
+          if (entry.moved) renameSync(entry.previous, entry.target);
+        } catch (error) {
+          rollbackErrors.push(error);
+        }
+      }
+      try {
+        if (existsSync(targetDbPath)) initDatabase(targetDbPath);
+      } catch (error) {
+        rollbackErrors.push(error);
+      }
+      if (rollbackErrors.length) {
+        keepRecoveryFiles = true;
+        throw new AggregateError([restoreError, ...rollbackErrors],
+          `Restore rollback failed; recovery files retained in: ${[...stageDirs.values()].join(", ")}`, { cause: restoreError });
+      }
+      throw restoreError;
     }
 
     // Notify connected clients
@@ -390,8 +394,12 @@ export async function importLibraryArchive(
     return { success: true, manifest, message: msg };
   } finally {
     isRestoring = false;
-    if (existsSync(incomingTmpPath)) {
-      try { unlinkSync(incomingTmpPath); } catch {}
+    if (!keepRecoveryFiles) {
+      for (const stageDir of stageDirs.values()) {
+        try { rmSync(stageDir, { recursive: true, force: true }); } catch (error) {
+          console.warn("[backup] Could not clean staging directory:", stageDir, error);
+        }
+      }
     }
   }
 }

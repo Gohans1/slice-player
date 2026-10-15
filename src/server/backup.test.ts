@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { initDatabase, closeDatabase, createTrack, getTrack, createPlaylist, createSegment } from "./db";
-import { exportLibraryArchive, importLibraryArchive } from "./backup";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { initDatabase, closeDatabase, createTrack, getTrack, createPlaylist, createSegment, getDb } from "./db";
+import { exportLibraryArchive, importLibraryArchive, MAX_THUMB_FILE_BYTES } from "./backup";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
-const TEST_DIR = "./data/test_backup_sandbox";
+const TEST_DIR = mkdtempSync(join(tmpdir(), "slice-backup-test-"));
 const TEST_DB = join(TEST_DIR, "music.db");
 const TEST_AUDIO_DIR = join(TEST_DIR, "cache", "audio");
 const TEST_THUMB_DIR = join(TEST_DIR, "cache", "thumbs");
@@ -12,6 +14,7 @@ const TEST_COOKIE = join(TEST_DIR, "cookies.txt");
 
 describe("Library Backup & Restore (Export / Import)", () => {
   beforeEach(() => {
+    closeDatabase();
     if (existsSync(TEST_DIR)) {
       rmSync(TEST_DIR, { recursive: true, force: true });
     }
@@ -86,6 +89,122 @@ describe("Library Backup & Restore (Export / Import)", () => {
     expect(manifest.trackCount).toBe(1);
     expect(manifest.segmentCount).toBe(1);
     expect(manifest.playlistCount).toBe(1);
+  });
+
+  it("exports committed WAL rows even when an older reader blocks checkpointing", async () => {
+    createTrack({ id: "before", source_type: "local", source_uri: "before.opus", title: "Before", duration: 10, status: "ready" });
+    const db = getDb();
+    db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+    const reader = new Database(TEST_DB, { readonly: true });
+    reader.run("BEGIN");
+    reader.query("SELECT id FROM tracks").all();
+    db.run("PRAGMA busy_timeout = 1");
+
+    try {
+      createTrack({ id: "after", source_type: "local", source_uri: "after.opus", title: "After", duration: 10, status: "ready" });
+      const archive = await exportLibraryArchive({
+        dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+      });
+      const files = await new Bun.Archive(archive).files();
+      const snapshotPath = join(TEST_DIR, "exported.db");
+      await Bun.write(snapshotPath, await files.get("music.db")!.bytes());
+      const snapshot = new Database(snapshotPath, { readonly: true });
+      try {
+        expect(snapshot.query("SELECT id FROM tracks ORDER BY id").all()).toEqual([{ id: "after" }, { id: "before" }]);
+        const manifest = JSON.parse(await files.get("manifest.json")!.text());
+        expect(manifest.trackCount).toBe(2);
+        expect(snapshot.query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+      } finally {
+        snapshot.close();
+      }
+    } finally {
+      reader.close();
+    }
+  });
+
+  it("rejects a late oversized entry without changing the existing library or assets", async () => {
+    const audio = join(TEST_AUDIO_DIR, "existing.opus");
+    const thumb = join(TEST_THUMB_DIR, "existing.jpg");
+    writeFileSync(audio, "original audio");
+    writeFileSync(thumb, "original thumbnail");
+    const archive = await exportLibraryArchive({
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    });
+    const files = await new Bun.Archive(archive).files();
+    createTrack({ id: "survivor", source_type: "local", source_uri: "existing.opus", title: "Survivor", duration: 10, status: "ready" });
+    const incoming = new Bun.Archive({
+      "music.db": await files.get("music.db")!.bytes(),
+      "cookies.txt": "replacement cookies",
+      "cache/audio/existing.opus": "replacement audio",
+      "cache/thumbs/existing.jpg": "replacement thumbnail",
+      "cache/thumbs/new.jpg": "new thumbnail",
+      "cache/thumbs/oversized.jpg": new Uint8Array(MAX_THUMB_FILE_BYTES + 1),
+    }, { compress: "gzip" });
+
+    await expect(importLibraryArchive(await incoming.blob(), {
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    })).rejects.toThrow("vượt quá giới hạn");
+    expect(getTrack("survivor")?.title).toBe("Survivor");
+    expect(readFileSync(audio, "utf8")).toBe("original audio");
+    expect(readFileSync(thumb, "utf8")).toBe("original thumbnail");
+    expect(readFileSync(TEST_COOKIE, "utf8")).toBe("# YouTube cookies mock");
+    expect(existsSync(join(TEST_THUMB_DIR, "new.jpg"))).toBe(false);
+  });
+
+  it("rolls back the database, overwritten assets and newly installed files on a commit failure", async () => {
+    const audio = join(TEST_AUDIO_DIR, "existing.opus");
+    const thumb = join(TEST_THUMB_DIR, "existing.jpg");
+    const blocked = join(TEST_THUMB_DIR, "blocked.jpg");
+    writeFileSync(audio, "original audio");
+    writeFileSync(thumb, "original thumbnail");
+    mkdirSync(blocked);
+    writeFileSync(join(blocked, "sentinel"), "keep this directory");
+    const archive = await exportLibraryArchive({
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    });
+    const files = await new Bun.Archive(archive).files();
+    createTrack({ id: "survivor", source_type: "local", source_uri: "existing.opus", title: "Survivor", duration: 10, status: "ready" });
+    const incoming = new Bun.Archive({
+      "music.db": await files.get("music.db")!.bytes(),
+      "cookies.txt": "replacement cookies",
+      "cache/audio/existing.opus": "replacement audio",
+      "cache/thumbs/existing.jpg": "replacement thumbnail",
+      "cache/thumbs/new.jpg": "new thumbnail",
+      "cache/thumbs/blocked.jpg": "cannot replace a directory",
+    }, { compress: "gzip" });
+
+    await expect(importLibraryArchive(await incoming.blob(), {
+      dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE,
+    })).rejects.toThrow();
+    expect(getTrack("survivor")?.title).toBe("Survivor");
+    expect(readFileSync(audio, "utf8")).toBe("original audio");
+    expect(readFileSync(thumb, "utf8")).toBe("original thumbnail");
+    expect(readFileSync(TEST_COOKIE, "utf8")).toBe("# YouTube cookies mock");
+    expect(existsSync(join(TEST_THUMB_DIR, "new.jpg"))).toBe(false);
+    expect(readFileSync(join(blocked, "sentinel"), "utf8")).toBe("keep this directory");
+    expect(getDb().query("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+  });
+
+  it("does not start a restore while an export still owns the library files", async () => {
+    const paths = { dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE };
+    const archive = await exportLibraryArchive(paths);
+    const exporting = exportLibraryArchive(paths);
+    try {
+      await expect(importLibraryArchive(archive, paths)).rejects.toThrow();
+    } finally {
+      await exporting;
+    }
+  });
+
+  it("does not export partially staged restore data", async () => {
+    const paths = { dbPath: TEST_DB, audioCacheDir: TEST_AUDIO_DIR, thumbCacheDir: TEST_THUMB_DIR, cookiePath: TEST_COOKIE };
+    const archive = await exportLibraryArchive(paths);
+    const restoring = importLibraryArchive(archive, paths);
+    try {
+      await expect(exportLibraryArchive(paths)).rejects.toThrow();
+    } finally {
+      await restoring;
+    }
   });
 
   it("should reject corrupted or invalid archives on import", async () => {
