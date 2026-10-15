@@ -198,13 +198,14 @@ function ToastList() {
 function Toaster({
   children,
   toastManager = toast,
+  className,
   ...props
-}: ToastPrimitive.Provider.Props) {
+}: ToastPrimitive.Provider.Props & { className?: string }) {
   return (
     <ToastProvider toastManager={toastManager} {...props}>
       {children}
       <ToastPortal>
-        <ToastViewport>
+        <ToastViewport className={className}>
           <ToastList />
         </ToastViewport>
       </ToastPortal>
