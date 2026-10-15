@@ -13,6 +13,7 @@ import { ingestYouTubeUrl, ingestLocalFile, ingestLocalDirectory, ingestUploaded
 import { abortWaveformProcesses, cancelWaveformForFile } from "./waveform";
 import { serverEvents } from "./events";
 import { forwardServerEvents } from "./websocketEvents";
+import { runLibraryRequest } from "./libraryRequests";
 import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from "./logger";
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
@@ -124,6 +125,7 @@ const server = serve({
     });
   },
   async fetch(req, server) {
+    return runLibraryRequest(req, async () => {
     const url = new URL(req.url);
 
     // If a library restore operation is actively in progress, prevent race conditions
@@ -1513,6 +1515,7 @@ const server = serve({
 
     return new Response("Slice Player Backend Running. Frontend is being built...", {
       headers: { ...securityHeaders, "Content-Type": "text/plain; charset=utf-8" },
+    });
     });
   },
 

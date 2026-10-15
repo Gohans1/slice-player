@@ -6,6 +6,7 @@ import { initDatabase, closeDatabase, healTrackFilePaths } from "./db";
 import { abortIngestProcesses, pauseIngestOperations, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
 import { serverEvents } from "./events";
+import { pauseLibraryMutations, drainLibraryMutations } from "./libraryRequests";
 import { logEvent } from "./logger";
 
 export const ALLOWED_THUMB_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"] as const;
@@ -191,6 +192,7 @@ export async function importLibraryArchive(
 
   isRestoring = true;
   const resumeIngest = pauseIngestOperations();
+  const resumeMutations = pauseLibraryMutations();
 
   const targetDbPath = resolve(paths.dbPath || "./data/music.db");
   const targetAudioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
@@ -327,6 +329,7 @@ export async function importLibraryArchive(
     }
 
     await abortIngestProcesses();
+    await drainLibraryMutations();
     await abortWaveformProcesses();
     closeDatabase();
 
@@ -396,6 +399,7 @@ export async function importLibraryArchive(
   } finally {
     isRestoring = false;
     resumeIngest();
+    resumeMutations();
     if (!keepRecoveryFiles) {
       for (const stageDir of stageDirs.values()) {
         try { rmSync(stageDir, { recursive: true, force: true }); } catch (error) {

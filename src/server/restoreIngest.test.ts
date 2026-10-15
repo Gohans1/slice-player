@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { initDatabase, closeDatabase, createTrack, createSegment, getTrack, listSegmentsByTrack } from "./db";
+import { runLibraryRequest } from "./libraryRequests";
+import { initDatabase, closeDatabase, createTrack, createSegment, getTrack, listSegmentsByTrack, deleteTrack } from "./db";
 
 // Only the long-running waveform boundary is controlled; ingestion, SQLite, archive IO
 // and restore all run for real, entirely outside the user's library.
@@ -73,4 +74,31 @@ it("rejects new ingestion for the entire restore, including archive staging", as
   const result = await ingestLocalFile(input);
   await restoring;
   expect(result.success).toBe(false);
+});
+
+it("settles an admitted DELETE request before replacing the database it will mutate", async () => {
+  const paths = { dbPath: resolve("data/test.db") };
+  const trackId = "pending-delete";
+  createTrack({ id: trackId, source_type: "local", source_uri: input, title: "Keep", duration: 60, status: "ready" });
+  createSegment({ id: "keep-after-delete", track_id: trackId, name: "Keep", start_time: 45, end_time: 50 });
+  const archive = await exportLibraryArchive(paths);
+  let releaseCancellation!: () => void;
+  const cancellation = new Promise<void>((fulfill) => { releaseCancellation = fulfill; });
+  const reachedDrain = new Promise<void>((fulfill) => { draining = fulfill; });
+  const deleting = runLibraryRequest(new Request("http://slice-player.test/api/tracks/pending-delete", { method: "DELETE" }), async () => {
+    // The production route awaits cancellation before reading/deleting its track.
+    await cancellation;
+    deleteTrack(trackId);
+    return Response.json({ success: true });
+  });
+  const restoring = importLibraryArchive(archive, paths);
+  try {
+    await reachedDrain;
+    await setImmediate();
+  } finally {
+    releaseCancellation();
+  }
+  await Promise.all([deleting, restoring]);
+  expect(getTrack(trackId)?.title).toBe("Keep");
+  expect(listSegmentsByTrack(trackId).map((segment) => segment.id)).toEqual(["keep-after-delete"]);
 });
