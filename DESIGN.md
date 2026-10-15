@@ -295,6 +295,8 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Chỉ báo khi chính request thất bại, không báo khi phần xử lý sau một response thành công bị lỗi. Lỗi mạng và 502/503/504 (proxy không tới được server) đều là "Can't reach the server".
 - Giọng theo copy sẵn có: tiêu đề "Failed to …" / "Không thể …", mô tả nói cách xử lý.
 - `Toaster` nằm trong `AppShell`; viewport đặt trên PlayerBar (`bottom` = `--player-bar-height` + 1rem) để không che nút điều khiển.
+- Toast là dialog không modal (`aria-modal="false"`), nên `isDialogOpen` bỏ qua nó: toast lỗi đang mở không được khoá phím tắt (Space, Q, F2, tìm kiếm). Người dùng bàn phím tới toast bằng F6 (Base UI), có ghi trong bảng phím tắt.
+- Thử tải lại: tải chạy rồi lại thất bại thì server ghi lý do vào track và track tự hiện lỗi, không toast. Mọi lỗi khác của request thử lại đều báo bằng toast.
 
 ### Signature Component: Slice Studio Waveform Deck
 - Khung hiển thị sóng âm WaveSurfer với nền `#100F0F`, sóng màu xám `#403E3C`, dải tiến trình đỏ `#D14D41`, con trỏ hồng `#CE5D97`.
