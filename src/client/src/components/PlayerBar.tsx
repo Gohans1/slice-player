@@ -9,7 +9,6 @@ import {
   VolumeX,
   ListMusic,
   Disc,
-  Loader2,
   Repeat1,
   Info,
   Folder,
@@ -29,7 +28,7 @@ import {
 import { Spinner } from "./ui/spinner";
 import { SliceSeekBar } from "./SliceSeekBar";
 import { VolumeSlider } from "./VolumeSlider";
-import { formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
+import { cn, formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { useHeightCssVar } from "../hooks/use-height-css-var";
@@ -347,7 +346,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
           <div className="flex items-center gap-2">
             <Button
               variant={isQueueOpen ? "secondary" : "ghost"}
-              size="sm"
+              size="lg"
               onClick={onToggleQueue}
               aria-haspopup={isQueueDocked ? undefined : "dialog"}
               aria-expanded={isQueueOpen}
@@ -358,13 +357,10 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                   : t("player.openQueue", { count: queueLength, defaultValue: `Open queue (${queueLength} items)` })
               }
               title={t("player.queue", "Queue")}
-              className="text-xs gap-1.5 text-muted-foreground"
             >
-              <ListMusic className="h-4 w-4" />
+              <ListMusic data-icon="inline-start" />
               <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-              <span className="font-mono text-2xs px-1 rounded bg-accent text-accent-foreground">
-                {queueLength}
-              </span>
+              <Badge variant="secondary">{queueLength}</Badge>
             </Button>
           </div>
         </div>
@@ -393,8 +389,8 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
               fallback={<Disc className="h-full w-full p-2 text-muted-foreground opacity-60" />}
             />
             <div
-              className="absolute bottom-0 left-0 right-0 h-1"
-              style={{ backgroundColor: activeSegment.color || DEFAULT_SLICE_COLOR }}
+              className="absolute inset-x-0 bottom-0 h-1 bg-(--slice-color)"
+              style={{ "--slice-color": activeSegment.color || DEFAULT_SLICE_COLOR } as React.CSSProperties}
             />
           </button>
 
@@ -474,14 +470,11 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                 render={
                   <Button
                     variant={isShuffle ? "secondary" : "ghost"}
-                    size="icon"
+                    size="icon-lg"
                     onClick={handleShuffleClick}
                     disabled={queueLength === 0}
                     aria-label={t("player.shuffle", "Shuffle")}
                     aria-pressed={isShuffle}
-                    className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
-                      isShuffle ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                    } disabled:opacity-40 disabled:transform-none`}
                     title={
                       canQuickShuffleLastPlaylist && matchingLastPlaylist
                         ? t("player.shuffleQuickTooltip", {
@@ -493,7 +486,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                   />
                 }
               >
-                <Shuffle className="h-4 w-4" />
+                <Shuffle className={cn(isShuffle && "text-flexoki-green")} />
               </ContextMenuTrigger>
               <ContextMenuContent className="w-64">
                 <ContextMenuGroup>
@@ -542,48 +535,46 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
 
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-lg"
               onClick={prevSegment}
               disabled={queueLength === 0}
               aria-label={t("player.previous", "Previous slice")}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent active:-translate-x-0.5 transition-transform duration-100 disabled:opacity-40 disabled:transform-none"
               title={t("player.previous", "Previous slice")}
             >
-              <SkipBack className="h-4 w-4" />
+              <SkipBack className="fill-current" />
             </Button>
 
+            {/* Like Apple Music, play/pause is a larger glyph rather than a filled button */}
             <Button
-              variant="default"
-              size="icon"
+              variant="ghost"
+              size="icon-lg"
               onClick={togglePlay}
               aria-label={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
-              className="h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-md hover:scale-105 active:scale-95 transition-[transform,background-color] duration-150"
               title={isPlaying ? t("player.pause", "Pause") : t("player.play", "Play")}
             >
               {isBuffering && isPlaying ? (
-                <Loader2 className="h-4 w-4 animate-spin text-primary-foreground" />
+                <Spinner className="size-5" />
               ) : isPlaying ? (
-                <Pause className="h-4 w-4 fill-current animate-in zoom-in-75 duration-100" />
+                <Pause className="size-5 fill-current animate-in zoom-in-75 duration-100" />
               ) : (
-                <Play className="h-4 w-4 fill-current translate-x-0.5 animate-in zoom-in-75 duration-100" />
+                <Play className="size-5 fill-current animate-in zoom-in-75 duration-100" />
               )}
             </Button>
 
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-lg"
               onClick={() => nextSegment(false)}
               disabled={!(queueLength > 0 && (isTransitional || (queueLength > 1 && (isLoopQueue || queueIndex < queueLength - 1))))}
               aria-label={t("player.next", "Next slice")}
-              className="h-8 w-8 rounded-full text-foreground hover:bg-accent active:translate-x-0.5 transition-transform duration-100 disabled:opacity-40 disabled:transform-none"
               title={t("player.next", "Next slice")}
             >
-              <SkipForward className="h-4 w-4" />
+              <SkipForward className="fill-current" />
             </Button>
 
             <Button
               variant={isLoopTrack ? "secondary" : "ghost"}
-              size="icon"
+              size="icon-lg"
               onClick={toggleLoopTrack}
               disabled={queueLength === 0}
               aria-label={t("player.loopTrack", "Loop track")}
@@ -593,16 +584,13 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                   ? t("player.loopTrackActiveDesc", "Track loop is active. The current track will repeat continuously.")
                   : undefined
               }
-              className={`h-8 w-8 rounded-full active:rotate-12 transition-[transform,background-color,color] duration-100 ${
-                isLoopTrack ? "text-flexoki-green hover:bg-flexoki-green/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              } disabled:opacity-40 disabled:transform-none`}
               title={
                 isLoopTrack
                   ? t("player.loopTrackActive", "Loop track enabled")
                   : t("player.loopTrackTitle", "Repeat current track")
               }
             >
-              <Repeat1 className="h-4 w-4" />
+              <Repeat1 className={cn(isLoopTrack && "text-flexoki-green")} />
             </Button>
           </div>
 
@@ -614,16 +602,15 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-lg"
               onClick={handleToggleMute}
               aria-label={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground active:scale-90 motion-reduce:transform-none transition-transform duration-100"
               title={isMuted ? t("player.unmute", "Unmute") : t("player.mute", "Mute")}
             >
               {isMuted ? (
-                <VolumeX className="h-4 w-4 text-destructive animate-in zoom-in-75 duration-100" />
+                <VolumeX className="text-destructive animate-in zoom-in-75 duration-100" />
               ) : (
-                <Volume2 className="h-4 w-4 animate-in zoom-in-75 duration-100" />
+                <Volume2 className="animate-in zoom-in-75 duration-100" />
               )}
             </Button>
             <VolumeSlider
@@ -637,7 +624,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
 
           <Button
             variant={isQueueOpen ? "secondary" : "ghost"}
-            size="sm"
+            size="lg"
             onClick={onToggleQueue}
             aria-haspopup={isQueueDocked ? undefined : "dialog"}
             aria-expanded={isQueueOpen}
@@ -648,13 +635,10 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                 : t("player.openQueue", { count: queueLength, defaultValue: `Open queue (${queueLength} items)` })
             }
             title={t("player.queue", "Queue")}
-            className="text-xs gap-1.5"
           >
-            <ListMusic className="h-4 w-4" />
+            <ListMusic data-icon="inline-start" />
             <span className="hidden md:inline">{t("player.queue", "Queue")}</span>
-            <span className="font-mono text-2xs px-1 rounded bg-accent text-accent-foreground">
-              {queueLength}
-            </span>
+            <Badge variant="secondary">{queueLength}</Badge>
           </Button>
         </div>
       </div>
