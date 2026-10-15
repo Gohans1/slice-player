@@ -3,7 +3,7 @@ import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { GlobalWindow } from "happy-dom";
-import "../i18n";
+import i18n from "../i18n";
 import { BackupModal } from "./BackupModal";
 import { usePlayerStore } from "../store/usePlayerStore";
 
@@ -62,23 +62,58 @@ describe("BackupModal Component", () => {
     expect(text).toContain("1");
   });
 
+  const buttonWithText = (text: string) =>
+    Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
+
+  const openRestoreTab = async () => {
+    await act(async () => {
+      buttonWithText("Import / Restore")?.click();
+    });
+  };
+
   it("should switch between export and import tabs", async () => {
+    await i18n.changeLanguage("en");
     act(() => {
       root.render(<BackupModal isOpen={true} onClose={() => {}} />);
     });
+    expect(buttonWithText("Download Backup (.tar.gz)")).toBeDefined();
 
-    const buttons = document.querySelectorAll("button");
-    const importTabBtn = Array.from(buttons).find((b) => b.textContent?.includes("Restore") || b.textContent?.includes("Khôi phục") || b.textContent?.includes("Import") || b.textContent?.includes("Nạp"));
-    expect(importTabBtn).toBeDefined();
+    await openRestoreTab();
 
-    if (importTabBtn) {
-      await act(async () => {
-        importTabBtn.click();
-      });
+    expect(document.body.textContent).toContain("Restoring will replace the database");
+    expect(buttonWithText("Download Backup (.tar.gz)")).toBeUndefined();
+    expect(buttonWithText("Start Restore")?.disabled).toBe(true);
+  });
 
-      const textAfter = document.body.textContent || "";
-      expect(textAfter.length).toBeGreaterThan(0);
-    }
+  it("restores the library from a chosen backup file", async () => {
+    await i18n.changeLanguage("en");
+    const importCalls: string[] = [];
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      if (url.toString().includes("/api/library/import")) {
+        importCalls.push(init?.method ?? "GET");
+        return new Response(JSON.stringify({ success: true, message: "Restored 12 tracks" }));
+      }
+      return new Response("[]");
+    }) as any;
+    act(() => {
+      root.render(<BackupModal isOpen={true} onClose={() => {}} />);
+    });
+    await openRestoreTab();
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, "files", { value: [new File(["tar"], "backup.tar.gz")], configurable: true });
+    await act(async () => {
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(document.body.textContent).toContain("Selected file: backup.tar.gz");
+
+    await act(async () => {
+      buttonWithText("Start Restore")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(importCalls).toEqual(["POST"]);
+    expect(document.body.textContent).toContain("Restored 12 tracks");
   });
 
   it("should call export API when download button is clicked", async () => {

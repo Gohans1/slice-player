@@ -1,19 +1,16 @@
 import * as React from "react";
-import { Modal } from "./Modal";
-import { Button } from "./ui/button";
+import { AlertTriangle, CheckCircle2, Database, Download, FileArchive, FolderOpen, ListMusic, Music, UploadCloud } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Modal } from "./Modal";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "./ui/empty";
+import { Spinner } from "./ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { usePlayerStore } from "../store/usePlayerStore";
-import {
-  Download,
-  UploadCloud,
-  FileArchive,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  Database,
-  Music,
-  ListMusic
-} from "lucide-react";
+
+type StatusMessage = { type: "success" | "error"; text: string };
 
 interface BackupModalProps {
   isOpen: boolean;
@@ -29,11 +26,11 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
 
   const [activeTab, setActiveTab] = React.useState<"export" | "import">("export");
   const [isExporting, setIsExporting] = React.useState(false);
-  const [exportMessage, setExportMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [exportMessage, setExportMessage] = React.useState<StatusMessage | null>(null);
 
   const [importFile, setImportFile] = React.useState<File | null>(null);
   const [isImporting, setIsImporting] = React.useState(false);
-  const [importMessage, setImportMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [importMessage, setImportMessage] = React.useState<StatusMessage | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -158,134 +155,77 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
       title={t("backupModal.title")}
       description={t("backupModal.description")}
     >
-      <div className="space-y-4">
-        {/* Navigation Tabs */}
-        <div className="flex rounded-lg bg-secondary/50 p-1 border border-border/60">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("export");
-              setExportMessage(null);
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,box-shadow] duration-150 cursor-pointer ${
-              activeTab === "export"
-                ? "bg-card text-foreground shadow-sm border border-border/80"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>{t("backupModal.exportTab")}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("import");
-              setImportMessage(null);
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,box-shadow] duration-150 cursor-pointer ${
-              activeTab === "import"
-                ? "bg-card text-foreground shadow-sm border border-border/80"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <UploadCloud className="h-3.5 w-3.5" />
-            <span>{t("backupModal.importTab")}</span>
-          </button>
-        </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (value === "import") {
+            setActiveTab("import");
+            setImportMessage(null);
+          } else {
+            setActiveTab("export");
+            setExportMessage(null);
+          }
+        }}
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="export">
+            <Download data-icon="inline-start" />
+            {t("backupModal.exportTab")}
+          </TabsTrigger>
+          <TabsTrigger value="import">
+            <UploadCloud data-icon="inline-start" />
+            {t("backupModal.importTab")}
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Tab 1: Export */}
-        {activeTab === "export" && (
-          <div className="space-y-4 pt-1 animate-in fade-in duration-150">
-            <div className="rounded-lg border border-border/60 bg-secondary/20 p-3 text-xs space-y-2.5">
-              <div className="font-semibold text-foreground flex items-center gap-1.5">
-                <Database className="h-4 w-4 text-primary" />
-                <span>{t("backupModal.exportStats")}</span>
+        <TabsContent value="export">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2.5 rounded-lg border p-3 text-xs">
+              <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                <Database className="size-4 text-muted-foreground" />
+                {t("backupModal.exportStats")}
               </div>
-              <div className="grid grid-cols-2 gap-2 text-muted-foreground pt-1">
-                <div className="flex items-center gap-1.5 bg-background/50 px-2.5 py-1.5 rounded border border-border/40">
-                  <Music className="h-3.5 w-3.5 text-flexoki-cyan shrink-0" />
-                  <span>{t("backupModal.trackCount", { count: tracks.length })}</span>
+              <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5">
+                  <Music className="size-3.5 shrink-0 text-flexoki-cyan" />
+                  {t("backupModal.trackCount", { count: tracks.length })}
                 </div>
-                <div className="flex items-center gap-1.5 bg-background/50 px-2.5 py-1.5 rounded border border-border/40">
-                  <ListMusic className="h-3.5 w-3.5 text-flexoki-green shrink-0" />
-                  <span>{t("backupModal.playlistCount", { count: playlists.length })}</span>
+                <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5">
+                  <ListMusic className="size-3.5 shrink-0 text-flexoki-green" />
+                  {t("backupModal.playlistCount", { count: playlists.length })}
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed pt-1">
-                {t("backupModal.exportDesc")}
-              </p>
+              <p className="leading-relaxed text-muted-foreground">{t("backupModal.exportDesc")}</p>
             </div>
 
-            {exportMessage && (
-              <div
-                className={`p-3 rounded-md text-xs flex items-start gap-2 border ${
-                  exportMessage.type === "success"
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                    : "bg-destructive/10 border-destructive/30 text-destructive"
-                }`}
-              >
-                {exportMessage.type === "success" ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                )}
-                <span>{exportMessage.text}</span>
-              </div>
-            )}
+            {exportMessage && <StatusAlert message={exportMessage} />}
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onClose} disabled={isExporting}>
                 {t("backupModal.close")}
               </Button>
-              <Button
-                variant="default"
-                onClick={handleExport}
-                disabled={isExporting}
-                className="gap-1.5"
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>{t("backupModal.exporting")}</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-4 w-4" />
-                    <span>{t("backupModal.downloadBtn")}</span>
-                  </>
-                )}
+              <Button onClick={handleExport} disabled={isExporting}>
+                {isExporting ? <Spinner data-icon="inline-start" /> : <Download data-icon="inline-start" />}
+                {isExporting ? t("backupModal.exporting") : t("backupModal.downloadBtn")}
               </Button>
             </div>
           </div>
-        )}
+        </TabsContent>
 
-        {/* Tab 2: Import */}
-        {activeTab === "import" && (
-          <div className="space-y-4 pt-1 animate-in fade-in duration-150">
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-start gap-2 leading-relaxed">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
-              <span>{t("backupModal.importWarning")}</span>
-            </div>
+        <TabsContent value="import">
+          <div className="flex flex-col gap-4">
+            <Alert>
+              <AlertTriangle />
+              <AlertDescription>{t("backupModal.importWarning")}</AlertDescription>
+            </Alert>
 
-            {/* Dropzone */}
+            {/* Drop target around the empty state, highlighted while a file hovers over it */}
             <div
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  fileInputRef.current?.click();
-                }
-              }}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                isDragging
-                  ? "border-primary bg-primary/10"
-                  : "border-border hover:border-primary/50 bg-secondary/10"
-              }`}
+              data-dragging={isDragging || undefined}
+              className="rounded-xl border border-dashed transition-colors data-dragging:border-primary data-dragging:bg-primary/10"
             >
               <input
                 ref={fileInputRef}
@@ -298,66 +238,56 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
                   }
                 }}
               />
-              <FileArchive className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-              <p className="text-xs font-medium text-foreground">
-                {t("backupModal.dropzoneHint")}
-              </p>
-              {importFile && (
-                <div className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-xs font-semibold border border-primary/30">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>
-                    {t("backupModal.selectedFile", {
-                      name: importFile.name,
-                      size: formatFileSize(importFile.size),
-                    })}
-                  </span>
-                </div>
-              )}
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileArchive />
+                  </EmptyMedia>
+                  <EmptyDescription>{t("backupModal.dropzoneHint")}</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    <FolderOpen data-icon="inline-start" />
+                    {t("backupModal.selectFile")}
+                  </Button>
+                  {importFile && (
+                    <Badge variant="secondary">
+                      <CheckCircle2 data-icon="inline-start" />
+                      {t("backupModal.selectedFile", { name: importFile.name, size: formatFileSize(importFile.size) })}
+                    </Badge>
+                  )}
+                </EmptyContent>
+              </Empty>
             </div>
 
-            {importMessage && (
-              <div
-                className={`p-3 rounded-md text-xs flex items-start gap-2 border ${
-                  importMessage.type === "success"
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                    : "bg-destructive/10 border-destructive/30 text-destructive"
-                }`}
-              >
-                {importMessage.type === "success" ? (
-                  <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                )}
-                <span>{importMessage.text}</span>
-              </div>
-            )}
+            {importMessage && <StatusAlert message={importMessage} />}
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onClose} disabled={isImporting}>
                 {t("backupModal.close")}
               </Button>
-              <Button
-                variant="default"
-                onClick={handleImport}
-                disabled={!importFile || isImporting}
-                className="gap-1.5"
-              >
-                {isImporting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>{t("backupModal.importing")}</span>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="h-4 w-4" />
-                    <span>{t("backupModal.importBtn")}</span>
-                  </>
-                )}
+              <Button onClick={handleImport} disabled={!importFile || isImporting}>
+                {isImporting ? <Spinner data-icon="inline-start" /> : <UploadCloud data-icon="inline-start" />}
+                {isImporting ? t("backupModal.importing") : t("backupModal.importBtn")}
               </Button>
             </div>
           </div>
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </Modal>
+  );
+}
+
+function StatusAlert({ message }: { message: StatusMessage }) {
+  return message.type === "success" ? (
+    <Alert>
+      <CheckCircle2 />
+      <AlertDescription>{message.text}</AlertDescription>
+    </Alert>
+  ) : (
+    <Alert variant="destructive">
+      <AlertTriangle />
+      <AlertDescription>{message.text}</AlertDescription>
+    </Alert>
   );
 }
