@@ -71,9 +71,23 @@ describe("resizedThumbnail", () => {
     const backedUpAt = new Date(Date.now() - 86_400_000);
     utimesSync(source, backedUpAt, backedUpAt);
 
-    expect(await widthOf((await resizedThumbnail(source, 192, variants))!)).toBe(100);
-    // The copy of the art it replaced is gone
-    expect(readdirSync(variants)).toHaveLength(1);
+    const current = await resizedThumbnail(source, 192, variants);
+    expect(await widthOf(current!)).toBe(100);
+
+    // The copy of the art it replaced goes at the next startup
+    sweepThumbnailVariants(dir, variants);
+    expect(readdirSync(variants)).toEqual([basename(current!)]);
+  });
+
+  it("keeps a copy that a request may still be sending when newer cover art replaces it", async () => {
+    await coverArt(source, 3000);
+    const sending = await resizedThumbnail(source, 192, variants);
+
+    // The file is re-imported with other art while that copy is on its way to the browser
+    await coverArt(source, 100);
+    await resizedThumbnail(source, 192, variants);
+
+    expect(existsSync(sending!)).toBe(true);
   });
 
   it("leaves no copy behind when its track is deleted while the copy is being made", async () => {
@@ -119,7 +133,9 @@ describe("resizedThumbnail", () => {
     const kept = await resizedThumbnail(source, 192, variants);
     await resizedThumbnail(join(dir, "loc_gone.jpg"), 192, variants);
 
-    sweepThumbnailVariants(new Set(["loc_abc"]), variants);
+    // Startup clears the cover art of tracks that are gone before it sweeps the copies
+    rmSync(join(dir, "loc_gone.jpg"));
+    sweepThumbnailVariants(dir, variants);
 
     expect(readdirSync(variants)).toEqual([basename(kept!)]);
   });

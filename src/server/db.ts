@@ -288,11 +288,11 @@ export function initDatabase(dbPath: string = LIBRARY_DB_PATH): Database {
         }
       }
 
-      const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
-      const validTrackIds = new Set(trackRows.map((r) => r.id));
       const thumbCacheDir = "./data/cache/thumbs";
       if (existsSync(thumbCacheDir)) {
         const existingThumbs = readdirSync(thumbCacheDir);
+        const trackRows = db.query("SELECT id FROM tracks").all() as { id: string }[];
+        const validTrackIds = new Set(trackRows.map((r) => r.id));
         for (const thumb of existingThumbs) {
           const dotIdx = thumb.lastIndexOf(".");
           const trackId = dotIdx !== -1 ? thumb.slice(0, dotIdx) : thumb;
@@ -301,7 +301,8 @@ export function initDatabase(dbPath: string = LIBRARY_DB_PATH): Database {
           }
         }
       }
-      sweepThumbnailVariants(validTrackIds, THUMBNAIL_VARIANTS_DIR);
+      // After the cover art of tracks that are gone, so their copies go too
+      sweepThumbnailVariants(thumbCacheDir, THUMBNAIL_VARIANTS_DIR);
     } catch {}
   }
 

@@ -101,8 +101,7 @@ async function scaleDown(sourcePath: string, variant: Variant, variantsDir: stri
       unlinkSync(variantPath);
       return null;
     }
-    // Copies of the art this one replaced won't be asked for again
-    removeVariantsWhere(variantsDir, (other) => other?.trackId === variant.trackId && other.width === variant.width && other.version !== variant.version);
+    // Copies of the art this one replaced stay until the startup sweep, since a request may still be sending one
     return variantPath;
   } catch {
     return null;
@@ -118,8 +117,13 @@ export function removeThumbnailVariants(trackId: string, variantsDir: string) {
   removeVariantsWhere(variantsDir, (variant) => variant?.trackId === trackId);
 }
 
-// Clears copies left behind by tracks that are gone, such as after a library restore. It runs at startup, before any
-// resize, so it also clears partial files and anything else that isn't a copy.
-export function sweepThumbnailVariants(validTrackIds: Set<string>, variantsDir: string) {
-  removeVariantsWhere(variantsDir, (variant) => !variant || !validTrackIds.has(variant.trackId));
+// Clears copies whose cover art is gone or has changed since: its track was deleted, its file re-imported or the library
+// restored. It runs at startup, before any resize or request, so it also clears partial files and anything else that
+// isn't a copy.
+export function sweepThumbnailVariants(thumbsDir: string, variantsDir: string) {
+  removeVariantsWhere(variantsDir, (variant) => {
+    if (!variant) return true;
+    const source = [".jpg", ".png", ".webp"].map((ext) => join(thumbsDir, `${variant.trackId}${ext}`)).find((path) => existsSync(path));
+    return !source || coverArtVersion(source) !== variant.version;
+  });
 }
