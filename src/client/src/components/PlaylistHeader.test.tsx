@@ -192,6 +192,8 @@ describe("PlaylistHeader Component (TDD)", () => {
     });
 
     expect(renamePlaylist).toHaveBeenCalledWith("pl_1", "chill vibes");
+    // Keyboard focus lands back on the rename button instead of falling to the page
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("playlist-rename-btn");
   });
 
   it("cancels inline rename on Escape key without calling renamePlaylist", async () => {
@@ -215,6 +217,7 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(renamePlaylist).not.toHaveBeenCalled();
     // Input should be gone and title restored
     expect(container.querySelector("[data-testid='playlist-inline-rename-input']")).toBeNull();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("playlist-rename-btn");
   });
 
   it("opens delete confirm modal and calls deletePlaylist on confirm", async () => {

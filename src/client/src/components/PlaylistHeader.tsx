@@ -1,4 +1,5 @@
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
@@ -59,6 +60,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
   const [isCreateSubModalOpen, setIsCreateSubModalOpen] = React.useState(false);
   // Renaming from the "..." menu: the menu hands focus to the field instead of back to its trigger
   const renameInputRef = React.useRef<HTMLInputElement>(null);
+  const renameButtonRef = React.useRef<HTMLButtonElement>(null);
 
   const parentPlaylist = React.useMemo(() => {
     if (!playlist.parent_id) return null;
@@ -93,18 +95,24 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
     setIsEditingName(true);
   };
 
+  // The field unmounts on close, so focus moves to the rename button that replaces it rather than the page
+  const finishRename = () => {
+    flushSync(() => setIsEditingName(false));
+    renameButtonRef.current?.focus();
+  };
+
   const handleSaveRename = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const trimmed = editingName.trim();
     if (trimmed && trimmed !== playlist.name) {
       await renamePlaylist(playlist.id, trimmed);
     }
-    setIsEditingName(false);
+    finishRename();
   };
 
   const handleCancelRename = () => {
     setEditingName(playlist.name);
-    setIsEditingName(false);
+    finishRename();
   };
 
   const handleKeyDownRename = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -228,6 +236,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 </h2>
                 {!playlist.is_mix && (
                   <Button
+                    ref={renameButtonRef}
                     variant="ghost"
                     size="icon"
                     onClick={handleStartRename}
