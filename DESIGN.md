@@ -14,7 +14,7 @@ colors:
   popover: "#1C1B1A"
   popover-foreground: "#CECDC3"
   muted: "#282726"
-  muted-foreground: "#878580"
+  muted-foreground: "#9F9D96"
   accent: "#343331"
   accent-foreground: "#F2F0E5"
   destructive: "#D14D41"
@@ -188,10 +188,12 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Base 150** (`#DAD8CE`): Viền hover Light Mode (`ui-2`), nền ô input Light Mode.
 - **Base 200** (`#CECDC3`): Màu chữ chính Dark Mode (`tx`), viền active Light Mode (`ui-3`).
 - **Base 300** (`#B7B5AC`): Chữ mờ nhạt Light Mode (`tx-3`).
-- **Base 400** (`#9F9D96`): Sắc độ trung gian.
-- **Base 500** (`#878580`): Chữ chú thích Dark Mode (`tx-2` / `muted-foreground`).
-- **Base 600** (`#6F6E69`): Chữ chú thích Light Mode (`tx-2` / `muted-foreground`).
-- **Base 700** (`#575653`): Chữ mờ nhạt Dark Mode (`tx-3`).
+- **Base 400** (`#9F9D96`): Chữ chú thích Dark Mode (`muted-foreground`).
+- **Base 500** (`#878580`): `tx-2` Dark Mode theo bản đồ chính chủ của Flexoki; không dùng cho chữ (xem The Secondary Text Contrast Rule).
+- **Base 600** (`#6F6E69`): `tx-2` Light Mode theo bản đồ chính chủ; không dùng cho chữ, cùng lý do.
+- **Base 700** (`#575653`): Chữ chú thích Light Mode (`muted-foreground` / `secondary-foreground`), chữ mờ nhạt Dark Mode (`tx-3`).
+
+**The Secondary Text Contrast Rule.** Chữ phụ (`muted-foreground`) lệch `tx-2` của Flexoki đúng một bậc ra xa nền: Base 400 ở Dark Mode, Base 700 ở Light Mode. `tx-2` đạt 4.5:1 trên nền chính nhưng tụt xuống 3.9–4.5:1 trên card, hàng đang hover / đang phát và nền `muted`, mà chữ phụ của bảng và Up Next nằm đúng trên các nền đó. Một bậc lệch giữ mọi cặp từ 5.3:1 trở lên, và Base 400 cũng gần với chữ phụ trắng 64% của Apple Music.
 - **Base 800** (`#403E3C`): Viền active Dark Mode (`ui-3`), sóng âm WaveSurfer.
 - **Base 850** (`#343331`): Viền ô nhập và nền `accent` Dark Mode (`ui-2` / `input`).
 - **Base 900** (`#282726`): Đường viền chính, nền `secondary` / `muted` Dark Mode (`ui` / `border`).

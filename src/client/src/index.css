@@ -338,7 +338,9 @@ html {
   --flexoki-pu: #5E409D;      /* purple-600 */
   --flexoki-ma: #A02F6F;      /* magenta-600 */
 
-  /* Accent is Flexoki red: the Apple Music signal color, in Flexoki ink */
+  /* Accent is Flexoki red: the Apple Music signal color, in Flexoki ink.
+     Secondary text sits one Flexoki step darker than tx-2 (base-700): tx-2 drops below 4.5:1 on cards, hovered and
+     playing rows and muted fills */
   --background: #FFFCF0;
   --foreground: #100F0F;
   --card: #F2F0E5;
@@ -348,9 +350,9 @@ html {
   --primary: #AF3029;
   --primary-foreground: #FFFCF0;
   --secondary: #E6E4D9;
-  --secondary-foreground: #6F6E69;
+  --secondary-foreground: #575653;
   --muted: #F2F0E5;
-  --muted-foreground: #6F6E69;
+  --muted-foreground: #575653;
   --accent: #DAD8CE;
   --accent-foreground: #100F0F;
   --destructive: #AF3029;
@@ -397,6 +399,7 @@ html {
   --flexoki-pu: #8B7EC8;      /* purple-400 */
   --flexoki-ma: #CE5D97;      /* magenta-400 */
 
+  /* Secondary text sits one Flexoki step lighter than tx-2 (base-400), for the same 4.5:1 as in the light theme */
   --background: #100F0F;
   --foreground: #CECDC3;
   --card: #1C1B1A;
@@ -408,7 +411,7 @@ html {
   --secondary: #282726;
   --secondary-foreground: #E6E4D9;
   --muted: #282726;
-  --muted-foreground: #878580;
+  --muted-foreground: #9F9D96;
   --accent: #343331;
   --accent-foreground: #F2F0E5;
   --destructive: #D14D41;
