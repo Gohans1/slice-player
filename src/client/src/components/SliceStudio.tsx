@@ -1114,13 +1114,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                         </span>
                       </div>
 
-                      <AddToPlaylistPopover
-                        trackId={track.id}
-                        segmentId={seg.id}
-                        variant="ghost"
-                        size="icon"
-                        showText={false}
-                      />
+                      <AddToPlaylistPopover trackId={track.id} segmentId={seg.id} />
 
                       <Button
                         variant="ghost"

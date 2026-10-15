@@ -178,28 +178,16 @@ export interface AddToPlaylistPopoverProps {
   trackId: string;
   segmentId?: string | null;
   disabled?: boolean;
-  variant?: "outline" | "ghost";
-  size?: "sm" | "icon";
-  buttonClassName?: string;
-  showText?: boolean;
 }
 
+// Icon button that opens a menu of playlists to add the track or slice to
 export const AddToPlaylistPopover = React.memo(function AddToPlaylistPopover({
   trackId,
   segmentId,
   disabled = false,
-  variant = "outline",
-  size = "sm",
-  buttonClassName,
-  showText = true,
 }: AddToPlaylistPopoverProps) {
   const { t } = useTranslation();
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
-
-  const defaultClasses =
-    variant === "ghost"
-      ? "h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer"
-      : "h-8 text-xs gap-1 border-primary/20 text-primary hover:bg-primary/10 cursor-pointer";
 
   return (
     <>
@@ -209,10 +197,9 @@ export const AddToPlaylistPopover = React.memo(function AddToPlaylistPopover({
           onClick={stopPropagation}
           title={t("addToPlaylist.title")}
           aria-label={t("addToPlaylist.title")}
-          render={<Button variant={variant} size={size} className={buttonClassName || defaultClasses} />}
+          render={<Button variant="ghost" size="icon" />}
         >
-          <FolderPlus className="h-3.5 w-3.5" />
-          {showText && <span className="hidden xl:inline">{t("addToPlaylist.buttonText", "Playlist")}</span>}
+          <FolderPlus />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56" onClick={stopPropagation} onKeyDown={stopPropagation}>
           <AddToPlaylistItems

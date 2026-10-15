@@ -384,7 +384,6 @@
   },
   "addToPlaylist": {
     "title": "Thêm vào danh sách",
-    "buttonText": "Playlist",
     "empty": "Chưa có playlist nào",
     "newPlaylist": "Tạo playlist mới"
   },

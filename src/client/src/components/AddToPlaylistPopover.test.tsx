@@ -269,14 +269,8 @@ describe("AddToPlaylistPopover Component", () => {
 
     // Fill in playlist name
     act(() => {
-      const reactPropsKey = Object.keys(input).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
-      if (reactPropsKey && (input as any)[reactPropsKey]?.onChange) {
-        (input as any)[reactPropsKey].onChange({ target: { value: "My Chill Mix" }, currentTarget: { value: "My Chill Mix" } });
-      } else {
-        input.value = "My Chill Mix";
-        input.dispatchEvent(new window.Event("input", { bubbles: true }));
-        input.dispatchEvent(new window.Event("change", { bubbles: true }));
-      }
+      Reflect.set(Object.getPrototypeOf(input), "value", "My Chill Mix", input);
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
     });
 
     // Submit form
@@ -284,12 +278,7 @@ describe("AddToPlaylistPopover Component", () => {
     expect(form).not.toBeNull();
 
     await act(async () => {
-      const formPropsKey = Object.keys(form!).find((k) => k.startsWith("__reactProps") || k.startsWith("__reactEventHandlers"));
-      if (formPropsKey && (form as any)[formPropsKey]?.onSubmit) {
-        (form as any)[formPropsKey].onSubmit({ preventDefault: () => {} });
-      } else {
-        form!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-      }
+      form?.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
       await new Promise((r) => setTimeout(r, 50));
     });
 

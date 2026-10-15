@@ -384,7 +384,6 @@
   },
   "addToPlaylist": {
     "title": "Add to Playlist",
-    "buttonText": "Playlist",
     "empty": "No playlists yet",
     "newPlaylist": "New Playlist"
   },
