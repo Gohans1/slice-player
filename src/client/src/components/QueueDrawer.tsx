@@ -115,8 +115,9 @@ const QueueItemRow = React.memo(function QueueItemRow({
       onDragOver={(e) => onDragOver(e, idx)}
       onDrop={(e) => onDrop(e, idx)}
       onDragEnd={onDragEnd}
+      data-tint={isCurrent || isDragTarget ? "on" : isDragging ? undefined : "hover"}
       className={cn(
-        "group flex items-center justify-between gap-2 rounded-md p-1.5 select-none transition-colors",
+        "group flex min-h-13.5 items-center gap-2 rounded-md p-1.5 select-none transition-colors",
         isDragging
           ? "opacity-40 outline-1 outline-dashed outline-primary/60"
           : isDragTarget
@@ -127,52 +128,6 @@ const QueueItemRow = React.memo(function QueueItemRow({
       )}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <div
-          data-drag-handle="true"
-          role="button"
-          tabIndex={0}
-          aria-label={t("queue.dragHandleAria", { name: itemName, position: idx + 1, total: totalItems, defaultValue: `Reorder ${itemName}, position ${idx + 1} of ${totalItems}` })}
-          aria-keyshortcuts="ArrowUp ArrowDown Home End"
-          aria-description={t("queue.dragHandleDesc", "Press Up/Down arrow or Home/End to change position in queue")}
-          className="cursor-grab active:cursor-grabbing p-0.5 text-muted-foreground/60 hover:text-foreground shrink-0 transition [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          title={t("queue.dragHandleTitle", "Drag or press Up/Down arrows, Home/End to reorder")}
-          onMouseDown={(e) => {
-            if (e.button === 0) onHandleMouseDown();
-          }}
-          onPointerDown={(e) => {
-            if (e.button === 0) onHandleMouseDown();
-          }}
-          onKeyDown={(e) => {
-            const currentEl = e.currentTarget.closest<HTMLElement>("[data-index]");
-            const rawIdx = currentEl ? Number(currentEl.getAttribute("data-index")) : idx;
-            const effectiveIdx = !isNaN(rawIdx) ? rawIdx : idx;
-            if (e.key === "ArrowUp" && effectiveIdx > 0) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(effectiveIdx, effectiveIdx - 1);
-            } else if (e.key === "ArrowDown" && effectiveIdx < totalItems - 1) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(effectiveIdx, effectiveIdx + 1);
-            } else if (e.key === "Home" && effectiveIdx > 0) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(effectiveIdx, 0);
-            } else if (e.key === "End" && effectiveIdx < totalItems - 1) {
-              e.preventDefault();
-              e.stopPropagation();
-              onReorder(effectiveIdx, totalItems - 1);
-            } else if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              e.stopPropagation();
-              onAnnouncement(t("queue.dragHandleSelectedAnnouncement", { name: itemName, position: effectiveIdx + 1, total: totalItems, defaultValue: `Selected ${itemName}, position ${effectiveIdx + 1} of ${totalItems}. Press Up or Down arrow to reorder.` }));
-            }
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <GripVertical className="h-4 w-4 pointer-events-none" />
-        </div>
-
         {/* Mobile & Touchscreen reorder buttons */}
         <div className="flex flex-col [@media(pointer:fine)]:sm:hidden gap-0.5 shrink-0">
           <Button
@@ -246,9 +201,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     <NowPlayingEqualizer className="text-primary shrink-0" />
                   )}
                   <span
-                    className={`text-xs font-medium truncate ${
-                      isCurrent ? "text-primary font-semibold" : "text-foreground"
-                    }`}
+                    className={cn("truncate text-xs", isCurrent ? "text-primary" : "text-foreground")}
                     title={item.segment.name}
                   >
                     {item.segment.name}
@@ -261,7 +214,7 @@ const QueueItemRow = React.memo(function QueueItemRow({
                   </span>
                 </div>
                 <p
-                  className="text-2xs text-muted-foreground truncate"
+                  className="truncate text-xs text-muted-foreground"
                   title={artistText ? `${item.track.title} • ${artistText}` : item.track.title}
                 >
                   {artistText ? `${item.track.title} • ${artistText}` : item.track.title}
@@ -274,16 +227,14 @@ const QueueItemRow = React.memo(function QueueItemRow({
                     <NowPlayingEqualizer className="text-primary shrink-0" />
                   )}
                   <p
-                    className={`text-xs font-medium truncate ${
-                      isCurrent ? "text-primary font-semibold" : "text-foreground"
-                    }`}
+                    className={cn("truncate text-xs", isCurrent ? "text-primary" : "text-foreground")}
                     title={item.track.title}
                   >
                     {item.track.title}
                   </p>
                 </div>
                 <p
-                  className="text-2xs text-muted-foreground truncate"
+                  className="truncate text-xs text-muted-foreground"
                   title={artistText || t("table.unknownArtist", "Unknown Artist")}
                 >
                   {artistText || t("table.unknownArtist", "Unknown Artist")}
@@ -294,11 +245,58 @@ const QueueItemRow = React.memo(function QueueItemRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="font-mono text-2xs text-muted-foreground">
+      {/* Like Apple Music, the duration gives way to the row's controls on hover or focus. Touch screens can't hover, so
+          they show both side by side. */}
+      <div className="flex shrink-0 items-center gap-1.5 pointer-fine:grid pointer-fine:justify-items-end pointer-fine:*:[grid-area:1/1]">
+        <span className="text-xs text-muted-foreground tabular-nums transition-opacity pointer-fine:group-hover:opacity-0 pointer-fine:group-focus-within:opacity-0">
           {formatDuration(segDuration)}
         </span>
-        <div className={cn("flex", REVEAL_ON_HOVER)}>
+        <div className={cn("flex items-center", REVEAL_ON_HOVER, "group-focus-within:opacity-100")}>
+          <div
+            data-drag-handle="true"
+            role="button"
+            tabIndex={0}
+            aria-label={t("queue.dragHandleAria", { name: itemName, position: idx + 1, total: totalItems, defaultValue: `Reorder ${itemName}, position ${idx + 1} of ${totalItems}` })}
+            aria-keyshortcuts="ArrowUp ArrowDown Home End"
+            aria-description={t("queue.dragHandleDesc", "Press Up/Down arrow or Home/End to change position in queue")}
+            className="shrink-0 cursor-grab rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing"
+            title={t("queue.dragHandleTitle", "Drag or press Up/Down arrows, Home/End to reorder")}
+            onMouseDown={(e) => {
+              if (e.button === 0) onHandleMouseDown();
+            }}
+            onPointerDown={(e) => {
+              if (e.button === 0) onHandleMouseDown();
+            }}
+            onKeyDown={(e) => {
+              const currentEl = e.currentTarget.closest<HTMLElement>("[data-index]");
+              const rawIdx = currentEl ? Number(currentEl.getAttribute("data-index")) : idx;
+              const effectiveIdx = !isNaN(rawIdx) ? rawIdx : idx;
+              if (e.key === "ArrowUp" && effectiveIdx > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                onReorder(effectiveIdx, effectiveIdx - 1);
+              } else if (e.key === "ArrowDown" && effectiveIdx < totalItems - 1) {
+                e.preventDefault();
+                e.stopPropagation();
+                onReorder(effectiveIdx, effectiveIdx + 1);
+              } else if (e.key === "Home" && effectiveIdx > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                onReorder(effectiveIdx, 0);
+              } else if (e.key === "End" && effectiveIdx < totalItems - 1) {
+                e.preventDefault();
+                e.stopPropagation();
+                onReorder(effectiveIdx, totalItems - 1);
+              } else if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onAnnouncement(t("queue.dragHandleSelectedAnnouncement", { name: itemName, position: effectiveIdx + 1, total: totalItems, defaultValue: `Selected ${itemName}, position ${effectiveIdx + 1} of ${totalItems}. Press Up or Down arrow to reorder.` }));
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-4 w-4 pointer-events-none" />
+          </div>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -1257,7 +1255,7 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
                   aria-current={isCurrent ? "true" : undefined}
                   aria-setsize={displayQueue.length}
                   aria-posinset={virtualRow.index + 1}
-                  className="absolute inset-x-0 top-0 translate-y-(--virtual-start) pb-0.5"
+                  className="row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
                   style={{ "--virtual-start": `${virtualRow.start}px` }}
                 >
                   <QueueItemRow
