@@ -1287,6 +1287,7 @@ export function App() {
                     key={item.id}
                     segment={item.segment}
                     track={item.track}
+                    visibleItemIds={visibleItems}
                     onPlay={() =>
                       playSegmentInMode(
                         "slices_only",
