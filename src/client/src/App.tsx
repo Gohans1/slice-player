@@ -1112,8 +1112,9 @@ export function App() {
       onOpenShortcuts={() => setIsShortcutsOpen(true)}
     >
       <SidebarInset className="min-w-0">
-        {/* Sticky toolbar: view title, sort and view mode, library actions, master volume */}
-        <header ref={toolbarRef} data-testid="sticky-library-header" className="sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+        {/* Sticky toolbar: view title, sort and view mode, library actions, master volume.
+            A container, so control labels give way to icons when the column is narrow rather than wrapping */}
+        <header ref={toolbarRef} data-testid="sticky-library-header" className="@container sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
             {/* Title on the left; controls wrap below it when the column is narrow */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">

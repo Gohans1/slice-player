@@ -315,7 +315,7 @@ export function ImportActions() {
         aria-label={t("nav.addFlac")}
       >
         <FolderPlus data-icon="inline-start" className="text-flexoki-cyan" />
-        <span className="hidden sm:inline">{t("nav.addFlac")}</span>
+        <span className="hidden @4xl:inline">{t("nav.addFlac")}</span>
       </Button>
 
       <input
@@ -331,7 +331,7 @@ export function ImportActions() {
 
       <Button variant="outline" size="sm" onClick={() => setIsYtModalOpen(true)} aria-label={t("nav.addYoutube")}>
         <YoutubeIcon data-icon="inline-start" className="text-flexoki-red" />
-        <span className="hidden sm:inline">{t("nav.addYoutube")}</span>
+        <span className="hidden @4xl:inline">{t("nav.addYoutube")}</span>
         {isProcessingYtQueue && <Spinner data-icon="inline-end" />}
       </Button>
 

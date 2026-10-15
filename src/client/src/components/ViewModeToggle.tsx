@@ -28,13 +28,14 @@ export function ViewModeToggle({ value, onValueChange }: ViewModeToggleProps) {
         if (mode) onValueChange(mode);
       }}
     >
-      <ToggleGroupItem value="grid" title={t("library.gridTooltip")}>
+      {/* Narrow toolbars show only the icons, so the names can't come from the label text */}
+      <ToggleGroupItem value="grid" aria-label={t("library.grid")} title={t("library.gridTooltip")}>
         <LayoutGrid />
-        {t("library.grid")}
+        <span className="hidden @6xl:inline">{t("library.grid")}</span>
       </ToggleGroupItem>
-      <ToggleGroupItem value="list" title={t("library.tableTooltip")}>
+      <ToggleGroupItem value="list" aria-label={t("library.table")} title={t("library.tableTooltip")}>
         <List />
-        {t("library.table")}
+        <span className="hidden @6xl:inline">{t("library.table")}</span>
       </ToggleGroupItem>
     </ToggleGroup>
   );

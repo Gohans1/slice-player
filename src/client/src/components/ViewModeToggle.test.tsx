@@ -49,4 +49,13 @@ describe("ViewModeToggle", () => {
     });
     expect(onValueChange).toHaveBeenCalledWith("grid");
   });
+
+  it("names each view for assistive tech, since narrow toolbars show only the icons", async () => {
+    await act(async () => {
+      root.render(<ViewModeToggle value="list" onValueChange={() => {}} />);
+    });
+
+    expect(button("Grid").getAttribute("aria-label")).toBe("Grid");
+    expect(button("List").getAttribute("aria-label")).toBe("List");
+  });
 });

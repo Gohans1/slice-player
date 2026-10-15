@@ -229,7 +229,8 @@ Bố cục 3 cột theo Apple Music (macOS Tahoe 26), dựng bằng shadcn Base 
 - **Cột phải "Now Playing Queue" (`QueuePanel`)**: rộng `w-80`, dock cạnh nội dung, có 3 chế độ phát Mix / Slices / Tracks, sắp xếp bằng kéo thả hoặc nút lên/xuống.
 - **PlayerBar**: `fixed bottom-0` trải hết chiều ngang; chiều cao thật được đo vào biến `--player-bar-height` để sidebar và queue chừa chỗ.
 - **Breakpoint chính 1280px (`WIDE_LAYOUT_QUERY`, bằng `xl`)**: từ 1280px trở lên đủ 3 cột. Dưới 1280px sidebar thu về icon (vẫn mở tay được, giữ nguyên đến khi vượt lại breakpoint) và queue thành `Sheet` trượt từ phải, mở bằng nút Queue trên PlayerBar. Dưới 768px sidebar là `Sheet` của shadcn.
-- **Dưới 640px (`INLINE_ROW_ACTIONS_QUERY`, bằng `sm`)**: hành động inline của hàng bảng dồn vào menu "…", nhãn sort chỉ còn icon (vẫn giữ `aria-label`).
+- **Dưới 640px (`INLINE_ROW_ACTIONS_QUERY`, bằng `sm`)**: hành động inline của hàng bảng dồn vào menu "…".
+- **Header dính là `@container`** để luôn nằm trên một hàng thay vì wrap khi cột giữa hẹp (mở queue, sidebar mở): nhãn sort và Grid / List chỉ hiện khi header rộng từ `@6xl` (72rem), nhãn + Local Audio / + YouTube từ `@4xl` (56rem); hẹp hơn chỉ còn icon, tên vẫn nằm ở `aria-label` và tooltip `title`.
 - **Nhịp khoảng cách**: thang 4px; dùng `gap-*` thay cho `space-*`.
 
 ## Elevation & Depth

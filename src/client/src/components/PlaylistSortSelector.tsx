@@ -98,10 +98,10 @@ export function PlaylistSortSelector({ builtInItemIds }: PlaylistSortSelectorPro
       onValueChange={(next) => handleSelect(sortOptions.find((opt) => opt.mode === next[0])?.mode ?? currentMode)}
     >
       {sortOptions.map((opt) => (
-        // Phones show only the icon, so the name can't come from the label text
+        // Narrow toolbars show only the icon, so the name can't come from the label text
         <ToggleGroupItem key={opt.mode} value={opt.mode} aria-label={opt.label} title={opt.tooltip}>
           {opt.icon}
-          <span className="hidden sm:inline">{opt.label}</span>
+          <span className="hidden @6xl:inline">{opt.label}</span>
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
