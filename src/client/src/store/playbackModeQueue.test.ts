@@ -23,6 +23,7 @@ if (typeof globalThis.Audio === "undefined" || !(globalThis.Audio.prototype as a
 
 const {
   usePlayerStore,
+  resetEtagCache,
   reconcileSingleModeQueue,
   generateModeQueueItems,
   clearDismissedSegments,
@@ -74,6 +75,7 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
   const segments = [segment1, segment2];
 
   beforeEach(() => {
+    resetEtagCache();
     clearDismissedSegments();
     usePlayerStore.setState({
       tracks,

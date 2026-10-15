@@ -317,6 +317,30 @@ describe("Client ETag 304 Caching in usePlayerStore", () => {
     }
   });
 
+  it("does not let a lightweight poll discard pending full segment reconciliation", async () => {
+    const queued = [{ track: track1, segment: { ...segment1, id: "fallback_" + track1.id, start_time: 0, end_time: track1.duration } }];
+    usePlayerStore.setState({ tracks: [track1], queue: queued, queuesByMode: { mixed: queued, slices_only: [], original_only: [] } });
+    let releaseSegments!: (response: Response) => void;
+    let reachedSegments!: () => void;
+    const reached = new Promise<void>((fulfill) => { reachedSegments = fulfill; });
+    let holdFirstSegmentRequest = true;
+    mockFetch(async (input) => {
+      if (String(input) === "/api/tracks") return Response.json([{ ...track1, segment_count: 1 }]);
+      if (holdFirstSegmentRequest) {
+        holdFirstSegmentRequest = false;
+        reachedSegments();
+        return new Promise<Response>((fulfill) => { releaseSegments = fulfill; });
+      }
+      return Response.json([segment1]);
+    });
+    const fullRefresh = usePlayerStore.getState().fetchTracks(true);
+    await reached;
+    await usePlayerStore.getState().fetchTracks(false);
+    releaseSegments(Response.json([segment1]));
+    await fullRefresh;
+    expect(usePlayerStore.getState().queuesByMode.mixed.some((item) => item.segment.id === segment1.id)).toBe(true);
+  });
+
   it("should NOT cache ETag if tracks response is not an array or fails JSON parsing", async () => {
     // Attempt 1: Server returns 200 with invalid json/non-array, but provides an ETag
     globalThis.fetch = (mock(async (input: any) => {

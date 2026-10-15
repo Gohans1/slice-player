@@ -89,11 +89,13 @@ let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 let latestPlaybackModeRequestId = 0;
 let latestFetchTracksRequestId = 0;
 
+let pendingSegmentReconciliation = false;
 let cachedTracksEtag: string | null = null;
 let cachedSegmentsEtag: string | null = null;
 let cachedSegmentsData: Segment[] = [];
 
 export function resetEtagCache(): void {
+  pendingSegmentReconciliation = false;
   cachedTracksEtag = null;
   cachedSegmentsEtag = null;
   cachedSegmentsData = [];
@@ -837,6 +839,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   fetchTracks: async (reconcileSegments = true) => {
+    pendingSegmentReconciliation ||= reconcileSegments;
     const fetchId = ++latestFetchTracksRequestId;
     if (get().tracks.length === 0) {
       set({ isLoadingTracks: true });
@@ -854,7 +857,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         return;
       }
 
-      if (isTracks304 && !reconcileSegments) {
+      if (isTracks304 && !reconcileSegments && !pendingSegmentReconciliation) {
         if (get().isLoadingTracks) {
           set({ isLoadingTracks: false });
         }
@@ -906,7 +909,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         // Escalate using this response, not a second conditional request whose 304
         // would otherwise pair the new validator with the old queued-track payload.
-        if (!reconcileSegments && !hasNewlyReady) {
+        if (!reconcileSegments && !hasNewlyReady && !pendingSegmentReconciliation) {
           const { activeTrack, sliceStudioTrack, queue, queueIndex } = get();
           const currentItem = queueIndex >= 0 ? queue[queueIndex] : null;
           const { queuesByMode, playbackMode } = get();
@@ -1043,17 +1046,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           return;
         }
 
+        // A newer lightweight poll may supersede this request, but must inherit its graph work.
+        pendingSegmentReconciliation = true;
         const segRes = await fetchAllSegmentsWithEtag();
         if (fetchId !== latestFetchTracksRequestId) return;
         if (!segRes.success) {
           console.warn("[Store] Network error fetching segments; aborting segment purge");
-          return;
-        }
-
-        if (isTracks304 && !segRes.modified) {
-          if (get().isLoadingTracks) {
-            set({ isLoadingTracks: false });
-          }
           return;
         }
 
@@ -1231,6 +1229,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
         }
         cachedTracksEtag = nextTracksEtag;
+        pendingSegmentReconciliation = false;
         set(reconcileUpdates);
 
         // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server
