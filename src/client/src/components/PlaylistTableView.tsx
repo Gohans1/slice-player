@@ -1561,7 +1561,7 @@ export function PlaylistTableView({
                 <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
                   <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment?.color || DEFAULT_SLICE_COLOR) : undefined} />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                    <div className="text-sm font-medium text-foreground truncate">
                       {isSlice && item.segment ? item.segment.name : item.track?.title}
                     </div>
                     <div className="text-xs text-muted-foreground truncate mt-0.5">
@@ -1847,7 +1847,7 @@ export function PlaylistTableView({
                 <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
                   <TableArtwork track={item.track} sliceColor={item.segment.color || DEFAULT_SLICE_COLOR} />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex min-w-0 items-center gap-1.5">
+                    <div className="text-sm font-medium text-foreground truncate flex min-w-0 items-center gap-1.5">
                       <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
                       <span className="truncate">{item.segment.name}</span>
                     </div>
@@ -2028,7 +2028,7 @@ export function PlaylistTableView({
                 <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
                   <TableArtwork track={item.track} sliceColor={isSlice ? (item.segment.color || DEFAULT_SLICE_COLOR) : undefined} />
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                    <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
                       {isSlice && <Scissors className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />}
                       <span className="truncate">{isSlice ? item.segment.name : item.track.title}</span>
                     </div>
@@ -2238,7 +2238,7 @@ export function PlaylistTableView({
               <div role="cell" className="flex min-w-0 items-center gap-3 pr-2">
                 <TableArtwork track={track} />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                  <div className="text-sm font-medium text-foreground truncate">
                     {track.title}
                   </div>
                   <div className="text-xs text-muted-foreground truncate mt-0.5">
