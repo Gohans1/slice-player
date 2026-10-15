@@ -62,41 +62,35 @@ colors:
 
 typography:
   display:
-    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "1.5rem"
+    fontFamily: "'Inter Variable', sans-serif"
+    fontSize: "1.625rem"
     fontWeight: 700
-    lineHeight: 1.2
-    letterSpacing: "-0.025em"
+    lineHeight: "2.125rem"
   headline:
-    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "1.125rem"
-    fontWeight: 600
-    lineHeight: 1.3
+    fontFamily: "'Inter Variable', sans-serif"
+    fontSize: "1.0625rem"
+    fontWeight: 700
+    lineHeight: "1.625rem"
   title:
-    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "0.875rem"
-    fontWeight: 600
-    lineHeight: 1.4
-  body:
-    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    fontSize: "0.875rem"
+    fontFamily: "'Inter Variable', sans-serif"
+    fontSize: "0.8125rem"
     fontWeight: 400
-    lineHeight: 1.5
+    lineHeight: "1.125rem"
+  body:
+    fontFamily: "'Inter Variable', sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 400
+    lineHeight: "1.125rem"
   label:
+    fontFamily: "'Inter Variable', sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 600
+    lineHeight: "1rem"
+  mono:
     fontFamily: "'JetBrains Mono', monospace"
     fontSize: "0.75rem"
-    fontWeight: 500
-    letterSpacing: "0.025em"
-  micro:
-    fontFamily: "'JetBrains Mono', monospace"
-    fontSize: "11px"
-    fontWeight: 500
-    lineHeight: 1.2
-  tiny:
-    fontFamily: "'JetBrains Mono', monospace"
-    fontSize: "10px"
-    fontWeight: 500
-    lineHeight: 1.2
+    fontWeight: 400
+    lineHeight: "1rem"
 
 rounded:
   sm: "6px"
@@ -207,18 +201,17 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 
 ## Typography
 
-**Display Font:** Plus Jakarta Sans (`'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`)
-**Body Font:** Plus Jakarta Sans (`'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`)
-**Label/Mono Font:** JetBrains Mono (`'JetBrains Mono', monospace`), chỉ cho ngữ cảnh kỹ thuật (xem The Tabular Time Rule)
+**Display & Body Font:** Inter Variable (`'Inter Variable', sans-serif`), thay cho SF Pro của Apple Music (SF Pro không được cấp phép dùng trên web)
+**Mono Font:** JetBrains Mono (`'JetBrains Mono', monospace`), chỉ cho ngữ cảnh kỹ thuật (xem The Tabular Time Rule)
 
-**Character:** Sự kết hợp hoàn hảo giữa nét hiện đại, hình học gọn ghẽ của Plus Jakarta Sans cho tiêu đề và nội dung thường ngày, cùng với chất kỹ thuật chính xác tuyệt đối của JetBrains Mono cho các con số thời gian và nhãn định danh.
+**Character:** Inter trên thang cỡ chữ kiểu Apple (12 / 13 / 15 / 17 / 19 / 22 / 26px, token `text-2xs` → `text-2xl`): nội dung dày đặc ở 13px như Music, tiêu đề trang lớn và đậm, con số dùng chữ số tabular của chính Inter.
 
 ### Hierarchy
-- **Display** (Bold 700, 24px / 1.5rem, line-height 1.2, letter-spacing -0.025em): Tiêu đề chính của thư viện nhạc ("Thư Viện Nhạc", "Studio Cắt Đoạn").
-- **Headline** (Semi-bold 600, 18px / 1.125rem, line-height 1.3): Tiêu đề hộp thoại Modal, tiêu đề popup.
-- **Title** (Semi-bold 600, 14px / 0.875rem, line-height 1.4): Tên bài hát trên TrackCard, tiêu đề phân đoạn trong SliceStudio.
-- **Body** (Regular 400, 14px / 0.875rem, line-height 1.5): Tên ca sĩ, văn bản hướng dẫn, mô tả chức năng.
-- **Label** (Medium 500, 11px - 12px / 0.75rem, line-height 1, letter-spacing 0.025em): Đồng hồ đếm thời gian (`[01:12 → 01:45]`), số lượng bài hát, thẻ badge định dạng FLAC / YouTube.
+- **Display** (Bold 700, 26px / `text-2xl`): tiêu đề lớn của trang thư viện và tên playlist trong header.
+- **Headline** (Bold 700, 17px / `text-base`): tiêu đề panel Up Next; tiêu đề trên toolbar dùng 17–19px (`text-base sm:text-lg`).
+- **Title** (Regular 400, 13px / `text-xs`): tên bài trong bảng, Up Next và tile, màu chữ chính; tên bài trong LCD của player dùng Semi-bold 600.
+- **Body** (Regular 400, 13px / `text-xs`): nghệ sĩ, mô tả, chi tiết phụ, màu `muted-foreground`.
+- **Label** (Semi-bold 600, 12px / `text-2xs`): tiêu đề cột bảng, dòng chi tiết dưới tên playlist.
 
 ### Named Rules
 **The Tabular Time Rule.** Mọi con số thay đổi theo thời gian hoặc xếp thành cột (thời lượng bài, điểm bắt đầu/kết thúc lát cắt, phần trăm âm lượng, số đếm) dùng chữ số đều nhau `tabular-nums` của font giao diện, như Apple Music dùng chữ số tabular của SF, để các con số không nhảy khi thời gian chạy. `JetBrains Mono` chỉ còn cho ngữ cảnh kỹ thuật: timecode khi chỉnh lát cắt trong Slice Studio, System Logs, phím tắt (keycap), URL và tên file lúc nhập.
