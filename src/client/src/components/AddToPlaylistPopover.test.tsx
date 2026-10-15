@@ -370,5 +370,36 @@ describe("AddToPlaylistPopover Component", () => {
 
     expect(playlistItem("Playlist One").getAttribute("aria-checked")).toBe("false");
   });
+
+  it("keeps playlists disabled while StrictMode's second membership request is still loading", async () => {
+    const addToPlaylistMock = mock(async () => true);
+    usePlayerStore.setState({ addToPlaylist: addToPlaylistMock });
+    // Every request stays pending until aborted; StrictMode aborts the first when it replays the effect
+    globalThis.fetch = Object.assign(
+      (_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        }),
+      { preconnect: originalFetch.preconnect }
+    );
+
+    act(() => {
+      root.render(
+        <React.StrictMode>
+          <AddToPlaylistPopover trackId="trk_1" />
+        </React.StrictMode>
+      );
+    });
+    await act(async () => {
+      container.querySelector('button[title="Add to Playlist"]').click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => {
+      playlistItem("Playlist One").click();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(addToPlaylistMock).not.toHaveBeenCalled();
+  });
 });
 

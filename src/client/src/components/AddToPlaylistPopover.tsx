@@ -28,13 +28,15 @@ function usePlaylistMemberships(trackId: string, segmentId?: string | null) {
   const isMountedRef = React.useRef(true);
 
   const fetchMemberships = React.useCallback(async (signal?: AbortSignal) => {
+    // An aborted request leaves state alone: under StrictMode its effect has already started the next one
+    const isCurrent = () => isMountedRef.current && !signal?.aborted;
     try {
       setLoading(true);
       const url = `/api/playlist-memberships?track_id=${encodeURIComponent(trackId)}${
         segmentId ? `&segment_id=${encodeURIComponent(segmentId)}` : ""
       }`;
       const res = await fetch(url, { signal });
-      if (res.ok && isMountedRef.current) {
+      if (res.ok && isCurrent()) {
         const data: unknown = await res.json();
         const map: Record<string, string> = {};
         if (Array.isArray(data)) {
@@ -51,7 +53,7 @@ function usePlaylistMemberships(trackId: string, segmentId?: string | null) {
         console.error("Failed to fetch playlist memberships:", e);
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isCurrent()) {
         setLoading(false);
       }
     }
