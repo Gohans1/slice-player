@@ -140,6 +140,8 @@ interface DebounceRecord {
   timer: ReturnType<typeof setTimeout>;
   resolve: () => void;
   volume: number;
+  // Set once the debounce runs out: the save on its way to the server
+  saving?: Promise<unknown>;
 }
 
 // A pending record also tells fetchTracks to keep the local volume, so it stays until the save settles
@@ -162,16 +164,25 @@ async function isDownloadFailedAgain(res: Response): Promise<boolean> {
   return typeof body === "object" && body !== null && "success" in body && body.success === false;
 }
 
+// Drops a settled record, unless a newer change replaced it while its save was on the way
+function settleTrackVolume(trackId: string, record: DebounceRecord) {
+  if (trackVolumeDebounceTimers.get(trackId) === record) trackVolumeDebounceTimers.delete(trackId);
+}
+
 export async function flushTrackVolume(trackId: string): Promise<void> {
   const existing = trackVolumeDebounceTimers.get(trackId);
-  if (existing) {
-    clearTimeout(existing.timer);
-    existing.resolve();
-    try {
-      await saveTrackVolume(trackId, existing.volume);
-    } finally {
-      trackVolumeDebounceTimers.delete(trackId);
-    }
+  if (!existing) return;
+  // A save already on its way carries this volume; sending it again would only report a failure twice
+  if (existing.saving) {
+    await existing.saving;
+    return;
+  }
+  clearTimeout(existing.timer);
+  existing.resolve();
+  try {
+    await saveTrackVolume(trackId, existing.volume);
+  } finally {
+    settleTrackVolume(trackId, existing);
   }
 }
 
@@ -187,15 +198,20 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   const delay = typeof process !== "undefined" && process.env?.NODE_ENV === "test" ? 15 : 300;
 
   return new Promise((resolve) => {
-    const timer = setTimeout(async () => {
-      try {
-        await saveTrackVolume(trackId, safe);
-      } finally {
-        trackVolumeDebounceTimers.delete(trackId);
-        resolve();
-      }
-    }, delay);
-    trackVolumeDebounceTimers.set(trackId, { timer, resolve, volume: safe });
+    const record: DebounceRecord = {
+      volume: safe,
+      resolve,
+      timer: setTimeout(async () => {
+        record.saving = saveTrackVolume(trackId, safe);
+        try {
+          await record.saving;
+        } finally {
+          settleTrackVolume(trackId, record);
+          resolve();
+        }
+      }, delay),
+    };
+    trackVolumeDebounceTimers.set(trackId, record);
   });
 }
 

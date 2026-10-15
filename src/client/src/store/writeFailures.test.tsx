@@ -170,6 +170,30 @@ describe("failed changes", () => {
     expect(shownToasts()[0].textContent).toContain("Failed to save track volume");
   });
 
+  it("reports a volume save once when Slice Studio closes while that save is on its way", async () => {
+    let requests = 0;
+    let answer: (res: Response) => void = () => {};
+    globalThis.fetch = Object.assign(
+      async () => {
+        requests++;
+        return new Promise<Response>((resolve) => {
+          answer = resolve;
+        });
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+
+    void usePlayerStore.getState().setTrackVolume("trk_1", 0.8);
+    // The debounce runs out and the save leaves, then Studio closes before the server answers
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const closing = flushTrackVolume("trk_1");
+    answer(Response.json({ error: "Nope" }, { status: 500 }));
+    await settle(() => closing);
+
+    expect(requests).toBe(1);
+    expect(useLogStore.getState().logs.filter((log) => log.level === "error")).toHaveLength(1);
+  });
+
   it("leaves a failed new playlist to its dialog, which shows the error itself", async () => {
     serverResponds(500);
 
