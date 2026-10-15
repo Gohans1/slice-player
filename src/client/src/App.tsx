@@ -44,6 +44,7 @@ import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 import { AppShell } from "./components/layout/AppShell";
 import { useQueueVisibility } from "./hooks/use-queue-visibility";
+import { useHeightCssVar } from "./hooks/use-height-css-var";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { FloatingScrollControls } from "./components/FloatingScrollControls";
 import { ConfirmModal } from "./components/ConfirmModal";
@@ -1024,6 +1025,9 @@ export function App() {
     }
   }, [currentItemCount, currentViewKey, isPendingActiveTrackScroll]);
 
+  // Published as scroll-padding, so focus, anchors and the playlist title's scroll timeline account for the sticky toolbar
+  const toolbarRef = useHeightCssVar("--library-toolbar-height");
+
   const headerMeta = React.useMemo(() => {
     if (activePl) {
       return {
@@ -1109,23 +1113,26 @@ export function App() {
     >
       <SidebarInset className="min-w-0">
         {/* Sticky toolbar: view title, sort and view mode, library actions, master volume */}
-        <header data-testid="sticky-library-header" className="sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
+        <header ref={toolbarRef} data-testid="sticky-library-header" className="sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
           <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
             {/* Title on the left; controls wrap below it when the column is narrow */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex flex-1 items-center gap-2.5 min-w-48">
                 <SidebarTrigger />
-                <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0 max-w-xs">
-                  <span className="truncate">{headerMeta.title}</span>
-                  <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
-                    {headerMeta.count}
-                  </span>
-                </h1>
-                {headerMeta.description && (
-                  <span className="text-xs text-muted-foreground truncate min-w-0 hidden md:inline border-l border-border/60 pl-2.5">
-                    {headerMeta.description}
-                  </span>
-                )}
+                {/* An open playlist's header already names it; like Apple Music, the name joins the toolbar once that header scrolls under it */}
+                <div className={cn("flex min-w-0 items-center gap-2.5", activePl && "reveal-past-playlist-title")}>
+                  <h1 id="library-view-title" className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2 shrink-0 max-w-xs">
+                    <span className="truncate">{headerMeta.title}</span>
+                    <span className="sr-only sm:not-sr-only text-xs font-normal text-muted-foreground font-mono shrink-0" aria-live="polite" aria-atomic="true">
+                      {headerMeta.count}
+                    </span>
+                  </h1>
+                  {headerMeta.description && (
+                    <span className="text-xs text-muted-foreground truncate min-w-0 hidden md:inline border-l border-border/60 pl-2.5">
+                      {headerMeta.description}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Sort, view mode, library actions and master volume */}

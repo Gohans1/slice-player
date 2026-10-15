@@ -196,7 +196,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
             )}
 
             {isEditingName ? (
-              <form onSubmit={handleSaveRename} className="my-1 flex max-w-md items-center gap-2">
+              <form onSubmit={handleSaveRename} className="playlist-title-timeline my-1 flex max-w-md items-center gap-2">
                 <Input
                   ref={renameInputRef}
                   type="text"
@@ -231,7 +231,7 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                 </Button>
               </form>
             ) : (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="playlist-title-timeline flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-extrabold tracking-tight text-balance break-words text-foreground sm:text-3xl lg:text-4xl">
                   {playlist.name}
                 </h2>
