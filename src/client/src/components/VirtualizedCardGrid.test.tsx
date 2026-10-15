@@ -147,6 +147,67 @@ describe("VirtualizedCardGrid Component", () => {
     }
   });
 
+  it("keeps focus on a card while the column count changes, because cards stay mounted", async () => {
+    const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
+    (globalThis as any).window = happyWindow;
+    (globalThis as any).document = happyWindow.document;
+    (globalThis as any).requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
+    (globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id);
+    const originalResizeObserver = (globalThis as any).ResizeObserver;
+    const observers: { callback: () => void; targets: unknown[] }[] = [];
+    (globalThis as any).ResizeObserver = class {
+      private entry: { callback: () => void; targets: unknown[] };
+      constructor(callback: () => void) {
+        this.entry = { callback, targets: [] };
+        observers.push(this.entry);
+      }
+      observe(target: unknown) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+    };
+
+    const container = happyWindow.document.createElement("div");
+    happyWindow.document.body.appendChild(container);
+    const root = createRoot(container as any);
+    const items = Array.from({ length: 12 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
+    let gridWidth = 1190;
+    const resizeGrid = async (width: number) => {
+      gridWidth = width;
+      const grid = container.firstElementChild!;
+      Object.defineProperty(grid, "clientWidth", { configurable: true, get: () => gridWidth });
+      for (const o of observers.filter((o) => o.targets.includes(grid))) await act(async () => o.callback());
+    };
+
+    try {
+      await act(async () => {
+        root.render(
+          <VirtualizedCardGrid
+            items={items}
+            getItemKey={(item) => item.id}
+            renderItem={(item) => <button type="button">{item.title}</button>}
+          />
+        );
+      });
+      await resizeGrid(1190);
+      const button = Array.from(container.querySelectorAll("button")).find((b) => b.textContent === "Item 5")!;
+      button.focus();
+      expect(happyWindow.document.activeElement === button).toBe(true);
+
+      // Collapsing the sidebar widens the grid from 4 to 5 columns
+      await resizeGrid(1300);
+
+      expect(button.isConnected).toBe(true);
+      expect(happyWindow.document.activeElement === button).toBe(true);
+    } finally {
+      (globalThis as any).ResizeObserver = originalResizeObserver;
+      await act(async () => {
+        root.unmount();
+      });
+    }
+  });
+
   it("handles scrollRequest and triggers onScrollHandled", async () => {
     const happyWindow = new GlobalWindow({ url: "http://localhost:3000" });
     (globalThis as any).window = happyWindow;

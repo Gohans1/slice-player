@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useWindowVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
+import { useWindowVirtualizer, defaultRangeExtractor, measureElement, type Range } from "@tanstack/react-virtual";
 import { GripVertical } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -32,10 +32,11 @@ export interface VirtualizedCardGridProps<T> {
 // Parks the drag preview off screen until the first dragover gives it a position
 const DRAG_PREVIEW_HIDDEN = "-9999px";
 const MIN_CARD_WIDTH = 240;
-const GRID_GAP = 16;
+// Space between cards, across and down
+const GRID_GAP = 20;
 const MAX_COLUMNS = 8;
 
-// As many cards of at least MIN_CARD_WIDTH as fit the grid's own width (gap-4 between them)
+// As many cards of at least MIN_CARD_WIDTH as fit the grid's own width (GRID_GAP between them)
 export function columnsForWidth(width: number): number {
   const fit = Math.floor((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP));
   return Math.min(MAX_COLUMNS, Math.max(1, fit));
@@ -137,53 +138,43 @@ export function VirtualizedCardGrid<T>({
     };
   }, [updateMargin]);
 
-  // Group items into rows of `cols` items
-  const rows = React.useMemo(() => {
-    const result: T[][] = [];
-    for (let i = 0; i < items.length; i += cols) {
-      result.push(items.slice(i, i + cols));
-    }
-    return result;
-  }, [items, cols]);
+  const defaultEstimatedHeight = estimateCardHeight ?? (cols === 1 ? 360 : 260);
+  // Cards in a grid share one height, so the last card measured is the best guess for cards not measured yet
+  // (a search swaps in cards the virtualizer has never seen; a wrong guess shifts every card once they're measured)
+  const measuredCardHeightRef = React.useRef<number | null>(null);
 
-  const defaultEstimatedHeight = estimateCardHeight ?? (cols === 1 ? 380 : 310);
-
-  // Guarantee the row containing the dragged item remains mounted during window scroll
-  const draggedRowIndex = draggedIdx !== null && cols > 0 ? Math.floor(draggedIdx / cols) : null;
+  // Guarantee the dragged card remains mounted during window scroll
   const rangeExtractor = React.useCallback(
     (range: Range) => {
       const active = defaultRangeExtractor(range);
-      if (draggedRowIndex !== null && !active.includes(draggedRowIndex)) {
-        return [...active, draggedRowIndex].sort((a, b) => a - b);
+      if (draggedIdx !== null && !active.includes(draggedIdx)) {
+        return [...active, draggedIdx].sort((a, b) => a - b);
       }
       return active;
     },
-    [draggedRowIndex]
+    [draggedIdx]
   );
 
+  // Each card is its own virtual item laid out in `cols` lanes and keyed by its own id, so a change in the
+  // column count (the sidebar collapsing, say) moves cards between lanes without remounting them
   const virtualizer = useWindowVirtualizer({
-    count: rows.length,
-    estimateSize: () => defaultEstimatedHeight,
-    overscan: 4,
+    count: items.length,
+    lanes: cols,
+    gap: GRID_GAP,
+    estimateSize: () => measuredCardHeightRef.current ?? defaultEstimatedHeight,
+    measureElement: (element, entry, instance) => {
+      const height = measureElement(element, entry, instance);
+      measuredCardHeightRef.current = height;
+      return height;
+    },
+    overscan: cols * 2,
     scrollMargin,
     rangeExtractor,
     ...(typeof initialScrollOffset === "number" && initialScrollOffset > 0
       ? { initialOffset: initialScrollOffset }
       : {}),
-    getItemKey: React.useCallback(
-      (index: number) => `row_c${cols}_${index}`,
-      [cols]
-    ),
+    getItemKey: React.useCallback((index: number) => getItemKey(items[index], index), [items, getItemKey]),
   });
-
-  // Re-measure all items synchronously before paint when column count transitions across responsive breakpoints
-  const prevColsRef = React.useRef(cols);
-  React.useLayoutEffect(() => {
-    if (prevColsRef.current !== cols) {
-      prevColsRef.current = cols;
-      virtualizer.measure();
-    }
-  }, [cols, virtualizer]);
 
   // Autoscroll mechanics
   const stopAutoScroll = React.useCallback(() => {
@@ -293,9 +284,7 @@ export function VirtualizedCardGrid<T>({
         e.preventDefault();
         e.stopPropagation();
         pendingFocusIndexRef.current = targetIdx;
-        if (virtualizer?.scrollToIndex && cols > 0) {
-          virtualizer.scrollToIndex(Math.floor(targetIdx / cols), { align: "auto" });
-        }
+        virtualizer?.scrollToIndex?.(targetIdx, { align: "auto" });
         commitReorder(index, targetIdx);
       }
     },
@@ -447,9 +436,8 @@ export function VirtualizedCardGrid<T>({
       lastHandledScrollRequestIdRef.current !== scrollRequest.requestId
     ) {
       lastHandledScrollRequestIdRef.current = scrollRequest.requestId;
-      const rowIndex = Math.floor(scrollRequest.index / cols);
       const currentY = typeof window !== "undefined" ? window.scrollY || window.pageYOffset || 0 : 0;
-      const estimatedTargetY = rowIndex * defaultEstimatedHeight;
+      const estimatedTargetY = Math.floor(scrollRequest.index / cols) * (defaultEstimatedHeight + GRID_GAP);
       const distance = Math.abs(currentY - estimatedTargetY);
       const isClose = distance < (typeof window !== "undefined" ? window.innerHeight * 1.2 : 800);
       const prefersReduced =
@@ -458,17 +446,16 @@ export function VirtualizedCardGrid<T>({
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const behavior = !prefersReduced && isClose && distance > 20 ? "smooth" : "auto";
 
-      virtualizer.scrollToIndex(rowIndex, { align: "center", behavior });
+      virtualizer.scrollToIndex(scrollRequest.index, { align: "center", behavior });
       onScrollHandled?.(scrollRequest.requestId);
     }
   }, [scrollRequest, cols, virtualizer, onScrollHandled, defaultEstimatedHeight]);
 
   React.useEffect(() => {
-    if (typeof scrollToIndex === "number" && scrollToIndex >= 0 && cols > 0) {
-      const rowIndex = Math.floor(scrollToIndex / cols);
-      virtualizer.scrollToIndex(rowIndex, { align: "center", behavior: "auto" });
+    if (typeof scrollToIndex === "number" && scrollToIndex >= 0) {
+      virtualizer.scrollToIndex(scrollToIndex, { align: "center", behavior: "auto" });
     }
-  }, [scrollToIndex, cols, virtualizer]);
+  }, [scrollToIndex, virtualizer]);
 
   isReorderingRef.current = isReordering;
 
@@ -482,7 +469,7 @@ export function VirtualizedCardGrid<T>({
     return <div ref={containerRef} className={className} />;
   }
 
-  const virtualRows = virtualizer.getVirtualItems();
+  const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div ref={containerRef} className={cn("relative [overflow-anchor:none]", className)}>
@@ -511,61 +498,49 @@ export function VirtualizedCardGrid<T>({
       <div
         role="presentation"
         className="relative h-(--virtual-size) w-full"
-        style={{ "--virtual-size": `${virtualizer.getTotalSize()}px` }}
+        style={{
+          "--virtual-size": `${virtualizer.getTotalSize()}px`,
+          "--card-width": `calc((100% - ${(cols - 1) * GRID_GAP}px) / ${cols})`,
+        }}
       >
-        {virtualRows.map((virtualRow) => {
-          const rowItems = rows[virtualRow.index] || [];
-          const baseIndex = virtualRow.index * cols;
+        {virtualItems.map((virtualItem) => {
+          const itemIndex = virtualItem.index;
+          const item = items[itemIndex];
+          const isDragging = draggedIdx === itemIndex;
+          const isDragTarget = dragOverIdx === itemIndex && draggedIdx !== null && draggedIdx !== itemIndex;
+          const canDrag = Boolean(isReorderable && !isReordering);
+
+          const dragProps: CardDragProps = {
+            canDrag,
+            isDragging,
+            isDragTarget,
+            isReordering,
+            onPointerDownHandle: handlePointerDownHandle,
+            onKeyDownHandle: (e) => {
+              handleKeyDownReorder(e, itemIndex);
+            },
+          };
 
           return (
             <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
+              key={virtualItem.key}
+              data-index={itemIndex}
               ref={virtualizer.measureElement}
-              role="presentation"
-              className="absolute inset-x-0 top-0 grid translate-y-(--virtual-start) grid-cols-(--card-columns) gap-4 pb-4 sm:gap-5 sm:pb-5"
+              draggable={canDrag}
+              onDragStart={(e) => handleDragStart(e, itemIndex)}
+              onDragOver={(e) => handleDragOver(e, itemIndex)}
+              onDragLeave={() => {
+                // Keep sticky until next target or drop
+              }}
+              onDrop={(e) => handleDrop(e, itemIndex)}
+              onDragEnd={handleDragEnd}
+              className="absolute top-0 left-(--lane-start) w-(--card-width) translate-y-(--virtual-start)"
               style={{
-                "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px`,
-                "--card-columns": `repeat(${cols}, minmax(0, 1fr))`,
+                "--virtual-start": `${virtualItem.start - virtualizer.options.scrollMargin}px`,
+                "--lane-start": `calc(${virtualItem.lane} * (var(--card-width) + ${GRID_GAP}px))`,
               }}
             >
-              {rowItems.map((item, colIdx) => {
-                const itemIndex = baseIndex + colIdx;
-                const isDragging = draggedIdx === itemIndex;
-                const isDragTarget =
-                  dragOverIdx === itemIndex &&
-                  draggedIdx !== null &&
-                  draggedIdx !== itemIndex;
-                const canDrag = Boolean(isReorderable && !isReordering);
-
-                const dragProps: CardDragProps = {
-                  canDrag,
-                  isDragging,
-                  isDragTarget,
-                  isReordering,
-                  onPointerDownHandle: handlePointerDownHandle,
-                  onKeyDownHandle: (e) => {
-                    handleKeyDownReorder(e, itemIndex);
-                  },
-                };
-
-                return (
-                  <div
-                    key={getItemKey(item, itemIndex)}
-                    draggable={canDrag}
-                    onDragStart={(e) => handleDragStart(e, itemIndex)}
-                    onDragOver={(e) => handleDragOver(e, itemIndex)}
-                    onDragLeave={() => {
-                      // Keep sticky until next target or drop
-                    }}
-                    onDrop={(e) => handleDrop(e, itemIndex)}
-                    onDragEnd={handleDragEnd}
-                    className="h-full"
-                  >
-                    {renderItem(item, itemIndex, dragProps)}
-                  </div>
-                );
-              })}
+              {renderItem(item, itemIndex, dragProps)}
             </div>
           );
         })}
