@@ -26,21 +26,20 @@ export function MasterVolume() {
         onClick={toggleMasterMute}
         aria-label={isMasterMuted ? t("nav.unmuteAll") : t("nav.muteAll")}
         title={isMasterMuted ? t("nav.unmuteAll") : t("nav.muteAll")}
-        className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
       >
         <span className="relative">
           <VolumeX
             aria-hidden="true"
             className={cn(
-              "absolute inset-0 h-4 w-4 text-destructive transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
-              isMasterMuted ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"
+              "absolute inset-0 text-destructive transition duration-300 ease-standard motion-reduce:transition-none",
+              !isMasterMuted && "scale-25 opacity-0 blur-xs"
             )}
           />
           <Volume2
             aria-hidden="true"
             className={cn(
-              "h-4 w-4 transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
-              isMasterMuted ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"
+              "transition duration-300 ease-standard motion-reduce:transition-none",
+              isMasterMuted && "scale-25 opacity-0 blur-xs"
             )}
           />
         </span>
