@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import {
-  initDatabase, closeDatabase, createTrack, getTrack, updateTrack, deleteTrack, deleteTracksBatch,
+  initDatabase, closeDatabase, getDb, createTrack, getTrack, updateTrack, deleteTrack, deleteTracksBatch,
   listTracks, createSegment, listSegmentsByTrack, updateSegment, deleteSegment, deleteSegmentsBatch, validateVolume,
   createPlaylist, getPlaylist, listPlaylists, updatePlaylist, deletePlaylist,
   getPlaylistItems, addPlaylistItem, addPlaylistItemsBatch, removePlaylistItem, removePlaylistItemsBatch, reorderPlaylistItems,
   getPlaylistMemberships, setPlaylistCover
 } from "./db";
-import { unlinkSync, existsSync } from "node:fs";
+import { unlinkSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const TEST_DB_PATH = "./data/test_music.db";
 
@@ -578,6 +580,35 @@ describe("Database layer (bun:sqlite)", () => {
 
       expect(listPlaylists().find((p) => p.id === pl.id)?.cover_url).toBeNull();
     });
+  });
+});
+
+
+describe("Library database guard", () => {
+  // Each case runs from a scratch directory, so even a missing guard never opens the real library.
+  const originalCwd = process.cwd();
+  let sandbox = "";
+
+  beforeEach(() => {
+    closeDatabase();
+    sandbox = mkdtempSync(join(tmpdir(), "slice-player-db-guard-"));
+    process.chdir(sandbox);
+  });
+
+  afterEach(() => {
+    closeDatabase();
+    process.chdir(originalCwd);
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+
+  it("refuses to open the library database while testing", () => {
+    expect(() => initDatabase()).toThrow("library database");
+    expect(existsSync(join(sandbox, "data/music.db"))).toBe(false);
+  });
+
+  it("fails loudly when a test reaches getDb() without opening its own database", () => {
+    expect(() => getDb()).toThrow("library database");
+    expect(existsSync(join(sandbox, "data/music.db"))).toBe(false);
   });
 });
 

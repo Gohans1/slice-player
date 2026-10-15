@@ -1,13 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { existsSync, unlinkSync, mkdirSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, unlinkSync, mkdirSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { extractAudioFromVideo } from "./audioExtractor";
 import { SUPPORTED_AUDIO_EXTENSIONS, ingestLocalFile, ingestUploadedFile } from "./ingest";
-import { deleteTrack } from "./db";
+import { initDatabase, closeDatabase } from "./db";
 
-const TEST_DIR = resolve("./data/test_mp4_tmp");
+// Ingest writes into ./data (database and audio cache), so this file runs from a scratch directory.
+const originalCwd = process.cwd();
+const SANDBOX = mkdtempSync(join(tmpdir(), "slice-player-audio-extractor-"));
+const TEST_DIR = join(SANDBOX, "fixtures");
 
 beforeAll(async () => {
+  process.chdir(SANDBOX);
+  initDatabase("./data/test_audio_extractor.db");
   mkdirSync(TEST_DIR, { recursive: true });
 
   // Generate 1-second MP4 with video and AAC audio
@@ -31,20 +37,9 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  try {
-    if (existsSync(TEST_DIR)) {
-      rmSync(TEST_DIR, { recursive: true, force: true });
-    }
-    const cacheDir = resolve("./data/cache/audio");
-    if (existsSync(cacheDir)) {
-      const files = readdirSync(cacheDir).filter((f: string) => f.startsWith("loc_1b95f672f3e0") || f.startsWith("loc_32d7892cec5d") || f.startsWith("loc_e7995914fa76"));
-      for (const f of files) {
-        try { unlinkSync(join(cacheDir, f)); } catch {}
-      }
-    }
-    deleteTrack("loc_1b95f672f3e0");
-    deleteTrack("loc_32d7892cec5d");
-  } catch {}
+  closeDatabase();
+  process.chdir(originalCwd);
+  rmSync(SANDBOX, { recursive: true, force: true });
 });
 
 describe("MP4 Audio Extraction & Support", () => {

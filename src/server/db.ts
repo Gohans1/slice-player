@@ -186,7 +186,14 @@ export function healTrackFilePaths(customAudioDir?: string): number {
   return healedCount;
 }
 
-export function initDatabase(dbPath: string = "./data/music.db"): Database {
+const LIBRARY_DB_PATH = "./data/music.db";
+
+export function initDatabase(dbPath: string = LIBRARY_DB_PATH): Database {
+  // Tests that forget their own database would otherwise write into the user's library (and getDb() falls back here).
+  if (process.env.NODE_ENV === "test" && resolve(dbPath) === resolve(LIBRARY_DB_PATH)) {
+    throw new Error(`Refusing to open the library database (${LIBRARY_DB_PATH}) under test: call initDatabase() with a test database path first.`);
+  }
+
   if (dbInstance) {
     try {
       dbInstance.close(true);
@@ -256,7 +263,7 @@ export function initDatabase(dbPath: string = "./data/music.db"): Database {
   dbInstance = db;
 
   // Startup cleanup: heal paths and purge residual .part, .ytdl or orphaned cache files from disk
-  if (dbPath === "./data/music.db" && process.env.NODE_ENV !== "test") {
+  if (dbPath === LIBRARY_DB_PATH && process.env.NODE_ENV !== "test") {
     try {
       healTrackFilePaths();
       const audioCacheDir = "./data/cache/audio";
