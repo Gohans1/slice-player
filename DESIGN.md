@@ -2,8 +2,8 @@
 name: Slice Player
 description: Trình nghe nhạc lát cắt virtual track cá nhân với bảng màu mực in Flexoki chuẩn 100%
 colors:
-  # Semantic Tokens (Shadcn Mapping)
-  primary: "#4385BE"
+  # Semantic Tokens (Shadcn Mapping), dark theme values; the light theme uses the 600 inks (primary #AF3029)
+  primary: "#D14D41"
   primary-foreground: "#FFFCF0"
   secondary: "#282726"
   secondary-foreground: "#E6E4D9"
@@ -19,9 +19,9 @@ colors:
   accent-foreground: "#F2F0E5"
   destructive: "#D14D41"
   destructive-foreground: "#FFFCF0"
-  border: "#343331"
-  input: "#282726"
-  ring: "#4385BE"
+  border: "#282726"
+  input: "#343331"
+  ring: "#D14D41"
 
   # Flexoki Base Monochromatic Palette (15 values: paper to black)
   flexoki-paper: "#FFFCF0"
@@ -164,7 +164,7 @@ Trải nghiệm thị giác được thiết kế theo tư duy "Tactile & Precis
 Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu nhấn mực in tương phản cao, mang lại độ ấm tương tự trang sách được in ấn thủ công.
 
 ### Primary
-- **Flexoki Blue** (`#4385BE` ở Dark Mode, `#205EA6` ở Light Mode): Màu nhấn chủ đạo dùng cho các hành động quan trọng nhất (nút Play chính, active state trong hàng đợi, viền focus, thanh tiến trình mặc định).
+- **Flexoki Red** (`#D14D41` ở Dark Mode, `#AF3029` ở Light Mode): Màu nhấn duy nhất, theo tín hiệu đỏ của Apple Music: nút Play chính, trạng thái đang phát (equalizer, tiêu đề bài đang phát), icon sidebar, vòng focus (`ring`), thanh âm lượng. `destructive` dùng cùng mã đỏ, nên hành động xoá được phân biệt bằng nhãn, icon và hộp xác nhận chứ không bằng màu.
 
 ### Secondary
 - **Flexoki 900** (`#282726` ở Dark Mode, `#E6E4D9` ở Light Mode): Dùng làm nền phụ cho các nút điều hướng phụ, chip đếm, input fields và track trượt âm lượng.
@@ -172,12 +172,12 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 ### Tertiary & Accents (The 8 Flexoki Inks)
 | Sắc độ (Hue) | Dark Theme (400 / 1) | Light Theme (600 / 2) | Vai trò trong Slice Player |
 |---|---|---|---|
-| **Red (re)** | `#D14D41` | `#AF3029` | Biểu tượng YouTube, cảnh báo xóa, lỗi tải audio |
+| **Red (re)** | `#D14D41` | `#AF3029` | Màu nhấn `primary` (Play, đang phát, vòng focus), biểu tượng YouTube, cảnh báo xóa, lỗi tải audio |
 | **Orange (or)** | `#DA702C` | `#BC5215` | Cảnh báo giới hạn độ dài track, lát cắt ấm |
 | **Yellow (ye)** | `#D0A215` | `#AD8301` | Lát cắt tươi sáng, đánh dấu điểm nhấn đặc biệt |
 | **Green (gr)** | `#879A39` | `#66800B` | Nút Shuffle lát cắt nhanh, thông báo lưu thành công |
 | **Cyan (cy)** | `#3AA99F` | `#24837B` | Nhãn badge FLAC cục bộ, thời lượng lát cắt |
-| **Blue (bl)** | `#4385BE` | `#205EA6` | Nút Play chính, con chạy thanh tua, lát cắt mặc định |
+| **Blue (bl)** | `#4385BE` | `#205EA6` | Lát cắt mặc định (`DEFAULT_SLICE_COLOR`), tên lát cắt trên PlayerBar |
 | **Purple (pu)** | `#8B7EC8` | `#5E409D` | Lát cắt trầm ấm, số thứ tự mốc cắt |
 | **Magenta (ma)** | `#CE5D97` | `#A02F6F` | Con trỏ cursor định vị của WaveSurfer, lát cắt cao trào |
 
@@ -193,8 +193,8 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Base 600** (`#6F6E69`): Chữ chú thích Light Mode (`tx-2` / `muted-foreground`).
 - **Base 700** (`#575653`): Chữ mờ nhạt Dark Mode (`tx-3`).
 - **Base 800** (`#403E3C`): Viền active Dark Mode (`ui-3`), sóng âm WaveSurfer.
-- **Base 850** (`#343331`): Đường viền chính Dark Mode (`ui-2` / `border`).
-- **Base 900** (`#282726`): Nền input, viền phụ Dark Mode (`ui` / `secondary`).
+- **Base 850** (`#343331`): Viền ô nhập và nền `accent` Dark Mode (`ui-2` / `input`).
+- **Base 900** (`#282726`): Đường viền chính, nền `secondary` / `muted` Dark Mode (`ui` / `border`).
 - **Base 950** (`#1C1B1A`): Bề mặt thẻ Card, PlayerBar dock, Modal (`bg-2` / `card`).
 - **Black** (`#100F0F`): Nền chính Dark Mode (`bg` / `background`), chữ chính Light Mode (`tx`).
 
@@ -237,16 +237,16 @@ Bố cục 3 cột theo Apple Music (macOS Tahoe 26), dựng bằng shadcn Base 
 Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng theo sắc độ nền) thay vì phụ thuộc vào bóng đổ:
 - Lớp 0 (Canvas Base): `#100F0F` (Flexoki Black) / `#FFFCF0` (Flexoki Paper) - Nền sâu nhất của cửa sổ ứng dụng.
 - Lớp 1 (Card & Drawer): `#1C1B1A` (Flexoki 950) / `#F2F0E5` (Flexoki 50) - Bề mặt nâng nhẹ cho thẻ bài hát và ngăn kéo hàng đợi.
-- Lớp 2 (Hover & Inset): `#282726` (Flexoki 900) / `#E6E4D9` (Flexoki 100) - Nền cho các ô input, chip và trạng thái hover nhẹ.
-- Lớp 3 (Active & Focus Accent): `#343331` (Flexoki 850) / `#DAD8CE` (Flexoki 150) - Trạng thái bấm giữ và đường viền phân tách 1px.
+- Lớp 2 (Hover & Inset): `#282726` (Flexoki 900) / `#E6E4D9` (Flexoki 100) - Nền chip (`secondary` / `muted`), trạng thái hover nhẹ và đường viền phân tách 1px (`border`).
+- Lớp 3 (Active & Input): `#343331` (Flexoki 850) / `#DAD8CE` (Flexoki 150) - Trạng thái bấm giữ, nền `accent` và viền ô nhập (`input`).
 
 ### Shadow Vocabulary
-- **Dock Ambient** (`box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.45)`): Dùng ở mép trên của PlayerBar cố định đáy màn hình để tạo cảm giác dock tách biệt với canvas bên dưới.
-- **Modal Elevation** (`box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6)`): Dùng cho các hộp thoại Modal (nạp YouTube, nạp file FLAC).
-- **Card Focus Glow** (`box-shadow: 0 10px 25px -5px rgba(67, 133, 190, 0.15)`): Ánh sáng xanh dương khuếch tán cực nhẹ khi rê chuột vào TrackCard đang chọn.
+- **Dock Ambient** (`shadow-2xl` + `border-t`): PlayerBar cố định đáy màn hình, tách dock khỏi canvas bên dưới.
+- **Overlay** (bóng có sẵn của shadcn: `shadow-md` cho menu, `shadow-lg` cho Sheet): Không tự đặt bóng riêng cho hộp thoại hay menu.
+- **Tile không đổ bóng**: Tile được chọn hoặc là đích thả dùng vòng `ring-2 ring-primary ring-offset-2`, không dùng glow màu.
 
 ### Named Rules
-**The Crisp Border Rule.** Mọi thành phần phân tầng đều sử dụng viền 1px màu `border` (`#343331`) có độ mờ rõ ràng thay cho việc đổ bóng lớn. Cạnh viền phải dứt khoát và sắc nét.
+**The Crisp Border Rule.** Mọi thành phần phân tầng đều sử dụng viền 1px màu `border` (`#282726`) có độ mờ rõ ràng thay cho việc đổ bóng lớn. Cạnh viền phải dứt khoát và sắc nét.
 
 ## Shapes
 
