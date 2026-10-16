@@ -88,9 +88,11 @@ it("still adds the download to the library page's queue while a search in a play
   expect(usePlayerStore.getState().queuesByMode.original_only.map((item) => item.track.id)).toEqual(["heavy", "later", "download"]);
 });
 
-it("keeps a search on the Slices page to its matches when the library's slices reload", async () => {
+// As after cutting a slice: no song became ready, the slices reload
+it("keeps a search on the Slices page to its matches when the library's slices reload, even a new slice that matches", async () => {
   playing([createQueueItem(heavyChorus, heavy, "heavy-chorus")], { type: "search", query: "chorus", count: 1, mode: "slices_only" }, "slices_only");
-  await refresh([heavyChorus, laterIntro]);
+  usePlayerStore.setState({ tracks: [heavy, later, queued, { ...downloading, status: "ready" }] });
+  await refresh([heavyChorus, laterIntro, slice("later-chorus", later)]);
 
   expect(usePlayerStore.getState().queue.map((item) => item.segment.id)).toEqual(["heavy-chorus"]);
 });
