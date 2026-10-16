@@ -1226,7 +1226,7 @@ export function App() {
               playlist={activePl}
               items={activePlaylistItems}
               onEditSources={() => setMixModal({ mix: activePl })}
-              onNewMix={() => startMix(activePl.id)}
+              onNewMix={startMix}
             />
           )}
           {viewMode === "list" ? (
@@ -1298,6 +1298,7 @@ export function App() {
               onOpen={(id) => setActivePlaylist(id)}
               onCreate={() => setIsCreateModalOpen(true)}
               onMix={startMix}
+              onMixWith={startMix}
               onEditSources={(mix) => setMixModal({ mix })}
             />
           )

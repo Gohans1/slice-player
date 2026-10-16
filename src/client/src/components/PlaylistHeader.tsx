@@ -35,8 +35,8 @@ interface PlaylistHeaderProps {
   playlist: Playlist & { item_count?: number };
   items: PlaylistItemWithDetails[];
   onEditSources?: () => void;
-  // Starts a new mix with this playlist first
-  onNewMix?: () => void;
+  // Starts a new mix with the given playlist first: this one, or one of its sub-playlists
+  onNewMix?: (firstSourceId: string) => void;
 }
 
 export function PlaylistHeader({ playlist, items, onEditSources, onNewMix }: PlaylistHeaderProps) {
@@ -330,7 +330,7 @@ export function PlaylistHeader({ playlist, items, onEditSources, onNewMix }: Pla
                         </DropdownMenuItem>
                       )}
                       {onNewMix && (
-                        <DropdownMenuItem disabled={!canStartMix(allPlaylists)} onClick={onNewMix}>
+                        <DropdownMenuItem disabled={!canStartMix(allPlaylists)} onClick={() => onNewMix(playlist.id)}>
                           <Combine />
                           {t("mixPlaylist.newWith")}
                         </DropdownMenuItem>
@@ -363,6 +363,7 @@ export function PlaylistHeader({ playlist, items, onEditSources, onNewMix }: Pla
               onOpen={(id) => setActivePlaylist(id)}
               onCreate={() => setIsCreateSubModalOpen(true)}
               createLabel={t("playlist.newSubPlaylist")}
+              onMixWith={onNewMix}
             />
           </section>
         )}

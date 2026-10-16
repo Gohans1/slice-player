@@ -28,17 +28,20 @@ interface PlaylistGridProps {
   // The dashed tile after the playlists: New Playlist, unless the caller names it otherwise
   onCreate: () => void;
   createLabel?: string;
-  // Starts a new mix: from the Mix Playlists tile, or from a playlist's menu with that playlist first
-  onMix?: (firstSourceId?: string) => void;
+  // The Mix Playlists tile after the playlists, which starts a new mix
+  onMix?: () => void;
+  // New Mix with This Playlist in each regular playlist's menu
+  onMixWith?: (firstSourceId: string) => void;
   onEditSources?: (mix: ListedPlaylist) => void;
 }
 
-export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, onEditSources }: PlaylistGridProps) {
+export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, onMixWith, onEditSources }: PlaylistGridProps) {
   const { t } = useTranslation();
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const playingId = usePlayerStore((s) => (s.isPlaying ? s.activePlaylistPlayingId : null));
   const [playlistToDelete, setPlaylistToDelete] = React.useState<ListedPlaylist | null>(null);
-  const canMix = Boolean(onMix) && canStartMix(playlists);
+  // From the whole library, not the playlists a search left on the page
+  const canMix = usePlayerStore((s) => canStartMix(s.playlists));
 
   return (
     <>
@@ -51,7 +54,7 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, 
             parent={pl.parent_id ? playlists.find((p) => p.id === pl.parent_id) : undefined}
             isPlaying={playingId === pl.id}
             onOpen={onOpen}
-            onMix={onMix}
+            onMixWith={onMixWith}
             canMix={canMix}
             onEditSources={onEditSources}
             onDelete={setPlaylistToDelete}
@@ -61,7 +64,7 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, 
         <li>
           <NewTileButton icon={Plus} label={createLabel ?? t("library.newPlaylist")} onClick={onCreate} />
         </li>
-        {canMix && (
+        {onMix && canMix && (
           <li>
             <NewTileButton icon={Combine} label={t("mixPlaylist.newTile")} onClick={() => onMix?.()} />
           </li>
@@ -87,14 +90,14 @@ interface PlaylistTileProps {
   parent?: ListedPlaylist;
   isPlaying: boolean;
   onOpen: (id: string) => void;
-  onMix?: (firstSourceId: string) => void;
+  onMixWith?: (firstSourceId: string) => void;
   canMix: boolean;
   onEditSources?: (mix: ListedPlaylist) => void;
   onDelete: (playlist: ListedPlaylist) => void;
 }
 
 // Apple Music's playlist tile: artwork with Play and "..." on hover, and the same menu on a right-click or long press
-function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, onMix, canMix, onEditSources, onDelete }: PlaylistTileProps) {
+function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, onMixWith, canMix, onEditSources, onDelete }: PlaylistTileProps) {
   const { t } = useTranslation();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
@@ -108,8 +111,8 @@ function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, 
           {t("mixPlaylist.editSources")}
         </DropdownMenuItem>
       )
-    : onMix && (
-        <DropdownMenuItem disabled={!canMix} onClick={() => onMix(pl.id)}>
+    : onMixWith && (
+        <DropdownMenuItem disabled={!canMix} onClick={() => onMixWith(pl.id)}>
           <Combine />
           {t("mixPlaylist.newWith")}
         </DropdownMenuItem>

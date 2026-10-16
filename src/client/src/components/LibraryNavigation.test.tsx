@@ -274,10 +274,11 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
       (container.querySelector('[data-sidebar="group-action"][aria-label="New Playlist or Mix"]') as HTMLButtonElement).click();
     });
     await waitFor(() => Boolean(happyWindow.document.querySelector('[role="menu"]')));
+    const newPlaylist = Array.from(happyWindow.document.querySelectorAll('[role="menu"] [role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === "New Playlist"
+    );
     await act(async () => {
-      Array.from(happyWindow.document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
-        .find((el) => el.textContent?.trim() === "New Playlist")
-        ?.click();
+      if (newPlaylist instanceof happyWindow.HTMLElement) newPlaylist.click();
     });
     const title = i18n.t("createPlaylist.title");
     await waitFor(() => Boolean(happyWindow.document.body.textContent?.includes(title)));

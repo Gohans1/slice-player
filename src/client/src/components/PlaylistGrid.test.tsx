@@ -51,7 +51,17 @@ describe("PlaylistGrid", () => {
     Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((el) => el.textContent?.trim() === label);
   const renderGrid = (playlists: Listed[], props: Partial<React.ComponentProps<typeof PlaylistGrid>> = {}) =>
     act(async () => {
-      root.render(<PlaylistGrid playlists={playlists} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} onEditSources={() => {}} {...props} />);
+      root.render(
+        <PlaylistGrid
+          playlists={playlists}
+          onOpen={() => {}}
+          onCreate={() => {}}
+          onMix={() => {}}
+          onMixWith={() => {}}
+          onEditSources={() => {}}
+          {...props}
+        />
+      );
     });
 
   it("plays or opens a playlist from its tile, and shuffles it from its More menu", async () => {
