@@ -45,6 +45,7 @@ import { SidebarInset, SidebarTrigger } from "./components/ui/sidebar";
 import { AppShell, MAIN_CONTENT_ID } from "./components/layout/AppShell";
 import { useQueueVisibility } from "./hooks/use-queue-visibility";
 import { useHeightCssVar } from "./hooks/use-height-css-var";
+import { useMediaSession } from "./hooks/use-media-session";
 import { BulkActionBar } from "./components/BulkActionBar";
 import { FloatingScrollControls } from "./components/FloatingScrollControls";
 import { ConfirmModal } from "./components/ConfirmModal";
@@ -150,6 +151,7 @@ export function App() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const deferredQuery = React.useDeferredValue(searchQuery);
   const { isDocked: isQueueDocked, isOpen: isQueueOpen, toggle: toggleQueue, close: closeQueue } = useQueueVisibility();
+  useMediaSession();
   const isQueueSheetOpen = isQueueOpen && !isQueueDocked;
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);

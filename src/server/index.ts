@@ -1,7 +1,7 @@
 import { serve, file as bunFile, type ServerWebSocket } from "bun";
 import { existsSync, statSync, mkdirSync, unlinkSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve, join, extname, basename, sep } from "node:path";
+import { resolve, join, extname, basename, dirname, sep } from "node:path";
 import {
   initDatabase, closeDatabase, getTrack, listTracks, updateTrack, deleteTrack, deleteTracksBatch, getTracksBatch,
   getSegment, createSegment, updateSegment, deleteSegment, deleteSegmentsBatch, listSegmentsByTrack, listSegmentsByTrackIds, listAllSegments, validateVolume,
@@ -20,15 +20,26 @@ import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from 
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
 import { THUMBNAIL_VARIANTS_DIR, THUMBNAIL_WIDTHS, isThumbnailSize, removeThumbnailVariants, resizedThumbnail } from "./thumbnails";
+import { isServerRunning, openAppWindow } from "./appWindow";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
+const APP_URL = `http://127.0.0.1:${PORT}`;
+
+// The exe keeps its library in data/ beside itself, as start.bat did with `cd /d "%~dp0"`
+if (Bun.isStandaloneExecutable) process.chdir(dirname(process.execPath));
+
+// Launching again while the server is up only opens another window onto it
+if (process.env.NODE_ENV === "production" && await isServerRunning(APP_URL)) {
+  openAppWindow(APP_URL);
+  process.exit(0);
+}
 
 // Initialize SQLite database
 initDatabase("./data/music.db");
 await recoverIncompleteIngests();
 
-logEvent("info", "system", `Máy chủ Slice Player đang chạy tại http://127.0.0.1:${PORT}`);
+logEvent("info", "system", `Máy chủ Slice Player đang chạy tại ${APP_URL}`);
 
 
 const activeSockets = new Set<ServerWebSocket>();
@@ -1450,7 +1461,8 @@ const server = serve({
 
     // --- STATIC FRONTEND ASSETS ---
     // Protected against path traversal with separator verification and case normalization on Windows
-    const distDir = resolve("./dist");
+    // The exe embeds dist/ beside its entry point (see the build:exe script)
+    const distDir = Bun.isStandaloneExecutable ? join(import.meta.dir, "dist") : resolve("./dist");
     const securityHeaders = {
       "Content-Security-Policy": corsHeaders["Content-Security-Policy"],
       "X-Content-Type-Options": "nosniff",
@@ -1539,6 +1551,8 @@ const server = serve({
     },
   },
 });
+
+if (process.env.NODE_ENV === "production") openAppWindow(APP_URL);
 
 function checkIdleShutdown() {
   if (process.env.NODE_ENV !== "production") return;
