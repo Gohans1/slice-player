@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { audioEngine } from "../lib/audio";
 import { createDefaultFullSegment } from "../lib/utils";
-import { pickSmartRandomItem } from "../lib/shufflePicker";
 import { logClientInfo, logClientError } from "./useLogStore";
 import { useSelectionStore } from "./useSelectionStore";
 import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getShuffledEntityIds } from "../lib/playlistSort";
@@ -63,8 +62,6 @@ export const dismissedTrackIdsByMode: Record<PlaybackMode, Set<string>> = {
   original_only: new Set<string>(),
 };
 
-const inFlightEnsureModeFetches = new Set<PlaybackMode>();
-
 export function clearDismissedSegments(mode?: PlaybackMode) {
   if (mode) {
     dismissedSegmentIdsByMode[mode].clear();
@@ -79,17 +76,9 @@ export function clearDismissedSegments(mode?: PlaybackMode) {
   }
 }
 
-export const shuffleHistory = new Map<string, number>();
-export let shuffleTurnCounter = 0;
-export function clearShuffleHistory() {
-  shuffleHistory.clear();
-  shuffleTurnCounter = 0;
-}
-
 let activeInitiationCount = 0;
 let playbackIntentId = 0;
 let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
-let latestPlaybackModeRequestId = 0;
 let latestFetchTracksRequestId = 0;
 
 let pendingSegmentReconciliation = false;
@@ -284,7 +273,6 @@ export interface PlayerState {
   toggleShuffle: () => void;
   toggleLoopQueue: () => void;
   toggleLoopTrack: () => void;
-  setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
   enqueue: (items: QueueItem[], placement: QueuePlacement) => boolean;
@@ -307,8 +295,6 @@ export interface PlayerState {
   closeSliceStudio: () => void;
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode, forceShuffle?: boolean) => void;
   reshuffleCurrentQueue: (modeOverride?: PlaybackMode) => void;
-  quickShufflePlay: (allSegmentsOverride?: Segment[]) => Promise<void>;
-  ensureModeQueue: (mode: PlaybackMode) => Promise<void>;
   syncUpdatedSegment: (seg: Segment) => void;
 
   // Playlist Actions
@@ -2117,82 +2103,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ sliceStudioTrack: null });
   },
 
-  setPlaybackMode: async (mode: PlaybackMode): Promise<boolean> => {
-    // A playing playlist keeps playbackMode, so the same mode still has to swap its queue back in
-    if (mode === get().playbackMode && !get().activePlaylistPlayingId) return true;
-    const requestId = ++latestPlaybackModeRequestId;
-
-    const { queuesByMode, initializedModes } = get();
-    let targetQueue = queuesByMode[mode];
-    const isInitialized = initializedModes[mode] || (targetQueue && targetQueue.length > 0);
-
-    // If queue for this mode hasn't been created yet, populate it sequentially
-    if (!isInitialized && (!targetQueue || targetQueue.length === 0)) {
-      let segments: Segment[] = [];
-      if (mode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        // Guard against stale switch if another tab was clicked during network fetch
-        if (requestId !== latestPlaybackModeRequestId) return false;
-
-        if (!segRes.success) {
-          console.warn(`[Store] Failed to fetch segments for mode "${mode}"; aborting mode queue generation.`);
-          return false;
-        }
-        segments = segRes.segments;
-      }
-
-      const freshTracks = get().tracks;
-      targetQueue = generateModeQueueItems(mode, segments, freshTracks);
-      if (get().shuffleByMode[mode]) {
-        targetQueue = shuffleArray(targetQueue);
-      }
-    }
-
-    if (requestId !== latestPlaybackModeRequestId) return false;
-
-    const currentActiveSegment = get().activeSegment;
-    const currentActiveTrack = get().activeTrack;
-    let newIndex = -1;
-    let newActiveSegment = currentActiveSegment;
-
-    if (currentActiveSegment) {
-      const foundIdx = targetQueue.findIndex((item) => item.segment.id === currentActiveSegment.id);
-      if (foundIdx >= 0) {
-        newIndex = foundIdx;
-      }
-    }
-    if (newIndex === -1 && currentActiveTrack) {
-      const foundTrkIdx = targetQueue.findIndex((item) => item.track.id === currentActiveTrack.id);
-      if (foundTrkIdx >= 0) {
-        newIndex = foundTrkIdx;
-        const targetItem = targetQueue[foundTrkIdx];
-        if (mode === "original_only" && targetItem.segment.id.startsWith("fallback_")) {
-          newActiveSegment = targetItem.segment;
-          audioEngine.updateCurrentSegmentBounds(targetItem.segment.start_time, targetItem.segment.end_time);
-        }
-      }
-    }
-
-    set({
-      playbackMode: mode,
-      activePlaylistPlayingId: null,
-      initializedModes: {
-        ...get().initializedModes,
-        [mode]: true,
-      },
-      queuesByMode: {
-        ...get().queuesByMode,
-        [mode]: targetQueue,
-      },
-      activeSegment: newActiveSegment,
-      queue: targetQueue,
-      queueIndex: newIndex,
-      isShuffle: get().shuffleByMode[mode],
-      queueOrigin: { type: "system", mode },
-    });
-    return true;
-  },
-
   buildShuffleQueue: (
     allSegments: Segment[],
     allTracks: Track[],
@@ -2340,161 +2250,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
     if (firstItem) {
       void get().playSegment(firstItem.segment, firstItem.track, 0);
-    }
-  },
-
-  quickShufflePlay: async (allSegmentsOverride?: Segment[]) => {
-    const activePlId = get().activePlaylistId;
-    if (activePlId) {
-      await get().buildPlaylistQueue(activePlId, true);
-      return;
-    }
-
-    const requestedMode = get().playbackMode;
-    let currentQueue = get().queuesByMode[requestedMode] || [];
-
-    if (currentQueue.length === 0) {
-      let segments: Segment[] = allSegmentsOverride || [];
-      if (segments.length === 0 && requestedMode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        if (segRes.success) {
-          segments = segRes.segments;
-        }
-      }
-
-      const freshState = get();
-      currentQueue = generateModeQueueItems(requestedMode, segments, freshState.tracks);
-      if (currentQueue.length > 0) {
-        set({
-          queuesByMode: {
-            ...freshState.queuesByMode,
-            [requestedMode]: currentQueue,
-          },
-          queue: freshState.playbackMode === requestedMode ? currentQueue : freshState.queue,
-          initializedModes: {
-            ...freshState.initializedModes,
-            [requestedMode]: true,
-          },
-        });
-      }
-    }
-
-    if (currentQueue.length === 0) {
-      // Fallback if the requested mode has no items (e.g. slices_only with no custom slices)
-      const fallbackMode: PlaybackMode = requestedMode === "slices_only" ? "mixed" : "original_only";
-      let fallbackQueue = get().queuesByMode[fallbackMode] || [];
-      if (fallbackQueue.length === 0) {
-        fallbackQueue = generateModeQueueItems(fallbackMode, [], get().tracks);
-      }
-      if (fallbackQueue.length > 0) {
-        currentQueue = fallbackQueue;
-      }
-    }
-
-    if (currentQueue.length === 0) return;
-
-    shuffleTurnCounter++;
-
-    // Always penalize the currently active segment (treated as just played at turn - 1) so it is never immediately re-picked
-    const currentActiveSegment = get().activeSegment;
-    if (currentActiveSegment) {
-      shuffleHistory.set(currentActiveSegment.id, shuffleTurnCounter - 1);
-    }
-
-    // Prune stale history entries older than 30 turns when map grows
-    if (shuffleHistory.size > 50) {
-      for (const [id, turn] of shuffleHistory.entries()) {
-        if (shuffleTurnCounter - turn > 30) {
-          shuffleHistory.delete(id);
-        }
-      }
-    }
-
-    const pickResult = pickSmartRandomItem(
-      currentQueue,
-      (item) => item.segment.id,
-      shuffleHistory,
-      shuffleTurnCounter
-    );
-
-    if (!pickResult) return;
-
-    const { item, index } = pickResult;
-    shuffleHistory.set(item.segment.id, shuffleTurnCounter);
-
-    // Sync target index with current mode's active queue
-    const activeModeQueue = get().queuesByMode[get().playbackMode] || [];
-    const targetIdx = activeModeQueue.findIndex((qItem) => qItem.segment.id === item.segment.id);
-
-    await get().playSegment(item.segment, item.track, targetIdx >= 0 ? targetIdx : undefined);
-  },
-
-  ensureModeQueue: async (mode: PlaybackMode) => {
-    const { queuesByMode, initializedModes } = get();
-    if (initializedModes[mode] || (queuesByMode[mode] && queuesByMode[mode].length > 0)) {
-      return;
-    }
-    if (inFlightEnsureModeFetches.has(mode)) {
-      return;
-    }
-    inFlightEnsureModeFetches.add(mode);
-
-    let segments: Segment[] = [];
-    let didFetchSucceed = mode === "original_only";
-    try {
-      if (mode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        if (segRes.success) {
-          segments = segRes.segments;
-          didFetchSucceed = true;
-        } else {
-          console.warn(`[Store] ensureModeQueue: failed to fetch segments for mode "${mode}"; aborting initialization.`);
-          return;
-        }
-      }
-
-      if (!didFetchSucceed) {
-        return;
-      }
-
-      // Guard against race conditions if setPlaybackMode or fetchTracks ran while fetch was pending
-      if (get().initializedModes[mode] || (get().queuesByMode[mode] && get().queuesByMode[mode].length > 0)) {
-        return;
-      }
-
-      const freshTracks = get().tracks;
-      let targetQueue = generateModeQueueItems(mode, segments, freshTracks);
-      if (get().shuffleByMode[mode]) {
-        targetQueue = shuffleArray(targetQueue);
-      }
-      const isCurrentMode = mode === get().playbackMode;
-      let newIndex = get().queueIndex;
-      if (isCurrentMode) {
-        const currentActiveSegment = get().activeSegment;
-        const currentActiveTrack = get().activeTrack;
-        if (currentActiveSegment) {
-          const foundIdx = targetQueue.findIndex((item) => item.segment.id === currentActiveSegment.id);
-          if (foundIdx >= 0) newIndex = foundIdx;
-        }
-        if (newIndex === -1 && currentActiveTrack) {
-          const foundTrkIdx = targetQueue.findIndex((item) => item.track.id === currentActiveTrack.id);
-          if (foundTrkIdx >= 0) newIndex = foundTrkIdx;
-        }
-      }
-
-      set({
-        queuesByMode: {
-          ...get().queuesByMode,
-          [mode]: targetQueue,
-        },
-        ...(isCurrentMode ? { queue: targetQueue, queueIndex: newIndex } : {}),
-        initializedModes: {
-          ...get().initializedModes,
-          [mode]: true,
-        },
-      });
-    } finally {
-      inFlightEnsureModeFetches.delete(mode);
     }
   },
 
