@@ -32,6 +32,8 @@ export function createQueueItem(segment: Segment, track: Track, queueItemId?: st
 }
 
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
+// Play Next puts songs right after the current one, Play Later after the rest of the queue
+export type QueuePlacement = "next" | "later";
 export type SystemCategory = PlaybackMode | "downloading_only" | "error_only" | "playlists";
 
 export function isPlaybackMode(cat: unknown): cat is PlaybackMode {
@@ -285,6 +287,8 @@ export interface PlayerState {
   setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
+  enqueue: (items: QueueItem[], placement: QueuePlacement) => boolean;
+  queuePlaylist: (playlistId: string, placement: QueuePlacement) => Promise<void>;
   playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number, origin?: QueueOrigin | null) => Promise<void>;
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
@@ -548,6 +552,32 @@ export function reconcileSingleModeQueue(
   }
 
   return validQueue;
+}
+
+// A playlist's songs as its page lists them: the playable ones in the page's sort, narrowed to a search's matches
+async function loadPlaylistQueue(get: () => PlayerState, playlistId: string, query?: string): Promise<QueueItem[]> {
+  let items: PlaylistItemWithDetails[] = [];
+  if (playlistId === get().activePlaylistId && get().activePlaylistItems.length > 0) {
+    items = get().activePlaylistItems;
+  } else {
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`);
+    if (!res.ok) return [];
+    const data: { items?: PlaylistItemWithDetails[] } = await res.json();
+    items = data.items || [];
+  }
+  let playable = items.filter((it) => it.track && it.track.status === "ready" && it.track.duration > 0);
+  if (query) {
+    playable = searchItems(playable, query, (item) => ({
+      title: item.segment?.name || item.track?.title,
+      artist: item.track?.artist,
+      segmentName: item.segment ? item.track?.title : undefined,
+      createdAt: item.added_at,
+    }));
+  }
+  const playlist = get().playlists.find((p) => p.id === playlistId);
+  return getSortedPlaylistItems(playable, get().playlistSortMode, get().playlistRandomMap[playlistId], playlist?.is_custom_ordered).map(
+    (item) => createQueueItem(item.segment || createDefaultFullSegment(item.track), item.track, item.id)
+  );
 }
 
 function transitionActiveItemOnRemoval(
@@ -3225,45 +3255,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     origin?: QueueOrigin | null
   ) => {
     try {
-      let items: PlaylistItemWithDetails[] = [];
-      if (playlistId === get().activePlaylistId && get().activePlaylistItems.length > 0) {
-        items = get().activePlaylistItems;
-      } else {
-        const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        items = data.items || [];
-      }
-      const validItems = items.filter(
-        (it) => it.track && it.track.status === "ready" && it.track.duration > 0
-      );
-      if (validItems.length === 0) return;
-
-      let effectiveItems = validItems;
-      if (origin?.type === "search" && origin.query?.trim()) {
-        effectiveItems = searchItems(validItems, origin.query.trim(), (item) => ({
-          title: item.segment?.name || item.track?.title,
-          artist: item.track?.artist,
-          segmentName: item.segment ? item.track?.title : undefined,
-          createdAt: item.added_at,
-        }));
-      }
-      if (effectiveItems.length === 0) return;
-
-      const sortMode = get().playlistSortMode;
-      const currentPl = get().playlists.find((p) => p.id === playlistId);
-      const randomOrder = get().playlistRandomMap[playlistId];
-      const sortedValidItems = getSortedPlaylistItems(
-        effectiveItems,
-        sortMode,
-        randomOrder,
-        currentPl?.is_custom_ordered
-      );
-
-      const rawQueueItems: QueueItem[] = sortedValidItems.map((item) => {
-        const seg = item.segment || createDefaultFullSegment(item.track);
-        return createQueueItem(seg, item.track, item.id);
-      });
+      const query = origin?.type === "search" ? origin.query?.trim() : undefined;
+      const rawQueueItems = await loadPlaylistQueue(get, playlistId, query);
+      if (rawQueueItems.length === 0) return;
 
       let queueItems = [...rawQueueItems];
       let targetIndex = 0;
@@ -3364,6 +3358,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       initializedModes: { ...get().initializedModes, [mode]: true },
     });
     await get().playSegment(queue[0].segment, queue[0].track, 0);
+  },
+
+  enqueue: (items: QueueItem[], placement: QueuePlacement) => {
+    const { queue, queueIndex, activePlaylistPlayingId, playbackMode, queuesByMode } = get();
+    // Nothing is queued for the songs to come after: the caller plays them instead
+    if (queue.length === 0) return false;
+    // Copies, so a song queued twice is two entries
+    const copies = items.map((item) => createQueueItem(item.segment, item.track));
+    const at = placement === "next" ? queueIndex + 1 : queue.length;
+    const next = [...queue.slice(0, at), ...copies, ...queue.slice(at)];
+    // While a library page plays, a refresh rebuilds the queue from its mode's queue, so they go there too
+    set(activePlaylistPlayingId ? { queue: next } : { queue: next, queuesByMode: { ...queuesByMode, [playbackMode]: next } });
+    return true;
+  },
+
+  queuePlaylist: async (playlistId: string, placement: QueuePlacement) => {
+    if (get().queue.length === 0) return get().buildPlaylistQueue(playlistId, false);
+    const items = await loadPlaylistQueue(get, playlistId);
+    if (items.length > 0) get().enqueue(items, placement);
   },
 
   playSegmentInMode: async (
