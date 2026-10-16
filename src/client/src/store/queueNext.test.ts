@@ -193,6 +193,22 @@ describe("Play Next and Play Later", () => {
       expect(usePlayerStore.getState().activePlaylistPlayingId === null).toBe(true);
     });
 
+    // The menus fire and forget, so a failed load must not escape as an unhandled rejection
+    it("leaves the queue as it was when the playlist can't be loaded", async () => {
+      fetchSpy.mockImplementation(async () => {
+        throw new TypeError("Failed to fetch");
+      });
+      const logged = spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        await usePlayerStore.getState().queuePlaylist("pl_2", "next");
+      } finally {
+        logged.mockRestore();
+      }
+
+      expect(trackIds(usePlayerStore.getState().queue)).toEqual(["a", "b", "c"]);
+    });
+
     it("plays from the start when nothing is queued", async () => {
       usePlayerStore.setState({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null });
 

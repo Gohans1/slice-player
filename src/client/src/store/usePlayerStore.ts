@@ -3162,8 +3162,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   queuePlaylist: async (playlistId: string, placement: QueuePlacement) => {
     if (get().queue.length === 0) return get().buildPlaylistQueue(playlistId, false);
-    const items = await loadPlaylistQueue(get, playlistId);
-    if (items.length > 0) get().enqueue(items, placement);
+    try {
+      const items = await loadPlaylistQueue(get, playlistId);
+      if (items.length > 0) get().enqueue(items, placement);
+    } catch (e) {
+      console.error("[Store] Failed to queue playlist:", e);
+    }
   },
 
   playSegmentInMode: async (
