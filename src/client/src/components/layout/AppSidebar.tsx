@@ -139,11 +139,10 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
     }
   };
 
-  const renderPlaylist = (playlist: SidebarPlaylist, size: "default" | "sm") => (
+  const renderPlaylist = (playlist: SidebarPlaylist) => (
     <PlaylistMenuItem
       key={playlist.id}
       playlist={playlist}
-      size={size}
       isActive={activePlaylistId === playlist.id}
       nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? (isPlaying ? "playing" : "paused") : null}
       onOpen={setActivePlaylist}
@@ -204,10 +203,11 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
             </SidebarMenuItem>
             {tree.map(({ playlist, children }) => (
               <React.Fragment key={playlist.id}>
-                {renderPlaylist(playlist, "default")}
+                {renderPlaylist(playlist)}
                 {children.length > 0 && (
                   <SidebarMenuItem>
-                    <SidebarMenuSub>{children.map((child) => renderPlaylist(child, "sm"))}</SidebarMenuSub>
+                    {/* Sub-playlists are the same size as the rest, as the playlists in a folder are in Apple Music */}
+                    <SidebarMenuSub>{children.map((child) => renderPlaylist(child))}</SidebarMenuSub>
                   </SidebarMenuItem>
                 )}
               </React.Fragment>
@@ -234,7 +234,6 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
 
 interface PlaylistMenuItemProps {
   playlist: SidebarPlaylist;
-  size: "default" | "sm";
   isActive: boolean;
   nowPlaying: "playing" | "paused" | null;
   onOpen: (playlistId: string) => void;
@@ -245,7 +244,6 @@ interface PlaylistMenuItemProps {
 // carries its own tooltip, actions menu and context menu
 const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   playlist,
-  size,
   isActive,
   nowPlaying,
   onOpen,
@@ -347,7 +345,6 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
         <SidebarMenuButton
           ref={buttonRef}
           render={<ContextMenuTrigger render={<button type="button" />} />}
-          size={size}
           isActive={isActive}
           tooltip={playlist.name}
           onClick={() => onOpen(playlist.id)}
