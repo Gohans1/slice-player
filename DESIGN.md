@@ -168,12 +168,12 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 |---|---|---|---|
 | **Red (re)** | `#D14D41` | `#AF3029` | Màu nhấn `primary` (Play, đang phát, vòng focus), biểu tượng YouTube, cảnh báo xóa, lỗi tải audio |
 | **Orange (or)** | `#DA702C` | `#BC5215` | Cảnh báo giới hạn độ dài track, lát cắt ấm |
-| **Yellow (ye)** | `#D0A215` | `#AD8301` | Lát cắt tươi sáng, đánh dấu điểm nhấn đặc biệt |
+| **Yellow (ye)** | `#D0A215` | `#AD8301` | Lát cắt tươi sáng, khung trim và tay nắm của lát cắt đang chọn trong Slice Studio |
 | **Green (gr)** | `#879A39` | `#66800B` | Nút Shuffle lát cắt nhanh, thông báo lưu thành công |
 | **Cyan (cy)** | `#3AA99F` | `#24837B` | Nhãn badge FLAC cục bộ, thời lượng lát cắt |
-| **Blue (bl)** | `#4385BE` | `#205EA6` | Lát cắt mặc định (`DEFAULT_SLICE_COLOR`), tên lát cắt trên PlayerBar |
+| **Blue (bl)** | `#4385BE` | `#205EA6` | Lát cắt mặc định (`DEFAULT_SLICE_COLOR`), tên lát cắt trên PlayerBar, con trỏ phát của Slice Studio |
 | **Purple (pu)** | `#8B7EC8` | `#5E409D` | Lát cắt trầm ấm, số thứ tự mốc cắt |
-| **Magenta (ma)** | `#CE5D97` | `#A02F6F` | Con trỏ cursor định vị của WaveSurfer, lát cắt cao trào |
+| **Magenta (ma)** | `#CE5D97` | `#A02F6F` | Lát cắt cao trào, dòng nguồn của mix trên header playlist |
 
 ### Base Monochromatic Palette (14 nấc chuẩn Flexoki)
 - **Paper** (`#FFFCF0`): Nền chính Light Mode (`bg`), chữ trên nút primary (`primary-foreground`).
@@ -188,7 +188,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Base 700** (`#575653`): Chữ chú thích Light Mode (`muted-foreground` / `secondary-foreground`), chữ mờ nhạt Dark Mode (`tx-3`).
 
 **The Secondary Text Contrast Rule.** Chữ phụ (`muted-foreground`) lệch `tx-2` của Flexoki đúng một bậc ra xa nền: Base 400 ở Dark Mode, Base 700 ở Light Mode. `tx-2` đạt 4.5:1 trên nền chính nhưng tụt xuống 3.9–4.5:1 trên card, hàng đang hover / đang phát và nền `muted`, mà chữ phụ của bảng và Up Next nằm đúng trên các nền đó. Một bậc lệch giữ mọi cặp từ 5.3:1 trở lên, và Base 400 cũng gần với chữ phụ trắng 64% của Apple Music.
-- **Base 800** (`#403E3C`): Viền active Dark Mode (`ui-3`), sóng âm WaveSurfer.
+- **Base 800** (`#403E3C`): Viền active Dark Mode (`ui-3`).
 - **Base 850** (`#343331`): Viền ô nhập và nền `accent` Dark Mode (`ui-2` / `input`).
 - **Base 900** (`#282726`): Đường viền chính, nền `secondary` / `muted` Dark Mode (`ui` / `border`).
 - **Base 950** (`#1C1B1A`): Bề mặt thẻ Card, nền kính của capsule PlayerBar (70%), Modal (`bg-2` / `card`).
@@ -295,7 +295,7 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - **Cuộn nhanh**: `ButtonGroup` dọc gồm 2 `Button` `outline`; mỗi nút `disabled` khi trang đã ở đúng đầu đó.
 
 ### Feedback & Errors
-- Lỗi nằm cạnh chỗ nó xảy ra: các dialog (New Playlist, Mix Playlists, YouTube, Import, Backup) và Slice Studio tự hiện lỗi bên trong.
+- Lỗi nằm cạnh chỗ nó xảy ra: các dialog (New Playlist, New Mix, YouTube, Import, Backup) và Slice Studio tự hiện lỗi bên trong.
 - Thay đổi không còn chỗ nào để báo (menu đã đóng, cập nhật lạc quan đã lặng lẽ rollback) gửi qua `sendChange` (`lib/sendChange.ts`). Lỗi hiện `toast` của shadcn: project là Base UI nên dùng Base UI Toast, không dùng Sonner (Sonner dành cho Radix). Toast lỗi có `type: "error"`, `priority: "high"` (screen reader đọc ngay), `timeout: 0` (ở lại tới khi tắt). Mỗi loại thay đổi chỉ có 1 toast (`id` cố định), thất bại lặp lại thì cập nhật toast đó. Chi tiết ghi vào System Logs bằng tiếng Anh.
 - Chỉ báo khi chính request thất bại, không báo khi phần xử lý sau một response thành công bị lỗi. Lỗi mạng và 502/503/504 (proxy không tới được server) đều là "Can't reach the server".
 - Giọng theo copy sẵn có: tiêu đề "Failed to …" / "Không thể …", mô tả nói cách xử lý.
@@ -309,6 +309,12 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Mỗi lát cắt là một region tô màu của nó (`26` alpha, `4D` khi đang chọn) kèm tên ở mép trên. Chỉ lát cắt đang chọn kéo / kéo giãn được, với khung trim vàng `--flexoki-ye` và hai tay nắm vàng có vạch nắm như Voice Memos; các lát cắt khác bấm vào là chọn. WaveSurfer vẽ trong shadow root nên các phần này style từ `index.css` qua `::part()` (`slice-label`, `slice-trim-frame`, `region-handle`); `!important` để thắng inline style của tay nắm, như ví dụ styling của WaveSurfer.
 - Lát cắt đang chọn (mặc định là lát đầu tiên) có ô điều khiển riêng dưới transport, như nút Trim của Voice Memos: chấm màu, ô tên (`Input`), Play Slice, Add to Playlist, xoá; dòng dưới là Start / End dạng `ButtonGroup` (−0.1s, thời điểm, +0.1s) và độ dài.
 - Danh sách lát cắt: `ItemGroup` gồm `Item` `xs` render thành `button` (chấm màu, tên, khoảng thời gian `tabular-nums`, độ dài; đang phát thì là equalizer). Lát đang chọn dùng `variant="muted"` + `aria-current`; bấm đúp là phát. Lát cắt mới tạo ở vị trí con trỏ phát (20 giây) với màu kế tiếp trong 8 mực Flexoki, và được chọn ngay. Thông báo lưu nằm ở footer trong một `role="status"` luôn mount.
+
+### Signature Component: Mix editor (`MixPlaylistModal`)
+- Theo hộp thoại Smart Playlist của Music trên Mac: `Modal` (Base UI `Dialog`) tiêu đề "New Mix" (khi sửa là "Sources of …") và một câu nói rằng các playlist nguồn giữ nguyên. Dòng dẫn `FieldLegend` "Play these playlists, in this order:" đứng ở chỗ "Match all of the following rules:".
+- Mỗi playlist nguồn là một hàng như một rule, trong khung `rounded-lg border` chia hàng bằng `divide-y` (`ol`, thứ tự hàng là thứ tự phát): số thứ tự `tabular-nums` mờ, `Select` tên "Playlist n" (Base UI, prop `items`; popup đặt mục đang chọn đè lên nút như pop-up button của macOS, mỗi mục có ảnh bìa 20px), `ButtonGroup` lên / xuống và `ButtonGroup` − / + (`Button` `outline` `icon`). + thêm một hàng trống ngay dưới và đưa focus vào nó; − bỏ hàng và đưa focus sang hàng thế chỗ. Ít nhất 2 hàng, nhiều nhất bằng số playlist; playlist đã nằm ở hàng khác bị tắt trong popup, mix không làm nguồn được.
+- Thêm, bỏ hay chuyển hàng làm mất hoặc dời nút đang có focus, nên hàng cập nhật trong `flushSync` rồi focus đi theo hàng; nút chuyển bị tắt ở đầu / cuối thì focus sang nút chuyển còn lại của hàng.
+- Dưới khung là `FieldDescription` "n items · Updates live", ở chỗ ô Live updating của Smart Playlist: mix luôn theo các playlist nguồn nên số mục là của hiện tại. Khi tạo mới có ô Mix name, tự điền "A + B" (thêm "+ n" khi nhiều hơn) cho tới khi người dùng tự gõ tên. `DialogFooter`: Cancel và Create Mix / Save (`primary`, như nút OK đỏ của Music).
 
 ## Do's and Don'ts
 
