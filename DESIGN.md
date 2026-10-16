@@ -214,7 +214,7 @@ Bảng màu là sự hòa quyện giữa sắc đen mực in Flexoki và 8 màu 
 - **Label** (Semi-bold 600, 12px / `text-2xs`): tiêu đề cột bảng, dòng chi tiết dưới tên playlist.
 
 ### Named Rules
-**The Tabular Time Rule.** Mọi con số thay đổi theo thời gian hoặc xếp thành cột (thời lượng bài, điểm bắt đầu/kết thúc lát cắt, phần trăm âm lượng, số đếm) dùng chữ số đều nhau `tabular-nums` của font giao diện, như Apple Music dùng chữ số tabular của SF, để các con số không nhảy khi thời gian chạy. `JetBrains Mono` chỉ còn cho ngữ cảnh kỹ thuật: timecode khi chỉnh lát cắt trong Slice Studio, System Logs, phím tắt (keycap), URL và tên file lúc nhập.
+**The Tabular Time Rule.** Mọi con số thay đổi theo thời gian hoặc xếp thành cột (thời lượng bài, điểm bắt đầu/kết thúc lát cắt, phần trăm âm lượng, số đếm) dùng chữ số đều nhau `tabular-nums` của font giao diện, như Apple Music dùng chữ số tabular của SF, để các con số không nhảy khi thời gian chạy. `JetBrains Mono` chỉ còn cho ngữ cảnh kỹ thuật: System Logs, phím tắt (keycap), URL và tên file lúc nhập. Slice Studio cũng dùng `tabular-nums`, như đồng hồ của Voice Memos.
 
 ## Layout
 
@@ -303,15 +303,18 @@ Giao diện áp dụng triệt để mô hình **Tonal Layering** (Phân tầng 
 - Toast là dialog không modal (`aria-modal="false"`), nên `isDialogOpen` bỏ qua nó: toast lỗi đang mở không được khoá phím tắt (Space, Q, F2, tìm kiếm). Người dùng bàn phím tới toast bằng F6 (Base UI), có ghi trong bảng phím tắt.
 - Thử tải lại: tải chạy rồi lại thất bại thì server ghi lý do vào track và track tự hiện lỗi, không toast. Mọi lỗi khác của request thử lại đều báo bằng toast.
 
-### Signature Component: Slice Studio Waveform Deck
-- Khung hiển thị sóng âm WaveSurfer với nền `#100F0F`, sóng màu xám `#403E3C`, dải tiến trình đỏ `#D14D41`, con trỏ hồng `#CE5D97`.
-- Các vùng phân đoạn (Regions) được gán 8 màu ngẫu nhiên từ bảng màu Flexoki đầy đủ (Xanh dương, Lam ngọc, Lục, Vàng, Cam, Tím, Đỏ, Hồng), hiển thị viền kéo thả hai đầu trực quan.
+### Signature Component: Slice Studio
+- Theo Voice Memos (bản macOS 26 và màn Trim của iOS 26): Base UI `Dialog` rộng (`sm:max-w-6xl`) như một cửa sổ, tiêu đề nhỏ "Slice Studio" kèm một câu hướng dẫn. Bên trái là trình chỉnh, bên phải là danh sách lát cắt của bài, như danh sách bản ghi của Voice Memos; màn hẹp thì xếp chồng. Mở ra thì focus nằm ở chính dialog nên Space phát / dừng ngay; Escape đóng (menu lồng bên trong đóng trước); đóng thì lưu nốt thay đổi đang chờ rồi mới trả lại.
+- Trình chỉnh: tên bài `text-2xl font-bold` và "nghệ sĩ · thời lượng", rồi sóng âm WaveSurfer trên nền `bg-muted/40` bo `rounded-xl`: cột mảnh 2px (`muted-foreground`, phần đã phát sáng lên `foreground`), con trỏ phát xanh `--flexoki-bl` có chấm tròn ở hai đầu, thước thời gian `m:ss` bên dưới (Timeline plugin). Canvas không đọc được CSS variable nên màu đọc từ theme lúc tạo. Dưới sóng là đồng hồ lớn `text-4xl tabular-nums`, hàng transport −15 giây / Play / +15 giây ở giữa, zoom bên trái và âm lượng riêng của bài bên phải (màn hẹp: transport một hàng, zoom và âm lượng xuống hàng dưới).
+- Mỗi lát cắt là một region tô màu của nó (`26` alpha, `4D` khi đang chọn) kèm tên ở mép trên. Chỉ lát cắt đang chọn kéo / kéo giãn được, với khung trim vàng `--flexoki-ye` và hai tay nắm vàng có vạch nắm như Voice Memos; các lát cắt khác bấm vào là chọn. WaveSurfer vẽ trong shadow root nên các phần này style từ `index.css` qua `::part()` (`slice-label`, `slice-trim-frame`, `region-handle`); `!important` để thắng inline style của tay nắm, như ví dụ styling của WaveSurfer.
+- Lát cắt đang chọn (mặc định là lát đầu tiên) có ô điều khiển riêng dưới transport, như nút Trim của Voice Memos: chấm màu, ô tên (`Input`), Play Slice, Add to Playlist, xoá; dòng dưới là Start / End dạng `ButtonGroup` (−0.1s, thời điểm, +0.1s) và độ dài.
+- Danh sách lát cắt: `ItemGroup` gồm `Item` `xs` render thành `button` (chấm màu, tên, khoảng thời gian `tabular-nums`, độ dài; đang phát thì là equalizer). Lát đang chọn dùng `variant="muted"` + `aria-current`; bấm đúp là phát. Lát cắt mới tạo ở vị trí con trỏ phát (20 giây) với màu kế tiếp trong 8 mực Flexoki, và được chọn ngay. Thông báo lưu nằm ở footer trong một `role="status"` luôn mount.
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** sử dụng mã màu Flexoki đã được định nghĩa trong `index.css` khi viết component mới.
-- **Do** dùng `tabular-nums` cho mọi hiển thị thời gian âm thanh (`0:00`) và số đếm; `JetBrains Mono` chỉ cho ngữ cảnh kỹ thuật (Slice Studio, log, keycap, URL / tên file).
+- **Do** dùng `tabular-nums` cho mọi hiển thị thời gian âm thanh (`0:00`) và số đếm; `JetBrains Mono` chỉ cho ngữ cảnh kỹ thuật (log, keycap, URL / tên file).
 - **Do** viết số đếm theo cách ngôn ngữ đang chọn viết số (`1,236` tiếng Anh, `1.236` tiếng Việt): trong bản dịch dùng `{{count, number}}` (cả `total`, `filtered`, `current`, `position`…), số đứng riêng như badge thì qua `useFormatNumber()`. Mã HTTP, phần trăm và số thứ tự hàng thì để nguyên.
 - **Do** giữ capsule PlayerBar dính chân cột nội dung (`sticky bottom-3`) để người dùng có thể thao tác nhạc từ bất kỳ đâu.
 - **Do** áp dụng `pointer-events-none` và `user-select: none` cho các thành phần kéo thả thumbnail để tránh lỗi kéo nhầm hình ảnh của trình duyệt.
