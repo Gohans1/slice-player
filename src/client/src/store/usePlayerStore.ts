@@ -403,6 +403,11 @@ export function sortQueueItems(items: QueueItem[]): QueueItem[] {
   });
 }
 
+// The same song can be queued more than once, so an entry is found by its queue id, not its segment
+function indexOfEntry(queue: QueueItem[], entry: QueueItem | null | undefined): number {
+  return entry?.queueItemId ? queue.findIndex((it) => it.queueItemId === entry.queueItemId) : -1;
+}
+
 // The full-track segment for a refreshed track: the queued one while it still covers the whole track, so unchanged
 // entries keep their identity
 function refreshedFallbackSegment(segment: Segment, track: Track): Segment {
@@ -1076,11 +1081,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             updates.sliceStudioTrack = freshStudio;
           }
           if (!isPlayingPlaylist && validQueue.length !== queue.length) {
+            const sameEntryIdx = indexOfEntry(validQueue, currentItem);
             const newIdx = validQueue.length === 0
               ? -1
-              : currentItem
-                ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
-                : (queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1)));
+              : sameEntryIdx !== -1
+                ? sameEntryIdx
+                : currentItem
+                  ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
+                  : (queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1)));
             const fallbackIdx = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
             updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
           }
@@ -1161,8 +1169,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         const validQueue = nextQueuesByMode[currentMode];
         let newIdx = -1;
-        // The same song can be queued more than once; the entry playing is the one with its queue id
-        const sameEntryIdx = currentItem?.queueItemId ? validQueue.findIndex((it) => it.queueItemId === currentItem.queueItemId) : -1;
+        const sameEntryIdx = indexOfEntry(validQueue, currentItem);
         if (sameEntryIdx !== -1) {
           newIdx = sameEntryIdx;
         } else if (validQueue.length > 0 && currentItem) {
@@ -1693,10 +1700,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     let newIndex = -1;
-    // A song can be queued more than once, so follow the entry that is playing, when the one at the index is
+    // Follow the entry that is playing, when the one at the index is (a transitional slice can play while it isn't)
     const entryAtIndex = queue[get().queueIndex];
-    const playingEntryId = entryAtIndex && entryAtIndex.segment.id === activeSegment?.id ? entryAtIndex.queueItemId : undefined;
-    const sameEntry = playingEntryId ? newQueue.findIndex((item) => item.queueItemId === playingEntryId) : -1;
+    const sameEntry = entryAtIndex?.segment.id === activeSegment?.id ? indexOfEntry(newQueue, entryAtIndex) : -1;
     if (sameEntry >= 0) {
       newIndex = sameEntry;
     } else if (activeSegment) {
@@ -1945,7 +1951,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (!Number.isInteger(index) || index < 0 || index >= targetQueue.length) return;
     const itemToRemove = targetQueue[index];
-    if (itemToRemove && !isPlayingPlaylist) {
+    // A queued copy isn't the page's own entry of the song, so removing it leaves the page's entry to future refreshes
+    if (itemToRemove && !isPlayingPlaylist && !itemToRemove.userQueued) {
       dismissedSegmentIdsByMode[targetMode].add(itemToRemove.segment.id);
     }
 

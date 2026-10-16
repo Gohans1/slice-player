@@ -103,6 +103,16 @@ describe("Play Next and Play Later", () => {
       expect(state.queue[4].segment === queuedAgain).toBe(true);
     });
 
+    // Removing an entry removes that entry: the page's own copy of the song stays
+    it("keeps the page's own entry of a song whose queued copy was removed", async () => {
+      usePlayerStore.getState().enqueue([queueItemOf(c)], "next");
+      usePlayerStore.getState().removeQueueItemAtIndex(2);
+
+      await refresh();
+
+      expect(usePlayerStore.getState().queue.map((item) => item.segment.id)).toEqual(["fallback_a", "fallback_b", "fallback_c"]);
+    });
+
     it("stays on the copy of a repeated song that is playing", async () => {
       usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
       const copy = usePlayerStore.getState().queue[3];
@@ -113,6 +123,24 @@ describe("Play Next and Play Later", () => {
       const state = usePlayerStore.getState();
       expect(state.queue[state.queueIndex]?.queueItemId).toBe(copy.queueItemId);
     });
+  });
+
+  // A refresh of the tracks alone that drops another song from the queue
+  it("stays on the playing copy of a repeated song when another song leaves the library", async () => {
+    usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+    const copy = usePlayerStore.getState().queue[3];
+    usePlayerStore.setState({ queueIndex: 3 });
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fetchReturning(() => Response.json([a, b, x, y])));
+
+    try {
+      await usePlayerStore.getState().fetchTracks(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    const state = usePlayerStore.getState();
+    expect(trackIds(state.queue)).toEqual(["a", "b", "b"]);
+    expect(state.queue[state.queueIndex]?.queueItemId).toBe(copy.queueItemId);
   });
 
   // Shuffling moves songs around; the one playing must stay the copy that was playing
