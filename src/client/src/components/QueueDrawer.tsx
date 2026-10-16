@@ -933,24 +933,25 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
         <div className="mt-2 flex items-center justify-between gap-2 border-b border-border/50 py-2">
           <div className="flex min-w-0 items-center gap-1.5 text-xs">
             <span className="shrink-0 text-muted-foreground">{t("queue.playingFrom", "Playing from")}</span>
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => void goToSource()}
               aria-label={t("queue.goToSource", { name: sourceName, defaultValue: `Go to ${sourceName}` })}
               title={t("queue.goToSource", { name: sourceName, defaultValue: `Go to ${sourceName}` })}
-              className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-xs font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-w-0"
             >
               {activePlaylistPlayingId ? (
-                <Folder className="size-3.5 shrink-0 text-flexoki-yellow" aria-hidden="true" />
+                <Folder data-icon="inline-start" className="text-flexoki-yellow" />
               ) : playbackMode === "slices_only" ? (
-                <Scissors className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                <Scissors data-icon="inline-start" />
               ) : playbackMode === "original_only" ? (
-                <Disc className="size-3.5 shrink-0 text-flexoki-green" aria-hidden="true" />
+                <Disc data-icon="inline-start" className="text-flexoki-green" />
               ) : (
-                <Shuffle className="size-3.5 shrink-0 text-flexoki-blue" aria-hidden="true" />
+                <Shuffle data-icon="inline-start" className="text-flexoki-blue" />
               )}
               <span className="truncate">{sourceName}</span>
-            </button>
+            </Button>
           </div>
           <div className="flex shrink-0 items-center">
             {isShuffle && displayQueue.length > 0 && (
