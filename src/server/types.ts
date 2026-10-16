@@ -52,14 +52,17 @@ export interface Playlist {
 // Where a play is credited: a playlist, a library page, or a song list on Home
 export type PlaySourceType = "playlist" | "mixed" | "slices_only" | "original_only" | "home";
 
-export interface PlayRecord {
-  track_id: string;
-  // The slice that played; null for the whole song
-  segment_id: string | null;
+export interface PlaySource {
   source_type: PlaySourceType;
   playlist_id: string | null;
   // Started from Home, which is how Home's use is measured
   via_home: boolean;
+}
+
+export interface PlayRecord extends PlaySource {
+  track_id: string;
+  // The slice that played; null for the whole song
+  segment_id: string | null;
 }
 
 export interface HomeSummary {

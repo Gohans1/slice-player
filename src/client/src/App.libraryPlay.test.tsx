@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./App";
 import { usePlayerStore, resetEtagCache, type PlayerState, type QueuePlacement } from "./store/usePlayerStore";
-import type { Segment, Track } from "@/server/types";
+import type { PlaySource, Segment, Track } from "@/server/types";
 
 const originalFetch = globalThis.fetch;
 const initialStore = usePlayerStore.getState();
@@ -16,7 +16,8 @@ const pending: Track = { id: "trk-pending", source_type: "youtube", source_uri: 
 
 type PlayCall = [mode: Parameters<PlayerState["playModeQueue"]>[0], songs: string[], options: Parameters<PlayerState["playModeQueue"]>[2]];
 let played: PlayCall[] = [];
-let queued: [songs: string[], placement: QueuePlacement][] = [];
+let queued: [songs: string[], placement: QueuePlacement, source: PlaySource][] = [];
+const fromTracks: PlaySource = { source_type: "original_only", playlist_id: null, via_home: false };
 let queueAccepts = true;
 let segments: Segment[] = [chorus];
 let root: Root;
@@ -42,8 +43,8 @@ beforeEach(() => {
     playModeQueue: async (mode, items, options) => {
       played.push([mode, items.map((item) => item.segment.id), options]);
     },
-    enqueue: (items, placement) => {
-      queued.push([items.map((item) => item.segment.id), placement]);
+    enqueue: (items, placement, source) => {
+      queued.push([items.map((item) => item.segment.id), placement, source]);
       return queueAccepts;
     },
   });
@@ -142,7 +143,7 @@ describe("Play Next and Play Later on a library page", () => {
 
     await chooseFromMore("Tracks", "Play Next");
 
-    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next"]]);
+    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next", fromTracks]]);
     expect(played).toEqual([]);
   });
 
@@ -164,7 +165,7 @@ describe("Play Next and Play Later on a library page", () => {
       await tick();
     });
 
-    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next"]]);
+    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next", fromTracks]]);
   });
 
   it("plays the page when nothing is queued for its songs to follow", async () => {

@@ -734,7 +734,8 @@ export function App() {
   // Play, Shuffle, Play Next or Play Later a library page's songs; queued with nothing to follow, they play
   const playCategory = React.useCallback(
     (mode: PlaybackMode, choice: PlayChoice, items: QueueItem[], origin?: QueueOrigin) => {
-      if ((choice === "next" || choice === "later") && enqueue(items, choice)) return;
+      const source = { source_type: mode, playlist_id: null, via_home: origin?.fromHome === true };
+      if ((choice === "next" || choice === "later") && enqueue(items, choice, source)) return;
       void playModeQueue(mode, items, { shuffle: choice === "shuffle", origin });
     },
     [enqueue, playModeQueue]

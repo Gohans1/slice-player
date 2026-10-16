@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createQueueItem, resetEtagCache, usePlayerStore, type QueueItem } from "./usePlayerStore";
 import { audioEngine } from "../lib/audio";
 import { createDefaultFullSegment } from "../lib/utils";
-import type { PlaylistItemWithDetails, Track } from "@/server/types";
+import type { PlaylistItemWithDetails, PlaySource, Track } from "@/server/types";
 
 const track = (id: string): Track => ({ id, title: id, duration: 100, source_type: "youtube", source_uri: id, status: "ready" });
 const queueItemOf = (t: Track) => createQueueItem(createDefaultFullSegment(t), t, t.id);
@@ -14,6 +14,7 @@ const fetchReturning = (respond: (url: string) => Response): typeof fetch =>
     preconnect: () => {},
   });
 const added = [x, y].map(queueItemOf);
+const fromTracks: PlaySource = { source_type: "original_only", playlist_id: null, via_home: false };
 
 describe("Play Next and Play Later", () => {
   let playAudio: ReturnType<typeof spyOn>;
@@ -40,7 +41,7 @@ describe("Play Next and Play Later", () => {
   });
 
   it("Play Next puts the songs right after the current one", () => {
-    usePlayerStore.getState().enqueue(added, "next");
+    usePlayerStore.getState().enqueue(added, "next", fromTracks);
 
     const state = usePlayerStore.getState();
     expect(trackIds(state.queue)).toEqual(["a", "b", "x", "y", "c"]);
@@ -48,14 +49,14 @@ describe("Play Next and Play Later", () => {
   });
 
   it("Play Later puts them after the rest of the queue", () => {
-    usePlayerStore.getState().enqueue(added, "later");
+    usePlayerStore.getState().enqueue(added, "later", fromTracks);
 
     expect(trackIds(usePlayerStore.getState().queue)).toEqual(["a", "b", "c", "x", "y"]);
   });
 
   // Queue rows are told apart by their id, and the same song can be queued again
   it("gives each queued song its own queue entry", () => {
-    usePlayerStore.getState().enqueue([queueItemOf(b)], "next");
+    usePlayerStore.getState().enqueue([queueItemOf(b)], "next", fromTracks);
 
     const ids = usePlayerStore.getState().queue.map((item) => item.queueItemId);
     expect(new Set(ids).size).toBe(4);
@@ -63,7 +64,7 @@ describe("Play Next and Play Later", () => {
 
   // While a library page plays, a refresh rebuilds the queue from that page's mode
   it("keeps the songs when the library refreshes", async () => {
-    usePlayerStore.getState().enqueue(added, "later");
+    usePlayerStore.getState().enqueue(added, "later", fromTracks);
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fetchReturning(() => Response.json([a, b, c, x, y])));
 
     try {
@@ -90,8 +91,8 @@ describe("Play Next and Play Later", () => {
     };
 
     it("keeps a slice queued while Tracks plays, and a song queued twice", async () => {
-      usePlayerStore.getState().enqueue([createQueueItem(chorus, x)], "next");
-      usePlayerStore.getState().enqueue([queueItemOf(a)], "later");
+      usePlayerStore.getState().enqueue([createQueueItem(chorus, x)], "next", fromTracks);
+      usePlayerStore.getState().enqueue([queueItemOf(a)], "later", fromTracks);
       const queuedAgain = usePlayerStore.getState().queue[4].segment;
 
       await refresh();
@@ -105,7 +106,7 @@ describe("Play Next and Play Later", () => {
 
     // Removing an entry removes that entry: the page's own copy of the song stays
     it("keeps the page's own entry of a song whose queued copy was removed", async () => {
-      usePlayerStore.getState().enqueue([queueItemOf(c)], "next");
+      usePlayerStore.getState().enqueue([queueItemOf(c)], "next", fromTracks);
       usePlayerStore.getState().removeQueueItemAtIndex(2);
 
       await refresh();
@@ -114,7 +115,7 @@ describe("Play Next and Play Later", () => {
     });
 
     it("stays on the copy of a repeated song that is playing", async () => {
-      usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+      usePlayerStore.getState().enqueue([queueItemOf(b)], "later", fromTracks);
       const copy = usePlayerStore.getState().queue[3];
       usePlayerStore.setState({ queueIndex: 3 });
 
@@ -127,7 +128,7 @@ describe("Play Next and Play Later", () => {
 
   // A refresh of the tracks alone that drops another song from the queue
   it("stays on the playing copy of a repeated song when another song leaves the library", async () => {
-    usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+    usePlayerStore.getState().enqueue([queueItemOf(b)], "later", fromTracks);
     const copy = usePlayerStore.getState().queue[3];
     usePlayerStore.setState({ queueIndex: 3 });
     const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fetchReturning(() => Response.json([a, b, x, y])));
@@ -145,7 +146,7 @@ describe("Play Next and Play Later", () => {
 
   // Shuffling moves songs around; the one playing must stay the copy that was playing
   it("keeps playing the same copy of a repeated song when shuffle turns on", () => {
-    usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+    usePlayerStore.getState().enqueue([queueItemOf(b)], "later", fromTracks);
     const copy = usePlayerStore.getState().queue[3];
     usePlayerStore.setState({ queueIndex: 3, isShuffle: false, shuffleByMode: { mixed: false, slices_only: false, original_only: false } });
 
@@ -158,7 +159,7 @@ describe("Play Next and Play Later", () => {
   it("leaves an empty queue to the caller, which plays the songs instead", () => {
     usePlayerStore.setState({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null });
 
-    expect(usePlayerStore.getState().enqueue(added, "next")).toBe(false);
+    expect(usePlayerStore.getState().enqueue(added, "next", fromTracks)).toBe(false);
     expect(usePlayerStore.getState().queue).toEqual([]);
   });
 
@@ -189,8 +190,14 @@ describe("Play Next and Play Later", () => {
     it("plays next after the current song", async () => {
       await usePlayerStore.getState().queuePlaylist("pl_2", "next");
 
-      expect(trackIds(usePlayerStore.getState().queue)).toEqual(["a", "b", "x", "y", "c"]);
-      expect(usePlayerStore.getState().activePlaylistPlayingId === null).toBe(true);
+      const { queue, activePlaylistPlayingId } = usePlayerStore.getState();
+      expect(trackIds(queue)).toEqual(["a", "b", "x", "y", "c"]);
+      expect(activePlaylistPlayingId === null).toBe(true);
+      // Their plays count for the playlist, not the page playing
+      expect(queue.slice(2, 4).map((item) => item.source)).toEqual([
+        { source_type: "playlist", playlist_id: "pl_2", via_home: false },
+        { source_type: "playlist", playlist_id: "pl_2", via_home: false },
+      ]);
     });
 
     // The menus fire and forget, so a failed load must not escape as an unhandled rejection

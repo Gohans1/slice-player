@@ -7,7 +7,8 @@ import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getS
 import { searchItems } from "../lib/search";
 import { showsItemsOf } from "../lib/mixPlaylist";
 import { notifyChangeFailed, sendChange } from "../lib/sendChange";
-import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
+import { createListenCounter, postPlay } from "../lib/plays";
+import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaySource } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
 
@@ -17,6 +18,8 @@ export interface QueueItem {
   track: Track;
   // Added with Play Next or Play Later: it stays through library refreshes whatever page is playing, as long as it can play
   userQueued?: boolean;
+  // Where a song added with Play Next or Play Later came from, which its play is credited to
+  source?: PlaySource;
 }
 
 let nextQueueItemCounter = 0;
@@ -76,6 +79,38 @@ export function clearDismissedSegments(mode?: PlaybackMode) {
     dismissedTrackIdsByMode.slices_only.clear();
     dismissedTrackIdsByMode.original_only.clear();
   }
+}
+
+// The play being listened to, by its queue entry. Playback restarting where it paused carries on with it
+let listening: { entryId: string; tick: (time: number) => void } | null = null;
+
+// A song added with Play Next keeps where it came from; any other is credited to what the queue plays
+function playSourceOf(entry: QueueItem | undefined, state: PlayerState): PlaySource {
+  if (entry?.source) return entry.source;
+  const via_home = state.queueOrigin?.fromHome === true;
+  if (state.activePlaylistPlayingId) return { source_type: "playlist", playlist_id: state.activePlaylistPlayingId, via_home };
+  return { source_type: state.queueOrigin?.type === "home" ? "home" : state.playbackMode, playlist_id: null, via_home };
+}
+
+function startListening(state: PlayerState, segment: Segment, track: Track, startTime: number, resuming: boolean) {
+  const current = state.queue[state.queueIndex];
+  const entry = current?.segment.id === segment.id ? current : undefined;
+  const entryId = entry?.queueItemId ?? segment.id;
+  if (resuming && listening?.entryId === entryId) return listening;
+
+  const play = {
+    track_id: track.id,
+    segment_id: segment.id.startsWith("fallback_") ? null : segment.id,
+    ...playSourceOf(entry, state),
+  };
+  const counter = createListenCounter(segment.end_time - segment.start_time, startTime);
+  listening = {
+    entryId,
+    tick: (time) => {
+      if (counter(time)) void postPlay(play);
+    },
+  };
+  return listening;
 }
 
 let activeInitiationCount = 0;
@@ -208,12 +243,18 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   });
 }
 
+// Home's song lists, which play as a queue of their own
+export type HomeShelf = "heavy_rotation" | "recently_added";
+
 export interface QueueOrigin {
-  type: "search" | "playlist" | "system";
+  type: "search" | "playlist" | "system" | "home";
   query?: string;
   count?: number;
   playlistId?: string;
   mode?: PlaybackMode;
+  shelf?: HomeShelf;
+  // Started from Home, so its plays tell how much listening starts there
+  fromHome?: boolean;
 }
 
 export interface PlayerState {
@@ -277,8 +318,8 @@ export interface PlayerState {
   toggleLoopTrack: () => void;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
-  enqueue: (items: QueueItem[], placement: QueuePlacement) => boolean;
-  queuePlaylist: (playlistId: string, placement: QueuePlacement) => Promise<void>;
+  enqueue: (items: QueueItem[], placement: QueuePlacement, source: PlaySource) => boolean;
+  queuePlaylist: (playlistId: string, placement: QueuePlacement, options?: { fromHome?: boolean }) => Promise<void>;
   playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number, origin?: QueueOrigin | null) => Promise<void>;
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
@@ -1411,6 +1452,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       autoSkipTimer = null;
     }
 
+    const listen = startListening(get(), segment, track, initialTime, seekTime !== undefined);
+
     activeInitiationCount++;
     try {
       const isSlice = !segment.id.startsWith("fallback_");
@@ -1431,6 +1474,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         },
         (time) => {
           set({ currentTime: time });
+          listen.tick(time);
         },
         segment.start_time
       );
@@ -3147,12 +3191,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     await get().playSegment(queue[0].segment, queue[0].track, 0);
   },
 
-  enqueue: (items: QueueItem[], placement: QueuePlacement) => {
+  enqueue: (items: QueueItem[], placement: QueuePlacement, source: PlaySource) => {
     const { queue, queueIndex, activePlaylistPlayingId, playbackMode, queuesByMode } = get();
     // Nothing is queued for the songs to come after: the caller plays them instead
     if (queue.length === 0) return false;
     // Copies, so a song queued twice is two entries
-    const copies = items.map((item) => ({ ...createQueueItem(item.segment, item.track), userQueued: true }));
+    const copies = items.map((item) => ({ ...createQueueItem(item.segment, item.track), userQueued: true, source }));
     const at = placement === "next" ? queueIndex + 1 : queue.length;
     const next = [...queue.slice(0, at), ...copies, ...queue.slice(at)];
     // While a library page plays, a refresh rebuilds the queue from its mode's queue, so they go there too
@@ -3160,11 +3204,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return true;
   },
 
-  queuePlaylist: async (playlistId: string, placement: QueuePlacement) => {
-    if (get().queue.length === 0) return get().buildPlaylistQueue(playlistId, false);
+  queuePlaylist: async (playlistId: string, placement: QueuePlacement, { fromHome = false } = {}) => {
+    if (get().queue.length === 0) return get().buildPlaylistQueue(playlistId, false, 0, false, { type: "playlist", playlistId, fromHome });
     try {
       const items = await loadPlaylistQueue(get, playlistId);
-      if (items.length > 0) get().enqueue(items, placement);
+      if (items.length > 0) get().enqueue(items, placement, { source_type: "playlist", playlist_id: playlistId, via_home: fromHome });
     } catch (e) {
       console.error("[Store] Failed to queue playlist:", e);
     }
