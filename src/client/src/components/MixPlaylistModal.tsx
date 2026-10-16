@@ -1,18 +1,18 @@
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
 import { Modal } from "./Modal";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ButtonGroup } from "./ui/button-group";
-import { Checkbox } from "./ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "./ui/field";
+import { DialogFooter } from "./ui/dialog";
+import { Field, FieldDescription, FieldError, FieldLabel, FieldLegend, FieldSet } from "./ui/field";
 import { Input } from "./ui/input";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Spinner } from "./ui/spinner";
 import { PlaylistCover } from "./PlaylistCover";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { defaultMixName } from "../lib/mixPlaylist";
-import { cn } from "../lib/utils";
 import type { Playlist } from "@/server/types";
 
 interface MixPlaylistModalProps {
@@ -23,6 +23,15 @@ interface MixPlaylistModalProps {
   mix?: Playlist;
 }
 
+// A row of the mix: a source playlist, or none yet. The key stays with the row as it moves.
+interface SourceRow {
+  key: number;
+  id: string | null;
+}
+
+type RowControl = "picker" | "up" | "down";
+
+// Like a Smart Playlist's rules: one row per source playlist, played top to bottom
 export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylistModalProps) {
   const { t } = useTranslation();
   const playlists = usePlayerStore((s) => s.playlists);
@@ -30,29 +39,56 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
   const setMixSources = usePlayerStore((s) => s.setMixSources);
 
   const candidates = React.useMemo(() => playlists.filter((p) => !p.is_mix), [playlists]);
-  const [picked, setPicked] = React.useState<string[]>(() => mix?.source_ids ?? []);
+  const items = React.useMemo(() => candidates.map((p) => ({ value: p.id, label: p.name })), [candidates]);
+  const nextKeyRef = React.useRef(0);
+  const newRow = (id: string | null): SourceRow => ({ key: nextKeyRef.current++, id });
+  const [rows, setRows] = React.useState<SourceRow[]>(() => (mix?.source_ids ?? [null, null]).map(newRow));
   const [customName, setCustomName] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const nameOf = (id: string) => candidates.find((p) => p.id === id)?.name ?? "";
-  const name = customName ?? (picked.length >= 2 ? defaultMixName(picked.map(nameOf)) : "");
-  const canSubmit = picked.length >= 2 && (Boolean(mix) || name.trim().length > 0) && !isSubmitting;
+  const listRef = React.useRef<HTMLOListElement>(null);
 
-  const toggle = (id: string) => {
-    setError(null);
-    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const sourceIds = rows.flatMap((row) => (row.id ? [row.id] : []));
+  const playlistOf = (id: string) => candidates.find((p) => p.id === id);
+  const name = customName ?? (sourceIds.length >= 2 ? defaultMixName(sourceIds.map((id) => playlistOf(id)?.name ?? "")) : "");
+  const itemTotal = sourceIds.reduce((sum, id) => sum + (playlistOf(id)?.item_count ?? 0), 0);
+  const canSubmit = sourceIds.length >= 2 && (Boolean(mix) || name.trim().length > 0) && !isSubmitting;
+  const canAdd = rows.length < candidates.length && !isSubmitting;
+  const canRemove = rows.length > 2 && !isSubmitting;
+
+  // Adding, removing or moving a row takes away or moves the button that had focus, so focus follows the row. A move
+  // can turn the pressed button off at either end; the row's other move button takes focus then.
+  const updateRows = (next: SourceRow[], focus: { key: number; control: RowControl }) => {
+    flushSync(() => {
+      setError(null);
+      setRows(next);
+    });
+    const row = listRef.current?.querySelector(`[data-row="${focus.key}"]`);
+    const order: RowControl[] = focus.control === "up" ? ["up", "down"] : focus.control === "down" ? ["down", "up"] : ["picker"];
+    const target = order.map((control) => row?.querySelector<HTMLElement>(`[data-control="${control}"]:not(:disabled)`)).find(Boolean);
+    target?.focus();
   };
 
-  const move = (id: string, dir: -1 | 1) => {
-    setPicked((prev) => {
-      const i = prev.indexOf(id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  const pick = (key: number, id: string | null) => {
+    setError(null);
+    setRows(rows.map((row) => (row.key === key ? { ...row, id } : row)));
+  };
+
+  const addAfter = (index: number) => {
+    const row = newRow(null);
+    updateRows([...rows.slice(0, index + 1), row, ...rows.slice(index + 1)], { key: row.key, control: "picker" });
+  };
+
+  const remove = (index: number) => {
+    const next = rows.filter((_, i) => i !== index);
+    updateRows(next, { key: next[Math.min(index, next.length - 1)].key, control: "picker" });
+  };
+
+  const move = (index: number, step: -1 | 1) => {
+    const next = [...rows];
+    [next[index], next[index + step]] = [next[index + step], next[index]];
+    updateRows(next, { key: rows[index].key, control: step < 0 ? "up" : "down" });
   };
 
   const handleSubmit = async () => {
@@ -61,10 +97,10 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
     setError(null);
     try {
       if (mix) {
-        if (await setMixSources(mix.id, picked)) onClose();
+        if (await setMixSources(mix.id, sourceIds)) onClose();
         else setError(t("mixPlaylist.serverError"));
       } else {
-        const pl = await createMixPlaylist(name.trim(), picked);
+        const pl = await createMixPlaylist(name.trim(), sourceIds);
         if (pl) {
           onClose();
           onCreated?.(pl.id);
@@ -90,63 +126,81 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
     >
       <div className="flex flex-col gap-4">
         <FieldSet>
-          <FieldLegend variant="label">{t("mixPlaylist.pickHint")}</FieldLegend>
-          <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto pr-1">
-            {candidates.map((pl) => {
-              const order = picked.indexOf(pl.id);
-              const isPicked = order > -1;
-              const checkboxId = `mix-source-${pl.id}`;
+          <FieldLegend variant="label">{t("mixPlaylist.rulesLead")}</FieldLegend>
+          <ol ref={listRef} className="flex max-h-80 flex-col divide-y overflow-y-auto rounded-lg border">
+            {rows.map((row, index) => {
+              const rowLabel = t("mixPlaylist.rowLabel", { position: index + 1 });
+              const rowName = row.id ? (playlistOf(row.id)?.name ?? rowLabel) : rowLabel;
               return (
-                <li key={pl.id} className="flex items-center gap-2">
-                  <FieldLabel htmlFor={checkboxId} className="min-w-0 flex-1">
-                    <Field orientation="horizontal">
-                      <Checkbox
-                        id={checkboxId}
-                        checked={isPicked}
-                        onCheckedChange={() => toggle(pl.id)}
-                        disabled={isSubmitting}
-                      />
-                      <PlaylistCover playlist={pl} thumbnailSize="small" className="w-9 shrink-0 rounded-md" />
-                      <FieldContent className="min-w-0">
-                        <FieldTitle>{pl.name}</FieldTitle>
-                        <FieldDescription>{t("playlist.itemCount", { count: pl.item_count || 0 })}</FieldDescription>
-                      </FieldContent>
-                      {/* The position joins the checkbox's name, so the play order is heard as well as seen */}
-                      {isPicked && (
-                        <Badge variant="secondary">
-                          <span className="sr-only">{t("mixPlaylist.positionLabel")} </span>
-                          {order + 1}
-                        </Badge>
-                      )}
-                    </Field>
-                  </FieldLabel>
-                  {/* Always laid out, so ticking a row doesn't change its width; hidden rows keep the buttons out of reach */}
-                  <div className={cn(!isPicked && "invisible")}>
-                    <ButtonGroup>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        disabled={order === 0 || isSubmitting}
-                        onClick={() => move(pl.id, -1)}
-                        aria-label={t("mixPlaylist.moveUp", { name: pl.name })}
-                      >
-                        <ChevronUp />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        disabled={order === picked.length - 1 || isSubmitting}
-                        onClick={() => move(pl.id, 1)}
-                        aria-label={t("mixPlaylist.moveDown", { name: pl.name })}
-                      >
-                        <ChevronDown />
-                      </Button>
-                    </ButtonGroup>
-                  </div>
+                <li key={row.key} data-row={row.key} className="flex items-center gap-2 px-2 py-1.5">
+                  <span aria-hidden="true" className="w-4 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+                    {index + 1}
+                  </span>
+                  <Select items={items} value={row.id} onValueChange={(id) => pick(row.key, id)} disabled={isSubmitting}>
+                    <SelectTrigger data-control="picker" aria-label={rowLabel} className="min-w-0 flex-1">
+                      <SelectValue placeholder={t("mixPlaylist.choose")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {candidates.map((pl) => (
+                          <SelectItem key={pl.id} value={pl.id} disabled={pl.id !== row.id && sourceIds.includes(pl.id)}>
+                            <PlaylistCover playlist={pl} thumbnailSize="small" className="size-5 shrink-0 rounded-sm" />
+                            {pl.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <ButtonGroup>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      data-control="up"
+                      disabled={index === 0 || isSubmitting}
+                      onClick={() => move(index, -1)}
+                      aria-label={t("mixPlaylist.moveUp", { name: rowName })}
+                    >
+                      <ChevronUp />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      data-control="down"
+                      disabled={index === rows.length - 1 || isSubmitting}
+                      onClick={() => move(index, 1)}
+                      aria-label={t("mixPlaylist.moveDown", { name: rowName })}
+                    >
+                      <ChevronDown />
+                    </Button>
+                  </ButtonGroup>
+                  <ButtonGroup>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      disabled={!canRemove}
+                      onClick={() => remove(index)}
+                      aria-label={t("mixPlaylist.remove", { name: rowName })}
+                    >
+                      <Minus />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      disabled={!canAdd}
+                      onClick={() => addAfter(index)}
+                      aria-label={t("mixPlaylist.addAfter", { name: rowName })}
+                    >
+                      <Plus />
+                    </Button>
+                  </ButtonGroup>
                 </li>
               );
             })}
-          </ul>
+          </ol>
+          {/* Where a Smart Playlist has Live updating: the mix follows its playlists, so the count is today's */}
+          <FieldDescription>
+            <span className="tabular-nums">{t("mixPlaylist.summary", { count: itemTotal })}</span>
+          </FieldDescription>
         </FieldSet>
 
         {!mix && (
@@ -165,7 +219,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
 
         {error && <FieldError>{error}</FieldError>}
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
             {t("mixPlaylist.cancel")}
           </Button>
@@ -173,7 +227,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
             {isSubmitting && <Spinner data-icon="inline-start" />}
             {mix ? t("mixPlaylist.save") : t("mixPlaylist.submit")}
           </Button>
-        </div>
+        </DialogFooter>
       </div>
     </Modal>
   );
