@@ -89,7 +89,7 @@ export function clearDismissedSegments(mode?: PlaybackMode) {
 }
 
 // The play being listened to, by its queue entry. Playback restarting where it paused carries on with it
-let listening: { entryId: string; tick: (time: number) => void } | null = null;
+let listening: { entryId: string; tick: (time: number) => void; resumeFrom: (time: number) => void } | null = null;
 
 // A song added with Play Next keeps where it came from; any other is credited to what the queue plays
 function playSourceOf(entry: QueueItem | undefined, state: PlayerState): PlaySource {
@@ -114,12 +114,13 @@ function startListening(state: PlayerState, segment: Segment, track: Track, star
   listening = {
     entryId,
     tick: (time) => {
-      if (!counter(time, performance.now())) return;
+      if (!counter.tick(time, performance.now())) return;
       // Home may be open, or opened next: either way its shelves should count this play
       void postPlay(play).then((recorded) => {
         if (recorded) void useHomeStore.getState().refresh();
       });
     },
+    resumeFrom: (time) => counter.resumeFrom(time, performance.now()),
   };
   return listening;
 }
@@ -1558,7 +1559,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const intentId = ++playbackIntentId;
     audioEngine.updateCurrentSegmentBounds(activeSegment.start_time, activeSegment.end_time);
     audioEngine.setOnSegmentEnd(() => get().nextSegment(true));
-
+    // A seek while paused moved playback without it being heard; this holds for the reload below too
+    listening?.resumeFrom(audioEngine.getCurrentTime());
     const ok = await audioEngine.resume();
     if (intentId !== playbackIntentId || ok === null) return;
     if (ok) {

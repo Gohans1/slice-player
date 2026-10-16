@@ -5,23 +5,36 @@ export function playThreshold(lengthSeconds: number): number | null {
   return lengthSeconds > 30 ? Math.min(lengthSeconds / 2, 240) : null;
 }
 
+// Times are where playback is, in seconds, and when, in ms on a monotonic clock
+export interface ListenCounter {
+  // Playback reports where it is as it plays. True once: when the time heard first reaches the threshold
+  tick: (time: number, at: number) => boolean;
+  // Playback carries on from here after a pause; wherever it was moved to meanwhile wasn't heard
+  resumeFrom: (time: number, at: number) => void;
+}
+
 /*
-  Adds up the time heard, from where playback reports it is (seconds) and when (a monotonic clock, ms). Each report adds
-  as far as playback moved on, but no more than the clock did: a seek of any size adds no more than the moment it took,
-  and a pause adds nothing. True once: when the time heard first reaches the threshold.
+  Adds up the time heard. Each report adds as far as playback moved on, but no more than the clock did: a seek while
+  playing adds no more than the moment it took, and a stall waiting for the stream adds nothing. A pause has no reports
+  at all, so resuming sets off from where playback is then.
 */
-export function createListenCounter(lengthSeconds: number, startTime: number, startedAt: number): (time: number, at: number) => boolean {
+export function createListenCounter(lengthSeconds: number, startTime: number, startedAt: number): ListenCounter {
   const threshold = playThreshold(lengthSeconds);
   let heard = 0;
   let last = { time: startTime, at: startedAt };
   let counted = false;
-  return (time, at) => {
-    const step = Math.min(time - last.time, (at - last.at) / 1000);
-    last = { time, at };
-    if (step > 0) heard += step;
-    if (counted || threshold === null || heard < threshold) return false;
-    counted = true;
-    return true;
+  return {
+    tick: (time, at) => {
+      const step = Math.min(time - last.time, (at - last.at) / 1000);
+      last = { time, at };
+      if (step > 0) heard += step;
+      if (counted || threshold === null || heard < threshold) return false;
+      counted = true;
+      return true;
+    },
+    resumeFrom: (time, at) => {
+      last = { time, at };
+    },
   };
 }
 

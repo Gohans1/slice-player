@@ -99,6 +99,27 @@ describe("Counting plays", () => {
     expect(usePlayerStore.getState().currentTime).toBe(0);
   });
 
+  for (const [resuming, resumes] of [["resuming", true], ["reloading the song to resume", false]] as const) {
+    it(`doesn't count a seek made while paused, ${resuming}`, async () => {
+      const resumeAudio = spyOn(audioEngine, "resume").mockResolvedValue(resumes);
+      const position = spyOn(audioEngine, "getCurrentTime").mockReturnValue(70);
+      try {
+        listen(await start(0), 0, 10);
+        usePlayerStore.getState().pause();
+        clock += 60_000;
+        usePlayerStore.getState().seek(70);
+        await usePlayerStore.getState().resume();
+        // Reported to whichever playback carries on
+        listen(playAudio.mock.calls.at(-1)![4]!, 70.1, 99);
+
+        expect(recordedPlays()).toEqual([]);
+      } finally {
+        resumeAudio.mockRestore();
+        position.mockRestore();
+      }
+    });
+  }
+
   it("records a slice's play as that slice of its song, once half the slice has been heard", async () => {
     usePlayerStore.setState({ queue: [createQueueItem(chorus, a, "chorus")], playbackMode: "slices_only" });
     listen(await start(0), 20, 50.1);

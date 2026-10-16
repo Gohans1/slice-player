@@ -6,14 +6,21 @@ function playback(lengthSeconds: number) {
   let time = 0;
   let at = 0;
   let counted = 0;
-  const tick = createListenCounter(lengthSeconds, time, at);
+  const counter = createListenCounter(lengthSeconds, time, at);
   const report = () => {
-    if (tick(time, at)) counted++;
+    if (counter.tick(time, at)) counted++;
   };
   return {
     play(seconds: number) {
       for (let step = 0; step < Math.round(seconds * 10); step++) {
         time += 0.1;
+        at += 100;
+        report();
+      }
+    },
+    // Still reporting, but stuck where it is, waiting for the stream
+    stall(seconds: number) {
+      for (let step = 0; step < Math.round(seconds * 10); step++) {
         at += 100;
         report();
       }
@@ -27,8 +34,16 @@ function playback(lengthSeconds: number) {
     seekBy(seconds: number) {
       this.seekTo(time + seconds);
     },
+    // No reports while paused
     pause(seconds: number) {
       at += seconds * 1000;
+    },
+    // A seek while paused moves playback without a report
+    moveTo(to: number) {
+      time = to;
+    },
+    resume() {
+      counter.resumeFrom(time, at);
     },
     get counted() {
       return counted;
@@ -74,10 +89,23 @@ describe("createListenCounter", () => {
     expect(song.counted).toBe(1);
   });
 
-  it("leaves out the time playback was paused", () => {
+  it("leaves out a pause, and a seek made during it", () => {
+    const song = playback(100);
+    song.play(10);
+    song.pause(60);
+    song.moveTo(70);
+    song.resume();
+    song.play(25);
+    expect(song.counted).toBe(0);
+
+    song.play(16);
+    expect(song.counted).toBe(1);
+  });
+
+  it("leaves out the time playback stalled, waiting for the stream", () => {
     const song = playback(100);
     song.play(30);
-    song.pause(600);
+    song.stall(30);
     song.play(19);
     expect(song.counted).toBe(0);
 
