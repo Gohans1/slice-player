@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { usePlayerStore, createQueueItem, type PlaybackMode, type QueueItem } from "./store/usePlayerStore";
+import { usePlayerStore, createQueueItem, isPlaybackMode, type PlaybackMode, type QueueItem, type QueueOrigin } from "./store/usePlayerStore";
 import { ImportActions } from "./components/ImportActions";
 import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
@@ -14,6 +14,7 @@ const ShortcutsModal = React.lazy(() => import("./components/ShortcutsModal").th
 import { PlaylistTableView } from "./components/PlaylistTableView";
 import { PlaylistGrid } from "./components/PlaylistGrid";
 import { PlaylistHeader } from "./components/PlaylistHeader";
+import { LibraryPageActions, type PlayChoice } from "./components/LibraryPageActions";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
@@ -111,6 +112,8 @@ export function App() {
   const reorderPlaylist = usePlayerStore((s) => s.reorderPlaylist);
   const playPlaylistItemAtIndex = usePlayerStore((s) => s.playPlaylistItemAtIndex);
   const playSegmentInMode = usePlayerStore((s) => s.playSegmentInMode);
+  const playModeQueue = usePlayerStore((s) => s.playModeQueue);
+  const enqueue = usePlayerStore((s) => s.enqueue);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const deleteSegmentsBatch = usePlayerStore((s) => s.deleteSegmentsBatch);
   const isRetryingAll = usePlayerStore((s) => s.isRetryingAll);
@@ -713,6 +716,28 @@ export function App() {
     [playFromQueue, filteredTracks]
   );
 
+  // A library page's songs as the page lists them; searched, only what the search found
+  const pageQueueOf = React.useCallback(
+    (mode: PlaybackMode, searched: boolean): QueueItem[] => {
+      if (mode === "slices_only") return sliceQueueOf(searched ? filteredSliceItems : allSliceItems);
+      if (mode === "mixed") return mixedQueueOf(searched ? filteredMixedItems : allMixedItems);
+      return trackQueueOf(searched ? filteredTracks : originalTracks);
+    },
+    [filteredSliceItems, allSliceItems, filteredMixedItems, allMixedItems, filteredTracks, originalTracks]
+  );
+  const pageQueue = React.useMemo(
+    () => (!activePlaylistId && isPlaybackMode(activeSystemCategory) ? pageQueueOf(activeSystemCategory, true) : []),
+    [activePlaylistId, activeSystemCategory, pageQueueOf]
+  );
+  // Play, Shuffle, Play Next or Play Later a library page's songs; queued with nothing to follow, they play
+  const playCategory = React.useCallback(
+    (mode: PlaybackMode, choice: PlayChoice, items: QueueItem[], origin?: QueueOrigin) => {
+      if ((choice === "next" || choice === "later") && enqueue(items, choice)) return;
+      void playModeQueue(mode, items, { shuffle: choice === "shuffle", origin });
+    },
+    [enqueue, playModeQueue]
+  );
+
   const currentViewKey = getViewScrollKey(activePlaylistId, activeSystemCategory);
 
   const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
@@ -1172,6 +1197,19 @@ export function App() {
               <span className="text-xs text-muted-foreground tabular-nums">{headerMeta.count}</span>
             </div>
             {headerMeta.description && <p className="text-2xs font-semibold text-muted-foreground">{headerMeta.description}</p>}
+            {isPlaybackMode(activeSystemCategory) && (
+              <LibraryPageActions
+                name={headerMeta.title}
+                canPlay={pageQueue.length > 0}
+                onPlay={(choice) => {
+                  const query = deferredQuery.trim();
+                  const origin: QueueOrigin | undefined = query
+                    ? { type: "search", query, count: pageQueue.length, mode: activeSystemCategory }
+                    : undefined;
+                  playCategory(activeSystemCategory, choice, pageQueue, origin);
+                }}
+              />
+            )}
           </div>
         )}
         {isLoadingTracks && isLibraryEmpty ? (

@@ -204,6 +204,8 @@
   },
   "queue": {
     "title": "Now Playing Queue",
+    "playNext": "Play Next",
+    "playLater": "Play Later",
     "restoreOrder": "Restore original order",
     "reshuffle": "Reshuffle queue",
     "shuffle": "Shuffle queue",

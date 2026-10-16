@@ -204,6 +204,8 @@
   },
   "queue": {
     "title": "Hàng Đợi Phát",
+    "playNext": "Phát tiếp theo",
+    "playLater": "Phát sau",
     "restoreOrder": "Khôi phục thứ tự ban đầu",
     "reshuffle": "Xáo trộn lại hàng đợi",
     "shuffle": "Xáo trộn hàng đợi",
