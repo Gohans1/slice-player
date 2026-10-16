@@ -484,6 +484,74 @@ html {
   background: var(--muted-foreground);
 }
 
+/* Slice Studio's waveform, drawn like Voice Memos. WaveSurfer renders inside a shadow root, so its parts are styled
+   from here; !important beats the inline styles it gives its resize handles, as in WaveSurfer's styling example. */
+[data-slot="studio-waveform"] ::part(timeline) {
+  color: var(--muted-foreground);
+}
+
+/* The playhead: a blue line with a dot at each end */
+[data-slot="studio-waveform"] ::part(cursor)::before,
+[data-slot="studio-waveform"] ::part(cursor)::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--flexoki-bl);
+  translate: -50% 0;
+}
+[data-slot="studio-waveform"] ::part(cursor)::before {
+  top: 0;
+}
+[data-slot="studio-waveform"] ::part(cursor)::after {
+  bottom: 0;
+}
+
+/* Each slice's name, at the top of its region */
+[data-slot="studio-waveform"] ::part(region-content) {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+[data-slot="studio-waveform"] ::part(slice-label) {
+  display: block;
+  overflow: hidden;
+  padding: 0.25rem 0.875rem;
+  color: var(--foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The slice being edited: Voice Memos' yellow trim frame, with a grip in each handle */
+[data-slot="studio-waveform"] ::part(slice-trim-frame) {
+  position: absolute;
+  inset: 0;
+  border-block: 2px solid var(--flexoki-ye);
+  border-radius: 0.25rem;
+}
+[data-slot="studio-waveform"] ::part(region-handle) {
+  width: 0.625rem !important;
+  border: none !important;
+  background: var(--flexoki-ye);
+}
+[data-slot="studio-waveform"] ::part(region-handle-left) {
+  border-radius: 0.25rem 0 0 0.25rem !important;
+}
+[data-slot="studio-waveform"] ::part(region-handle-right) {
+  border-radius: 0 0.25rem 0.25rem 0 !important;
+}
+[data-slot="studio-waveform"] ::part(region-handle)::after {
+  content: "";
+  position: absolute;
+  inset: 40% 0.25rem;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-flexoki-black) 60%, transparent);
+}
+
 /* ==========================================================================
    Impeccable Motion System (Keyframes & GPU-Accelerated Utilities)
    ========================================================================== */

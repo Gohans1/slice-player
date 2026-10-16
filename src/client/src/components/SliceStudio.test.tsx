@@ -17,7 +17,37 @@ const mockSetTime = mock((_time?: number) => {});
 const mockZoom = mock((_px?: number) => {});
 const mockGetCurrentTime = mock(() => 15);
 const mockGetDuration = mock(() => 120);
-const mockAddRegion = mock((_options: { id: string; start: number; end: number }) => {});
+// Regions keep the options they were created and last updated with, so tests can tell which one can be trimmed
+interface RegionOptions {
+  id: string;
+  start: number;
+  end: number;
+  color?: string;
+  drag?: boolean;
+  resize?: boolean;
+}
+interface FakeRegion extends RegionOptions {
+  options: Partial<RegionOptions>;
+  setOptions: (options: Partial<RegionOptions>) => void;
+  remove: () => void;
+}
+let fakeRegions: FakeRegion[] = [];
+const regionHandlers: Record<string, Function[]> = {};
+const mockAddRegion = mock((options: RegionOptions) => {
+  const region: FakeRegion = {
+    ...options,
+    options: { ...options },
+    setOptions: (next) => {
+      Object.assign(region.options, next);
+      Object.assign(region, next);
+    },
+    remove: () => {
+      fakeRegions = fakeRegions.filter((r) => r !== region);
+    },
+  };
+  fakeRegions.push(region);
+  return region;
+});
 const mockWsOn = mock((event: string, cb: Function) => {
   if (!eventHandlers[event]) {
     eventHandlers[event] = [];
@@ -52,11 +82,21 @@ mock.module("wavesurfer.js/dist/plugins/regions.esm.js", () => {
   return {
     default: {
       create: mock(() => ({
-        on: mock(() => {}),
+        on: mock((event: string, cb: Function) => {
+          (regionHandlers[event] ??= []).push(cb);
+        }),
         unAll: mock(() => {}),
-        getRegions: mock(() => []),
+        getRegions: () => fakeRegions,
         addRegion: mockAddRegion,
       })),
+    },
+  };
+});
+
+mock.module("wavesurfer.js/dist/plugins/timeline.esm.js", () => {
+  return {
+    default: {
+      create: mock(() => ({})),
     },
   };
 });
@@ -108,6 +148,10 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     for (const key of Object.keys(eventHandlers)) {
       delete eventHandlers[key];
     }
+    for (const key of Object.keys(regionHandlers)) {
+      delete regionHandlers[key];
+    }
+    fakeRegions = [];
 
     originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (url: string) => {
@@ -186,6 +230,96 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       expect(mockAddRegion.mock.calls.map(([options]) => [options.id, options.start, options.end])).toEqual([["seg-1", 62.2, 75.3]]);
     } finally {
       fetchSpy.mockRestore();
+    }
+  });
+
+  describe("picking a slice", () => {
+    const verse: Segment = { id: "seg-1", track_id: "test-track-1", name: "Verse", start_time: 10, end_time: 20, color: "#4385BE" };
+    const chorus: Segment = { id: "seg-2", track_id: "test-track-1", name: "Chorus", start_time: 40, end_time: 60, color: "#3AA99F" };
+    let fetchSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(async () => {
+      const segmentsFetch: typeof fetch = Object.assign(
+        async (input: string | URL | Request) =>
+          (input instanceof Request ? input.url : String(input)).includes("/segments")
+            ? Response.json([verse, chorus])
+            : Response.json(mockTrack),
+        { preconnect: () => {} }
+      );
+      fetchSpy = spyOn(globalThis, "fetch").mockImplementation(segmentsFetch);
+      await act(async () => {
+        root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      await waveformReady();
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    // Which slices' regions can be dragged and trimmed on the waveform
+    const trimmable = () =>
+      Object.fromEntries(fakeRegions.map((r) => [r.id, r.options.drag === true && r.options.resize === true]));
+    const nameField = () => document.querySelector<HTMLInputElement>("input[aria-label='Slice name']");
+    const listButton = (name: string) =>
+      Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.startsWith(name));
+
+    it("starts on the first slice, the only one that can be trimmed", () => {
+      expect(trimmable()).toEqual({ "seg-1": true, "seg-2": false });
+      expect(nameField()?.value).toBe("Verse");
+      expect(listButton("Verse")?.getAttribute("aria-current")).toBe("true");
+    });
+
+    it("picks the slice chosen in the list", async () => {
+      await act(async () => {
+        listButton("Chorus")?.click();
+      });
+
+      expect(trimmable()).toEqual({ "seg-1": false, "seg-2": true });
+      expect(nameField()?.value).toBe("Chorus");
+      expect(listButton("Chorus")?.getAttribute("aria-current")).toBe("true");
+      expect(listButton("Verse")?.hasAttribute("aria-current")).toBe(false);
+    });
+
+    it("picks the slice clicked on the waveform", async () => {
+      await act(async () => {
+        for (const handler of regionHandlers["region-clicked"] ?? []) handler(fakeRegions.find((r) => r.id === "seg-2"));
+      });
+
+      expect(trimmable()).toEqual({ "seg-1": false, "seg-2": true });
+      expect(nameField()?.value).toBe("Chorus");
+    });
+  });
+
+  it("skips 15 seconds back and forward from the playhead, within the track", async () => {
+    await act(async () => {
+      root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+    });
+    await waveformReady();
+    const back = document.querySelector<HTMLButtonElement>("button[aria-label='Back 15 seconds']");
+    const forward = document.querySelector<HTMLButtonElement>("button[aria-label='Forward 15 seconds']");
+
+    // The playhead is at 0:15
+    await act(async () => {
+      back?.click();
+    });
+    expect(mockSetTime.mock.calls.at(-1)?.[0]).toBe(0);
+    await act(async () => {
+      forward?.click();
+    });
+    expect(mockSetTime.mock.calls.at(-1)?.[0]).toBe(30);
+
+    mockGetCurrentTime.mockImplementation(() => 110);
+    try {
+      await act(async () => {
+        forward?.click();
+      });
+      expect(mockSetTime.mock.calls.at(-1)?.[0]).toBe(120);
+    } finally {
+      mockGetCurrentTime.mockImplementation(() => 15);
     }
   });
 
@@ -960,21 +1094,16 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
 
-    const nudgeButtons = Array.from(document.querySelectorAll("button")).filter(
-      (b) => b.textContent === "-0.1s" || b.textContent === "+0.1s"
-    );
-    expect(nudgeButtons.length).toBe(4); // 2 for start, 2 for end
+    const nudge = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label='${label}']`);
 
-    // Click +0.1s on start boundary
     await act(async () => {
-      nudgeButtons[1].click(); // start +0.1s
+      nudge("+0.1s start")?.click();
     });
 
     expect(document.body.textContent).toContain("00:10.1");
 
-    // Click -0.1s on end boundary
     await act(async () => {
-      nudgeButtons[2].click(); // end -0.1s
+      nudge("-0.1s end")?.click();
     });
 
     expect(document.body.textContent).toContain("00:19.9");

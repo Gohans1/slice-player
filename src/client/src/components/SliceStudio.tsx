@@ -1,12 +1,14 @@
 import * as React from "react";
 import WaveSurfer from "wavesurfer.js";
-import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
-import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
+import RegionsPlugin, { type Region } from "wavesurfer.js/dist/plugins/regions.esm.js";
+import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline.esm.js";
+import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, RotateCw, Volume2, VolumeX, ZoomIn, ZoomOut } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { ButtonGroup } from "./ui/button-group";
+import { ButtonGroup, ButtonGroupText } from "./ui/button-group";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "./ui/item";
 import { EmptyState } from "./EmptyState";
 import { VolumeSlider } from "./VolumeSlider";
 import { formatTime, formatDuration, cn, DEFAULT_SLICE_COLOR } from "../lib/utils";
@@ -15,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useFormatNumber } from "../hooks/use-format-number";
 import { usePlayerStore, normalizeTrackVolume, flushTrackVolume } from "../store/usePlayerStore";
 import { AddToPlaylistPopover } from "./AddToPlaylistPopover";
+import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import type { Track, Segment } from "@/server/types";
 
 // Staggers the loading bars' pulse so the placeholder ripples like a waveform
@@ -30,6 +33,76 @@ const FLEXOKI_COLORS = [
   "#D14D41", // Red
   "#CE5D97", // Magenta
 ];
+
+// WaveSurfer paints on a canvas, which can't read CSS variables, so the theme's colours are read up front
+function readThemeColor(element: Element, property: string): string | undefined {
+  return getComputedStyle(element).getPropertyValue(property).trim() || undefined;
+}
+
+// A slice's region is tinted with its colour, more strongly while it's the one being edited
+function regionColor(color: string | undefined, isSelected: boolean): string {
+  const base = color || DEFAULT_SLICE_COLOR;
+  return /^#[0-9a-f]{6}$/i.test(base) ? base + (isSelected ? "4D" : "26") : base;
+}
+
+// What a slice's region shows: its name and, around the one being edited, Voice Memos' yellow trim frame. WaveSurfer
+// renders in a shadow root, so index.css styles these through their part names.
+function regionContent(name: string, isSelected: boolean): HTMLElement {
+  const content = document.createElement("div");
+  const label = document.createElement("span");
+  label.setAttribute("part", "slice-label");
+  label.textContent = name;
+  content.append(label);
+  if (isSelected) {
+    const frame = document.createElement("span");
+    frame.setAttribute("part", "slice-trim-frame");
+    content.append(frame);
+  }
+  return content;
+}
+
+// Only the slice being edited can be dragged and trimmed; the others are there to pick
+function syncRegionLook(region: Region, slice: Segment, isSelected: boolean) {
+  const color = regionColor(slice.color, isSelected);
+  const isFramed = Boolean(region.content?.querySelector("[part='slice-trim-frame']"));
+  if (
+    region.color !== color ||
+    region.drag !== isSelected ||
+    region.resize !== isSelected ||
+    region.content?.textContent !== slice.name ||
+    isFramed !== isSelected
+  ) {
+    region.setOptions({ color, drag: isSelected, resize: isSelected, content: regionContent(slice.name, isSelected) });
+  }
+}
+
+interface TrimStepperProps {
+  label: string;
+  time: number;
+  backLabel: string;
+  forwardLabel: string;
+  onNudge: (delta: number) => void;
+}
+
+// One end of the slice being edited, nudged a tenth of a second at a time
+function TrimStepper({ label, time, backLabel, forwardLabel, onNudge }: TrimStepperProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <ButtonGroup>
+        <Button variant="outline" size="xs" onClick={() => onNudge(-0.1)} aria-label={backLabel} title={backLabel}>
+          −0.1s
+        </Button>
+        <ButtonGroupText>
+          <span className="tabular-nums">{formatTime(time)}</span>
+        </ButtonGroupText>
+        <Button variant="outline" size="xs" onClick={() => onNudge(0.1)} aria-label={forwardLabel} title={forwardLabel}>
+          +0.1s
+        </Button>
+      </ButtonGroup>
+    </div>
+  );
+}
 
 interface SliceStudioProps {
   track: Track;
@@ -57,6 +130,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const [isPlayingWave, setIsPlayingWave] = React.useState(false);
   const [currentPlayTime, setCurrentPlayTime] = React.useState(0);
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
+  const [pickedSliceId, setPickedSliceId] = React.useState<string | null>(null);
   const [saveStatus, setSaveStatus] = React.useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = React.useState(0);
   const zoomLevelRef = React.useRef(0);
@@ -151,6 +225,10 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const segmentsRef = React.useRef(segments);
   segmentsRef.current = segments;
 
+  // The slice being edited: the one picked last, or the first until one is
+  const selectedSlice = segments.find((s) => s.id === pickedSliceId) ?? segments[0] ?? null;
+  const selectedSliceId = selectedSlice?.id ?? null;
+
   const isMountedRef = React.useRef(true);
   React.useEffect(() => {
     isMountedRef.current = true;
@@ -202,6 +280,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   }, [track.id, syncUpdatedSegment]);
 
   const [isOpen, setIsOpen] = React.useState(true);
+  const slicesHeadingId = React.useId();
   const isClosingRef = React.useRef(false);
   const popupRef = React.useRef<HTMLDivElement>(null);
 
@@ -225,11 +304,23 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     wavesurferRef.current?.playPause()?.catch(() => {});
   }, [clearSegmentPreview]);
 
+  // Moves the playhead by delta seconds, within the track
+  const seekBy = React.useCallback((delta: number) => {
+    const ws = wavesurferRef.current;
+    if (!ws) return;
+    const trackDur = getTrackDuration();
+    const curTime = ws.getCurrentTime();
+    const safeCurTime = Number.isFinite(curTime) && curTime >= 0 ? curTime : 0;
+    const clampedNext = Math.max(0, Math.min(trackDur > 0 ? trackDur : 1800, safeCurTime + delta));
+    const nextTime = Number(clampedNext.toFixed(2));
+    clearSegmentPreview();
+    ws.setTime(nextTime);
+    setCurrentPlayTime(nextTime);
+  }, [getTrackDuration, clearSegmentPreview]);
+
   const handleToggleWavePlayRef = React.useRef(handleToggleWavePlay);
-  const clearSegmentPreviewRef = React.useRef(clearSegmentPreview);
-  clearSegmentPreviewRef.current = clearSegmentPreview;
-  const getTrackDurationRef = React.useRef(getTrackDuration);
-  getTrackDurationRef.current = getTrackDuration;
+  const seekByRef = React.useRef(seekBy);
+  seekByRef.current = seekBy;
   const handleZoomChangeRef = React.useRef(handleZoomChange);
   handleZoomChangeRef.current = handleZoomChange;
 
@@ -284,19 +375,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         }
 
         e.preventDefault();
-        const ws = wavesurferRef.current;
-        if (!ws) return;
         const step = e.shiftKey ? 1.0 : 0.1;
-        const delta = e.key === "ArrowLeft" ? -step : step;
-        const trackDur = getTrackDurationRef.current();
-        const curTime = ws.getCurrentTime();
-        const safeCurTime = Number.isFinite(curTime) && curTime >= 0 ? curTime : 0;
-        const rawNext = safeCurTime + delta;
-        const clampedNext = Math.max(0, Math.min(trackDur > 0 ? trackDur : 1800, rawNext));
-        const nextTime = Number(clampedNext.toFixed(2));
-        clearSegmentPreviewRef.current();
-        ws.setTime(nextTime);
-        setCurrentPlayTime(nextTime);
+        seekByRef.current(e.key === "ArrowLeft" ? -step : step);
         return;
       }
     };
@@ -441,23 +521,23 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     regionsRef.current = wsRegions;
 
     const currentVol = volume;
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    const waveColor = isDark ? "#403e3c" : "#dad8ce"; // base-800 (Dark) vs base-150 (Light)
-    const progressColor = isDark ? "#d14d41" : "#af3029"; // red-400 (Dark) vs red-600 (Light)
-    const cursorColor = isDark ? "#ce5d97" : "#a02f6f"; // magenta-400 (Dark) vs magenta-600 (Light)
 
+    // Drawn like Voice Memos: thin bars, brighter once played, a blue playhead and a time ruler underneath
     const ws = WaveSurfer.create({
       container: waveformContainer,
-      waveColor,
-      progressColor,
-      cursorColor,
+      waveColor: readThemeColor(waveformContainer, "--muted-foreground"),
+      progressColor: readThemeColor(waveformContainer, "--foreground"),
+      cursorColor: readThemeColor(waveformContainer, "--flexoki-bl"),
       cursorWidth: 2,
       height: 128,
+      barWidth: 2,
+      barGap: 2,
+      barRadius: 2,
       normalize: true,
       url: `/api/tracks/${trackDetail.id}/stream`,
       peaks: peaks,
       duration: trackDetail.duration,
-      plugins: [wsRegions],
+      plugins: [wsRegions, TimelinePlugin.create({ height: 18, formatTimeCallback: formatDuration })],
       dragToSeek: true,
       autoScroll: true,
       autoCenter: true,
@@ -590,6 +670,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       debouncedSaveSegment(segId, { start_time: start, end_time: end }, t("studio.toastSaved"));
     });
 
+    wsRegions.on("region-clicked", (region) => setPickedSliceId(region.id));
+
     return () => {
       setIsWaveSurferReady(false);
       try { wsRegions.unAll(); } catch {}
@@ -609,47 +691,38 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       return;
     }
 
-    const currentRegions = wsRegions.getRegions();
     const segmentMap = new Map(segments.map((s) => [s.id, s]));
 
     // Remove deleted regions
-    for (const r of currentRegions) {
+    for (const r of wsRegions.getRegions()) {
       if (!segmentMap.has(r.id)) {
         r.remove();
       }
     }
 
-    // Add new regions or update existing if changed externally
-    const getRegionColor = (c?: string) => (c ? (c.length === 7 ? `${c}33` : c) : "rgba(67, 133, 190, 0.2)");
-
+    // Add new regions, move ones changed elsewhere, and keep each one's look in step with its slice
     for (const seg of segments) {
-      const existing = currentRegions.find((r) => r.id === seg.id);
-      const expectedColor = getRegionColor(seg.color);
+      const isSelected = seg.id === selectedSliceId;
+      const existing = wsRegions.getRegions().find((r) => r.id === seg.id);
       if (!existing) {
         wsRegions.addRegion({
           id: seg.id,
           start: seg.start_time,
           end: seg.end_time,
-          color: expectedColor,
-          drag: true,
-          resize: true,
+          color: regionColor(seg.color, isSelected),
+          content: regionContent(seg.name, isSelected),
+          drag: isSelected,
+          resize: isSelected,
           minLength: 0.5,
         });
       } else {
-        if (
-          Math.abs(existing.start - seg.start_time) > 0.05 ||
-          Math.abs(existing.end - seg.end_time) > 0.05 ||
-          existing.color !== expectedColor
-        ) {
-          existing.setOptions({
-            start: seg.start_time,
-            end: seg.end_time,
-            color: expectedColor,
-          });
+        if (Math.abs(existing.start - seg.start_time) > 0.05 || Math.abs(existing.end - seg.end_time) > 0.05) {
+          existing.setOptions({ start: seg.start_time, end: seg.end_time });
         }
+        syncRegionLook(existing, seg, isSelected);
       }
     }
-  }, [segments, isWaveSurferReady]);
+  }, [segments, selectedSliceId, isWaveSurferReady]);
 
   // Pause local WaveSurfer if global player starts
   React.useEffect(() => {
@@ -694,6 +767,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       if (res.ok) {
         const created: Segment = await res.json();
         setSegments((prev) => [...prev, created]);
+        setPickedSliceId(created.id);
         safeSetSaveStatus(t("studio.toastCreated"));
         setTimeout(() => safeSetSaveStatus(null), 1500);
       }
@@ -764,6 +838,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Preview segment in studio
   const handlePreviewSegment = (seg: Segment) => {
+    setPickedSliceId(seg.id);
     setActiveSegmentId(seg.id);
     activeSegmentIdRef.current = seg.id;
     previewEndRef.current = seg.end_time;
@@ -803,6 +878,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   };
 
   const closeLabel = t("common.close", "Close");
+  const zoomLabel = zoomLevel === 0 ? "1x" : `${Math.round(1 + zoomLevel / 20)}x`;
 
   return (
     <Dialog
@@ -819,276 +895,257 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         // Focus starts on the Studio itself rather than its first button, so Space plays and pauses straight away
         initialFocus={popupRef}
         showCloseButton={false}
-        className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-5xl"
+        className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-6xl md:h-[min(40rem,calc(100svh-2rem))] md:grid-rows-[auto_minmax(0,1fr)_auto]"
       >
         {/* The margin keeps the header clear of the close button */}
         <DialogHeader className="mr-8">
-          <div className="flex items-center gap-2">
-            <DialogTitle>{t("studio.title")}</DialogTitle>
-            {saveStatus && (
-              <span className="flex items-center gap-1 text-xs text-flexoki-green animate-in fade-in">
-                <Check className="h-3.5 w-3.5" />
-                <span>{saveStatus}</span>
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-foreground/90 font-medium">{track.title}</p>
-          <DialogDescription>
-            {t("studio.duration", { duration: formatDuration(track.duration) })}
-          </DialogDescription>
+          <DialogTitle>{t("studio.title")}</DialogTitle>
+          <DialogDescription>{t("studio.hint")}</DialogDescription>
         </DialogHeader>
 
-        {/* Waveform Card */}
-        <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-lg">
-          <div className="flex items-center justify-between mb-3 text-xs text-muted-foreground">
-            <span className="font-medium">{t("studio.waveform")}</span>
-            <div className="flex items-center gap-3">
-              {/* Zoom Controls */}
-              <ButtonGroup>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => handleZoomChange(zoomLevel - 20)}
-                  disabled={!isWaveSurferReady || zoomLevel <= 0}
-                  aria-label={t("studio.zoomOut")}
-                  title={t("studio.zoomOut")}
-                >
-                  <ZoomOut />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleZoomChange(zoomLevel === 0 ? 40 : 0)}
-                  disabled={!isWaveSurferReady}
-                  title={t("studio.zoomFit")}
-                  aria-label={t("studio.zoomFit")}
-                >
-                  {zoomLevel === 0 ? "1x" : `${Math.round(1 + zoomLevel / 20)}x`}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => handleZoomChange(zoomLevel + 20)}
-                  disabled={!isWaveSurferReady || zoomLevel >= 200}
-                  aria-label={t("studio.zoomIn")}
-                  title={t("studio.zoomIn")}
-                >
-                  <ZoomIn />
-                </Button>
-              </ButtonGroup>
-
-              <span className="font-mono text-foreground font-semibold">
-                {formatTime(currentPlayTime)} / {formatTime(track.duration)}
-              </span>
+        {/* The editor, and the track's slices beside it like Voice Memos' recordings */}
+        <div className="grid min-h-0 gap-6 md:grid-cols-[minmax(0,1fr)_17rem]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="min-w-0">
+              <p className="truncate text-2xl font-bold tracking-tight text-foreground">{track.title}</p>
+              <p className="truncate text-sm text-muted-foreground">
+                {track.artist ? `${track.artist} · ` : ""}
+                <span className="tabular-nums">{formatDuration(track.duration)}</span>
+              </p>
             </div>
-          </div>
 
-          {/* Waveform Canvas Container */}
-          <div className="relative rounded-lg bg-background p-2 border border-border/50 select-none overflow-hidden min-h-[144px]">
-            <div ref={setWaveformContainer} data-slot="studio-waveform" className="cursor-pointer" />
-            {!isWaveSurferReady && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xs animate-in fade-in duration-150 pointer-events-none">
-                <div className="flex items-center gap-1.5 h-12 w-48 justify-center mb-2">
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={cn("h-(--bar-height) w-1 animate-pulse rounded-full bg-primary/40", LOADING_BAR_DELAYS[i % LOADING_BAR_DELAYS.length])}
-                      style={{ "--bar-height": `${40 + Math.sin(i * 0.5) * 60}%` }}
-                    />
-                  ))}
+            <div className="relative min-h-36 overflow-hidden rounded-xl bg-muted/40 px-2 pt-2 select-none">
+              <div ref={setWaveformContainer} data-slot="studio-waveform" className="cursor-pointer" />
+              {!isWaveSurferReady && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xs animate-in fade-in duration-150 pointer-events-none">
+                  <div className="flex items-center gap-1.5 h-12 w-48 justify-center mb-2">
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={cn("h-(--bar-height) w-1 animate-pulse rounded-full bg-primary/40", LOADING_BAR_DELAYS[i % LOADING_BAR_DELAYS.length])}
+                        style={{ "--bar-height": `${40 + Math.sin(i * 0.5) * 60}%` }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground animate-pulse">{t("studio.loadingWaveform", "Loading audio waveform…")}</p>
                 </div>
-                <p className="text-xs text-muted-foreground animate-pulse">{t("studio.loadingWaveform", "Loading audio waveform…")}</p>
+              )}
+            </div>
+
+            {/* The playhead's time, and the transport under it */}
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-4xl font-semibold tracking-tight tabular-nums text-foreground">{formatTime(currentPlayTime)}</p>
+              <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+                {/* First on narrow screens, where zoom and volume wrap onto the row below */}
+                <div className="flex w-full items-center justify-center gap-2 sm:col-start-2 sm:row-start-1 sm:w-auto">
+                  <Button variant="ghost" size="icon-lg" onClick={() => seekBy(-15)} aria-label={t("studio.back15")} title={t("studio.back15")}>
+                    <RotateCcw />
+                  </Button>
+                  <Button
+                    size="icon-lg"
+                    onClick={handleToggleWavePlay}
+                    aria-label={isPlayingWave ? t("studio.pause") : t("studio.play")}
+                    title={isPlayingWave ? t("studio.pause") : t("studio.play")}
+                  >
+                    {isPlayingWave ? <Pause className="fill-current" /> : <Play className="fill-current" />}
+                  </Button>
+                  <Button variant="ghost" size="icon-lg" onClick={() => seekBy(15)} aria-label={t("studio.forward15")} title={t("studio.forward15")}>
+                    <RotateCw />
+                  </Button>
+                </div>
+
+                <ButtonGroup className="sm:col-start-1 sm:row-start-1 sm:justify-self-start">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => handleZoomChange(zoomLevel - 20)}
+                    disabled={!isWaveSurferReady || zoomLevel <= 0}
+                    aria-label={t("studio.zoomOut")}
+                    title={t("studio.zoomOut")}
+                  >
+                    <ZoomOut />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleZoomChange(zoomLevel === 0 ? 40 : 0)}
+                    disabled={!isWaveSurferReady}
+                    title={t("studio.zoomFit")}
+                    aria-label={t("studio.zoomFit")}
+                  >
+                    <span className="tabular-nums">{zoomLabel}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => handleZoomChange(zoomLevel + 20)}
+                    disabled={!isWaveSurferReady || zoomLevel >= 200}
+                    aria-label={t("studio.zoomIn")}
+                    title={t("studio.zoomIn")}
+                  >
+                    <ZoomIn />
+                  </Button>
+                </ButtonGroup>
+
+                <div className="flex items-center gap-1 sm:col-start-3 sm:row-start-1 sm:justify-self-end">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={handleToggleMute}
+                    aria-label={isMuted ? t("player.unmute") : t("player.mute")}
+                    title={isMuted ? t("player.unmute") : t("player.mute")}
+                  >
+                    {isMuted ? <VolumeX className="text-destructive" /> : <Volume2 />}
+                  </Button>
+                  <VolumeSlider
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    aria-label={t("studio.trackVolume")}
+                    title={t("studio.trackVolumeTooltip", { percent: Math.round(volume * 100) })}
+                    className="w-20 sm:w-24"
+                  />
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Controls below waveform */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleToggleWavePlay}>
-                {isPlayingWave ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-                {isPlayingWave ? t("studio.pause") : t("studio.playWaveform")}
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  clearSegmentPreview();
-                  setCurrentPlayTime(0);
-                  wavesurferRef.current?.seekTo(0);
-                }}
-              >
-                <RotateCcw data-icon="inline-start" />
-                {t("studio.reset")}
-              </Button>
             </div>
 
-            {/* Volume Control */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/50 border border-border/50">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleToggleMute}
-                aria-label={isMuted ? t("player.unmute") : t("player.mute")}
-                title={isMuted ? t("player.unmute") : t("player.mute")}
-              >
-                {isMuted ? <VolumeX className="text-destructive" /> : <Volume2 />}
-              </Button>
-              <VolumeSlider
-                value={volume}
-                onChange={handleVolumeChange}
-                aria-label={t("studio.trackVolume")}
-                title={t("studio.trackVolumeTooltip", { percent: Math.round(volume * 100) })}
-                className="w-24 sm:w-28"
-              />
-              <span className="font-mono text-xs text-muted-foreground w-9 text-right select-none">
-                {Math.round(volume * 100)}%
-              </span>
-            </div>
-
-            <Button size="sm" onClick={handleAddNewSegment}>
-              <Plus data-icon="inline-start" />
-              {t("studio.addSlice")}
-            </Button>
-          </div>
-        </div>
-
-        {/* Segments Management List */}
-        <div className="mt-6 flex-1 flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <span>{t("studio.slicesHeader")}</span>
-              <Badge variant="secondary">{formatNumber(segments.length)}</Badge>
-            </h3>
-            <span className="text-xs text-muted-foreground">
-              {t("studio.slicesSub")}
-            </span>
-          </div>
-
-          {segments.length === 0 ? (
-            <div className="rounded-xl border border-dashed">
+            {/* The slice being edited, like Voice Memos' trim controls */}
+            {selectedSlice ? (
+              <section aria-label={t("studio.selectedSlice")} className="flex flex-col gap-3 rounded-xl border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    data-slot="slice-color"
+                    className="size-3 shrink-0 rounded-full bg-(--slice-color)"
+                    style={{ "--slice-color": selectedSlice.color || DEFAULT_SLICE_COLOR }}
+                  />
+                  <Input
+                    value={selectedSlice.name}
+                    onChange={(e) => handleUpdateName(selectedSlice.id, e.target.value)}
+                    aria-label={t("studio.sliceName")}
+                    placeholder={t("studio.slicePlaceholder")}
+                    className="max-w-xs flex-1"
+                  />
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => handlePreviewSegment(selectedSlice)}>
+                      <Play data-icon="inline-start" className="fill-current" />
+                      {t("studio.playSlice")}
+                    </Button>
+                    <AddToPlaylistPopover trackId={track.id} segmentId={selectedSlice.id} />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteSegment(selectedSlice.id)}
+                      title={t("studio.delete")}
+                      aria-label={t("studio.delete")}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <TrimStepper
+                    label={t("studio.start")}
+                    time={selectedSlice.start_time}
+                    backLabel={t("studio.nudgeStartBack")}
+                    forwardLabel={t("studio.nudgeStartForward")}
+                    onNudge={(delta) => handleNudgeSegment(selectedSlice.id, "start", delta)}
+                  />
+                  <TrimStepper
+                    label={t("studio.end")}
+                    time={selectedSlice.end_time}
+                    backLabel={t("studio.nudgeEndBack")}
+                    forwardLabel={t("studio.nudgeEndForward")}
+                    onNudge={(delta) => handleNudgeSegment(selectedSlice.id, "end", delta)}
+                  />
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t("studio.length", { length: formatTime(selectedSlice.end_time - selectedSlice.start_time) })}
+                  </span>
+                </div>
+              </section>
+            ) : (
               <EmptyState icon={Scissors} title={t("studio.empty")} description={t("studio.emptyHint")}>
                 <Button size="sm" onClick={handleAddNewSegment}>
                   <Plus data-icon="inline-start" />
-                  {t("studio.addFirst")}
+                  {t("studio.addSlice")}
                 </Button>
               </EmptyState>
+            )}
+          </div>
+
+          <section aria-labelledby={slicesHeadingId} className="flex min-h-0 flex-col gap-3 md:border-l md:pl-6">
+            <div className="flex items-center justify-between gap-2">
+              <h3 id={slicesHeadingId} className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                {t("studio.slicesHeader")}
+                <Badge variant="secondary">{formatNumber(segments.length)}</Badge>
+              </h3>
+              <Button size="sm" onClick={handleAddNewSegment}>
+                <Plus data-icon="inline-start" />
+                {t("studio.addSlice")}
+              </Button>
             </div>
-          ) : (
-            <div className="grid gap-2.5">
-              {segments.map((seg) => {
-                const duration = seg.end_time - seg.start_time;
-                const isActive = activeSegmentId === seg.id;
-
-                return (
-                  <div
-                    key={seg.id}
-                    className={cn(
-                      "flex flex-col items-start justify-between gap-3 rounded-lg border p-3 transition-colors sm:flex-row sm:items-center",
-                      isActive ? "border-primary bg-primary/5" : "bg-card"
-                    )}
-                  >
-                    <div className="flex items-center gap-3 flex-1 w-full sm:w-auto">
-                      <div
-                        data-slot="slice-color"
-                        className="h-8 w-3 shrink-0 rounded-full bg-(--slice-color)"
-                        style={{ "--slice-color": seg.color || DEFAULT_SLICE_COLOR }}
-                      />
-
-                      <Button
-                        variant={isActive ? "default" : "outline"}
-                        size="icon-lg"
-                        onClick={() => handlePreviewSegment(seg)}
-                        title={t("studio.preview")}
-                        aria-label={t("studio.preview")}
+            <p className="text-xs text-muted-foreground">{t("studio.slicesSub")}</p>
+            {segments.length > 0 && (
+              <ItemGroup className="min-h-0 overflow-y-auto">
+                {segments.map((seg) => {
+                  const isSelected = seg.id === selectedSliceId;
+                  return (
+                    <div key={seg.id} role="listitem">
+                      <Item
+                        size="xs"
+                        variant={isSelected ? "muted" : "default"}
+                        render={
+                          <button
+                            type="button"
+                            aria-current={isSelected || undefined}
+                            onClick={() => setPickedSliceId(seg.id)}
+                            // Double-clicking plays it, as in a list of songs
+                            onDoubleClick={() => handlePreviewSegment(seg)}
+                          />
+                        }
                       >
-                        <Play className="fill-current" />
-                      </Button>
-
-                      <div className="flex-1 min-w-0">
-                        <Input
-                          value={seg.name}
-                          onChange={(e) => handleUpdateName(seg.id, e.target.value)}
-                          className="max-w-xs"
-                          placeholder={t("studio.slicePlaceholder")}
-                        />
-                      </div>
+                        <ItemMedia>
+                          <span
+                            data-slot="slice-color"
+                            className="size-2.5 rounded-full bg-(--slice-color)"
+                            style={{ "--slice-color": seg.color || DEFAULT_SLICE_COLOR }}
+                          />
+                        </ItemMedia>
+                        <ItemContent className="min-w-0">
+                          <ItemTitle>{seg.name}</ItemTitle>
+                          <ItemDescription>
+                            <span className="tabular-nums">
+                              {formatTime(seg.start_time)} – {formatTime(seg.end_time)}
+                            </span>
+                          </ItemDescription>
+                        </ItemContent>
+                        <ItemActions>
+                          {activeSegmentId === seg.id && isPlayingWave ? (
+                            <NowPlayingEqualizer isAnimated className="text-primary" />
+                          ) : (
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {formatDuration(seg.end_time - seg.start_time)}
+                            </span>
+                          )}
+                        </ItemActions>
+                      </Item>
                     </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-border">
-                      <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => handleNudgeSegment(seg.id, "start", -0.1)}
-                            title="-0.1s"
-                            aria-label={t("studio.nudgeStartBack", "-0.1s start")}
-                          >
-                            -0.1s
-                          </Button>
-                          <span className="text-foreground font-medium px-1">{formatTime(seg.start_time)}</span>
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => handleNudgeSegment(seg.id, "start", 0.1)}
-                            title="+0.1s"
-                            aria-label={t("studio.nudgeStartForward", "+0.1s start")}
-                          >
-                            +0.1s
-                          </Button>
-                        </div>
-                        <span>→</span>
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => handleNudgeSegment(seg.id, "end", -0.1)}
-                            title="-0.1s"
-                            aria-label={t("studio.nudgeEndBack", "-0.1s end")}
-                          >
-                            -0.1s
-                          </Button>
-                          <span className="text-foreground font-medium px-1">{formatTime(seg.end_time)}</span>
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            onClick={() => handleNudgeSegment(seg.id, "end", 0.1)}
-                            title="+0.1s"
-                            aria-label={t("studio.nudgeEndForward", "+0.1s end")}
-                          >
-                            +0.1s
-                          </Button>
-                        </div>
-                        <span className="text-2xs text-flexoki-cyan">
-                          ({duration.toFixed(1)}s)
-                        </span>
-                      </div>
-
-                      <AddToPlaylistPopover trackId={track.id} segmentId={seg.id} />
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteSegment(seg.id)}
-                        title={t("studio.delete")}
-                        aria-label={t("studio.delete")}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </ItemGroup>
+            )}
+          </section>
         </div>
 
         <DialogFooter>
-          <Button size="lg" onClick={() => void handleCloseStudio()}>
-            {t("studio.doneButton")}
-          </Button>
+          {/* Mounted throughout, so screen readers announce each save */}
+          <span role="status" className="flex items-center gap-1 text-xs text-flexoki-green sm:mr-auto">
+            {saveStatus && (
+              <>
+                <Check className="size-3.5" />
+                {saveStatus}
+              </>
+            )}
+          </span>
+          <Button onClick={() => void handleCloseStudio()}>{t("studio.doneButton")}</Button>
         </DialogFooter>
         <DialogClose
           aria-label={closeLabel}
