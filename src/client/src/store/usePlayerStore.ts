@@ -1203,7 +1203,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         for (const m of modesToReconcile) {
           const prevQueue = freshState.queuesByMode[m] || [];
-          const reconciled = reconcileSingleModeQueue(
+          let reconciled = reconcileSingleModeQueue(
             m,
             prevQueue,
             validSegments,
@@ -1215,6 +1215,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             newlyReadyTracks,
             freshState.shuffleByMode[m]
           );
+          // A Home shelf plays a list of its own: its songs, and what was queued onto them, are refreshed, but the songs
+          // that became ready since belong to the library pages, not to it
+          if (m === currentMode && freshState.queueOrigin?.type === "home") {
+            const shelfEntries = new Set(prevQueue.map((item) => item.queueItemId));
+            reconciled = reconciled.filter((item) => shelfEntries.has(item.queueItemId));
+          }
           const isIdentical =
             reconciled.length === prevQueue.length &&
             reconciled.every((it, idx) => it.track === prevQueue[idx].track && it.segment === prevQueue[idx].segment);
