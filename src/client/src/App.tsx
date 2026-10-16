@@ -1517,18 +1517,16 @@ export function App() {
           </div>
         </div>
 
-        {/* The player capsule floats over the foot of this column */}
+        {/* The player capsule floats over the foot of this column, and the bulk action bar over the capsule */}
         <PlayerBar
           onToggleQueue={toggleQueue}
           isQueueOpen={isQueueOpen}
           isQueueDocked={isQueueDocked}
         />
+        <BulkActionBar visibleTrackIds={visibleTrackIds} visibleItems={visibleItems} />
       </SidebarInset>
 
       {isQueueDocked && isQueueOpen && <QueuePanel onClose={closeQueue} />}
-
-      {/* Bulk Action Floating Bar */}
-      <BulkActionBar visibleTrackIds={visibleTrackIds} visibleItems={visibleItems} />
 
       {/* Slice Studio Modal */}
       {sliceStudioTrack && (

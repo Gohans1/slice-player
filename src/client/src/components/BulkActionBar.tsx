@@ -1,6 +1,5 @@
 import * as React from "react";
 import { FolderPlus, Trash2, X, Check, CheckSquare, Square, Plus } from "lucide-react";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -91,7 +90,7 @@ function BulkAddToPlaylistMenu({
         if (nextOpen) setAddedTo(null);
       }}
     >
-      <DropdownMenuTrigger render={<Button variant="outline" size="lg" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="lg" />}>
         <FolderPlus data-icon="inline-start" />
         {t("bulkActions.addToPlaylist", "Playlist")}
       </DropdownMenuTrigger>
@@ -265,19 +264,23 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
 
   return (
     <>
-      <div className="fixed bottom-[calc(var(--player-bar-height,0px)+1.5rem)] inset-x-0 z-40 flex justify-center pointer-events-none px-4">
+      {/* Rides the main column just above the player capsule, so it stays centred on the capsule beside the sidebar and
+          the queue panel. The zero-height box sticks to the foot of the column and the bar rises out of it, taking no
+          room from the content. */}
+      <div className="pointer-events-none sticky bottom-[calc(var(--player-bar-height,0px)+1.5rem)] z-40 flex h-0 items-end justify-center px-2">
         <aside
           aria-label={t("bulkActions.barLabel", "Bulk actions")}
+          // The same glass capsule as the player
           className={cn(
-            "pointer-events-auto flex items-center gap-2 sm:gap-3 rounded-2xl border border-border/80 bg-card/95 backdrop-blur-md px-3 sm:px-4 py-2 shadow-2xl duration-150 max-w-[95vw]",
+            "pointer-events-auto flex h-11 max-w-full items-center gap-1 rounded-full border bg-card/70 p-1.5 shadow-xl backdrop-blur-lg backdrop-saturate-200 duration-150",
             isExiting ? "animate-out fade-out slide-out-to-bottom-4 pointer-events-none" : "animate-in fade-in slide-in-from-bottom-4"
           )}
         >
-        {/* Selection count badge. Narrow screens show the number alone; the word stays for screen readers. */}
-        <Badge className="shrink-0">
-          <span key={selectedCount} className="font-bold tabular-nums inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>{" "}
+        {/* Narrow screens show the number alone; the word stays for screen readers */}
+        <span className="shrink-0 px-2.5 text-xs font-semibold whitespace-nowrap">
+          <span key={selectedCount} className="inline-block tabular-nums animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>{" "}
           <span className="max-sm:sr-only">{t("bulkActions.selected", "selected")}</span>
-        </Badge>
+        </span>
 
         {/* Select All Visible toggle */}
         {hasVisible && (
