@@ -45,6 +45,13 @@ export function isPlaybackMode(cat: unknown): cat is PlaybackMode {
   return cat === "mixed" || cat === "slices_only" || cat === "original_only";
 }
 
+// Like Apple Music, a Home shelf or a search's results play as they were when played. A library page's or a playlist's
+// queue instead takes in what it comes to list: songs that become ready, slices cut, songs added to the playlist
+function playsListAsPlayed(s: PlayerState): boolean {
+  const origin = s.queueOrigin?.type;
+  return origin === "home" || origin === "search";
+}
+
 // The library page, or Home's song list, that the queue plays: null while a playlist plays or nothing does
 export function selectPlayingPage(s: PlayerState): PlaybackMode | "home" | null {
   if (!s.activeTrack || s.activePlaylistPlayingId) return null;
@@ -1200,11 +1207,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const newlyReadyTracks = finalTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
         const modesToReconcile: PlaybackMode[] = ["mixed", "slices_only", "original_only"];
         const nextQueuesByMode: Record<PlaybackMode, QueueItem[]> = { ...freshState.queuesByMode };
-        // A Home shelf, or a search's results, play as they were when played: their songs, and what was queued onto them,
-        // are refreshed, but what the library has gained since (songs that became ready, new slices) belongs to the
-        // library pages. A search in a playlist plays the playlist's own queue, not this one
-        const origin = freshState.queueOrigin?.type;
-        const playsOwnList = !freshState.activePlaylistPlayingId && (origin === "home" || origin === "search");
+        // A list played as it was keeps its entries, and what was queued onto them, refreshed; what the library has
+        // gained goes to the library pages' queues. A search in a playlist plays the playlist's queue, not this one
+        const playsOwnList = !freshState.activePlaylistPlayingId && playsListAsPlayed(freshState);
 
         for (const m of modesToReconcile) {
           const prevQueue = freshState.queuesByMode[m] || [];
@@ -2546,7 +2551,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res) {
         try {
           const newItem = await res.json();
-          if (newItem && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
+          if (newItem && !playsListAsPlayed(get()) && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const isAlreadyInQueue = get().queue.some((it) => it.queueItemId === newItem.id);
             if (!isAlreadyInQueue) {
               const track = newItem.track || get().tracks.find((t) => t.id === trackId);
@@ -2594,7 +2599,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         try {
           const data = await res.json();
           const newItems: PlaylistItemWithDetails[] = Array.isArray(data?.items) ? data.items : [];
-          if (newItems.length > 0 && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
+          if (newItems.length > 0 && !playsListAsPlayed(get()) && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const currentQueue = get().queue;
             const existingQueueItemIds = new Set(currentQueue.map((it) => it.queueItemId).filter(Boolean));
             const queuedSegmentIds = new Set(currentQueue.map((it) => it.segment.id));
