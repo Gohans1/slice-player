@@ -314,6 +314,52 @@ describe("PlaylistTableView", () => {
     expect(container.textContent).toContain("Table Test Track");
   });
 
+  // Where Apple Music puts its Explicit badge: after the title, so titles line up when slices and tracks share a list
+  describe("slice marker", () => {
+    const markedTitles = () =>
+      Array.from<Element>(container.querySelectorAll(".group[role='row']")).map((row) => {
+        const marker = row.querySelector("[role='img'][aria-label='Slice']");
+        return marker ? `${marker.previousElementSibling?.textContent} (marked)` : "unmarked";
+      });
+
+    it("follows a slice's title in a playlist, and not a full track's", async () => {
+      await act(async () => {
+        usePlayerStore.setState({
+          activePlaylistId: "pl_custom_1",
+          activePlaylistItems: [dummyPlaylistItem1, { ...dummyPlaylistItem2, segment_id: dummySegment.id, segment: dummySegment }],
+        });
+        root.render(<PlaylistTableView />);
+      });
+
+      expect(markedTitles()).toEqual(["unmarked", "Test Table Slice (marked)"]);
+    });
+
+    it("follows a slice's title in the Slices list", async () => {
+      await act(async () => {
+        usePlayerStore.setState({ activePlaylistId: null, activeSystemCategory: "slices_only" });
+        root.render(<PlaylistTableView sliceItems={[{ id: "seg_tbl_1", segment: dummySegment, track: dummyTrack }]} />);
+      });
+
+      expect(markedTitles()).toEqual(["Test Table Slice (marked)"]);
+    });
+
+    it("follows a slice's title in the Mix list, and not a full track's", async () => {
+      await act(async () => {
+        usePlayerStore.setState({ activePlaylistId: null, activeSystemCategory: "mixed" });
+        root.render(
+          <PlaylistTableView
+            mixedItems={[
+              { type: "track", id: "track_trk_tbl_1", track: dummyTrack },
+              { type: "slice", id: "slice_seg_tbl_1", track: dummyTrack, segment: dummySegment },
+            ]}
+          />
+        );
+      });
+
+      expect(markedTitles()).toEqual(["unmarked", "Test Table Slice (marked)"]);
+    });
+  });
+
   describe("columns", () => {
     // Like Apple Music's Song | Artist | Album | Time, and each row has one cell per header so screen readers line them up
     const sliceOfDummyTrack: PlaylistItemWithDetails = { ...dummyPlaylistItem2, segment_id: dummySegment.id, segment: dummySegment };

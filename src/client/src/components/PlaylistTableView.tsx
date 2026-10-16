@@ -89,6 +89,17 @@ const ROW_ACTIONS_CLASS = "flex items-center justify-end gap-1";
 const SONG_TITLE_CLASS = "truncate text-xs text-foreground group-aria-[current=true]:text-primary";
 const SONG_DETAIL_CLASS = "truncate text-xs text-muted-foreground";
 
+// A slice is marked after its title, where Apple Music puts its Explicit badge, so titles line up in lists of both
+function SongTitle({ title, isSlice }: { title: string; isSlice: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <div className={cn(SONG_TITLE_CLASS, "flex min-w-0 items-center gap-1")}>
+      <span className="truncate">{title}</span>
+      {isSlice && <Scissors role="img" aria-label={t("table.sliceMarker")} className="size-3 shrink-0 text-flexoki-yellow" />}
+    </div>
+  );
+}
+
 interface TableArtworkProps {
   track?: Track | null;
   sliceColor?: string;
@@ -1513,9 +1524,7 @@ export function PlaylistTableView({
                     canPlay={isReady && !isSelectionActive}
                   />
                   <div className="min-w-0">
-                    <div className={SONG_TITLE_CLASS}>
-                      {isSlice && item.segment ? item.segment.name : item.track?.title}
-                    </div>
+                    <SongTitle title={(isSlice && item.segment ? item.segment.name : item.track?.title) ?? ""} isSlice={isSlice} />
                     {/* A slice always names its track; a full track's artist moves to the artist column once it shows */}
                     <div className={cn(SONG_DETAIL_CLASS, !isSlice && "@2xl:hidden")}>
                       {isSlice ? t("table.from", { title: item.track?.title }) : (item.track?.artist || t("table.unknownArtist"))}
@@ -1821,10 +1830,7 @@ export function PlaylistTableView({
                     canPlay={isReady && !isSelectionActive}
                   />
                   <div className="min-w-0">
-                    <div className={cn(SONG_TITLE_CLASS, "flex min-w-0 items-center gap-1.5")}>
-                      <Scissors className="size-3.5 shrink-0 text-flexoki-yellow" />
-                      <span className="truncate">{item.segment.name}</span>
-                    </div>
+                    <SongTitle title={item.segment.name} isSlice />
                     {/* Stands in for the Original Track column until the table is wide enough to show it */}
                     <div className={cn(SONG_DETAIL_CLASS, "@4xl:hidden")}>
                       {t("table.from", { title: item.track.title })}
@@ -1991,10 +1997,7 @@ export function PlaylistTableView({
                     canPlay={isReady && !isSelectionActive}
                   />
                   <div className="min-w-0">
-                    <div className={cn(SONG_TITLE_CLASS, "flex min-w-0 items-center gap-1.5")}>
-                      {isSlice && <Scissors className="size-3.5 shrink-0 text-flexoki-yellow" />}
-                      <span className="truncate">{isSlice ? item.segment.name : item.track.title}</span>
-                    </div>
+                    <SongTitle title={isSlice ? item.segment.name : item.track.title} isSlice={isSlice} />
                     {/* A slice always names its track; a full track's artist moves to the artist column once it shows */}
                     <div className={cn(SONG_DETAIL_CLASS, !isSlice && "@2xl:hidden")}>
                       {isSlice ? t("table.from", { title: item.track.title }) : (item.track.artist || t("table.unknownArtist"))}

@@ -132,6 +132,7 @@
     "slices": "Slices",
     "originalTrack": "Original Track",
     "from": "From: {{title}}",
+    "sliceMarker": "Slice",
     "fullTrack": "Full Track",
     "sliceBadge": "Slice ({{start}} - {{end}})",
     "fullTrackIndex": "Full Track #{{index}}",

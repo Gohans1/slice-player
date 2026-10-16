@@ -132,6 +132,7 @@
     "slices": "Lát cắt",
     "originalTrack": "Bài hát gốc",
     "from": "Từ: {{title}}",
+    "sliceMarker": "Lát cắt",
     "fullTrack": "Toàn bài",
     "sliceBadge": "Lát cắt ({{start}} - {{end}})",
     "fullTrackIndex": "Toàn bài #{{index}}",
