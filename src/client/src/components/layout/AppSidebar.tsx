@@ -32,6 +32,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarRail,
+  useSidebar,
 } from "../ui/sidebar";
 import {
   DropdownMenu,
@@ -89,6 +90,20 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
   const activeSystemCategory = usePlayerStore((s) => s.activeSystemCategory);
   const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
+  // On a phone the sidebar is a sheet over the page; going somewhere closes it to show the page
+  const { setOpenMobile } = useSidebar();
+  const openCategory = (category: SystemCategory) => {
+    setActiveSystemCategory(category);
+    setOpenMobile(false);
+  };
+  // Stable, as the memoized playlist items take it
+  const openPlaylist = React.useCallback(
+    (playlistId: string) => {
+      void setActivePlaylist(playlistId);
+      setOpenMobile(false);
+    },
+    [setActivePlaylist, setOpenMobile]
+  );
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const hasActiveTrack = usePlayerStore((s) => Boolean(s.activeTrack));
@@ -145,7 +160,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
       playlist={playlist}
       isActive={activePlaylistId === playlist.id}
       nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? (isPlaying ? "playing" : "paused") : null}
-      onOpen={setActivePlaylist}
+      onOpen={openPlaylist}
       onDelete={setPlaylistToDelete}
     />
   );
@@ -168,7 +183,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
                   <SidebarMenuButton
                     isActive={activePlaylistId === null && activeSystemCategory === category.id}
                     tooltip={category.label}
-                    onClick={() => setActiveSystemCategory(category.id)}
+                    onClick={() => openCategory(category.id)}
                   >
                     {isNowPlaying ? (
                       <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
@@ -194,7 +209,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
               <SidebarMenuButton
                 isActive={isPlaylistsOverview}
                 tooltip={t("sidebar.allPlaylists")}
-                onClick={() => setActiveSystemCategory("playlists")}
+                onClick={() => openCategory("playlists")}
               >
                 <LibraryBig className="text-primary" />
                 <span>{t("sidebar.allPlaylists")}</span>

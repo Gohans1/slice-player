@@ -337,6 +337,42 @@ describe("AppSidebar", () => {
     }
   });
 
+  describe("on a phone", () => {
+    // The sidebar is a sheet over the page there
+    const sheet = () => document.querySelector('[data-mobile="true"]');
+    const sheetButton = (label: string) =>
+      Array.from(sheet()?.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]') ?? []).find((el) => el.textContent?.trim() === label);
+
+    afterEach(() => happyWindow.happyDOM.setViewport({ width: 1024 }));
+
+    async function openSheet() {
+      happyWindow.happyDOM.setViewport({ width: 390 });
+      await act(async () => {
+        root.render(
+          <TooltipProvider>
+            <SidebarProvider>
+              <SidebarTrigger />
+              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+            </SidebarProvider>
+          </TooltipProvider>
+        );
+      });
+      const trigger = container.querySelector('[data-sidebar="trigger"]');
+      if (trigger instanceof HTMLElement) await click(trigger);
+    }
+
+    it.each(["Rock", "Rock 90s", "All Playlists", "Tracks"])("closes the sidebar once %s is chosen, showing the page", async (label) => {
+      await openSheet();
+      const button = sheetButton(label);
+      expect(button === undefined).toBe(false);
+
+      if (button) await click(button);
+
+      // Compared as a boolean: handed a happy-dom element, a failing expect takes a minute to print it
+      expect(sheet() === null).toBe(true);
+    });
+  });
+
   it("cancels an inline rename with Escape", async () => {
     const renamePlaylist = mock(async () => true);
     usePlayerStore.setState({ renamePlaylist });
