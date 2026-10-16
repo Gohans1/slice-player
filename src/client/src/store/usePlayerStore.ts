@@ -529,10 +529,10 @@ export function reconcileSingleModeQueue(
       const queuedTrack = trackMap.get(item.track.id);
       if (!queuedTrack || queuedTrack.status !== "ready" || queuedTrack.duration <= 0) continue;
       if (item.segment.id.startsWith("fallback_")) {
-        validQueue.push({ ...createQueueItem(refreshedFallbackSegment(item.segment, queuedTrack), queuedTrack, item.queueItemId), userQueued: true });
+        validQueue.push({ ...createQueueItem(refreshedFallbackSegment(item.segment, queuedTrack), queuedTrack, item.queueItemId), userQueued: true, source: item.source });
       } else {
         const queuedSegment = segmentObjMap.get(item.segment.id);
-        if (queuedSegment) validQueue.push({ ...createQueueItem(queuedSegment, queuedTrack, item.queueItemId), userQueued: true });
+        if (queuedSegment) validQueue.push({ ...createQueueItem(queuedSegment, queuedTrack, item.queueItemId), userQueued: true, source: item.source });
       }
       continue;
     }

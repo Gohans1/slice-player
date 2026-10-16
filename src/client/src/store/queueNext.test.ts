@@ -79,9 +79,9 @@ describe("Play Next and Play Later", () => {
   // A refresh that reloads the slices too rebuilds each page's queue; what was queued isn't the page's to drop
   describe("through a full library refresh", () => {
     const chorus = { id: "seg_x_chorus", track_id: "x", name: "Chorus", start_time: 10, end_time: 20, created_at: 1 };
-    const refresh = async () => {
+    const refresh = async (tracks = [a, b, c, x, y]) => {
       const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-        fetchReturning((url) => Response.json(url === "/api/segments" ? [chorus] : [a, b, c, x, y]))
+        fetchReturning((url) => Response.json(url === "/api/segments" ? [chorus] : tracks))
       );
       try {
         await usePlayerStore.getState().fetchTracks(true);
@@ -102,6 +102,23 @@ describe("Play Next and Play Later", () => {
       expect(state.queueIndex).toBe(1);
       // Unchanged, so the same segment: the queue doesn't re-render for nothing
       expect(state.queue[4].segment === queuedAgain).toBe(true);
+    });
+
+    it("keeps where each queued song came from", async () => {
+      const fromRoad: PlaySource = { source_type: "playlist", playlist_id: "road", via_home: true };
+      usePlayerStore.getState().enqueue([createQueueItem(chorus, x)], "next", fromRoad);
+      usePlayerStore.getState().enqueue([queueItemOf(y)], "later", fromRoad);
+
+      // Renamed, so their queue entries are made afresh
+      await refresh([a, b, c, { ...x, title: "x (live)" }, { ...y, title: "y (live)" }]);
+
+      expect(usePlayerStore.getState().queue.map((item) => [item.segment.id, item.source])).toEqual([
+        ["fallback_a", undefined],
+        ["fallback_b", undefined],
+        ["seg_x_chorus", fromRoad],
+        ["fallback_c", undefined],
+        ["fallback_y", fromRoad],
+      ]);
     });
 
     // Removing an entry removes that entry: the page's own copy of the song stays
