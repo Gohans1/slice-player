@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, Repeat } from "lucide-react";
+import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, House, Repeat } from "lucide-react";
 import { useVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { useFormatNumber } from "../hooks/use-format-number";
@@ -348,8 +348,6 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
   const playSegment = usePlayerStore((s) => s.playSegment);
   const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const reorderQueue = usePlayerStore((s) => s.reorderQueue);
-  const playbackMode = usePlayerStore((s) => s.playbackMode);
-  const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
   const reshuffleCurrentQueue = usePlayerStore((s) => s.reshuffleCurrentQueue);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
@@ -941,11 +939,13 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
               title={t("queue.goToSource", { name: sourceName, defaultValue: `Go to ${sourceName}` })}
               className="min-w-0"
             >
-              {activePlaylistPlayingId ? (
+              {playbackSource.kind === "playlist" ? (
                 <Folder data-icon="inline-start" className="text-flexoki-yellow" />
-              ) : playbackMode === "slices_only" ? (
+              ) : playbackSource.kind === "home" ? (
+                <House data-icon="inline-start" className="text-primary" />
+              ) : playbackSource.kind === "slices_only" ? (
                 <Scissors data-icon="inline-start" />
-              ) : playbackMode === "original_only" ? (
+              ) : playbackSource.kind === "original_only" ? (
                 <Disc data-icon="inline-start" className="text-flexoki-green" />
               ) : (
                 <Shuffle data-icon="inline-start" className="text-flexoki-blue" />

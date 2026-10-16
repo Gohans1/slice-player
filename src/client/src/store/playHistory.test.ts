@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { createQueueItem, usePlayerStore } from "./usePlayerStore";
+import { useHomeStore } from "./useHomeStore";
 import { audioEngine } from "../lib/audio";
 import { createDefaultFullSegment } from "../lib/utils";
-import type { PlayRecord, Segment, Track } from "@/server/types";
+import type { HomeSummary, PlayRecord, Segment, Track } from "@/server/types";
 
 const track = (id: string): Track => ({ id, title: id, duration: 100, source_type: "youtube", source_uri: id, status: "ready" });
 const [a, b] = ["a", "b"].map(track);
 const itemOf = (t: Track) => createQueueItem(createDefaultFullSegment(t), t, t.id);
 const chorus: Segment = { id: "s1", track_id: "a", name: "Chorus", start_time: 20, end_time: 80 };
+const fresh: HomeSummary = { recently_played: [{ source_type: "original_only", playlist_id: null }], heavy_rotation: [{ track_id: "a", plays: 1 }], top_playlists: [] };
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // Plays on from `from` to `to` seconds, reported every 100ms as playback does
 function listen(onTimeUpdate: (time: number) => void, from: number, to: number) {
@@ -21,8 +24,13 @@ describe("Counting plays", () => {
   beforeEach(() => {
     playAudio = spyOn(audioEngine, "playSegment").mockResolvedValue(undefined);
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-      Object.assign(async () => new Response(null, { status: 204 }), { preconnect: () => {} })
+      Object.assign(
+        async (input: RequestInfo | URL) =>
+          String(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 204 }),
+        { preconnect: () => {} }
+      )
     );
+    useHomeStore.setState({ summary: null, failed: false });
     // The Tracks page's queue
     usePlayerStore.setState({
       tracks: [a, b],
@@ -86,6 +94,33 @@ describe("Counting plays", () => {
     listen(await start(1), 0, 60);
 
     expect(recordedPlays()).toEqual([{ track_id: "b", segment_id: null, source_type: "playlist", playlist_id: "p2", via_home: false }]);
+  });
+
+  // Home may be open while the song plays
+  it("brings Home's shelves up to date once the play is recorded", async () => {
+    listen(await start(0), 0, 60);
+    await tick();
+
+    expect(useHomeStore.getState().summary).toEqual(fresh);
+  });
+
+  it("leaves Home as it was when the play could not be recorded", async () => {
+    fetchSpy.mockImplementation(
+      Object.assign(
+        async (input: RequestInfo | URL) =>
+          String(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 500 }),
+        { preconnect: () => {} }
+      )
+    );
+    const logError = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      listen(await start(0), 0, 60);
+      await tick();
+
+      expect(useHomeStore.getState().summary).toBeNull();
+    } finally {
+      logError.mockRestore();
+    }
   });
 
   it("carries on the same play when playback restarts where it paused", async () => {

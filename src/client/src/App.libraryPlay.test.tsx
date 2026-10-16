@@ -4,7 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./App";
 import { usePlayerStore, resetEtagCache, type PlayerState, type QueuePlacement } from "./store/usePlayerStore";
-import type { PlaySource, Segment, Track } from "@/server/types";
+import { useHomeStore } from "./store/useHomeStore";
+import type { HomeSummary, PlaySource, Segment, Track } from "@/server/types";
 
 const originalFetch = globalThis.fetch;
 const initialStore = usePlayerStore.getState();
@@ -20,6 +21,8 @@ let queued: [songs: string[], placement: QueuePlacement, source: PlaySource][] =
 const fromTracks: PlaySource = { source_type: "original_only", playlist_id: null, via_home: false };
 let queueAccepts = true;
 let segments: Segment[] = [chorus];
+const noPlays: HomeSummary = { recently_played: [], heavy_rotation: [], top_playlists: [] };
+let history = noPlays;
 let root: Root;
 let container: HTMLDivElement;
 
@@ -28,11 +31,14 @@ beforeEach(() => {
   queued = [];
   queueAccepts = true;
   segments = [chorus];
+  history = noPlays;
+  useHomeStore.setState({ summary: null, failed: false });
   resetEtagCache();
   globalThis.fetch = Object.assign(async (input: Parameters<typeof fetch>[0]) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url === "/api/tracks") return Response.json([pending, first, second]);
     if (url === "/api/segments") return Response.json(segments);
+    if (url === "/api/home") return Response.json(history);
     return Response.json([]);
   }, { preconnect: originalFetch.preconnect });
   usePlayerStore.setState({
@@ -61,10 +67,11 @@ afterEach(() => {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-async function renderPage(category: "mixed" | "slices_only" | "original_only" | "downloading_only", search?: string) {
+async function renderPage(category: "home" | "mixed" | "slices_only" | "original_only" | "downloading_only", search?: string) {
   usePlayerStore.setState({ activeSystemCategory: category });
   await act(async () => {
     root.render(<App />);
+    await tick();
   });
   if (search) {
     const field = container.querySelector<HTMLInputElement>('input[type="search"]')!;
@@ -178,3 +185,54 @@ describe("Play Next and Play Later on a library page", () => {
     expect(played).toEqual([["original_only", [`fallback_${first.id}`, `fallback_${second.id}`], { shuffle: false }]]);
   });
 });
+
+describe("Home", () => {
+  const sidebarButton = (name: string) =>
+    Array.from(container.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')).find((el) => el.textContent?.trim() === name);
+  const pageTitle = () => container.querySelector("#main-library-panel h2")?.textContent;
+
+  it("is where the app opens, picked in the sidebar", async () => {
+    await act(async () => {
+      root.render(<App />);
+      await tick();
+    });
+
+    expect(pageTitle()).toBe("Home");
+    expect([sidebarButton("Home"), sidebarButton("Mix")].map((el) => el?.hasAttribute("data-active"))).toEqual([true, false]);
+  });
+
+  // Home has no songs of its own to filter
+  it("looks through the whole library for a search typed there", async () => {
+    await renderPage("home", "First");
+
+    expect(pageTitle()).toBe("Mix");
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe("First");
+  });
+
+  it("plays a library page as the page lists it, as started from Home", async () => {
+    history = { ...noPlays, recently_played: [{ source_type: "original_only", playlist_id: null }] };
+    await renderPage("home");
+
+    await press("Play Tracks");
+
+    expect(played).toEqual([
+      ["original_only", [`fallback_${first.id}`, `fallback_${second.id}`], { shuffle: false, origin: { type: "system", mode: "original_only", fromHome: true } }],
+    ]);
+  });
+
+  it("queues a library page credited to that page, as started from Home", async () => {
+    history = { ...noPlays, recently_played: [{ source_type: "original_only", playlist_id: null }] };
+    await renderPage("home");
+
+    await press("More options for Tracks");
+    await act(async () => {
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+        .find((el) => el.textContent?.trim() === "Play Next")
+        ?.click();
+      await tick();
+    });
+
+    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next", { ...fromTracks, via_home: true }]]);
+  });
+});
+

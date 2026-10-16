@@ -8,6 +8,7 @@ import { searchItems } from "../lib/search";
 import { showsItemsOf } from "../lib/mixPlaylist";
 import { notifyChangeFailed, sendChange } from "../lib/sendChange";
 import { createListenCounter, postPlay } from "../lib/plays";
+import { useHomeStore } from "./useHomeStore";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaySource } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -38,10 +39,16 @@ export function createQueueItem(segment: Segment, track: Track, queueItemId?: st
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
 // Play Next puts songs right after the current one, Play Later after the rest of the queue
 export type QueuePlacement = "next" | "later";
-export type SystemCategory = PlaybackMode | "downloading_only" | "error_only" | "playlists";
+export type SystemCategory = "home" | PlaybackMode | "downloading_only" | "error_only" | "playlists";
 
 export function isPlaybackMode(cat: unknown): cat is PlaybackMode {
   return cat === "mixed" || cat === "slices_only" || cat === "original_only";
+}
+
+// The library page, or Home's song list, that the queue plays: null while a playlist plays or nothing does
+export function selectPlayingPage(s: PlayerState): PlaybackMode | "home" | null {
+  if (!s.activeTrack || s.activePlaylistPlayingId) return null;
+  return s.queueOrigin?.type === "home" ? "home" : s.playbackMode;
 }
 
 export function getViewScrollKey(
@@ -107,7 +114,11 @@ function startListening(state: PlayerState, segment: Segment, track: Track, star
   listening = {
     entryId,
     tick: (time) => {
-      if (counter(time)) void postPlay(play);
+      if (!counter(time)) return;
+      // Home may be open, or opened next: either way its shelves should count this play
+      void postPlay(play).then((recorded) => {
+        if (recorded) void useHomeStore.getState().refresh();
+      });
     },
   };
   return listening;
@@ -845,7 +856,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }));
   },
   viewMode: getStoredViewMode(),
-  activeSystemCategory: "mixed",
+  // Like Apple Music, the app opens on Home
+  activeSystemCategory: "home",
   viewScrollPositions: {},
   saveViewScrollPosition: (key: string, scrollY: number) => {
     if (!key) return;

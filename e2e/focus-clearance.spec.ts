@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { makeTracks, mockLibrary } from "./mock-library";
+import { makeTracks, mockLibrary, openLibraryPage } from "./mock-library";
 
 // The library toolbar sticks to the top of the page and the player capsule floats at its foot, both over the content.
 // Content that takes focus is scrolled clear of them (clear-sticky-bars in index.css), while focusing the bars' own
@@ -31,6 +31,7 @@ async function rowButton(page: Page, isAt: (box: Box) => boolean): Promise<Locat
 test.beforeEach(async ({ page }) => {
   await mockLibrary(page, { tracks: makeTracks(200) });
   await page.goto("/");
+  await openLibraryPage(page, "Mix");
   await expect(page.getByRole("button", { name: "More options for Track 001", exact: true })).toBeVisible();
 });
 

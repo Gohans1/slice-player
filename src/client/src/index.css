@@ -57,6 +57,29 @@ html {
   }
 }
 
+/* The page's side margin, which Home's shelves scroll out into */
+@utility page-gutter {
+  --page-gutter: --spacing(4);
+  padding-inline: var(--page-gutter);
+  @variant sm {
+    --page-gutter: --spacing(6);
+  }
+  @variant lg {
+    --page-gutter: --spacing(8);
+  }
+}
+
+/*
+  Shelves page through their items like Apple Music's: a page fits a whole number of columns across the gaps between
+  them, so paging by the shelf's width lands on the next column. Set the number per container size: shelf-columns-<n>.
+  On a phone, where touch swipes the shelf instead, Apple Music sizes columns to a fraction of the page so the next one
+  peeks in; shelves do the same below their first container size.
+*/
+@utility shelf-columns-* {
+  column-gap: --spacing(5);
+  grid-auto-columns: calc((100% - (--value(integer) - 1) * --spacing(5)) / --value(integer));
+}
+
 @utility reveal-past-page-title {
   animation: reveal-past-page-title linear both;
   animation-timeline: --page-title;

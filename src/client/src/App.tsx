@@ -13,6 +13,7 @@ const MixPlaylistModal = React.lazy(() => import("./components/MixPlaylistModal"
 const ShortcutsModal = React.lazy(() => import("./components/ShortcutsModal").then((m) => ({ default: m.ShortcutsModal })));
 import { PlaylistTableView } from "./components/PlaylistTableView";
 import { PlaylistGrid } from "./components/PlaylistGrid";
+import { HomePage } from "./components/HomePage";
 import { PlaylistHeader } from "./components/PlaylistHeader";
 import { LibraryPageActions, type PlayChoice } from "./components/LibraryPageActions";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
@@ -107,6 +108,7 @@ export function App() {
   const viewMode = usePlayerStore((s) => s.viewMode);
   const fetchPlaylists = usePlayerStore((s) => s.fetchPlaylists);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
+  const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const setViewMode = usePlayerStore((s) => s.setViewMode);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
   const reorderPlaylist = usePlayerStore((s) => s.reorderPlaylist);
@@ -1069,6 +1071,8 @@ export function App() {
       };
     }
     switch (activeSystemCategory) {
+      case "home":
+        return { title: t("categories.home"), count: "", description: t("categories.homeDesc") };
       case "playlists":
         return {
           title: t("categories.playlists"),
@@ -1139,7 +1143,11 @@ export function App() {
   return (
     <AppShell
       searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
+      onSearchChange={(query) => {
+        setSearchQuery(query);
+        // Home lists no songs to filter, so a search there looks through the whole library
+        if (query.trim() && activePlaylistId === null && activeSystemCategory === "home") setActiveSystemCategory("mixed");
+      }}
       onCreatePlaylist={() => setIsCreateModalOpen(true)}
       onPlayCategory={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false))}
       onNewMix={startMix}
@@ -1149,7 +1157,7 @@ export function App() {
         {/* Sticky toolbar: view title, sort and view mode, library actions, master volume.
             A container, so control labels give way to icons when the column is narrow rather than wrapping */}
         <header ref={toolbarRef} data-testid="sticky-library-header" className="@container sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
+          <div className="w-full page-gutter py-2">
             {/* Title on the left; controls wrap below it when the column is narrow */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex flex-1 items-center gap-2.5 min-w-48">
@@ -1175,7 +1183,8 @@ export function App() {
                 {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
                   <PlaylistSortSelector builtInItemIds={builtInItemIds} />
                 )}
-                <ViewModeToggle value={viewMode} onValueChange={setViewMode} />
+                {/* Home's shelves have one layout */}
+                {(activePlaylistId || activeSystemCategory !== "home") && <ViewModeToggle value={viewMode} onValueChange={setViewMode} />}
                 <ImportActions />
                 <div className="hidden xl:flex">
                   <MasterVolume />
@@ -1186,7 +1195,7 @@ export function App() {
         </header>
 
         {/* Content Area */}
-        <div className="clear-sticky-bars w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6">
+        <div className="clear-sticky-bars w-full page-gutter pt-4 sm:pt-6 pb-6">
           <div
             id="main-library-panel"
             role="region"
@@ -1281,6 +1290,10 @@ export function App() {
             />
           )}
           </>
+        ) : activeSystemCategory === "home" ? (
+          <HomePage
+            onPlayPage={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false), { type: "system", mode, fromHome: true })}
+          />
         ) : activeSystemCategory === "playlists" ? (
           /* Playlists library: one cover card per custom playlist */
           displayedPlaylists.length === 0 && isSearching ? (

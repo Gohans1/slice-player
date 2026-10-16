@@ -1111,7 +1111,7 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     });
 
     afterEach(() => {
-      usePlayerStore.setState({ setActivePlaylist: original.setActivePlaylist, activePlaylistPlayingId: null });
+      usePlayerStore.setState({ setActivePlaylist: original.setActivePlaylist, activePlaylistPlayingId: null, queueOrigin: null });
     });
 
     const sourceButton = (name: string) => container.querySelector(`button[aria-label="Đi tới ${name}"]`) as HTMLButtonElement | null;
@@ -1157,6 +1157,22 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
 
       expect(opened).toEqual([null]);
       expect(usePlayerStore.getState().activeSystemCategory).toBe("slices_only");
+    });
+
+    it("goes to Home for one of Home's song lists", async () => {
+      usePlayerStore.setState({
+        playbackMode: "original_only",
+        queueOrigin: { type: "home", shelf: "heavy_rotation", mode: "original_only", fromHome: true },
+      });
+      act(() => {
+        root.render(<QueuePanel onClose={() => {}} />);
+      });
+
+      await act(async () => {
+        sourceButton("Nghe nhiều")?.click();
+      });
+
+      expect(usePlayerStore.getState().activeSystemCategory).toBe("home");
     });
 
     it("goes to the playlist the queue plays from", async () => {

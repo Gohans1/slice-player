@@ -91,6 +91,8 @@
   },
   "categories": {
     "mixed": "Trộn cả 2",
+    "home": "Trang chủ",
+    "homeDesc": "Những gì bạn nghe gần đây.",
     "mixedDesc": "Xáo trộn ngẫu nhiên cả các lát cắt và toàn bộ bài hát gốc.",
     "slices": "Lát cắt",
     "slicesDesc": "Tất cả các lát cắt bạn đã tạo từ các bài hát trong thư viện.",
@@ -122,6 +124,23 @@
     "tracksCountFiltered": "({{filtered, number}}/{{total, number}} bài)",
     "playlists": "Playlist",
     "playlistsDesc": "Các danh sách phát của bạn. Mở ra hoặc phát ngay từ thẻ."
+  },
+  "home": {
+    "recentlyPlayed": "Nghe gần đây",
+    "heavyRotation": "Nghe nhiều",
+    "heavyRotationDesc": "Những bài bạn nghe nhiều nhất trong 30 ngày qua",
+    "topPlaylists": "Playlist nghe nhiều",
+    "topPlaylistsDesc": "Nghe nhiều nhất trong 30 ngày qua",
+    "recentlyAdded": "Mới thêm",
+    "plays": "{{count, number}} lượt nghe",
+    "plays_one": "{{count, number}} lượt nghe",
+    "plays_other": "{{count, number}} lượt nghe",
+    "noPlays": "Hãy phát nhạc, những gì bạn nghe sẽ hiện ở đây.",
+    "loadFailed": "Không tải được lịch sử nghe.",
+    "retry": "Thử lại",
+    "openPage": "Mở {{name}}",
+    "previousPage": "Trang trước của {{name}}",
+    "nextPage": "Trang sau của {{name}}"
   },
   "table": {
     "trackOrSlice": "Bài hát / Lát cắt",

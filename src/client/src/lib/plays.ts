@@ -24,7 +24,8 @@ export function createListenCounter(lengthSeconds: number, startTime: number): (
   };
 }
 
-export async function postPlay(play: PlayRecord): Promise<void> {
+// True once recorded
+export async function postPlay(play: PlayRecord): Promise<boolean> {
   try {
     const res = await fetch("/api/plays", {
       method: "POST",
@@ -32,7 +33,9 @@ export async function postPlay(play: PlayRecord): Promise<void> {
       body: JSON.stringify(play),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
   } catch (e) {
     console.error("[Plays] Failed to record a play:", e);
+    return false;
   }
 }

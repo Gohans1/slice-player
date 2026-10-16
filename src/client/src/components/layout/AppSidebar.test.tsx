@@ -543,6 +543,17 @@ describe("AppSidebar", () => {
     expect(menuButton("Mix").innerHTML).not.toContain("animate-eq-1");
   });
 
+  it("shows the now-playing equalizer on the library page playing, and on Home for its song lists", async () => {
+    usePlayerStore.setState({ playbackMode: "original_only", activeTrack: track("a", "ready"), isPlaying: true });
+    await renderSidebar();
+    expect([menuButton("Tracks"), menuButton("Home")].map((el) => el.innerHTML.includes("animate-eq-1"))).toEqual([true, false]);
+
+    await act(async () => {
+      usePlayerStore.setState({ queueOrigin: { type: "home", shelf: "heavy_rotation", mode: "original_only", fromHome: true } });
+    });
+    expect([menuButton("Tracks"), menuButton("Home")].map((el) => el.innerHTML.includes("animate-eq-1"))).toEqual([false, true]);
+  });
+
   it("shows each playlist's cover beside its name, and an icon for one without artwork", async () => {
     usePlayerStore.setState({
       playlists: [

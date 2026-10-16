@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Combine,
   Disc,
+  House,
   LibraryBig,
   ListMusic,
   Loader2,
@@ -51,7 +52,7 @@ import { QueueMenuItems } from "../QueueMenuItems";
 import type { PlayChoice } from "../LibraryPageActions";
 import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
 import { PlaylistCover } from "../PlaylistCover";
-import { isPlaybackMode, usePlayerStore, type PlaybackMode, type SystemCategory } from "../../store/usePlayerStore";
+import { isPlaybackMode, selectPlayingPage, usePlayerStore, type PlaybackMode, type SystemCategory } from "../../store/usePlayerStore";
 import { resolvePlaylistCover } from "../../lib/playlistCover";
 import { canStartMix } from "../../lib/mixPlaylist";
 import { cn } from "../../lib/utils";
@@ -124,7 +125,7 @@ export function AppSidebar({
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const hasActiveTrack = usePlayerStore((s) => Boolean(s.activeTrack));
   const playingPlaylistId = usePlayerStore((s) => s.activePlaylistPlayingId);
-  const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const playingPage = usePlayerStore(selectPlayingPage);
 
   const [playlistToDelete, setPlaylistToDelete] = React.useState<Playlist | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -191,12 +192,32 @@ export function AppSidebar({
       </SidebarHeader>
       {/* Scrolling past the end of the playlists doesn't carry on into the library */}
       <SidebarContent className="overscroll-contain">
+        {/* Home sits above the library, as in Apple Music */}
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={activePlaylistId === null && activeSystemCategory === "home"}
+                tooltip={t("categories.home")}
+                onClick={() => openCategory("home")}
+              >
+                {playingPage === "home" ? (
+                  <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
+                ) : (
+                  <House className="text-primary" />
+                )}
+                <span>{t("categories.home")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.systemHeader")}</SidebarGroupLabel>
           <SidebarMenu>
             {categories.map((category) => {
               const mode = category.id;
-              const isNowPlaying = hasActiveTrack && playingPlaylistId === null && playbackMode === mode;
+              const isNowPlaying = playingPage === mode;
               const Icon = category.icon;
               const button = (
                 <SidebarMenuButton
