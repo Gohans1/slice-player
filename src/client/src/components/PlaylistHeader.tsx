@@ -1,15 +1,14 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useFormatNumber } from "../hooks/use-format-number";
-import { Check, Combine, FolderTree, ImageIcon, MoreHorizontal, Pencil, Play, Plus, Shuffle, Trash2, X } from "lucide-react";
+import { Check, Combine, FolderTree, ImageIcon, ListPlus, MoreHorizontal, Pencil, Play, Shuffle, Trash2, X } from "lucide-react";
 import { PlaylistCover } from "./PlaylistCover";
+import { PlaylistGrid } from "./PlaylistGrid";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, REVEAL_ON_HOVER } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./Modal";
-import { Badge } from "./ui/badge";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -38,7 +37,6 @@ interface PlaylistHeaderProps {
 
 export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeaderProps) {
   const { t } = useTranslation();
-  const formatNumber = useFormatNumber();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
@@ -70,10 +68,13 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
     return allPlaylists.find((p) => p.id === playlist.parent_id) || null;
   }, [playlist.parent_id, allPlaylists]);
 
-  const childPlaylists = React.useMemo(() => {
-    if (playlist.is_mix || playlist.parent_id) return [];
-    return allPlaylists.filter((p) => p.parent_id === playlist.id);
-  }, [playlist.id, playlist.is_mix, playlist.parent_id, allPlaylists]);
+  // Sub-playlists go one level deep, and a mix holds no songs of its own to share out
+  const canHaveSubPlaylists = !playlist.is_mix && !playlist.parent_id;
+  const subPlaylistsHeadingId = React.useId();
+  const childPlaylists = React.useMemo(
+    () => (canHaveSubPlaylists ? allPlaylists.filter((p) => p.parent_id === playlist.id) : []),
+    [canHaveSubPlaylists, playlist.id, allPlaylists]
+  );
 
   // Sync editing name when playlist changes
   React.useEffect(() => {
@@ -315,6 +316,12 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                         <ImageIcon />
                         {t("playlist.changeCover", "Đổi ảnh bìa")}
                       </DropdownMenuItem>
+                      {canHaveSubPlaylists && (
+                        <DropdownMenuItem onClick={() => setIsCreateSubModalOpen(true)}>
+                          <ListPlus />
+                          {t("playlist.newSubPlaylist")}
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                     </>
                   )}
@@ -332,46 +339,19 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
           </div>
         </div>
 
-        {/* Sub-Playlists Navigation Bar (Parent View) */}
-        {!playlist.is_mix && !playlist.parent_id && (
-          <div data-testid="sub-playlists-bar" className="flex flex-col gap-2 border-t border-border/40 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                <FolderTree className="size-3.5 text-flexoki-purple" aria-hidden="true" />
-                {t("playlist.subPlaylists", "Sub-playlists")}
-                {childPlaylists.length > 0 && <Badge variant="secondary">{formatNumber(childPlaylists.length)}</Badge>}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setIsCreateSubModalOpen(true)}
-                data-testid="create-sub-playlist-btn"
-              >
-                <Plus data-icon="inline-start" />
-                {t("playlist.newSubPlaylist", "New Sub-playlist")}
-              </Button>
-            </div>
-
-            {childPlaylists.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {childPlaylists.map((child) => (
-                  <Button
-                    key={child.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActivePlaylist(child.id)}
-                    data-testid={`sub-playlist-pill-${child.id}`}
-                  >
-                    <FolderTree data-icon="inline-start" className="text-flexoki-purple" aria-hidden="true" />
-                    <span className="max-w-40 truncate">{child.name}</span>
-                    {child.item_count !== undefined && (
-                      <span className="text-muted-foreground tabular-nums">{formatNumber(child.item_count)}</span>
-                    )}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Like a playlist folder in Apple Music: the sub-playlists as tiles, above the songs of them all */}
+        {canHaveSubPlaylists && childPlaylists.length > 0 && (
+          <section aria-labelledby={subPlaylistsHeadingId} className="flex flex-col gap-3 border-t border-border/40 pt-4">
+            <h2 id={subPlaylistsHeadingId} className="text-base font-bold">
+              {t("playlist.subPlaylists")}
+            </h2>
+            <PlaylistGrid
+              playlists={childPlaylists}
+              onOpen={(id) => setActivePlaylist(id)}
+              onCreate={() => setIsCreateSubModalOpen(true)}
+              createLabel={t("playlist.newSubPlaylist")}
+            />
+          </section>
         )}
       </section>
 

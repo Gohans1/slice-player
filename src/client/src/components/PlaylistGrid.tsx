@@ -23,17 +23,19 @@ type ListedPlaylist = Playlist & { item_count: number };
 interface PlaylistGridProps {
   playlists: ListedPlaylist[];
   onOpen: (id: string) => void;
+  // The dashed tile after the playlists: New Playlist, unless the caller names it otherwise
   onCreate: () => void;
-  onMix: () => void;
-  onEditSources: (mix: ListedPlaylist) => void;
+  createLabel?: string;
+  onMix?: () => void;
+  onEditSources?: (mix: ListedPlaylist) => void;
 }
 
-export function PlaylistGrid({ playlists, onOpen, onCreate, onMix, onEditSources }: PlaylistGridProps) {
+export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, onEditSources }: PlaylistGridProps) {
   const { t } = useTranslation();
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const playingId = usePlayerStore((s) => (s.isPlaying ? s.activePlaylistPlayingId : null));
   const [playlistToDelete, setPlaylistToDelete] = React.useState<ListedPlaylist | null>(null);
-  const canMix = playlists.filter((pl) => !pl.is_mix).length >= 2;
+  const canMix = Boolean(onMix) && playlists.filter((pl) => !pl.is_mix).length >= 2;
 
   return (
     <>
@@ -51,11 +53,11 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, onMix, onEditSources
         ))}
 
         <li>
-          <NewTileButton icon={Plus} label={t("library.newPlaylist")} onClick={onCreate} />
+          <NewTileButton icon={Plus} label={createLabel ?? t("library.newPlaylist")} onClick={onCreate} />
         </li>
         {canMix && (
           <li>
-            <NewTileButton icon={Combine} label={t("mixPlaylist.newTile")} onClick={onMix} />
+            <NewTileButton icon={Combine} label={t("mixPlaylist.newTile")} onClick={() => onMix?.()} />
           </li>
         )}
       </ul>
@@ -79,7 +81,7 @@ interface PlaylistTileProps {
   parent?: ListedPlaylist;
   isPlaying: boolean;
   onOpen: (id: string) => void;
-  onEditSources: (mix: ListedPlaylist) => void;
+  onEditSources?: (mix: ListedPlaylist) => void;
   onDelete: (playlist: ListedPlaylist) => void;
 }
 
@@ -101,7 +103,7 @@ function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, 
           <Shuffle />
           {t("nav.shuffle")}
         </DropdownMenuItem>
-        {pl.is_mix && (
+        {pl.is_mix && onEditSources && (
           <DropdownMenuItem onClick={() => onEditSources(pl)}>
             <Combine />
             {t("mixPlaylist.editSources")}

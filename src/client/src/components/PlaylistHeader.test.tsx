@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, mock } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -404,42 +404,99 @@ describe("PlaylistHeader Component (TDD)", () => {
     expect(setActivePlaylist).toHaveBeenCalledWith("pl_parent");
   });
 
-  it("renders sub-playlists pill bar on root playlist and allows switching to child", async () => {
-    const setActivePlaylist = mock(async () => {});
-    const parentPlaylist: Playlist & { item_count: number } = {
-      id: "pl_root",
-      name: "Parent List",
-      created_at: 1,
-      updated_at: 1,
-      item_count: 10,
+  // Like a playlist folder in Apple Music: a playlist's sub-playlists show as tiles above its songs
+  describe("sub-playlists", () => {
+    const parent: Playlist & { item_count: number } = { id: "pl_root", name: "Parent List", created_at: 1, updated_at: 1, item_count: 10 };
+    const sub1: Playlist & { item_count: number } = { id: "pl_c1", name: "Sub 1", parent_id: "pl_root", created_at: 2, updated_at: 2, item_count: 3 };
+    const sub2: Playlist & { item_count: number } = { id: "pl_c2", name: "Sub 2", parent_id: "pl_root", created_at: 3, updated_at: 3, item_count: 7 };
+    const mix: Playlist & { item_count: number } = { id: "mix_1", name: "Night", created_at: 4, updated_at: 4, item_count: 10, is_mix: true, source_ids: ["pl_root", "pl_c1"] };
+
+    const renderHeader = (playlist: Playlist & { item_count: number }) =>
+      act(async () => {
+        root.render(<PlaylistHeader playlist={playlist} items={mockItems} />);
+      });
+    const shelf = () => {
+      const heading = Array.from(container.querySelectorAll("h2")).find((h) => h.textContent === "Sub-playlists");
+      return heading?.closest("section") ?? null;
+    };
+    const menuTexts = () => Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    // The header loads the New Playlist dialog's code when it first opens; loading it here lets it open at once
+    beforeAll(async () => {
+      await import("./CreatePlaylistModal");
+    });
+    // The parent the New Playlist dialog starts on
+    const newPlaylistParent = async () => {
+      await act(tick);
+      return document.querySelector("[role='dialog'] [role='combobox']")?.textContent ?? "";
     };
 
-    usePlayerStore.setState({
-      playlists: [
-        parentPlaylist,
-        { id: "pl_c1", name: "Sub 1", parent_id: "pl_root", created_at: 2, updated_at: 2, item_count: 3 },
-        { id: "pl_c2", name: "Sub 2", parent_id: "pl_root", created_at: 3, updated_at: 3, item_count: 7 },
-      ],
-      setActivePlaylist,
-    } as any);
+    it("shows a playlist's sub-playlists as tiles that open them", async () => {
+      const setActivePlaylist = mock(async (_id: string | null) => {});
+      usePlayerStore.setState({ playlists: [parent, sub1, sub2], setActivePlaylist });
+      await renderHeader(parent);
 
-    await act(async () => {
-      root.render(<PlaylistHeader playlist={parentPlaylist} items={mockItems} />);
+      expect(Array.from(shelf()?.querySelectorAll("h3") ?? []).map((h) => h.textContent)).toEqual(["Sub 1", "Sub 2"]);
+      expect(shelf()?.textContent).toContain("7 items");
+      await act(async () => {
+        shelf()?.querySelector<HTMLButtonElement>("button[aria-label='Open playlist Sub 1']")?.click();
+      });
+
+      expect(setActivePlaylist.mock.calls).toEqual([["pl_c1"]]);
     });
 
-    const pillBar = container.querySelector("[data-testid='sub-playlists-bar']");
-    expect(pillBar).not.toBeNull();
-    expect(pillBar?.textContent).toContain("Sub 1");
-    expect(pillBar?.textContent).toContain("Sub 2");
+    it("starts a new sub-playlist of the playlist from its More menu", async () => {
+      usePlayerStore.setState({ playlists: [parent, sub1] });
+      await renderHeader(parent);
 
-    const pill1 = container.querySelector("[data-testid='sub-playlist-pill-pl_c1']") as HTMLButtonElement;
-    expect(pill1).not.toBeNull();
+      await openMoreMenu();
+      await act(async () => {
+        Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+          .find((el) => el.textContent?.trim() === "New Sub-playlist")
+          ?.click();
+      });
 
-    await act(async () => {
-      pill1.click();
+      expect(await newPlaylistParent()).toContain("Parent List");
     });
 
-    expect(setActivePlaylist).toHaveBeenCalledWith("pl_c1");
+    it("starts a new sub-playlist from the tile after the sub-playlists", async () => {
+      usePlayerStore.setState({ playlists: [parent, sub1] });
+      await renderHeader(parent);
+
+      await act(async () => {
+        Array.from(shelf()?.querySelectorAll("button") ?? [])
+          .find((b) => b.textContent?.trim() === "New Sub-playlist")
+          ?.click();
+      });
+
+      expect(await newPlaylistParent()).toContain("Parent List");
+    });
+
+    it("leaves out the section for a playlist without sub-playlists, keeping New Sub-playlist in its menu", async () => {
+      usePlayerStore.setState({ playlists: [parent] });
+      await renderHeader(parent);
+
+      expect(shelf()).toBe(null);
+      expect(container.textContent).not.toContain("Sub-playlists");
+      await openMoreMenu();
+      expect(menuTexts()).toContain("New Sub-playlist");
+    });
+
+    it("offers no sub-playlists inside a sub-playlist or a mix", async () => {
+      usePlayerStore.setState({ playlists: [parent, sub1, mix] });
+
+      await renderHeader(sub1);
+      await openMoreMenu();
+      expect(menuTexts()).not.toContain("New Sub-playlist");
+      expect(shelf()).toBe(null);
+      await act(async () => root.unmount());
+      root = createRoot(container);
+
+      await renderHeader(mix);
+      await openMoreMenu();
+      expect(menuTexts()).not.toContain("New Sub-playlist");
+      expect(shelf()).toBe(null);
+    });
   });
 });
 
