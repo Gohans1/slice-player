@@ -284,7 +284,7 @@ export interface PlayerState {
   toggleLoopTrack: () => void;
   setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
-  playModeQueue: (mode: PlaybackMode, startIndex?: number, forceShuffle?: boolean) => Promise<void>;
+  playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
   playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number, origin?: QueueOrigin | null) => Promise<void>;
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
@@ -3346,48 +3346,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     await get().buildPlaylistQueue(playlistId, false, indexOrItemId);
   },
 
-  playModeQueue: async (mode: PlaybackMode, startIndex = 0, forceShuffle = false) => {
-    try {
-      let modeItems = get().queuesByMode[mode] || [];
-      if (modeItems.length === 0) {
-        let segments: Segment[] = [];
-        if (mode !== "original_only") {
-          const segRes = await fetchAllSegmentsWithEtag();
-          if (segRes.success) segments = segRes.segments;
-        }
-        modeItems = generateModeQueueItems(mode, segments, get().tracks);
-      }
-      if (modeItems.length === 0) return;
-
-      let queueItems = [...modeItems];
-      if (forceShuffle) {
-        queueItems = shuffleArray(queueItems);
-        startIndex = 0;
-      }
-      const clampedIndex = Math.max(0, Math.min(startIndex, queueItems.length - 1));
-      set({
-        queue: queueItems,
-        queueIndex: clampedIndex,
-        isShuffle: forceShuffle,
-        playbackMode: mode,
-        activePlaylistPlayingId: null,
-        queueOrigin: { type: "system", mode },
-        queuesByMode: {
-          ...get().queuesByMode,
-          [mode]: queueItems,
-        },
-        initializedModes: {
-          ...get().initializedModes,
-          [mode]: true,
-        },
-      });
-      const target = queueItems[clampedIndex];
-      if (target) {
-        await get().playSegment(target.segment, target.track, clampedIndex);
-      }
-    } catch (e) {
-      console.error(`[Store] Failed to play mode queue for "${mode}":`, e);
-    }
+  // Play and Shuffle on a library page: the page's songs as shown, from the top or shuffled
+  playModeQueue: async (mode: PlaybackMode, items: QueueItem[], { shuffle = false, origin }: { shuffle?: boolean; origin?: QueueOrigin } = {}) => {
+    if (items.length === 0) return;
+    // Playing the whole page brings back songs taken out of this mode's queue earlier
+    clearDismissedSegments(mode);
+    const queue = shuffle ? shuffleArray(items) : [...items];
+    set({
+      queue,
+      queueIndex: 0,
+      isShuffle: shuffle,
+      shuffleByMode: { ...get().shuffleByMode, [mode]: shuffle },
+      playbackMode: mode,
+      activePlaylistPlayingId: null,
+      queueOrigin: origin ?? { type: "system", mode },
+      queuesByMode: { ...get().queuesByMode, [mode]: queue },
+      initializedModes: { ...get().initializedModes, [mode]: true },
+    });
+    await get().playSegment(queue[0].segment, queue[0].track, 0);
   },
 
   playSegmentInMode: async (
