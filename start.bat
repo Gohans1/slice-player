@@ -31,7 +31,7 @@ if defined PORT set "PORT_NUM=%PORT%"
 curl -s -f -m 1 http://127.0.0.1:%PORT_NUM%/api/tracks >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     echo [1/2] Server Slice Player dang hoat dong san tren port %PORT_NUM%.
-    goto launch_client
+    goto skip_build
 )
 
 if "%~1"=="--no-build" (
@@ -49,39 +49,9 @@ if errorlevel 1 (
 
 :skip_build
 
-echo [2/2] Dang khoi dong server Bun...
+rem The server opens the app window itself; with one already running, it just opens another window and exits
+echo [2/2] Dang khoi dong server Bun va mo giao dien...
 start "SlicePlayerServer" /min bun run src/server/index.ts
-set /a ATTEMPTS=0
-
-:wait_loop
-ping -n 2 127.0.0.1 >nul
-curl -s -f -m 1 http://127.0.0.1:%PORT_NUM%/api/tracks >nul 2>&1
-if %ERRORLEVEL% EQU 0 goto launch_client
-set /a ATTEMPTS+=1
-if %ATTEMPTS% GEQ 15 (
-    echo [WARNING] Server chua phan hoi sau 15 giay, tiep tuc mo trinh duyet...
-    goto launch_client
-)
-goto wait_loop
-
-:launch_client
-
-set "EDGE_PATH="
-if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
-    set "EDGE_PATH=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
-) else if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (
-    set "EDGE_PATH=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
-) else if exist "%LocalAppData%\Microsoft\Edge\Application\msedge.exe" (
-    set "EDGE_PATH=%LocalAppData%\Microsoft\Edge\Application\msedge.exe"
-)
-
-if defined EDGE_PATH (
-    echo Dang mo giao dien MS Edge App Mode...
-    start "" "%EDGE_PATH%" --app=http://127.0.0.1:%PORT_NUM% --user-data-dir="%~dp0data\edge_profile" --autoplay-policy=no-user-gesture-required --start-maximized
-) else (
-    echo Dang mo trinh duyet mac dinh...
-    start /MAX http://127.0.0.1:%PORT_NUM%
-)
 
 echo ===================================================
 echo Slice Player da san sang tren http://127.0.0.1:%PORT_NUM%

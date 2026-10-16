@@ -20,15 +20,23 @@ import { getRecentLogs, clearServerLogs, logEvent, sanitizeInternalPaths } from 
 import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibraryExporting } from "./backup";
 import { createCachedJsonResponse } from "./etag";
 import { THUMBNAIL_VARIANTS_DIR, THUMBNAIL_WIDTHS, isThumbnailSize, removeThumbnailVariants, resizedThumbnail } from "./thumbnails";
+import { isServerRunning, openAppWindow } from "./appWindow";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
+const APP_URL = `http://127.0.0.1:${PORT}`;
+
+// Launching again while the server is up only opens another window onto it
+if (process.env.NODE_ENV === "production" && await isServerRunning(APP_URL)) {
+  openAppWindow(APP_URL);
+  process.exit(0);
+}
 
 // Initialize SQLite database
 initDatabase("./data/music.db");
 await recoverIncompleteIngests();
 
-logEvent("info", "system", `Máy chủ Slice Player đang chạy tại http://127.0.0.1:${PORT}`);
+logEvent("info", "system", `Máy chủ Slice Player đang chạy tại ${APP_URL}`);
 
 
 const activeSockets = new Set<ServerWebSocket>();
@@ -1539,6 +1547,8 @@ const server = serve({
     },
   },
 });
+
+if (process.env.NODE_ENV === "production") openAppWindow(APP_URL);
 
 function checkIdleShutdown() {
   if (process.env.NODE_ENV !== "production") return;
