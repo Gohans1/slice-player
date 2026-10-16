@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -17,6 +17,7 @@ const mockSetTime = mock((_time?: number) => {});
 const mockZoom = mock((_px?: number) => {});
 const mockGetCurrentTime = mock(() => 15);
 const mockGetDuration = mock(() => 120);
+const mockAddRegion = mock((_options: { id: string; start: number; end: number }) => {});
 const mockWsOn = mock((event: string, cb: Function) => {
   if (!eventHandlers[event]) {
     eventHandlers[event] = [];
@@ -54,7 +55,7 @@ mock.module("wavesurfer.js/dist/plugins/regions.esm.js", () => {
         on: mock(() => {}),
         unAll: mock(() => {}),
         getRegions: mock(() => []),
-        addRegion: mock(() => {}),
+        addRegion: mockAddRegion,
       })),
     },
   };
@@ -125,6 +126,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     mockDestroy.mockClear();
     mockGetCurrentTime.mockClear();
     mockGetDuration.mockClear();
+    mockAddRegion.mockClear();
     usePlayerStore.setState({
       tracks: [{ ...mockTrack }],
       sliceStudioTrack: null,
@@ -151,6 +153,39 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     delete (globalThis as any).Event;
     delete (globalThis as any).KeyboardEvent;
     delete (globalThis as any).PointerEvent;
+  });
+
+  // WaveSurfer learns the track's length (and can zoom) only once it's ready
+  const waveformReady = async () => {
+    await act(async () => {
+      for (const handler of eventHandlers.ready ?? []) handler(120);
+    });
+  };
+
+  it("draws the slices on the waveform once it knows the track's length", async () => {
+    const segment: Segment = { id: "seg-1", track_id: "test-track-1", name: "Verse", start_time: 62.2, end_time: 75.3, color: "#4385BE" };
+    const segmentsFetch: typeof fetch = Object.assign(
+      async (input: string | URL | Request) =>
+        (input instanceof Request ? input.url : String(input)).includes("/segments") ? Response.json([segment]) : Response.json(mockTrack),
+      { preconnect: () => {} }
+    );
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(segmentsFetch);
+    try {
+      await act(async () => {
+        root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      // A region added before then would be cut down to a zero-length marker at the start
+      expect(mockAddRegion.mock.calls.length).toBe(0);
+
+      await waveformReady();
+
+      expect(mockAddRegion.mock.calls.map(([options]) => [options.id, options.start, options.end])).toEqual([["seg-1", 62.2, 75.3]]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("configures WaveSurfer with dragToSeek enabled", async () => {
@@ -643,6 +678,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     await act(async () => {
       root.render(<SliceStudio track={mockTrack} onClose={handleClose} />);
     });
+    await waveformReady();
 
     const zoomInBtn = (container.querySelector("button[aria-label*='Zoom in' i], button[aria-label*='Phóng to' i]")) as HTMLButtonElement;
     const zoomOutBtn = (container.querySelector("button[aria-label*='Zoom out' i], button[aria-label*='Thu nhỏ' i]")) as HTMLButtonElement;
@@ -678,6 +714,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     await act(async () => {
       root.render(<SliceStudio track={mockTrack} onClose={handleClose} />);
     });
+    await waveformReady();
 
     const waveContainer = container.querySelector("div.rounded-lg.bg-background");
     expect(waveContainer).not.toBeNull();

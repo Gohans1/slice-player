@@ -488,7 +488,9 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     ws.setVolume(outputGain(currentVol, usePlayerStore.getState().masterVolume));
     wavesurferRef.current = ws;
-    setIsWaveSurferReady(true);
+    // Regions and zoom need the track's length, which WaveSurfer knows once it's ready. Regions added before then
+    // are clamped into zero-length markers at the start.
+    ws.on("ready", () => setIsWaveSurferReady(true));
 
     let isWaveDragging = false;
 
