@@ -7,11 +7,11 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { cn, formatDuration, DEFAULT_SLICE_COLOR, REVEAL_ON_HOVER } from "../lib/utils";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
-import { usePlayerStore, type PlaybackMode, type QueueItem } from "../store/usePlayerStore";
+import { usePlaybackSource } from "../hooks/use-playback-source";
+import { usePlayerStore, type QueueItem } from "../store/usePlayerStore";
 
 interface QueueDrawerProps {
   isOpen: boolean;
@@ -22,13 +22,9 @@ interface QueueContentProps {
   onClose: () => void;
   // The sheet passes its dialog title so Base UI labels the dialog with it
   titleAs?: React.ElementType;
+  // A sheet covers the page its source leads to, so it closes on the way there
+  closeOnNavigate?: boolean;
 }
-
-const PLAYBACK_MODES = [
-  { mode: "mixed", icon: Shuffle, labelKey: "categories.mixed", fallback: "Mix" },
-  { mode: "slices_only", icon: Scissors, labelKey: "categories.slices", fallback: "Slices" },
-  { mode: "original_only", icon: Disc, labelKey: "categories.tracks", fallback: "Tracks" },
-] as const satisfies readonly { mode: PlaybackMode; icon: typeof Shuffle; labelKey: string; fallback: string }[];
 
 export function getBoundaryDropIndex(
   clientY: number,
@@ -343,7 +339,7 @@ const safeCancelRaf = (handle: number | null) => {
   }
 };
 
-function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
+function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false }: QueueContentProps) {
   const { t } = useTranslation();
   const formatNumber = useFormatNumber();
   const queue = usePlayerStore((s) => s.queue);
@@ -353,12 +349,7 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
   const removeQueueItemAtIndex = usePlayerStore((s) => s.removeQueueItemAtIndex);
   const reorderQueue = usePlayerStore((s) => s.reorderQueue);
   const playbackMode = usePlayerStore((s) => s.playbackMode);
-  const setPlaybackMode = usePlayerStore((s) => s.setPlaybackMode);
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
-  const activePlaylistPlayingName = usePlayerStore((s) => {
-    if (!s.activePlaylistPlayingId) return null;
-    return s.playlists.find((p) => p.id === s.activePlaylistPlayingId)?.name ?? null;
-  });
   const reshuffleCurrentQueue = usePlayerStore((s) => s.reshuffleCurrentQueue);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
@@ -439,14 +430,11 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
 
   const displayQueue = queue;
 
-  const playingPlaylistName = React.useMemo(() => {
-    if (activePlaylistPlayingId) {
-      return activePlaylistPlayingName || t("playlist.customHeader", "Playlists");
-    }
-    if (playbackMode === "slices_only") return t("categories.slices", "Slices");
-    if (playbackMode === "original_only") return t("categories.tracks", "Tracks");
-    return t("categories.mixed", "Mix");
-  }, [activePlaylistPlayingId, activePlaylistPlayingName, playbackMode, t]);
+  const { name: sourceName, open: openSource } = usePlaybackSource();
+  const goToSource = async () => {
+    await openSource();
+    if (closeOnNavigate) onClose();
+  };
 
   // Keep actively dragged item mounted in the DOM to prevent HTML5 Drag & Drop from aborting on auto-scroll
   const rangeExtractor = React.useCallback(
@@ -940,41 +928,28 @@ function QueueContent({ onClose, titleAs: Title = "h2" }: QueueContentProps) {
           </Button>
         </div>
 
-        <ToggleGroup
-          aria-label={t("queue.playbackMode", "Playback mode")}
-          value={activePlaylistPlayingId ? [] : [playbackMode]}
-          onValueChange={(value) => {
-            // Pressing the active mode again empties the value; keep the mode instead
-            const mode = PLAYBACK_MODES.find((option) => value.includes(option.mode))?.mode;
-            if (mode) void setPlaybackMode(mode);
-          }}
-          variant="outline"
-          size="sm"
-          spacing={0}
-          className="mt-3 w-full"
-        >
-          {PLAYBACK_MODES.map(({ mode, icon: Icon, labelKey, fallback }) => (
-            <ToggleGroupItem key={mode} value={mode} className="flex-1">
-              <Icon data-icon="inline-start" />
-              {t(labelKey, fallback)}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-
-        {/* Where playback comes from, next to the queue order controls */}
-        <div className="flex items-center justify-between gap-2 border-b border-border/50 py-2">
+        {/* Where playback comes from, which leads there, next to the queue order controls */}
+        <div className="mt-2 flex items-center justify-between gap-2 border-b border-border/50 py-2">
           <div className="flex min-w-0 items-center gap-1.5 text-xs">
-            <span className="shrink-0 text-muted-foreground">{t("queue.playingLabel", "Playing:")}</span>
-            {activePlaylistPlayingId ? (
-              <Folder className="h-3.5 w-3.5 shrink-0 text-flexoki-yellow" />
-            ) : playbackMode === "slices_only" ? (
-              <Scissors className="h-3.5 w-3.5 shrink-0 text-primary" />
-            ) : playbackMode === "original_only" ? (
-              <Disc className="h-3.5 w-3.5 shrink-0 text-flexoki-green" />
-            ) : (
-              <Shuffle className="h-3.5 w-3.5 shrink-0 text-flexoki-blue" />
-            )}
-            <span className="truncate font-semibold text-primary">{playingPlaylistName}</span>
+            <span className="shrink-0 text-muted-foreground">{t("queue.playingFrom", "Playing from")}</span>
+            <button
+              type="button"
+              onClick={() => void goToSource()}
+              aria-label={t("queue.goToSource", { name: sourceName, defaultValue: `Go to ${sourceName}` })}
+              title={t("queue.goToSource", { name: sourceName, defaultValue: `Go to ${sourceName}` })}
+              className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-xs font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {activePlaylistPlayingId ? (
+                <Folder className="size-3.5 shrink-0 text-flexoki-yellow" aria-hidden="true" />
+              ) : playbackMode === "slices_only" ? (
+                <Scissors className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+              ) : playbackMode === "original_only" ? (
+                <Disc className="size-3.5 shrink-0 text-flexoki-green" aria-hidden="true" />
+              ) : (
+                <Shuffle className="size-3.5 shrink-0 text-flexoki-blue" aria-hidden="true" />
+              )}
+              <span className="truncate">{sourceName}</span>
+            </button>
           </div>
           <div className="flex shrink-0 items-center">
             {isShuffle && displayQueue.length > 0 && (
@@ -1264,7 +1239,7 @@ export function QueueDrawer({ isOpen, onClose }: QueueDrawerProps) {
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent id="queue-drawer" showCloseButton={false}>
-        <QueueContent onClose={onClose} titleAs={SheetTitle} />
+        <QueueContent onClose={onClose} titleAs={SheetTitle} closeOnNavigate />
       </SheetContent>
     </Sheet>
   );

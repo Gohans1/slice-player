@@ -39,9 +39,9 @@ import { Spinner } from "./ui/spinner";
 import { SliceSeekBar } from "./SliceSeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 import { cn, formatTime, DEFAULT_SLICE_COLOR } from "../lib/utils";
-import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { useHeightCssVar } from "../hooks/use-height-css-var";
+import { usePlaybackSource } from "../hooks/use-playback-source";
 import { usePlayerStore, normalizeTrackVolume } from "../store/usePlayerStore";
 import { useTranslation } from "react-i18next";
 import { useFormatNumber } from "../hooks/use-format-number";
@@ -83,17 +83,9 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
   const nextSegment = usePlayerStore((s) => s.nextSegment);
   const prevSegment = usePlayerStore((s) => s.prevSegment);
   const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
-  const playbackMode = usePlayerStore((s) => s.playbackMode);
   const activePlaylistPlayingId = usePlayerStore((s) => s.activePlaylistPlayingId);
-  const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
-  const activePlaylistItems = usePlayerStore((s) => s.activePlaylistItems);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
-  const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const requestScrollToActiveTrack = usePlayerStore((s) => s.requestScrollToActiveTrack);
-  const activePlaylistPlayingName = usePlayerStore((s) => {
-    if (!s.activePlaylistPlayingId) return null;
-    return s.playlists.find((p) => p.id === s.activePlaylistPlayingId)?.name ?? null;
-  });
   const isTransitional = usePlayerStore((s) => {
     if (!s.activeSegment || s.queue.length === 0) return false;
     const item = s.queueIndex >= 0 ? s.queue[s.queueIndex] : null;
@@ -104,16 +96,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
   const isFromSearch = queueOrigin?.type === "search";
   const searchCount = (typeof queueOrigin?.count === "number" ? Math.min(queueOrigin.count, queueLength || queueOrigin.count) : queueLength) || 0;
 
-  const playingPlaylistName = React.useMemo(() => {
-    if (activePlaylistPlayingId) {
-      return activePlaylistPlayingName || t("playlist.customHeader", "Playlists");
-    }
-    return playbackMode === "slices_only"
-      ? t("categories.slices", "Slices")
-      : playbackMode === "original_only"
-      ? t("categories.tracks", "Tracks")
-      : t("categories.mixed", "Mix");
-  }, [activePlaylistPlayingId, activePlaylistPlayingName, playbackMode, t]);
+  const { name: playingPlaylistName, open: handleActiveTagClick } = usePlaybackSource();
 
   const badgeTitle = React.useMemo(() => {
     if (isFromSearch) {
@@ -225,46 +208,6 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
         (!normalizedPlayingName || pl.name.trim().toLowerCase() !== normalizedPlayingName)
     );
   }, [containingPlaylists, activePlaylistPlayingId, playingPlaylistName]);
-
-  const handleActiveTagClick = React.useCallback(async () => {
-    // If the user has a playlist currently open and that playlist contains the active track/slice,
-    // scroll directly to that track in the open playlist rather than navigating away.
-    if ((!activePlaylistPlayingId || activePlaylistPlayingId === activePlaylistId) && activePlaylistId && activePlaylistItems.length > 0) {
-      const activeIdx = findActivePlaylistItemIndex(activePlaylistItems, {
-        activeTrackId: activeTrack?.id,
-        activeSegmentId: activeSegment?.id,
-        isFallbackSegment: !activeSegment || activeSegment.id.startsWith("fallback_"),
-      });
-      if (activeIdx >= 0) {
-        requestScrollToActiveTrack(`playlist:${activePlaylistId}`);
-        return;
-      }
-    }
-
-    const targetKey = activePlaylistPlayingId
-      ? `playlist:${activePlaylistPlayingId}`
-      : `category:${playbackMode || "mixed"}`;
-
-    if (activePlaylistPlayingId) {
-      await setActivePlaylist(activePlaylistPlayingId);
-    } else {
-      await setActivePlaylist(null);
-      if (playbackMode) {
-        setActiveSystemCategory(playbackMode);
-      }
-    }
-    requestScrollToActiveTrack(targetKey);
-  }, [
-    activePlaylistId,
-    activePlaylistItems,
-    activeTrack?.id,
-    activeSegment?.id,
-    activePlaylistPlayingId,
-    playbackMode,
-    setActivePlaylist,
-    setActiveSystemCategory,
-    requestScrollToActiveTrack,
-  ]);
 
   React.useEffect(() => {
     if (!activeTrack?.id) {

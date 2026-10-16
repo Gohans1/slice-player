@@ -1094,75 +1094,77 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     expect(closeCount).toBe(1);
   });
 
-  it("QueuePanel shows the three playback modes with the current one pressed", () => {
-    act(() => {
-      root.render(<QueuePanel onClose={() => {}} />);
+  // Like "Playing from" in Apple Music: the queue names where it plays from, which is also the way there
+  describe("where the queue plays from", () => {
+    let opened: (string | null)[] = [];
+    const original = usePlayerStore.getState();
+
+    beforeEach(() => {
+      opened = [];
+      usePlayerStore.setState({
+        activePlaylistId: null,
+        activePlaylistItems: [],
+        setActivePlaylist: async (id) => {
+          opened.push(id);
+        },
+      });
     });
 
-    const group = container.querySelector('[role="group"][aria-label="Chế độ phát"]') as HTMLElement;
-    const modes = Array.from(group.querySelectorAll("button")).map((b) => [b.textContent, b.getAttribute("aria-pressed")]);
-    expect(modes).toEqual([
-      ["Trộn cả 2", "false"],
-      ["Lát cắt", "true"],
-      ["Bài gốc", "false"],
-    ]);
-  });
-
-  it("QueuePanel switches the playback mode from the mode toggle", () => {
-    const requested: string[] = [];
-    const origSetPlaybackMode = usePlayerStore.getState().setPlaybackMode;
-    usePlayerStore.setState({
-      setPlaybackMode: async (mode) => {
-        requested.push(mode);
-        return true;
-      },
+    afterEach(() => {
+      usePlayerStore.setState({ setActivePlaylist: original.setActivePlaylist, activePlaylistPlayingId: null });
     });
 
-    try {
+    const sourceButton = (name: string) => container.querySelector(`button[aria-label="Đi tới ${name}"]`) as HTMLButtonElement | null;
+
+    it("goes to the library page the queue plays from", async () => {
       act(() => {
         root.render(<QueuePanel onClose={() => {}} />);
       });
 
-      const tracksMode = Array.from(container.querySelectorAll('[role="group"][aria-label="Chế độ phát"] button')).find(
-        (b) => (b as HTMLElement).textContent === "Bài gốc"
-      ) as HTMLElement;
-      act(() => {
-        tracksMode.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      expect(container.textContent).toContain("Đang phát từ");
+      await act(async () => {
+        sourceButton("Lát cắt")?.click();
       });
 
-      expect(requested).toEqual(["original_only"]);
-    } finally {
-      usePlayerStore.setState({ setPlaybackMode: origSetPlaybackMode });
-    }
-  });
-
-  it("QueuePanel presses no mode while a playlist plays, and picking the current mode leaves the playlist", () => {
-    const requested: string[] = [];
-    const origSetPlaybackMode = usePlayerStore.getState().setPlaybackMode;
-    usePlayerStore.setState({
-      activePlaylistPlayingId: "pl_my_mix",
-      playlists: [{ id: "pl_my_mix", name: "My Awesome Mix", created_at: 1000, updated_at: 1000, item_count: 5 }],
-      setPlaybackMode: async (mode) => {
-        requested.push(mode);
-        return true;
-      },
+      expect(opened).toEqual([null]);
+      expect(usePlayerStore.getState().activeSystemCategory).toBe("slices_only");
     });
 
-    try {
+    it("goes to the playlist the queue plays from", async () => {
+      usePlayerStore.setState({
+        activePlaylistPlayingId: "pl_my_mix",
+        playlists: [{ id: "pl_my_mix", name: "My Awesome Mix", created_at: 1000, updated_at: 1000, item_count: 5 }],
+      });
       act(() => {
         root.render(<QueuePanel onClose={() => {}} />);
       });
 
-      const buttons = Array.from(container.querySelectorAll('[role="group"][aria-label="Chế độ phát"] button')) as HTMLElement[];
-      expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
-
-      act(() => {
-        buttons[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await act(async () => {
+        sourceButton("My Awesome Mix")?.click();
       });
-      expect(requested).toEqual(["slices_only"]);
-    } finally {
-      usePlayerStore.setState({ setPlaybackMode: origSetPlaybackMode });
-    }
+
+      expect(opened).toEqual(["pl_my_mix"]);
+    });
+
+    // As a sheet the queue covers the page it leads to; docked beside it, it stays
+    it("closes the queue sheet to show the page, and leaves the docked queue open", async () => {
+      let sheetCloses = 0;
+      let panelCloses = 0;
+      act(() => {
+        root.render(<QueueDrawer isOpen onClose={() => sheetCloses++} />);
+      });
+      await act(async () => {
+        document.querySelector<HTMLButtonElement>('button[aria-label="Đi tới Lát cắt"]')?.click();
+      });
+      act(() => {
+        root.render(<QueuePanel onClose={() => panelCloses++} />);
+      });
+      await act(async () => {
+        sourceButton("Lát cắt")?.click();
+      });
+
+      expect([sheetCloses, panelCloses]).toEqual([1, 0]);
+    });
   });
 
   it("QueueDrawer handles Shift+Tab reverse navigation from first focusable in row", () => {
