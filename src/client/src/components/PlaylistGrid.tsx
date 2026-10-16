@@ -39,7 +39,8 @@ export function PlaylistGrid({ playlists, onOpen, onCreate, createLabel, onMix, 
 
   return (
     <>
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-6">
+      {/* Columns of at least 11rem; a phone always gets two, as in the Playlists grid of Apple Music on iPhone */}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(11rem,calc(50%-0.5rem)),1fr))] gap-x-4 gap-y-6">
         {playlists.map((pl) => (
           <PlaylistTile
             key={pl.id}
