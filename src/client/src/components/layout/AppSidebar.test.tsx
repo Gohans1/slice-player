@@ -246,6 +246,26 @@ describe("AppSidebar", () => {
     expect(menuButton("Rock")).toBeDefined();
   });
 
+  it("opens a playlist's actions on right-click, without opening the playlist", async () => {
+    const renamePlaylist = mock(async () => true);
+    usePlayerStore.setState({ renamePlaylist });
+    await renderSidebar();
+
+    await act(async () => {
+      menuButton("Rock").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+      await tick();
+    });
+
+    const items = Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
+    expect(items).toEqual(["Shuffle", "Rename", "Delete playlist"]);
+    expect(usePlayerStore.getState().activePlaylistId).toBeNull();
+
+    await click(menuItem("Rename"));
+    const input = container.querySelector<HTMLInputElement>('[data-sidebar="input"]');
+    expect(input?.value).toBe("Rock");
+    expect(document.activeElement === input).toBe(true);
+  });
+
   it("asks for confirmation before deleting a playlist", async () => {
     await renderSidebar();
 

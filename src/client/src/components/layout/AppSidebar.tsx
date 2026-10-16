@@ -41,6 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/context-menu";
 import { LibrarySearch } from "./LibrarySearch";
 import { SidebarUtilities } from "./SidebarUtilities";
 import { DeletePlaylistModal } from "../DeletePlaylistModal";
@@ -241,7 +242,7 @@ interface PlaylistMenuItemProps {
 }
 
 // Memoized with stable props: the sidebar re-renders on every keystroke in its search field, and each item
-// carries its own tooltip and actions menu
+// carries its own tooltip, actions menu and context menu
 const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   playlist,
   size,
@@ -291,44 +292,65 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
     );
   }
 
+  // What both its "..." button and a right-click open, as in Apple Music's sidebar
+  const actions = (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuItem disabled={isEmpty} onClick={() => buildPlaylistQueue(playlist.id, true)}>
+          <Shuffle />
+          {t("nav.shuffle")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setDraftName(playlist.name)}>
+          <Pencil />
+          {t("playlist.rename")}
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(playlist)}>
+          <Trash2 />
+          {t("playlist.delete")}
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+    </>
+  );
+  // Renaming hands focus to the name field instead of back to whatever opened the menu
+  const focusRenameField = () => renameInputRef.current ?? true;
+
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton size={size} isActive={isActive} tooltip={playlist.name} onClick={() => onOpen(playlist.id)}>
-        {nowPlaying ? (
-          <NowPlayingEqualizer isAnimated={nowPlaying === "playing"} className="w-4 justify-center text-primary" />
-        ) : hasArtwork ? (
-          // Each playlist's artwork, as in Apple Music's sidebar. Drawn at 20px in an icon's 16px box, so names
-          // line up with the icon rows and the artwork stays centred when the sidebar collapses to icons.
-          <PlaylistCover playlist={playlist} thumbnailSize="small" className="-m-0.5 size-5 shrink-0 rounded-sm" />
-        ) : (
-          <Icon className="text-primary" />
-        )}
-        <span>{playlist.name}</span>
-      </SidebarMenuButton>
+      {/* The button itself is the context menu's trigger, so it stays the sibling the action and badge style against */}
+      <ContextMenu>
+        <SidebarMenuButton
+          render={<ContextMenuTrigger render={<button type="button" />} />}
+          size={size}
+          isActive={isActive}
+          tooltip={playlist.name}
+          onClick={() => onOpen(playlist.id)}
+        >
+          {nowPlaying ? (
+            <NowPlayingEqualizer isAnimated={nowPlaying === "playing"} className="w-4 justify-center text-primary" />
+          ) : hasArtwork ? (
+            // Each playlist's artwork, as in Apple Music's sidebar. Drawn at 20px in an icon's 16px box, so names
+            // line up with the icon rows and the artwork stays centred when the sidebar collapses to icons.
+            <PlaylistCover playlist={playlist} thumbnailSize="small" className="-m-0.5 size-5 shrink-0 rounded-sm" />
+          ) : (
+            <Icon className="text-primary" />
+          )}
+          <span>{playlist.name}</span>
+        </SidebarMenuButton>
+        <ContextMenuContent className="w-auto" finalFocus={focusRenameField}>
+          {actions}
+        </ContextMenuContent>
+      </ContextMenu>
       <DropdownMenu>
         <DropdownMenuTrigger
           render={<SidebarMenuAction showOnHover aria-label={t("sidebar.playlistActions", { name: playlist.name })} />}
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" className="w-auto" finalFocus={() => renameInputRef.current ?? true}>
-          <DropdownMenuGroup>
-            <DropdownMenuItem disabled={isEmpty} onClick={() => buildPlaylistQueue(playlist.id, true)}>
-              <Shuffle />
-              {t("nav.shuffle")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDraftName(playlist.name)}>
-              <Pencil />
-              {t("playlist.rename")}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(playlist)}>
-              <Trash2 />
-              {t("playlist.delete")}
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
+        <DropdownMenuContent side="right" align="start" className="w-auto" finalFocus={focusRenameField}>
+          {actions}
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
