@@ -5,6 +5,7 @@ import { Play, Pause, Plus, Trash2, Scissors, Check, X, RotateCcw, Volume2, Volu
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ButtonGroup } from "./ui/button-group";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { EmptyState } from "./EmptyState";
 import { VolumeSlider } from "./VolumeSlider";
@@ -44,7 +45,8 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const setTrackVolume = usePlayerStore((s) => s.setTrackVolume);
   const masterVolume = usePlayerStore((s) => s.masterVolume);
   const isGlobalPlaying = usePlayerStore((s) => s.isPlaying);
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  // State rather than a ref: the dialog mounts its content after the Studio itself, and WaveSurfer needs the element
+  const [waveformContainer, setWaveformContainer] = React.useState<HTMLDivElement | null>(null);
   const wavesurferRef = React.useRef<WaveSurfer | null>(null);
   const regionsRef = React.useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
 
@@ -199,35 +201,18 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     await Promise.all(promises);
   }, [track.id, syncUpdatedSegment]);
 
-  const [isExiting, setIsExiting] = React.useState(false);
-  const exitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isOpen, setIsOpen] = React.useState(true);
+  const isClosingRef = React.useRef(false);
+  const popupRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
-    return () => {
-      if (exitTimerRef.current) {
-        clearTimeout(exitTimerRef.current);
-      }
-    };
-  }, []);
-
+  // Saves what's still pending before the Studio closes, so whoever opened it reloads what was saved. onClose runs
+  // once the dialog has finished animating out.
   const handleCloseStudio = React.useCallback(async () => {
-    if (isExiting) return;
-    setIsExiting(true);
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     await flushPendingSaves();
-    const isTest =
-      typeof process !== "undefined" &&
-      (process.env?.NODE_ENV === "test" || Boolean(process.env?.BUN_TEST));
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    if (isTest || prefersReducedMotion) {
-      onClose();
-    } else {
-      exitTimerRef.current = setTimeout(() => {
-        onClose();
-      }, 150);
-    }
-  }, [flushPendingSaves, onClose, isExiting]);
+    setIsOpen(false);
+  }, [flushPendingSaves]);
 
   const clearSegmentPreview = React.useCallback(() => {
     previewEndRef.current = null;
@@ -240,8 +225,6 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     wavesurferRef.current?.playPause()?.catch(() => {});
   }, [clearSegmentPreview]);
 
-  const handleCloseStudioRef = React.useRef(handleCloseStudio);
-  handleCloseStudioRef.current = handleCloseStudio;
   const handleToggleWavePlayRef = React.useRef(handleToggleWavePlay);
   const clearSegmentPreviewRef = React.useRef(clearSegmentPreview);
   clearSegmentPreviewRef.current = clearSegmentPreview;
@@ -250,7 +233,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
   const handleZoomChangeRef = React.useRef(handleZoomChange);
   handleZoomChangeRef.current = handleZoomChange;
 
-  // Handle keyboard shortcuts (Escape to close, Space to toggle play/pause, Arrow keys to nudge playhead)
+  // Handle keyboard shortcuts (Space to toggle play/pause, Arrow keys to nudge playhead). The dialog handles Escape.
   React.useEffect(() => {
     const isInteractiveTarget = (el: EventTarget | null): boolean => {
       if (!el) return false;
@@ -276,11 +259,6 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-
-      if (e.key === "Escape") {
-        handleCloseStudioRef.current();
-        return;
-      }
 
       if (e.code === "Space" || e.key === " " || e.key === "Spacebar") {
         if (e.repeat || e.isComposing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) {
@@ -330,7 +308,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Ctrl + Wheel / Trackpad pinch to zoom waveform
   React.useEffect(() => {
-    const el = containerRef.current;
+    const el = waveformContainer;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
@@ -346,7 +324,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     return () => {
       el.removeEventListener("wheel", handleWheel);
     };
-  }, []);
+  }, [waveformContainer]);
 
   // Flush pending updates on unmount and cleanup timers
   React.useEffect(() => {
@@ -440,7 +418,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
   // Initialize WaveSurfer with precomputed peaks
   React.useEffect(() => {
-    if (!containerRef.current || !isDetailLoaded) return;
+    if (!waveformContainer || !isDetailLoaded) return;
 
     // Parse precomputed peaks from database
     let peaks: number[][] | undefined = undefined;
@@ -469,7 +447,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     const cursorColor = isDark ? "#ce5d97" : "#a02f6f"; // magenta-400 (Dark) vs magenta-600 (Light)
 
     const ws = WaveSurfer.create({
-      container: containerRef.current,
+      container: waveformContainer,
       waveColor,
       progressColor,
       cursorColor,
@@ -619,7 +597,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
       wavesurferRef.current = null;
       regionsRef.current = null;
     };
-  }, [isDetailLoaded, trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause, clearSegmentPreview]);
+  }, [waveformContainer, isDetailLoaded, trackDetail.id, trackDetail.duration, trackDetail.peaks_json, debouncedSaveSegment, pause, clearSegmentPreview]);
 
   // Sync segments with WaveSurfer regions without destructive full teardowns
   React.useEffect(() => {
@@ -824,44 +802,41 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
     }
   };
 
-  return (
-    <div
-      className={cn(
-        "fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-md p-4 sm:p-6 overflow-y-auto duration-150",
-        isExiting ? "animate-out fade-out pointer-events-none" : "animate-in fade-in"
-      )}
-    >
-      <div
-        className={cn(
-          "max-w-5xl mx-auto w-full flex-1 flex flex-col duration-150",
-          isExiting ? "animate-out zoom-out-95" : "animate-in zoom-in-95"
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 pb-4 border-b border-border">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="p-1 rounded bg-primary/20 text-primary">
-                <Scissors className="h-4 w-4" />
-              </span>
-              <h2 className="text-lg font-bold text-foreground">{t("studio.title")}</h2>
-              {saveStatus && (
-                <span className="flex items-center gap-1 text-xs text-flexoki-green animate-in fade-in">
-                  <Check className="h-3.5 w-3.5" />
-                  <span>{saveStatus}</span>
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-foreground/90 font-medium mt-1">{track.title}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("studio.duration", { duration: formatDuration(track.duration) })}
-            </p>
-          </div>
+  const closeLabel = t("common.close", "Close");
 
-          <Button variant="ghost" size="icon-lg" onClick={handleCloseStudio} aria-label={t("studio.doneButton")}>
-            <X />
-          </Button>
-        </div>
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) void handleCloseStudio();
+      }}
+      onOpenChangeComplete={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        ref={popupRef}
+        // Focus starts on the Studio itself rather than its first button, so Space plays and pauses straight away
+        initialFocus={popupRef}
+        showCloseButton={false}
+        className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-5xl"
+      >
+        {/* The margin keeps the header clear of the close button */}
+        <DialogHeader className="mr-8">
+          <div className="flex items-center gap-2">
+            <DialogTitle>{t("studio.title")}</DialogTitle>
+            {saveStatus && (
+              <span className="flex items-center gap-1 text-xs text-flexoki-green animate-in fade-in">
+                <Check className="h-3.5 w-3.5" />
+                <span>{saveStatus}</span>
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-foreground/90 font-medium">{track.title}</p>
+          <DialogDescription>
+            {t("studio.duration", { duration: formatDuration(track.duration) })}
+          </DialogDescription>
+        </DialogHeader>
 
         {/* Waveform Card */}
         <div className="mt-6 rounded-xl border border-border bg-card p-5 shadow-lg">
@@ -910,7 +885,7 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
 
           {/* Waveform Canvas Container */}
           <div className="relative rounded-lg bg-background p-2 border border-border/50 select-none overflow-hidden min-h-[144px]">
-            <div ref={containerRef} className="cursor-pointer" />
+            <div ref={setWaveformContainer} data-slot="studio-waveform" className="cursor-pointer" />
             {!isWaveSurferReady && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xs animate-in fade-in duration-150 pointer-events-none">
                 <div className="flex items-center gap-1.5 h-12 w-48 justify-center mb-2">
@@ -1110,13 +1085,19 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="mt-8 pt-4 border-t border-border flex justify-end">
-          <Button size="lg" onClick={handleCloseStudio}>
+        <DialogFooter>
+          <Button size="lg" onClick={() => void handleCloseStudio()}>
             {t("studio.doneButton")}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+        <DialogClose
+          aria-label={closeLabel}
+          title={closeLabel}
+          render={<Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" />}
+        >
+          <X />
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 }

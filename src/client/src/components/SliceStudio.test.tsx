@@ -127,6 +127,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     mockGetCurrentTime.mockClear();
     mockGetDuration.mockClear();
     mockAddRegion.mockClear();
+    mockZoom.mockClear();
     usePlayerStore.setState({
       tracks: [{ ...mockTrack }],
       sliceStudioTrack: null,
@@ -448,7 +449,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       interactionHandlers[0](45);
     });
 
-    expect(container.textContent).toContain("00:45");
+    expect(document.body.textContent).toContain("00:45");
   });
 
   it("cleans up keydown listener upon unmount", async () => {
@@ -503,21 +504,21 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       dragHandlers[0](0.25);
     });
 
-    expect(container.textContent).toContain("00:30");
+    expect(document.body.textContent).toContain("00:30");
 
     // 4. Stale interaction tick during drag must be ignored and not stomp playhead back to 15s
     await act(async () => {
       interactionHandlers[0](); // calls ws.getCurrentTime() => 15
     });
 
-    expect(container.textContent).toContain("00:30");
+    expect(document.body.textContent).toContain("00:30");
 
     // 5. timeupdate during drag must be ignored
     await act(async () => {
       timeUpdateHandlers[0](15);
     });
 
-    expect(container.textContent).toContain("00:30");
+    expect(document.body.textContent).toContain("00:30");
 
     // 6. User drags further to 75% (90s) and releases pointer
     await act(async () => {
@@ -525,7 +526,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       dragEndHandlers[0](0.75);
     });
 
-    expect(container.textContent).toContain("01:30");
+    expect(document.body.textContent).toContain("01:30");
     // Verify seekTo is called upon release to immediately synchronize audio engine
     expect(mockSeekTo).toHaveBeenCalledWith(0.75);
 
@@ -534,7 +535,33 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       timeUpdateHandlers[0](95);
     });
 
-    expect(container.textContent).toContain("01:35");
+    expect(document.body.textContent).toContain("01:35");
+  });
+
+  it("opens as a dialog", async () => {
+    await act(async () => {
+      root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+    });
+
+    const dialog = document.querySelector("[role='dialog']");
+    expect(window.document.getElementById(dialog?.getAttribute("aria-labelledby") ?? "")?.textContent).toBe("Slice Studio");
+  });
+
+  it("leaves Space to play and pause once it opens", async () => {
+    await act(async () => {
+      root.render(<SliceStudio track={mockTrack} onClose={() => {}} />);
+    });
+    // Focus moves into the Studio once it's open
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    const space = new window.KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true, cancelable: true });
+    await act(async () => {
+      window.document.activeElement.dispatchEvent(space);
+    });
+
+    expect(mockPlayPause).toHaveBeenCalledTimes(1);
   });
 
   it("calls onClose when Escape key is pressed", async () => {
@@ -555,6 +582,49 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     });
 
     expect(handleClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves a pending edit before it hands back on closing", async () => {
+    const segment: Segment = { id: "seg-1", track_id: "test-track-1", name: "Verse", start_time: 10, end_time: 20, color: "#4385BE" };
+    const events: string[] = [];
+    const recordingFetch: typeof fetch = Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (init?.method === "PUT") {
+          events.push(`PUT ${url} ${typeof init.body === "string" ? init.body : ""}`);
+          return Response.json({ ...segment, name: "Chorus" });
+        }
+        return url.includes("/segments") ? Response.json([segment]) : Response.json(mockTrack);
+      },
+      { preconnect: () => {} }
+    );
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(recordingFetch);
+    try {
+      await act(async () => {
+        root.render(<SliceStudio track={mockTrack} onClose={() => events.push("closed")} />);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      const nameField = document.querySelector<HTMLInputElement>("input[value='Verse']");
+      expect(nameField === null).toBe(false);
+      await act(async () => {
+        Reflect.set(Object.getPrototypeOf(nameField), "value", "Chorus", nameField);
+        nameField?.dispatchEvent(new window.Event("input", { bubbles: true }));
+      });
+      // Closes well before the rename's own save would go out
+      await act(async () => {
+        window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      expect(events).toEqual(['PUT /api/segments/seg-1 {"name":"Chorus"}', "closed"]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("synchronizes WaveSurfer volume using quadratic curve volumeToGain (0.5 -> 0.25)", async () => {
@@ -587,8 +657,8 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       root.render(<SliceStudio track={mockTrack} onClose={handleClose} />);
     });
 
-    const muteBtn = (container.querySelector("button[aria-label='Mute'], button[aria-label='Tắt âm']") ||
-      container.querySelector("button[aria-label*='Mute' i]")) as HTMLButtonElement;
+    const muteBtn = (document.querySelector("button[aria-label='Mute'], button[aria-label='Tắt âm']") ||
+      document.querySelector("button[aria-label*='Mute' i]")) as HTMLButtonElement;
     expect(muteBtn).not.toBeNull();
 
     // Click mute
@@ -599,8 +669,8 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     expect((mockSetVolume.mock.calls as any[]).at(-1)?.[0]).toBe(0);
 
     // Unmute
-    const unmuteBtn = (container.querySelector("button[aria-label='Unmute'], button[aria-label='Bật âm thanh']") ||
-      container.querySelector("button[aria-label*='Unmute' i]")) as HTMLButtonElement;
+    const unmuteBtn = (document.querySelector("button[aria-label='Unmute'], button[aria-label='Bật âm thanh']") ||
+      document.querySelector("button[aria-label*='Unmute' i]")) as HTMLButtonElement;
     expect(unmuteBtn).not.toBeNull();
     await act(async () => {
       unmuteBtn.click();
@@ -615,7 +685,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       root.render(<SliceStudio track={mockTrack} onClose={handleClose} />);
     });
 
-    const slider = container.querySelector("input[type='range']") as HTMLInputElement;
+    const slider = document.querySelector("input[type='range']") as HTMLInputElement;
     expect(slider).not.toBeNull();
 
     await act(async () => {
@@ -680,9 +750,9 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     });
     await waveformReady();
 
-    const zoomInBtn = (container.querySelector("button[aria-label*='Zoom in' i], button[aria-label*='Phóng to' i]")) as HTMLButtonElement;
-    const zoomOutBtn = (container.querySelector("button[aria-label*='Zoom out' i], button[aria-label*='Thu nhỏ' i]")) as HTMLButtonElement;
-    const zoomFitBtn = (container.querySelector("button[title*='Fit' i], button[title*='Vừa khung' i]")) as HTMLButtonElement;
+    const zoomInBtn = (document.querySelector("button[aria-label*='Zoom in' i], button[aria-label*='Phóng to' i]")) as HTMLButtonElement;
+    const zoomOutBtn = (document.querySelector("button[aria-label*='Zoom out' i], button[aria-label*='Thu nhỏ' i]")) as HTMLButtonElement;
+    const zoomFitBtn = (document.querySelector("button[title*='Fit' i], button[title*='Vừa khung' i]")) as HTMLButtonElement;
 
     expect(zoomInBtn).not.toBeNull();
     expect(zoomOutBtn).not.toBeNull();
@@ -716,7 +786,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     });
     await waveformReady();
 
-    const waveContainer = container.querySelector("div.rounded-lg.bg-background");
+    const waveContainer = document.querySelector("[data-slot='studio-waveform']");
     expect(waveContainer).not.toBeNull();
 
     // Zoom in with Ctrl + Wheel
@@ -846,7 +916,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
 
     mockSetTime.mockClear();
 
-    const button = container.querySelector("button") as HTMLButtonElement;
+    const button = document.querySelector("button") as HTMLButtonElement;
     expect(button).not.toBeNull();
     button.focus();
 
@@ -890,7 +960,7 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
 
-    const nudgeButtons = Array.from(container.querySelectorAll("button")).filter(
+    const nudgeButtons = Array.from(document.querySelectorAll("button")).filter(
       (b) => b.textContent === "-0.1s" || b.textContent === "+0.1s"
     );
     expect(nudgeButtons.length).toBe(4); // 2 for start, 2 for end
@@ -900,13 +970,13 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       nudgeButtons[1].click(); // start +0.1s
     });
 
-    expect(container.textContent).toContain("00:10.1");
+    expect(document.body.textContent).toContain("00:10.1");
 
     // Click -0.1s on end boundary
     await act(async () => {
       nudgeButtons[2].click(); // end -0.1s
     });
 
-    expect(container.textContent).toContain("00:19.9");
+    expect(document.body.textContent).toContain("00:19.9");
   });
 });
