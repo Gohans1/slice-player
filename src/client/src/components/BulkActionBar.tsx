@@ -146,6 +146,8 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
   const isMixView = usePlayerStore((s) => Boolean(s.playlists.find((p) => p.id === s.activePlaylistId)?.is_mix));
+  // In a playlist, as in Apple Music, songs are removed from it and stay in the library; elsewhere they are deleted
+  const isRemoving = selectedItems.size > 0 && Array.from(selectedItems.values()).every((item) => item.type === "playlist_item");
 
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -308,7 +310,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         {!isMixView && (
           <Button variant="destructive" size="lg" onClick={handleDelete} disabled={isDeleting}>
             <Trash2 data-icon="inline-start" />
-            <span className="max-sm:sr-only">{t("bulkActions.delete", "Delete")}</span>
+            <span className="max-sm:sr-only">{isRemoving ? t("bulkActions.remove") : t("bulkActions.delete")}</span>
           </Button>
         )}
 
@@ -331,12 +333,9 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
       onClose={() => !isDeleting && setIsConfirmOpen(false)}
       onConfirm={handleConfirmBulkDelete}
       isLoading={isDeleting}
-      title={t("bulkActions.deleteTitle", "Delete selected items?")}
-      description={t("bulkActions.confirmDelete", {
-        count: selectedCount,
-        defaultValue: `Are you sure you want to delete ${selectedCount} selected item(s)?`,
-      })}
-      confirmText={t("common.delete", "Delete")}
+      title={t(isRemoving ? "bulkActions.removeTitle" : "bulkActions.deleteTitle", { count: selectedCount })}
+      description={t(isRemoving ? "bulkActions.confirmRemove" : "bulkActions.confirmDelete", { count: selectedCount })}
+      confirmText={isRemoving ? t("bulkActions.remove") : t("common.delete")}
       cancelText={t("common.cancel", "Cancel")}
       variant="destructive"
     />

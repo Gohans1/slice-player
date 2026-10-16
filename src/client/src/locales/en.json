@@ -402,8 +402,15 @@
     "deselectAll": "Deselect view",
     "addToPlaylist": "Playlist",
     "delete": "Delete",
-    "deleteTitle": "Delete selected items?",
-    "confirmDelete": "Are you sure you want to delete {{count, number}} selected video(s)?",
+    "remove": "Remove",
+    "deleteTitle_one": "Delete {{count, number}} item?",
+    "deleteTitle_other": "Delete {{count, number}} items?",
+    "confirmDelete_one": "It's removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this.",
+    "confirmDelete_other": "They're removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this.",
+    "removeTitle_one": "Remove {{count, number}} item from this playlist?",
+    "removeTitle_other": "Remove {{count, number}} items from this playlist?",
+    "confirmRemove_one": "It stays in your library.",
+    "confirmRemove_other": "They stay in your library.",
     "clear": "Clear"
   },
   "createPlaylist": {

@@ -401,8 +401,15 @@
     "deselectAll": "Bỏ chọn view này",
     "addToPlaylist": "Playlist",
     "delete": "Xóa",
-    "deleteTitle": "Xóa các mục đã chọn?",
-    "confirmDelete": "Bạn có chắc chắn muốn xóa {{count, number}} video đã chọn không?",
+    "remove": "Xóa khỏi danh sách",
+    "deleteTitle_one": "Xóa {{count, number}} mục?",
+    "deleteTitle_other": "Xóa {{count, number}} mục?",
+    "confirmDelete_one": "Mục này sẽ bị xóa khỏi thư viện và khỏi mọi danh sách phát. Xóa một bài hát cũng xóa các lát cắt của nó. Không thể hoàn tác.",
+    "confirmDelete_other": "Các mục này sẽ bị xóa khỏi thư viện và khỏi mọi danh sách phát. Xóa một bài hát cũng xóa các lát cắt của nó. Không thể hoàn tác.",
+    "removeTitle_one": "Xóa {{count, number}} mục khỏi danh sách phát này?",
+    "removeTitle_other": "Xóa {{count, number}} mục khỏi danh sách phát này?",
+    "confirmRemove_one": "Bài hát vẫn còn trong thư viện.",
+    "confirmRemove_other": "Các bài hát vẫn còn trong thư viện.",
     "clear": "Hủy chọn"
   },
   "createPlaylist": {
