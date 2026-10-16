@@ -97,6 +97,7 @@ describe("PlaylistHeader Component (TDD)", () => {
     usePlayerStore.setState({
       playlists: original.playlists,
       buildPlaylistQueue: original.buildPlaylistQueue,
+      queuePlaylist: original.queuePlaylist,
       renamePlaylist: original.renamePlaylist,
       deletePlaylist: original.deletePlaylist,
       setPlaylistCover: original.setPlaylistCover,
@@ -343,6 +344,24 @@ describe("PlaylistHeader Component (TDD)", () => {
     });
 
     expect(onEditSources).toHaveBeenCalled();
+  });
+
+  it("queues the playlist after the current song from its More menu", async () => {
+    const queuePlaylist = mock(async (_id: string, _placement: "next" | "later") => {});
+    const playlist: Playlist & { item_count: number } = { id: "pl_road", name: "Road", created_at: 1, updated_at: 1, item_count: 2 };
+    usePlayerStore.setState({ playlists: [playlist], queuePlaylist });
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={playlist} items={mockItems} />);
+    });
+
+    await openMoreMenu();
+    await act(async () => {
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+        .find((el) => el.textContent?.trim() === "Play Next")
+        ?.click();
+    });
+
+    expect(queuePlaylist.mock.calls).toEqual([["pl_road", "next"]]);
   });
 
   it("disables Play and Shuffle buttons when playlist is empty", async () => {

@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
+import { QueueMenuItems } from "./QueueMenuItems";
 import { PlaylistCover } from "./PlaylistCover";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -90,6 +91,7 @@ interface PlaylistTileProps {
 function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, onEditSources, onDelete }: PlaylistTileProps) {
   const { t } = useTranslation();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
   const isEmpty = (pl.item_count || 0) === 0;
   const moreLabel = t("sidebar.playlistActions", { name: pl.name });
 
@@ -104,13 +106,19 @@ function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, 
           <Shuffle />
           {t("nav.shuffle")}
         </DropdownMenuItem>
-        {pl.is_mix && onEditSources && (
-          <DropdownMenuItem onClick={() => onEditSources(pl)}>
-            <Combine />
-            {t("mixPlaylist.editSources")}
-          </DropdownMenuItem>
-        )}
       </DropdownMenuGroup>
+      <QueueMenuItems disabled={isEmpty} onQueue={(placement) => void queuePlaylist(pl.id, placement)} />
+      {pl.is_mix && onEditSources && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => onEditSources(pl)}>
+              <Combine />
+              {t("mixPlaylist.editSources")}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </>
+      )}
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <DropdownMenuItem variant="destructive" onClick={() => onDelete(pl)}>

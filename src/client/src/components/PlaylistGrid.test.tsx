@@ -29,7 +29,11 @@ describe("PlaylistGrid", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
-    usePlayerStore.setState({ buildPlaylistQueue: original.buildPlaylistQueue, deletePlaylist: original.deletePlaylist });
+    usePlayerStore.setState({
+      buildPlaylistQueue: original.buildPlaylistQueue,
+      queuePlaylist: original.queuePlaylist,
+      deletePlaylist: original.deletePlaylist,
+    });
   });
 
   const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
@@ -58,7 +62,7 @@ describe("PlaylistGrid", () => {
 
     await click(button("Play Chill"));
     await click(button("More options for Chill"));
-    expect(menuItems()).toEqual(["Play", "Shuffle", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "Delete playlist"]);
     await click(menuItem("Shuffle"));
     await click(button("Open playlist Chill"));
 
@@ -69,6 +73,17 @@ describe("PlaylistGrid", () => {
     expect(onOpen.mock.calls).toEqual([["pl_chill"]]);
   });
 
+  it("queues a playlist after the current song from its menu", async () => {
+    const queuePlaylist = mock(async (_id: string, _placement: "next" | "later") => {});
+    usePlayerStore.setState({ queuePlaylist });
+    await renderGrid([chill]);
+
+    await click(button("More options for Chill"));
+    await click(menuItem("Play Next"));
+
+    expect(queuePlaylist.mock.calls).toEqual([["pl_chill", "next"]]);
+  });
+
   it("opens the same menu on a right-click anywhere on the tile", async () => {
     await renderGrid([chill]);
 
@@ -77,7 +92,7 @@ describe("PlaylistGrid", () => {
       await tick();
     });
 
-    expect(menuItems()).toEqual(["Play", "Shuffle", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "Delete playlist"]);
   });
 
   it("asks before deleting a playlist from its menu", async () => {
@@ -98,7 +113,7 @@ describe("PlaylistGrid", () => {
     await renderGrid([chill, nightMix], { onEditSources });
 
     await click(button("More options for Night"));
-    expect(menuItems()).toEqual(["Play", "Shuffle", "Edit sources", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "Edit sources", "Delete playlist"]);
     await click(menuItem("Edit sources"));
 
     expect(onEditSources.mock.calls).toEqual([[nightMix]]);
@@ -111,7 +126,7 @@ describe("PlaylistGrid", () => {
     expect(button("Play Empty")).toBe(null);
     expect(container.textContent).toContain("0 items");
     await click(button("More options for Empty"));
-    expect(menuItems()).toEqual(["Play (off)", "Shuffle (off)", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play (off)", "Shuffle (off)", "Play Next (off)", "Play Later (off)", "Delete playlist"]);
   });
 
   it("creates a playlist from the New Playlist tile", async () => {

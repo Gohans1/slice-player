@@ -7,6 +7,7 @@ import { PlaylistGrid } from "./PlaylistGrid";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, REVEAL_ON_HOVER } from "../lib/utils";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
+import { QueueMenuItems } from "./QueueMenuItems";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
 import { Modal } from "./Modal";
 import {
@@ -38,6 +39,7 @@ interface PlaylistHeaderProps {
 export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeaderProps) {
   const { t } = useTranslation();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const setPlaylistCover = usePlayerStore((s) => s.setPlaylistCover);
@@ -306,6 +308,8 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                   <MoreHorizontal />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-48" finalFocus={renameInputRef}>
+                  <QueueMenuItems disabled={count === 0} onQueue={(placement) => void queuePlaylist(playlist.id, placement)} />
+                  <DropdownMenuSeparator />
                   {!playlist.is_mix && (
                     <>
                       <DropdownMenuItem data-testid="playlist-menu-rename" onClick={handleStartRename}>

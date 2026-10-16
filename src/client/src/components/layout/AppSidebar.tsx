@@ -298,6 +298,7 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   const { t } = useTranslation();
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
   const [draftName, setDraftName] = React.useState<string | null>(null);
   const isRenamingRef = React.useRef(false);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
@@ -365,6 +366,10 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
           <Shuffle />
           {t("nav.shuffle")}
         </DropdownMenuItem>
+      </DropdownMenuGroup>
+      <QueueMenuItems disabled={isEmpty} onQueue={(placement) => void queuePlaylist(playlist.id, placement)} />
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
         <DropdownMenuItem onClick={startRename}>
           <Pencil />
           {t("playlist.rename")}

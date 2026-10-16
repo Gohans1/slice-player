@@ -438,6 +438,17 @@ describe("AppSidebar", () => {
     expect(menuButton("Rock")).toBeDefined();
   });
 
+  it("queues a playlist after the rest of the queue from its actions", async () => {
+    const queuePlaylist = mock(async (_id: string, _placement: "next" | "later") => {});
+    usePlayerStore.setState({ queuePlaylist });
+    await renderSidebar();
+
+    await openActions("Rock");
+    await click(menuItem("Play Later"));
+
+    expect(queuePlaylist.mock.calls).toEqual([["rock", "later"]]);
+  });
+
   it("opens a playlist's actions on right-click, without opening the playlist", async () => {
     const renamePlaylist = mock(async () => true);
     usePlayerStore.setState({ renamePlaylist });
@@ -449,7 +460,7 @@ describe("AppSidebar", () => {
     });
 
     const items = Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
-    expect(items).toEqual(["Shuffle", "Rename", "Delete playlist"]);
+    expect(items).toEqual(["Shuffle", "Play Next", "Play Later", "Rename", "Delete playlist"]);
     expect(usePlayerStore.getState().activePlaylistId).toBeNull();
 
     await click(menuItem("Rename"));
