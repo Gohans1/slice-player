@@ -43,7 +43,7 @@ describe("Mix playlist entry points", () => {
   it("offers a Mix Playlists tile in the library that opens the mix dialog", async () => {
     const onMix = mock();
     await act(async () => {
-      root.render(<PlaylistGrid playlists={[plA, plB]} onOpen={() => {}} onCreate={() => {}} onMix={onMix} />);
+      root.render(<PlaylistGrid playlists={[plA, plB]} onOpen={() => {}} onCreate={() => {}} onMix={onMix} onEditSources={() => {}} />);
     });
 
     buttonNamed("Mix Playlists")!.click();
@@ -53,7 +53,7 @@ describe("Mix playlist entry points", () => {
 
   it("hides the Mix Playlists tile when there are fewer than two playlists to mix", async () => {
     await act(async () => {
-      root.render(<PlaylistGrid playlists={[plA, mix]} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} />);
+      root.render(<PlaylistGrid playlists={[plA, mix]} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} onEditSources={() => {}} />);
     });
 
     expect(buttonNamed("Mix Playlists")).toBeUndefined();

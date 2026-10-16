@@ -1,105 +1,188 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Combine, FolderTree, Play, Plus, Shuffle } from "lucide-react";
+import { Combine, FolderTree, MoreHorizontal, Play, Plus, Shuffle, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import { DeletePlaylistModal } from "./DeletePlaylistModal";
 import { PlaylistCover } from "./PlaylistCover";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { cn, REVEAL_ON_HOVER } from "../lib/utils";
 import type { Playlist } from "@/server/types";
 
+type ListedPlaylist = Playlist & { item_count: number };
+
 interface PlaylistGridProps {
-  playlists: (Playlist & { item_count: number })[];
+  playlists: ListedPlaylist[];
   onOpen: (id: string) => void;
   onCreate: () => void;
   onMix: () => void;
+  onEditSources: (mix: ListedPlaylist) => void;
 }
 
-export function PlaylistGrid({ playlists, onOpen, onCreate, onMix }: PlaylistGridProps) {
+export function PlaylistGrid({ playlists, onOpen, onCreate, onMix, onEditSources }: PlaylistGridProps) {
   const { t } = useTranslation();
-  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const deletePlaylist = usePlayerStore((s) => s.deletePlaylist);
   const playingId = usePlayerStore((s) => (s.isPlaying ? s.activePlaylistPlayingId : null));
+  const [playlistToDelete, setPlaylistToDelete] = React.useState<ListedPlaylist | null>(null);
   const canMix = playlists.filter((pl) => !pl.is_mix).length >= 2;
 
   return (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-6">
-      {playlists.map((pl) => {
-        const isEmpty = (pl.item_count || 0) === 0;
-        const isPlayingThis = playingId === pl.id;
-        const parent = pl.parent_id ? playlists.find((p) => p.id === pl.parent_id) : undefined;
-        return (
-          <li key={pl.id} className="group flex min-w-0 flex-col gap-2">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => onOpen(pl.id)}
-                aria-label={t("playlist.openNamed", { name: pl.name })}
-                className="block w-full cursor-pointer overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                <PlaylistCover playlist={pl} />
-              </button>
-              {!isEmpty && (
-                <div className={cn("absolute bottom-2 left-2 flex gap-1.5", REVEAL_ON_HOVER)}>
-                  <Button
-                    size="icon-lg"
-                    onClick={() => buildPlaylistQueue(pl.id, false)}
-                    aria-label={t("playlist.playNamed", { name: pl.name })}
-                    title={t("playlist.playNamed", { name: pl.name })}
-                  >
-                    <Play className="fill-current" />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon-lg"
-                    onClick={() => buildPlaylistQueue(pl.id, true)}
-                    aria-label={t("playlist.shuffleTooltip", { name: pl.name })}
-                    title={t("playlist.shuffleTooltip", { name: pl.name })}
-                  >
-                    <Shuffle />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <div className="min-w-0">
-              <h3 title={pl.name} className="truncate text-xs text-foreground">
-                {pl.name}
-              </h3>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                {isPlayingThis && <NowPlayingEqualizer className="text-flexoki-green" />}
-                {pl.is_mix && (
-                  <span className="flex shrink-0 items-center gap-1 font-medium text-flexoki-magenta">
-                    <Combine className="size-3" aria-hidden="true" />
-                    {t("mixPlaylist.badge")}
-                    <span aria-hidden="true">·</span>
-                  </span>
-                )}
-                {parent && (
-                  <span
-                    className="flex max-w-30 items-center gap-1 font-medium text-flexoki-blue"
-                    title={t("playlist.subPlaylistOf", { name: parent.name })}
-                  >
-                    <FolderTree className="size-3 shrink-0" aria-hidden="true" />
-                    <span className="truncate">{parent.name}</span>
-                    <span aria-hidden="true">·</span>
-                    <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
-                  </span>
-                )}
-                <span className="shrink-0 tabular-nums">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
-              </p>
-            </div>
-          </li>
-        );
-      })}
+    <>
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-6">
+        {playlists.map((pl) => (
+          <PlaylistTile
+            key={pl.id}
+            playlist={pl}
+            parent={pl.parent_id ? playlists.find((p) => p.id === pl.parent_id) : undefined}
+            isPlaying={playingId === pl.id}
+            onOpen={onOpen}
+            onEditSources={onEditSources}
+            onDelete={setPlaylistToDelete}
+          />
+        ))}
 
-      <li>
-        <NewTileButton icon={Plus} label={t("library.newPlaylist")} onClick={onCreate} />
-      </li>
-      {canMix && (
         <li>
-          <NewTileButton icon={Combine} label={t("mixPlaylist.newTile")} onClick={onMix} />
+          <NewTileButton icon={Plus} label={t("library.newPlaylist")} onClick={onCreate} />
         </li>
+        {canMix && (
+          <li>
+            <NewTileButton icon={Combine} label={t("mixPlaylist.newTile")} onClick={onMix} />
+          </li>
+        )}
+      </ul>
+
+      {playlistToDelete && (
+        <DeletePlaylistModal
+          isOpen
+          onClose={() => setPlaylistToDelete(null)}
+          playlist={playlistToDelete}
+          onConfirm={async (keepChildren) => {
+            await deletePlaylist(playlistToDelete.id, keepChildren);
+          }}
+        />
       )}
-    </ul>
+    </>
+  );
+}
+
+interface PlaylistTileProps {
+  playlist: ListedPlaylist;
+  parent?: ListedPlaylist;
+  isPlaying: boolean;
+  onOpen: (id: string) => void;
+  onEditSources: (mix: ListedPlaylist) => void;
+  onDelete: (playlist: ListedPlaylist) => void;
+}
+
+// Apple Music's playlist tile: artwork with Play and "..." on hover, and the same menu on a right-click or long press
+function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, onEditSources, onDelete }: PlaylistTileProps) {
+  const { t } = useTranslation();
+  const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const isEmpty = (pl.item_count || 0) === 0;
+  const moreLabel = t("sidebar.playlistActions", { name: pl.name });
+
+  const actions = (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuItem disabled={isEmpty} onClick={() => buildPlaylistQueue(pl.id, false)}>
+          <Play />
+          {t("playlist.play")}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={isEmpty} onClick={() => buildPlaylistQueue(pl.id, true)}>
+          <Shuffle />
+          {t("nav.shuffle")}
+        </DropdownMenuItem>
+        {pl.is_mix && (
+          <DropdownMenuItem onClick={() => onEditSources(pl)}>
+            <Combine />
+            {t("mixPlaylist.editSources")}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(pl)}>
+          <Trash2 />
+          {t("playlist.delete")}
+        </DropdownMenuItem>
+      </DropdownMenuGroup>
+    </>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger render={<li className="group flex min-w-0 flex-col" />}>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => onOpen(pl.id)}
+            aria-label={t("playlist.openNamed", { name: pl.name })}
+            className="block w-full cursor-pointer overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <PlaylistCover playlist={pl} />
+          </button>
+          {!isEmpty && (
+            <div className={cn("absolute bottom-2 left-2", REVEAL_ON_HOVER)}>
+              <Button
+                size="icon-lg"
+                onClick={() => buildPlaylistQueue(pl.id, false)}
+                aria-label={t("playlist.playNamed", { name: pl.name })}
+                title={t("playlist.playNamed", { name: pl.name })}
+              >
+                <Play className="fill-current" />
+              </Button>
+            </div>
+          )}
+          <div className={cn("absolute right-2 bottom-2", REVEAL_ON_HOVER)}>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="secondary" size="icon-lg" aria-label={moreLabel} title={moreLabel} />}>
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto">
+                {actions}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <div className="mt-2 min-w-0">
+          <h3 title={pl.name} className="truncate text-xs text-foreground">
+            {pl.name}
+          </h3>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {isPlayingThis && <NowPlayingEqualizer className="text-flexoki-green" />}
+            {pl.is_mix && (
+              <span className="flex shrink-0 items-center gap-1 font-medium text-flexoki-magenta">
+                <Combine className="size-3" aria-hidden="true" />
+                {t("mixPlaylist.badge")}
+                <span aria-hidden="true">·</span>
+              </span>
+            )}
+            {parent && (
+              <span
+                className="flex max-w-30 items-center gap-1 font-medium text-flexoki-blue"
+                title={t("playlist.subPlaylistOf", { name: parent.name })}
+              >
+                <FolderTree className="size-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">{parent.name}</span>
+                <span aria-hidden="true">·</span>
+                <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
+              </span>
+            )}
+            <span className="shrink-0 tabular-nums">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
+          </p>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-auto">{actions}</ContextMenuContent>
+    </ContextMenu>
   );
 }
 

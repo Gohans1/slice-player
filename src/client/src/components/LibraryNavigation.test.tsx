@@ -162,7 +162,7 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
     expect(usePlayerStore.getState().activePlaylistId).toBe("pl_1");
   });
 
-  it("card play and shuffle buttons start the playlist without opening it", async () => {
+  it("a tile's Play button and its menu's Shuffle start the playlist without opening it", async () => {
     const origBuild = usePlayerStore.getState().buildPlaylistQueue;
     const buildCalls: unknown[][] = [];
     usePlayerStore.setState({
@@ -182,7 +182,13 @@ describe("Library navigation: sidebar, playlists overview and sticky header", ()
         (panel.querySelector('button[aria-label="Play Gym Hype"]') as HTMLButtonElement).click();
       });
       await act(async () => {
-        (panel.querySelector('button[aria-label="Shuffle Gym Hype"]') as HTMLButtonElement).click();
+        panel.querySelector<HTMLButtonElement>('button[aria-label="More options for Gym Hype"]')?.click();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+      await act(async () => {
+        Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+          .find((item) => item.textContent?.trim() === "Shuffle")
+          ?.click();
       });
 
       expect(buildCalls.map((args) => args.slice(0, 2))).toEqual([["pl_1", false], ["pl_1", true]]);

@@ -10,6 +10,9 @@ import type { Playlist } from "@/server/types";
 type Listed = Playlist & { item_count: number };
 const chill: Listed = { id: "pl_chill", name: "Chill", created_at: 1, updated_at: 1, item_count: 3 };
 const empty: Listed = { id: "pl_empty", name: "Empty", created_at: 2, updated_at: 2, item_count: 0 };
+const nightMix: Listed = { id: "mix_night", name: "Night", created_at: 3, updated_at: 3, item_count: 3, is_mix: true, source_ids: ["pl_chill", "pl_empty"] };
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("PlaylistGrid", () => {
   let root: Root;
@@ -26,49 +29,94 @@ describe("PlaylistGrid", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
-    usePlayerStore.setState({ buildPlaylistQueue: original.buildPlaylistQueue });
+    usePlayerStore.setState({ buildPlaylistQueue: original.buildPlaylistQueue, deletePlaylist: original.deletePlaylist });
   });
 
   const button = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  const click = (el: HTMLElement | null | undefined) =>
+    act(async () => {
+      el?.focus();
+      el?.click();
+      await tick();
+    });
+  const menuItems = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).map(
+      (el) => `${el.textContent?.trim()}${el.getAttribute("aria-disabled") === "true" ? " (off)" : ""}`
+    );
+  const menuItem = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((el) => el.textContent?.trim() === label);
+  const renderGrid = (playlists: Listed[], props: Partial<React.ComponentProps<typeof PlaylistGrid>> = {}) =>
+    act(async () => {
+      root.render(<PlaylistGrid playlists={playlists} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} onEditSources={() => {}} {...props} />);
+    });
 
-  it("plays, shuffles or opens a playlist from its tile", async () => {
-    const buildPlaylistQueue = mock(async () => {});
+  it("plays or opens a playlist from its tile, and shuffles it from its More menu", async () => {
+    const buildPlaylistQueue = mock(async (_id: string, _shuffle?: boolean) => {});
     usePlayerStore.setState({ buildPlaylistQueue });
     const onOpen = mock((_id: string) => {});
-    await act(async () => {
-      root.render(<PlaylistGrid playlists={[chill]} onOpen={onOpen} onCreate={() => {}} onMix={() => {}} />);
-    });
+    await renderGrid([chill], { onOpen });
+
+    await click(button("Play Chill"));
+    await click(button("More options for Chill"));
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Delete playlist"]);
+    await click(menuItem("Shuffle"));
+    await click(button("Open playlist Chill"));
+
+    expect(buildPlaylistQueue.mock.calls).toEqual([
+      ["pl_chill", false],
+      ["pl_chill", true],
+    ]);
+    expect(onOpen.mock.calls).toEqual([["pl_chill"]]);
+  });
+
+  it("opens the same menu on a right-click anywhere on the tile", async () => {
+    await renderGrid([chill]);
 
     await act(async () => {
-      button("Play Chill")?.click();
+      container.querySelector("h3")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+      await tick();
     });
-    expect(buildPlaylistQueue).toHaveBeenLastCalledWith("pl_chill", false);
-    await act(async () => {
-      button("Shuffle Chill")?.click();
-    });
-    expect(buildPlaylistQueue).toHaveBeenLastCalledWith("pl_chill", true);
-    await act(async () => {
-      button("Open playlist Chill")?.click();
-    });
-    expect(onOpen).toHaveBeenCalledWith("pl_chill");
+
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Delete playlist"]);
+  });
+
+  it("asks before deleting a playlist from its menu", async () => {
+    const deletePlaylist = mock(async (_id: string, _keepChildren?: boolean) => true);
+    usePlayerStore.setState({ deletePlaylist });
+    await renderGrid([chill]);
+
+    await click(button("More options for Chill"));
+    await click(menuItem("Delete playlist"));
+    expect(deletePlaylist.mock.calls).toEqual([]);
+    await click(document.querySelector<HTMLElement>("[data-testid='delete-playlist-submit-btn']"));
+
+    expect(deletePlaylist.mock.calls).toEqual([["pl_chill", false]]);
+  });
+
+  it("edits a mix's sources from its menu", async () => {
+    const onEditSources = mock((_mix: Listed) => {});
+    await renderGrid([chill, nightMix], { onEditSources });
+
+    await click(button("More options for Night"));
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Edit sources", "Delete playlist"]);
+    await click(menuItem("Edit sources"));
+
+    expect(onEditSources.mock.calls).toEqual([[nightMix]]);
   });
 
   it("offers no play or shuffle for an empty playlist", async () => {
-    await act(async () => {
-      root.render(<PlaylistGrid playlists={[empty]} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} />);
-    });
+    await renderGrid([empty]);
 
-    expect(button("Open playlist Empty")).not.toBeNull();
-    expect(button("Play Empty")).toBeNull();
-    expect(button("Shuffle Empty")).toBeNull();
+    expect(button("Open playlist Empty") === null).toBe(false);
+    expect(button("Play Empty")).toBe(null);
     expect(container.textContent).toContain("0 items");
+    await click(button("More options for Empty"));
+    expect(menuItems()).toEqual(["Play (off)", "Shuffle (off)", "Delete playlist"]);
   });
 
   it("creates a playlist from the New Playlist tile", async () => {
     const onCreate = mock(() => {});
-    await act(async () => {
-      root.render(<PlaylistGrid playlists={[chill]} onOpen={() => {}} onCreate={onCreate} onMix={() => {}} />);
-    });
+    await renderGrid([chill], { onCreate });
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))

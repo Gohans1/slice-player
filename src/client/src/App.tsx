@@ -1253,6 +1253,7 @@ export function App() {
               onOpen={(id) => setActivePlaylist(id)}
               onCreate={() => setIsCreateModalOpen(true)}
               onMix={() => setMixModal({})}
+              onEditSources={(mix) => setMixModal({ mix })}
             />
           )
         ) : activeSystemCategory === "slices_only" ? (
