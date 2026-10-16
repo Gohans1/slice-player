@@ -189,7 +189,10 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     ...new Set(
       Array.from(plan.staying.keys(), (id) => {
         const name = playlists.find((p) => p.id === id)?.name;
-        return name === undefined ? t("bulkActions.deletedPlaylist") : t("bulkActions.quoted", { name });
+        if (name === undefined) return t("bulkActions.deletedPlaylist");
+        // Taking a song out of a playlist also takes it out of the playlist's sub-playlists
+        const hasSubPlaylists = playlists.some((p) => p.parent_id === id);
+        return t(hasSubPlaylists ? "bulkActions.quotedWithSubPlaylists" : "bulkActions.quoted", { name });
       })
     ),
   ];

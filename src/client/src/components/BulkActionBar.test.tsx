@@ -202,6 +202,17 @@ describe("BulkActionBar Component", () => {
       expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1"]], ["pl_2", ["item_2"]]]);
     });
 
+    // Taking a song out of a playlist also takes it out of the playlist's sub-playlists
+    it("says a song leaves the sub-playlists of a playlist it is removed from", async () => {
+      usePlayerStore.setState({ playlists: [roadTrip, gym, { id: "pl_1a", name: "Road Trip Slow", parent_id: "pl_1", created_at: 3, updated_at: 3, item_count: 2 }] });
+
+      const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_1"), playlistItem("item_2", "pl_2")]);
+
+      expect(dialog?.querySelector("p")?.textContent).toBe(
+        "They stay in your library and only leave “Road Trip” (with its sub-playlists) and “Gym”."
+      );
+    });
+
     it("calls a playlist that is gone a deleted playlist", async () => {
       const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_gone")]);
 

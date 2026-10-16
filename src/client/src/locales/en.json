@@ -414,6 +414,7 @@
     "confirmDeleteMixed_one": "{{count, number}} of them stays in your library and only leaves {{playlists, list}}. The others are removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this.",
     "confirmDeleteMixed_other": "{{count, number}} of them stay in your library and only leave {{playlists, list}}. The others are removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this.",
     "quoted": "“{{name}}”",
+    "quotedWithSubPlaylists": "“{{name}}” (with its sub-playlists)",
     "deletedPlaylist": "a deleted playlist",
     "clear": "Clear"
   },
