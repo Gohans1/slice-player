@@ -76,12 +76,13 @@ export function Shelf({ title, description, actions, listClassName, children }: 
         </div>
       </div>
       {/* Scrolls out into the page's side margins as Apple Music's shelves do: items line up with the page, and the next
-          one peeks in. Padded above and below by the width of a focus ring, which the scroller would otherwise clip */}
+          one peeks in. Padded above and below by the width of a focus ring, which the scroller would otherwise clip.
+          Positioned, so the items' screen-reader-only text scrolls and clips with them rather than widening the page */}
       <ul
         ref={listRef}
         onScroll={measure}
         className={cn(
-          "-mx-(--page-gutter) -my-1 grid snap-x snap-mandatory scroll-px-(--page-gutter) grid-flow-col overflow-x-auto overscroll-x-contain px-(--page-gutter) py-1 [scrollbar-width:none] *:snap-start motion-safe:scroll-smooth",
+          "relative -mx-(--page-gutter) -my-1 grid snap-x snap-mandatory scroll-px-(--page-gutter) grid-flow-col overflow-x-auto overscroll-x-contain px-(--page-gutter) py-1 [scrollbar-width:none] *:snap-start motion-safe:scroll-smooth",
           listClassName
         )}
       >
