@@ -110,11 +110,11 @@ function startListening(state: PlayerState, segment: Segment, track: Track, star
     segment_id: segment.id.startsWith("fallback_") ? null : segment.id,
     ...playSourceOf(entry, state),
   };
-  const counter = createListenCounter(segment.end_time - segment.start_time, startTime);
+  const counter = createListenCounter(segment.end_time - segment.start_time, startTime, performance.now());
   listening = {
     entryId,
     tick: (time) => {
-      if (!counter(time)) return;
+      if (!counter(time, performance.now())) return;
       // Home may be open, or opened next: either way its shelves should count this play
       void postPlay(play).then((recorded) => {
         if (recorded) void useHomeStore.getState().refresh();
@@ -1485,8 +1485,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           get().nextSegment(true);
         },
         (time) => {
-          set({ currentTime: time });
           listen.tick(time);
+          // Nothing to draw while the window is hidden; the music, and the listening, carry on
+          if (document.visibilityState !== "hidden") set({ currentTime: time });
         },
         segment.start_time
       );

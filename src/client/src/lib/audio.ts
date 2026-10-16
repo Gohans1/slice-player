@@ -628,12 +628,11 @@ class AudioEngine {
     const curTime = this.audioEl.currentTime;
     const now = performance.now();
 
-    // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing
+    // Throttle progress callback to 10Hz (every 100ms) to prevent UI re-render thrashing. It carries on while the window is
+    // hidden, as the music does; what's worth drawing then is the caller's to decide
     if (this.onTimeUpdateCallback && now - this.lastTimeUpdate >= 100) {
       this.lastTimeUpdate = now;
-      if (typeof document === "undefined" || document.visibilityState !== "hidden") {
-        this.onTimeUpdateCallback(curTime);
-      }
+      this.onTimeUpdateCallback(curTime);
     }
 
     // Guard against seeking settlement lag during same-track segment transitions (both forward & backward)

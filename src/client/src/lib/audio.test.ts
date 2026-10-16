@@ -1,6 +1,8 @@
 import { afterAll, afterEach, beforeEach, expect, it, spyOn } from "bun:test";
 
+const audios: TestAudio[] = [];
 class TestAudio extends EventTarget {
+  constructor() { super(); audios.push(this); }
   src = "";
   paused = true;
   preload = "";
@@ -43,10 +45,42 @@ beforeEach(() => {
   contextReady = new Promise<void>((resolve) => { releaseContext = resolve; });
   audioEngine.setSource("http://slice-player.test/fixture.opus");
 });
-afterEach(() => { releaseContext(); audioEngine.pause(); });
+// Lets the pause's 15ms fade finish, so the next test starts paused
+afterEach(async () => {
+  releaseContext();
+  audioEngine.pause();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+});
 afterAll(() => {
   Object.assign(globalThis, { Audio: originalAudio, Worker: originalWorker });
   Object.assign(window, { AudioContext: originalContext });
+});
+
+// As when the window is minimised or another tab is in front
+async function whileHidden(run: () => Promise<void>) {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+  try {
+    await run();
+  } finally {
+    Reflect.deleteProperty(document, "visibilityState");
+  }
+}
+
+it("keeps reporting where playback is while the window is hidden, as the music plays on", async () => {
+  const reportedWhileHidden: number[] = [];
+  releaseContext();
+  await audioEngine.playSegment("http://slice-player.test/fixture.opus", 0, 60, () => {}, (time) => {
+    if (document.visibilityState === "hidden") reportedWhileHidden.push(time);
+  });
+
+  await whileHidden(async () => {
+    audios[0].currentTime = 5;
+    // Past the 100ms between reports
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    audios[0].dispatchEvent(new Event("timeupdate"));
+  });
+
+  expect(reportedWhileHidden.includes(5)).toBe(true);
 });
 
 it("does not start a segment after pause cancels its pending AudioContext resume", async () => {

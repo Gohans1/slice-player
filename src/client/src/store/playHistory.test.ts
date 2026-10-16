@@ -13,16 +13,35 @@ const fresh: HomeSummary = { recently_played: [{ source_type: "original_only", p
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const urlOf = (input: RequestInfo | URL) => (input instanceof Request ? input.url : input.toString());
 
+// The clock playback is timed by, in ms
+let clock = 0;
+
 // Plays on from `from` to `to` seconds, reported every 100ms as playback does
 function listen(onTimeUpdate: (time: number) => void, from: number, to: number) {
-  for (let time = from; time <= to + 1e-9; time += 0.1) onTimeUpdate(time);
+  for (let time = from; time <= to + 1e-9; time += 0.1) {
+    clock += 100;
+    onTimeUpdate(time);
+  }
+}
+
+// As when the window is minimised or another tab is in front
+function whileHidden(run: () => void) {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+  try {
+    run();
+  } finally {
+    Reflect.deleteProperty(document, "visibilityState");
+  }
 }
 
 describe("Counting plays", () => {
   let playAudio: ReturnType<typeof spyOn<typeof audioEngine, "playSegment">>;
   let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
+  let now: ReturnType<typeof spyOn<typeof performance, "now">>;
 
   beforeEach(() => {
+    clock = 0;
+    now = spyOn(performance, "now").mockImplementation(() => clock);
     playAudio = spyOn(audioEngine, "playSegment").mockResolvedValue(undefined);
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       Object.assign(
@@ -46,6 +65,7 @@ describe("Counting plays", () => {
   afterEach(() => {
     playAudio.mockRestore();
     fetchSpy.mockRestore();
+    now.mockRestore();
   });
 
   // Starts the queue's entry at `index`; returns where playback reports its position
@@ -68,6 +88,15 @@ describe("Counting plays", () => {
     expect(recordedPlays()).toEqual([
       { track_id: "a", segment_id: null, source_type: "original_only", playlist_id: null, via_home: false },
     ]);
+  });
+
+  it("counts a song heard while the window is hidden, without drawing where it is", async () => {
+    const onTimeUpdate = await start(0);
+    usePlayerStore.setState({ currentTime: 0 });
+    whileHidden(() => listen(onTimeUpdate, 0, 60));
+
+    expect(recordedPlays()).toHaveLength(1);
+    expect(usePlayerStore.getState().currentTime).toBe(0);
   });
 
   it("records a slice's play as that slice of its song, once half the slice has been heard", async () => {
