@@ -42,7 +42,12 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
   const items = React.useMemo(() => candidates.map((p) => ({ value: p.id, label: p.name })), [candidates]);
   const nextKeyRef = React.useRef(0);
   const newRow = (id: string | null): SourceRow => ({ key: nextKeyRef.current++, id });
-  const [rows, setRows] = React.useState<SourceRow[]>(() => (mix?.source_ids ?? [null, null]).map(newRow));
+  const [rows, setRows] = React.useState<SourceRow[]>(() => {
+    // Deleting a mix's playlists can leave it fewer than the two it needs; empty rows make up the rest
+    const ids: (string | null)[] = (mix?.source_ids ?? []).filter((id) => candidates.some((p) => p.id === id));
+    while (ids.length < 2) ids.push(null);
+    return ids.map(newRow);
+  });
   const [customName, setCustomName] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -52,7 +57,6 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
   const sourceIds = rows.flatMap((row) => (row.id ? [row.id] : []));
   const playlistOf = (id: string) => candidates.find((p) => p.id === id);
   const name = customName ?? (sourceIds.length >= 2 ? defaultMixName(sourceIds.map((id) => playlistOf(id)?.name ?? "")) : "");
-  const itemTotal = sourceIds.reduce((sum, id) => sum + (playlistOf(id)?.item_count ?? 0), 0);
   const canSubmit = sourceIds.length >= 2 && (Boolean(mix) || name.trim().length > 0) && !isSubmitting;
   const canAdd = rows.length < candidates.length && !isSubmitting;
   const canRemove = rows.length > 2 && !isSubmitting;
@@ -124,8 +128,9 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
       title={mix ? t("mixPlaylist.editTitle", { name: mix.name }) : t("mixPlaylist.title")}
       description={t("mixPlaylist.description")}
     >
-      <div className="flex flex-col gap-4">
-        <FieldSet>
+      {/* A fieldset is as wide as its content by default, which would push the rows past a phone's screen */}
+      <div className="flex min-w-0 flex-col gap-4">
+        <FieldSet className="min-w-0">
           <FieldLegend variant="label">{t("mixPlaylist.rulesLead")}</FieldLegend>
           <ol ref={listRef} className="flex max-h-80 flex-col divide-y overflow-y-auto rounded-lg border">
             {rows.map((row, index) => {
@@ -197,10 +202,8 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
               );
             })}
           </ol>
-          {/* Where a Smart Playlist has Live updating: the mix follows its playlists, so the count is today's */}
-          <FieldDescription>
-            <span className="tabular-nums">{t("mixPlaylist.summary", { count: itemTotal })}</span>
-          </FieldDescription>
+          {/* Where a Smart Playlist has Live updating. No item count: the mix leaves out an item a second playlist repeats */}
+          <FieldDescription>{t("mixPlaylist.liveNote")}</FieldDescription>
         </FieldSet>
 
         {!mix && (

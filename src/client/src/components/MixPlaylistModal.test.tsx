@@ -160,13 +160,21 @@ describe("MixPlaylistModal", () => {
     expect(setMixSources.mock.calls).toEqual([["mix_1", ["pl_b", "pl_a"]]]);
   });
 
-  it("counts the items the mix will play", async () => {
-    await renderModal({ mix });
-    const dialogText = () => document.querySelector("[role='dialog']")?.textContent ?? "";
-    expect(dialogText()).toContain("7 items");
+  it("gives a mix that has lost its playlists two rows to choose new ones in", async () => {
+    const setMixSources = mock(async (_mixId: string, _sourceIds: string[]) => true);
+    usePlayerStore.setState({ setMixSources });
 
-    await click(button("Add a playlist after Gym"));
-    await choose(3, "Focus");
-    expect(dialogText()).toContain("9 items");
+    await renderModal({ mix: { ...mix, source_ids: [] } });
+    expect(pickedNames()).toEqual(["Choose a playlist", "Choose a playlist"]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+
+    // A source deleted since the playlists were loaded is left out
+    await renderModal({ mix: { ...mix, source_ids: ["pl_gone", "pl_a"] } });
+    expect(pickedNames()).toEqual(["Chill", "Choose a playlist"]);
+
+    await choose(2, "Gym");
+    await click(buttonWithText("Save"));
+    expect(setMixSources.mock.calls).toEqual([["mix_1", ["pl_a", "pl_b"]]]);
   });
 });

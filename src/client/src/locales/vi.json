@@ -430,7 +430,7 @@
     "moveDown": "Đưa {{name}} xuống",
     "remove": "Bỏ {{name}}",
     "addAfter": "Thêm danh sách sau {{name}}",
-    "summary_other": "{{count, number}} mục · Tự cập nhật",
+    "liveNote": "Tự cập nhật khi các danh sách này thay đổi.",
     "cancel": "Hủy",
     "submit": "Tạo danh sách gộp",
     "save": "Lưu",
