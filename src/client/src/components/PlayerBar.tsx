@@ -96,7 +96,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
   const isFromSearch = queueOrigin?.type === "search";
   const searchCount = (typeof queueOrigin?.count === "number" ? Math.min(queueOrigin.count, queueLength || queueOrigin.count) : queueLength) || 0;
 
-  const { name: playingPlaylistName, open: handleActiveTagClick } = usePlaybackSource();
+  const { name: playingPlaylistName, reveal: handleActiveTagClick } = usePlaybackSource();
 
   const badgeTitle = React.useMemo(() => {
     if (isFromSearch) {

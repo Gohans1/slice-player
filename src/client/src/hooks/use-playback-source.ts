@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { findActivePlaylistItemIndex } from "../lib/activeItemIndex";
 import { usePlayerStore } from "../store/usePlayerStore";
 
-// Where the queue plays from, a playlist or a library page, and a way there that shows the playing song
+// Where the queue plays from, a playlist or a library page: going there shows the playing song
 export function usePlaybackSource() {
   const { t } = useTranslation();
   const playbackMode = usePlayerStore((s) => s.playbackMode);
@@ -31,21 +31,7 @@ export function usePlaybackSource() {
       : t("categories.mixed", "Mix");
   }, [activePlaylistPlayingId, activePlaylistPlayingName, playbackMode, t]);
 
-  const open = React.useCallback(async () => {
-    // If the user has a playlist currently open and that playlist contains the active track/slice,
-    // scroll directly to that track in the open playlist rather than navigating away.
-    if ((!activePlaylistPlayingId || activePlaylistPlayingId === activePlaylistId) && activePlaylistId && activePlaylistItems.length > 0) {
-      const activeIdx = findActivePlaylistItemIndex(activePlaylistItems, {
-        activeTrackId,
-        activeSegmentId,
-        isFallbackSegment: !activeSegmentId || activeSegmentId.startsWith("fallback_"),
-      });
-      if (activeIdx >= 0) {
-        requestScrollToActiveTrack(`playlist:${activePlaylistId}`);
-        return;
-      }
-    }
-
+  const goToSource = React.useCallback(async () => {
     const targetKey = activePlaylistPlayingId
       ? `playlist:${activePlaylistPlayingId}`
       : `category:${playbackMode || "mixed"}`;
@@ -59,17 +45,23 @@ export function usePlaybackSource() {
       }
     }
     requestScrollToActiveTrack(targetKey);
-  }, [
-    activePlaylistId,
-    activePlaylistItems,
-    activeTrackId,
-    activeSegmentId,
-    activePlaylistPlayingId,
-    playbackMode,
-    setActivePlaylist,
-    setActiveSystemCategory,
-    requestScrollToActiveTrack,
-  ]);
+  }, [activePlaylistPlayingId, playbackMode, setActivePlaylist, setActiveSystemCategory, requestScrollToActiveTrack]);
 
-  return { name, open };
+  // Shows the playing song where it is listed: in the open playlist when it has the song, otherwise at its source
+  const reveal = React.useCallback(async () => {
+    if ((!activePlaylistPlayingId || activePlaylistPlayingId === activePlaylistId) && activePlaylistId && activePlaylistItems.length > 0) {
+      const activeIdx = findActivePlaylistItemIndex(activePlaylistItems, {
+        activeTrackId,
+        activeSegmentId,
+        isFallbackSegment: !activeSegmentId || activeSegmentId.startsWith("fallback_"),
+      });
+      if (activeIdx >= 0) {
+        requestScrollToActiveTrack(`playlist:${activePlaylistId}`);
+        return;
+      }
+    }
+    await goToSource();
+  }, [activePlaylistId, activePlaylistItems, activeTrackId, activeSegmentId, activePlaylistPlayingId, goToSource, requestScrollToActiveTrack]);
+
+  return { name, goToSource, reveal };
 }

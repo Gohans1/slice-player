@@ -430,9 +430,10 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
 
   const displayQueue = queue;
 
-  const { name: sourceName, open: openSource } = usePlaybackSource();
+  const playbackSource = usePlaybackSource();
+  const sourceName = playbackSource.name;
   const goToSource = async () => {
-    await openSource();
+    await playbackSource.goToSource();
     if (closeOnNavigate) onClose();
   };
 

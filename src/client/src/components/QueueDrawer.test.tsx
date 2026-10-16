@@ -1130,6 +1130,35 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
       expect(usePlayerStore.getState().activeSystemCategory).toBe("slices_only");
     });
 
+    // The player bar's artwork shows the song where it is; the queue's source button goes to the source
+    it("goes to the page it plays from even when the open playlist has the playing song", async () => {
+      usePlayerStore.setState({
+        activePlaylistId: "pl_open",
+        activePlaylistItems: [
+          {
+            id: "item_1",
+            playlist_id: "pl_open",
+            track_id: dummyTrack.id,
+            segment_id: dummySegment.id,
+            sort_order: 0,
+            added_at: 0,
+            track: dummyTrack,
+            segment: dummySegment,
+          },
+        ],
+      });
+      act(() => {
+        root.render(<QueuePanel onClose={() => {}} />);
+      });
+
+      await act(async () => {
+        sourceButton("Lát cắt")?.click();
+      });
+
+      expect(opened).toEqual([null]);
+      expect(usePlayerStore.getState().activeSystemCategory).toBe("slices_only");
+    });
+
     it("goes to the playlist the queue plays from", async () => {
       usePlayerStore.setState({
         activePlaylistPlayingId: "pl_my_mix",
