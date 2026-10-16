@@ -1027,7 +1027,7 @@ export function App() {
     }
   }, [currentItemCount, currentViewKey, isPendingActiveTrackScroll]);
 
-  // Published as scroll-padding, so focus, anchors and the playlist title's scroll timeline account for the sticky toolbar
+  // Read by the content's scroll-margin and the page title's scroll timeline, so both account for the sticky toolbar
   const toolbarRef = useHeightCssVar("--library-toolbar-height");
 
   const headerMeta = React.useMemo(() => {
@@ -1154,7 +1154,7 @@ export function App() {
         </header>
 
         {/* Content Area */}
-        <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6">
+        <div className="clear-sticky-bars w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6">
           <div
             id="main-library-panel"
             role="region"
