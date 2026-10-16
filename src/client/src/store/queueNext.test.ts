@@ -75,6 +75,58 @@ describe("Play Next and Play Later", () => {
     expect(trackIds(usePlayerStore.getState().queue)).toEqual(["a", "b", "c", "x", "y"]);
   });
 
+  // A refresh that reloads the slices too rebuilds each page's queue; what was queued isn't the page's to drop
+  describe("through a full library refresh", () => {
+    const chorus = { id: "seg_x_chorus", track_id: "x", name: "Chorus", start_time: 10, end_time: 20, created_at: 1 };
+    const refresh = async () => {
+      const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+        fetchReturning((url) => Response.json(url === "/api/segments" ? [chorus] : [a, b, c, x, y]))
+      );
+      try {
+        await usePlayerStore.getState().fetchTracks(true);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    };
+
+    it("keeps a slice queued while Tracks plays, and a song queued twice", async () => {
+      usePlayerStore.getState().enqueue([createQueueItem(chorus, x)], "next");
+      usePlayerStore.getState().enqueue([queueItemOf(a)], "later");
+      const queuedAgain = usePlayerStore.getState().queue[4].segment;
+
+      await refresh();
+
+      const state = usePlayerStore.getState();
+      expect(state.queue.map((item) => item.segment.id)).toEqual(["fallback_a", "fallback_b", "seg_x_chorus", "fallback_c", "fallback_a"]);
+      expect(state.queueIndex).toBe(1);
+      // Unchanged, so the same segment: the queue doesn't re-render for nothing
+      expect(state.queue[4].segment === queuedAgain).toBe(true);
+    });
+
+    it("stays on the copy of a repeated song that is playing", async () => {
+      usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+      const copy = usePlayerStore.getState().queue[3];
+      usePlayerStore.setState({ queueIndex: 3 });
+
+      await refresh();
+
+      const state = usePlayerStore.getState();
+      expect(state.queue[state.queueIndex]?.queueItemId).toBe(copy.queueItemId);
+    });
+  });
+
+  // Shuffling moves songs around; the one playing must stay the copy that was playing
+  it("keeps playing the same copy of a repeated song when shuffle turns on", () => {
+    usePlayerStore.getState().enqueue([queueItemOf(b)], "later");
+    const copy = usePlayerStore.getState().queue[3];
+    usePlayerStore.setState({ queueIndex: 3, isShuffle: false, shuffleByMode: { mixed: false, slices_only: false, original_only: false } });
+
+    usePlayerStore.getState().toggleShuffle();
+
+    const state = usePlayerStore.getState();
+    expect(state.queue[state.queueIndex]?.queueItemId).toBe(copy.queueItemId);
+  });
+
   it("leaves an empty queue to the caller, which plays the songs instead", () => {
     usePlayerStore.setState({ queue: [], queueIndex: -1, activeTrack: null, activeSegment: null });
 

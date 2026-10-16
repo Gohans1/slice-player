@@ -15,6 +15,8 @@ export interface QueueItem {
   queueItemId?: string;
   segment: Segment;
   track: Track;
+  // Added with Play Next or Play Later: it stays through library refreshes whatever page is playing, as long as it can play
+  userQueued?: boolean;
 }
 
 let nextQueueItemCounter = 0;
@@ -401,6 +403,14 @@ export function sortQueueItems(items: QueueItem[]): QueueItem[] {
   });
 }
 
+// The full-track segment for a refreshed track: the queued one while it still covers the whole track, so unchanged
+// entries keep their identity
+function refreshedFallbackSegment(segment: Segment, track: Track): Segment {
+  return segment.start_time === 0 && segment.end_time === track.duration && segment.id === `fallback_${track.id}`
+    ? segment
+    : createDefaultFullSegment(track);
+}
+
 export function reconcileSingleModeQueue(
   mode: PlaybackMode,
   existingQueue: QueueItem[],
@@ -458,6 +468,17 @@ export function reconcileSingleModeQueue(
 
   // 1. Reconcile existing queue items
   for (const item of existingQueue) {
+    if (item.userQueued) {
+      const queuedTrack = trackMap.get(item.track.id);
+      if (!queuedTrack || queuedTrack.status !== "ready" || queuedTrack.duration <= 0) continue;
+      if (item.segment.id.startsWith("fallback_")) {
+        validQueue.push({ ...createQueueItem(refreshedFallbackSegment(item.segment, queuedTrack), queuedTrack, item.queueItemId), userQueued: true });
+      } else {
+        const queuedSegment = segmentObjMap.get(item.segment.id);
+        if (queuedSegment) validQueue.push({ ...createQueueItem(queuedSegment, queuedTrack, item.queueItemId), userQueued: true });
+      }
+      continue;
+    }
     if (!trackMap.has(item.track.id) || modeDismissedTracks.has(item.track.id)) continue;
     const freshTrack = trackMap.get(item.track.id)!;
     if (freshTrack.status !== "ready" || freshTrack.duration <= 0) continue;
@@ -469,13 +490,7 @@ export function reconcileSingleModeQueue(
       }
       if (!seenSegmentIds.has(item.segment.id) && (!modeDismissed.has(item.segment.id) || item.segment.id === currentActiveSegment?.id)) {
         seenSegmentIds.add(item.segment.id);
-        const fallbackSeg =
-          item.segment.start_time === 0 &&
-          item.segment.end_time === freshTrack.duration &&
-          item.segment.id === `fallback_${freshTrack.id}`
-            ? item.segment
-            : createDefaultFullSegment(freshTrack);
-        validQueue.push(createQueueItem(fallbackSeg, freshTrack, item.queueItemId));
+        validQueue.push(createQueueItem(refreshedFallbackSegment(item.segment, freshTrack), freshTrack, item.queueItemId));
       }
     } else {
       if (mode === "original_only" && item.segment.id !== currentActiveSegment?.id) continue;
@@ -1146,7 +1161,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         const validQueue = nextQueuesByMode[currentMode];
         let newIdx = -1;
-        if (validQueue.length > 0 && currentItem) {
+        // The same song can be queued more than once; the entry playing is the one with its queue id
+        const sameEntryIdx = currentItem?.queueItemId ? validQueue.findIndex((it) => it.queueItemId === currentItem.queueItemId) : -1;
+        if (sameEntryIdx !== -1) {
+          newIdx = sameEntryIdx;
+        } else if (validQueue.length > 0 && currentItem) {
           const segIdx = validQueue.findIndex((it) => it.segment.id === currentItem.segment.id);
           if (segIdx !== -1) {
             newIdx = segIdx;
@@ -1674,7 +1693,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     let newIndex = -1;
-    if (activeSegment) {
+    // A song can be queued more than once, so follow the entry that is playing, when the one at the index is
+    const entryAtIndex = queue[get().queueIndex];
+    const playingEntryId = entryAtIndex && entryAtIndex.segment.id === activeSegment?.id ? entryAtIndex.queueItemId : undefined;
+    const sameEntry = playingEntryId ? newQueue.findIndex((item) => item.queueItemId === playingEntryId) : -1;
+    if (sameEntry >= 0) {
+      newIndex = sameEntry;
+    } else if (activeSegment) {
       const found = newQueue.findIndex((item) => item.segment.id === activeSegment.id);
       if (found >= 0) {
         newIndex = found;
@@ -3120,7 +3145,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // Nothing is queued for the songs to come after: the caller plays them instead
     if (queue.length === 0) return false;
     // Copies, so a song queued twice is two entries
-    const copies = items.map((item) => createQueueItem(item.segment, item.track));
+    const copies = items.map((item) => ({ ...createQueueItem(item.segment, item.track), userQueued: true }));
     const at = placement === "next" ? queueIndex + 1 : queue.length;
     const next = [...queue.slice(0, at), ...copies, ...queue.slice(at)];
     // While a library page plays, a refresh rebuilds the queue from its mode's queue, so they go there too
