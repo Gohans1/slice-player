@@ -27,6 +27,7 @@ describe("AppSidebar", () => {
   let fetchSpy: ReturnType<typeof spyOn>;
   let onCreatePlaylist: ReturnType<typeof mock>;
   let onPlayCategory: ReturnType<typeof mock>;
+  let onNewMix: ReturnType<typeof mock>;
 
   beforeEach(() => {
     initialState = usePlayerStore.getState();
@@ -36,6 +37,7 @@ describe("AppSidebar", () => {
     root = createRoot(container);
     onCreatePlaylist = mock(() => {});
     onPlayCategory = mock(() => {});
+    onNewMix = mock(() => {});
     usePlayerStore.setState({
       tracks: [track("a", "ready", 3), track("b", "ready", 1), track("c", "downloading"), track("d", "error")],
       playlists: [
@@ -65,6 +67,7 @@ describe("AppSidebar", () => {
             <AppSidebar
               onCreatePlaylist={onCreatePlaylist}
               onPlayCategory={onPlayCategory}
+              onNewMix={onNewMix}
               searchQuery=""
               onSearchChange={() => {}}
               onOpenShortcuts={() => {}}
@@ -347,6 +350,7 @@ describe("AppSidebar", () => {
               <AppSidebar
                 onCreatePlaylist={onCreatePlaylist}
                 onPlayCategory={onPlayCategory}
+                onNewMix={onNewMix}
                 searchQuery=""
                 onSearchChange={() => {}}
                 onOpenShortcuts={() => {}}
@@ -396,6 +400,7 @@ describe("AppSidebar", () => {
               <AppSidebar
                 onCreatePlaylist={onCreatePlaylist}
                 onPlayCategory={onPlayCategory}
+                onNewMix={onNewMix}
                 searchQuery=""
                 onSearchChange={() => {}}
                 onOpenShortcuts={() => {}}
@@ -460,7 +465,7 @@ describe("AppSidebar", () => {
     });
 
     const items = Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
-    expect(items).toEqual(["Shuffle", "Play Next", "Play Later", "Rename", "Delete playlist"]);
+    expect(items).toEqual(["Shuffle", "Play Next", "Play Later", "Rename", "New Mix with This Playlist", "Delete playlist"]);
     expect(usePlayerStore.getState().activePlaylistId).toBeNull();
 
     await click(menuItem("Rename"));
@@ -478,12 +483,55 @@ describe("AppSidebar", () => {
     expect(document.body.textContent).toContain("Delete playlist?");
   });
 
-  it("asks the app to create a playlist from the Playlists group action", async () => {
+  // Like File > New in Apple Music: the Playlists group's + makes either kind of playlist
+  it("asks the app for a new playlist or a new mix from the Playlists group action", async () => {
     await renderSidebar();
+    const newMenu = container.querySelector<HTMLElement>('[aria-label="New Playlist or Mix"]')!;
 
-    await click(container.querySelector<HTMLElement>('[aria-label="New Playlist"]')!);
+    await click(newMenu);
+    expect(openMenuItems()).toEqual(["New Playlist", "New Mix"]);
+    await click(menuItem("New Playlist"));
+    await click(newMenu);
+    await click(menuItem("New Mix"));
 
     expect(onCreatePlaylist).toHaveBeenCalledTimes(1);
+    // Once, with no playlist to start from (not, say, the click event)
+    expect(onNewMix.mock.calls.map((args) => args.length)).toEqual([0]);
+  });
+
+  it("starts a mix with a playlist from its actions, but not with a mix", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        playlist("rock", "Rock"),
+        playlist("jazz", "Jazz"),
+        playlist("night", "Night", { is_mix: true, source_ids: ["rock", "jazz"] }),
+      ],
+    });
+    await renderSidebar();
+
+    await openActions("Rock");
+    await click(menuItem("New Mix with This Playlist"));
+    await openActions("Night");
+
+    expect(onNewMix.mock.calls).toEqual([["rock"]]);
+    expect(openMenuItems()).not.toContain("New Mix with This Playlist");
+  });
+
+  // A mix needs two playlists, so with one there is nothing to start
+  it("turns off new mixes until there are two playlists to mix", async () => {
+    usePlayerStore.setState({ playlists: [playlist("rock", "Rock")] });
+    await renderSidebar();
+    const isOff = (label: string) => menuItem(label).getAttribute("aria-disabled") === "true";
+
+    await click(container.querySelector<HTMLElement>('[aria-label="New Playlist or Mix"]')!);
+    expect([isOff("New Playlist"), isOff("New Mix")]).toEqual([false, true]);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await tick();
+    });
+    await openActions("Rock");
+
+    expect(isOff("New Mix with This Playlist")).toBe(true);
   });
 
   it("shows the now-playing equalizer on the playlist that is playing", async () => {

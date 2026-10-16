@@ -40,6 +40,7 @@ describe("AppShell", () => {
           onSearchChange={() => {}}
           onCreatePlaylist={() => {}}
           onPlayCategory={() => {}}
+          onNewMix={() => {}}
           onOpenShortcuts={() => {}}
         >
           <div />

@@ -62,7 +62,7 @@ describe("PlaylistGrid", () => {
 
     await click(button("Play Chill"));
     await click(button("More options for Chill"));
-    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "New Mix with This Playlist (off)", "Delete playlist"]);
     await click(menuItem("Shuffle"));
     await click(button("Open playlist Chill"));
 
@@ -92,7 +92,7 @@ describe("PlaylistGrid", () => {
       await tick();
     });
 
-    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later", "New Mix with This Playlist (off)", "Delete playlist"]);
   });
 
   it("asks before deleting a playlist from its menu", async () => {
@@ -126,7 +126,7 @@ describe("PlaylistGrid", () => {
     expect(button("Play Empty")).toBe(null);
     expect(container.textContent).toContain("0 items");
     await click(button("More options for Empty"));
-    expect(menuItems()).toEqual(["Play (off)", "Shuffle (off)", "Play Next (off)", "Play Later (off)", "Delete playlist"]);
+    expect(menuItems()).toEqual(["Play (off)", "Shuffle (off)", "Play Next (off)", "Play Later (off)", "New Mix with This Playlist (off)", "Delete playlist"]);
   });
 
   it("creates a playlist from the New Playlist tile", async () => {

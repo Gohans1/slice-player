@@ -2,6 +2,7 @@
   "sidebar": {
     "allPlaylists": "All Playlists",
     "playlistActions": "More options for {{name}}",
+    "newMenu": "New Playlist or Mix",
     "shortcuts": "Keyboard Shortcuts",
     "language": "Language"
   },
@@ -449,6 +450,8 @@
     "save": "Save",
     "serverError": "Failed to save the mix. Please try again.",
     "newTile": "Mix Playlists",
+    "newMix": "New Mix",
+    "newWith": "New Mix with This Playlist",
     "badge": "Mix",
     "sources": "Mix of {{names}}",
     "editSources": "Edit sources",

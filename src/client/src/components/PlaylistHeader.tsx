@@ -6,6 +6,7 @@ import { PlaylistCover } from "./PlaylistCover";
 import { PlaylistGrid } from "./PlaylistGrid";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration, REVEAL_ON_HOVER } from "../lib/utils";
+import { canStartMix } from "../lib/mixPlaylist";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 import { QueueMenuItems } from "./QueueMenuItems";
 const CreatePlaylistModal = React.lazy(() => import("./CreatePlaylistModal").then((m) => ({ default: m.CreatePlaylistModal })));
@@ -34,9 +35,11 @@ interface PlaylistHeaderProps {
   playlist: Playlist & { item_count?: number };
   items: PlaylistItemWithDetails[];
   onEditSources?: () => void;
+  // Starts a new mix with this playlist first
+  onNewMix?: () => void;
 }
 
-export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeaderProps) {
+export function PlaylistHeader({ playlist, items, onEditSources, onNewMix }: PlaylistHeaderProps) {
   const { t } = useTranslation();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
@@ -324,6 +327,12 @@ export function PlaylistHeader({ playlist, items, onEditSources }: PlaylistHeade
                         <DropdownMenuItem onClick={() => setIsCreateSubModalOpen(true)}>
                           <ListPlus />
                           {t("playlist.newSubPlaylist")}
+                        </DropdownMenuItem>
+                      )}
+                      {onNewMix && (
+                        <DropdownMenuItem disabled={!canStartMix(allPlaylists)} onClick={onNewMix}>
+                          <Combine />
+                          {t("mixPlaylist.newWith")}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />

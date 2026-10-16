@@ -2,6 +2,7 @@
   "sidebar": {
     "allPlaylists": "Tất cả danh sách",
     "playlistActions": "Tùy chọn khác cho {{name}}",
+    "newMenu": "Tạo danh sách mới hoặc danh sách gộp",
     "shortcuts": "Phím tắt",
     "language": "Ngôn ngữ"
   },
@@ -448,6 +449,8 @@
     "save": "Lưu",
     "serverError": "Không thể lưu danh sách gộp. Vui lòng thử lại.",
     "newTile": "Gộp danh sách",
+    "newMix": "Tạo danh sách gộp mới",
+    "newWith": "Tạo danh sách gộp từ danh sách này",
     "badge": "Gộp",
     "sources": "Gộp từ {{names}}",
     "editSources": "Sửa nguồn",

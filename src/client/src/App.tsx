@@ -159,7 +159,9 @@ export function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   // null = closed; {} = create a new mix; { mix } = edit that mix's sources
-  const [mixModal, setMixModal] = React.useState<{ mix?: Playlist } | null>(null);
+  const [mixModal, setMixModal] = React.useState<{ mix?: Playlist; firstSourceId?: string } | null>(null);
+  // Stable, since each playlist in the sidebar is memoized with it
+  const startMix = React.useCallback((firstSourceId?: string) => setMixModal({ firstSourceId }), []);
   const [deleteTarget, setDeleteTarget] = React.useState<{
     type: "track" | "slice" | "playlist_item";
     id: string;
@@ -1139,6 +1141,7 @@ export function App() {
       onSearchChange={setSearchQuery}
       onCreatePlaylist={() => setIsCreateModalOpen(true)}
       onPlayCategory={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false))}
+      onNewMix={startMix}
       onOpenShortcuts={() => setIsShortcutsOpen(true)}
     >
       <SidebarInset id={MAIN_CONTENT_ID} className="min-w-0">
@@ -1223,6 +1226,7 @@ export function App() {
               playlist={activePl}
               items={activePlaylistItems}
               onEditSources={() => setMixModal({ mix: activePl })}
+              onNewMix={() => startMix(activePl.id)}
             />
           )}
           {viewMode === "list" ? (
@@ -1293,7 +1297,7 @@ export function App() {
               playlists={displayedPlaylists}
               onOpen={(id) => setActivePlaylist(id)}
               onCreate={() => setIsCreateModalOpen(true)}
-              onMix={() => setMixModal({})}
+              onMix={startMix}
               onEditSources={(mix) => setMixModal({ mix })}
             />
           )
@@ -1640,6 +1644,7 @@ export function App() {
           <MixPlaylistModal
             isOpen
             mix={mixModal.mix}
+            firstSourceId={mixModal.firstSourceId}
             onClose={() => setMixModal(null)}
             onCreated={(id) => setActivePlaylist(id)}
           />

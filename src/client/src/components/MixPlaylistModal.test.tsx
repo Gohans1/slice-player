@@ -160,6 +160,18 @@ describe("MixPlaylistModal", () => {
     expect(setMixSources.mock.calls).toEqual([["mix_1", ["pl_b", "pl_a"]]]);
   });
 
+  it("starts a new mix with the playlist it was made from in the first row", async () => {
+    const createMixPlaylist = mock(async (_name: string, _sourceIds: string[]) => ({ ...mix, id: "mix_new" }));
+    usePlayerStore.setState({ createMixPlaylist });
+
+    await renderModal({ firstSourceId: "pl_b" });
+    expect(pickedNames()).toEqual(["Gym", "Choose a playlist"]);
+    await choose(2, "Chill");
+    await click(buttonWithText("Create Mix"));
+
+    expect(createMixPlaylist.mock.calls).toEqual([["Gym + Chill", ["pl_b", "pl_a"]]]);
+  });
+
   it("gives a mix that has lost its playlists two rows to choose new ones in", async () => {
     const setMixSources = mock(async (_mixId: string, _sourceIds: string[]) => true);
     usePlayerStore.setState({ setMixSources });

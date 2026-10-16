@@ -53,6 +53,7 @@ import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
 import { PlaylistCover } from "../PlaylistCover";
 import { isPlaybackMode, usePlayerStore, type PlaybackMode, type SystemCategory } from "../../store/usePlayerStore";
 import { resolvePlaylistCover } from "../../lib/playlistCover";
+import { canStartMix } from "../../lib/mixPlaylist";
 import { cn } from "../../lib/utils";
 import type { Playlist } from "@/server/types";
 
@@ -83,10 +84,20 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onCreatePlaylist: () => void;
   // Plays or queues a whole library page from its right-click menu
   onPlayCategory: (mode: PlaybackMode, choice: PlayChoice) => void;
+  // Starts a new mix, with the playlist whose menu it came from first
+  onNewMix: (firstSourceId?: string) => void;
   onOpenShortcuts: () => void;
 }
 
-export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onPlayCategory, onOpenShortcuts, ...props }: AppSidebarProps) {
+export function AppSidebar({
+  searchQuery,
+  onSearchChange,
+  onCreatePlaylist,
+  onPlayCategory,
+  onNewMix,
+  onOpenShortcuts,
+  ...props
+}: AppSidebarProps) {
   const { t } = useTranslation();
   const formatNumber = useFormatNumber();
   const tracks = usePlayerStore((s) => s.tracks);
@@ -146,6 +157,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onPl
   ];
 
   const tree = React.useMemo(() => buildPlaylistTree(playlists), [playlists]);
+  const canMix = canStartMix(playlists);
   const isPlaylistsOverview = activePlaylistId === null && activeSystemCategory === "playlists";
 
   const handleConfirmDelete = async (keepChildren: boolean) => {
@@ -166,6 +178,8 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onPl
       isActive={activePlaylistId === playlist.id}
       nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? (isPlaying ? "playing" : "paused") : null}
       onOpen={openPlaylist}
+      onNewMix={onNewMix}
+      canMix={canMix}
       onDelete={setPlaylistToDelete}
     />
   );
@@ -232,9 +246,24 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onPl
 
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.customHeader")}</SidebarGroupLabel>
-          <SidebarGroupAction aria-label={t("library.newPlaylist")} title={t("library.newPlaylist")} onClick={onCreatePlaylist}>
-            <Plus />
-          </SidebarGroupAction>
+          {/* Like File > New in Apple Music */}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<SidebarGroupAction aria-label={t("sidebar.newMenu")} title={t("sidebar.newMenu")} />}>
+              <Plus />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" className="w-auto">
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={onCreatePlaylist}>
+                  <ListMusic />
+                  {t("library.newPlaylist")}
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!canMix} onClick={() => onNewMix()}>
+                  <Combine />
+                  {t("mixPlaylist.newMix")}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -283,6 +312,8 @@ interface PlaylistMenuItemProps {
   isActive: boolean;
   nowPlaying: "playing" | "paused" | null;
   onOpen: (playlistId: string) => void;
+  onNewMix: (firstSourceId: string) => void;
+  canMix: boolean;
   onDelete: (playlist: SidebarPlaylist) => void;
 }
 
@@ -293,6 +324,8 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   isActive,
   nowPlaying,
   onOpen,
+  onNewMix,
+  canMix,
   onDelete,
 }: PlaylistMenuItemProps) {
   const { t } = useTranslation();
@@ -374,6 +407,12 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
           <Pencil />
           {t("playlist.rename")}
         </DropdownMenuItem>
+        {!playlist.is_mix && (
+          <DropdownMenuItem disabled={!canMix} onClick={() => onNewMix(playlist.id)}>
+            <Combine />
+            {t("mixPlaylist.newWith")}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
