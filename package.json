@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "bun run src/server/index.ts",
     "start": "bun run src/server/index.ts",
+    "refresh": "bun src/launcher/refresh.ts",
     "build": "vite build",
     "build:exe": "vite build && bun build --compile --production --windows-hide-console --asset ./dist --target=bun-windows-x64 ./src/server/index.ts --outfile SlicePlayer.exe",
     "lint": "oxlint --type-aware --format=agent",
