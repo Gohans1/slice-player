@@ -408,6 +408,46 @@ describe("Playlist & View Scroll Position Preservation (E2E Component)", () => {
     expect(usePlayerStore.getState().activeTrackScrollRequest).toBeNull();
   });
 
+  for (const viewMode of ["list", "grid"] as const) {
+    it(`jumps to the playing track every time it's asked to, not just the first (${viewMode})`, async () => {
+      usePlayerStore.setState({ activePlaylistPlayingId: "pl_main", isPlaying: true, activeTrackScrollRequest: null, viewMode });
+      await usePlayerStore.getState().setActivePlaylist("pl_main");
+      await act(async () => {
+        root.render(<App />);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 60));
+      });
+      const target = usePlayerStore.getState().activePlaylistItems[35];
+      act(() => {
+        usePlayerStore.setState({
+          activeTrack: target.track,
+          activeSegment: { id: `fallback_${target.track.id}`, track_id: target.track.id, name: target.track.title, start_time: 0, end_time: 180 },
+          queue: [],
+          queueIndex: -1,
+        });
+      });
+      const jump = async () => {
+        await act(async () => {
+          usePlayerStore.getState().requestScrollToActiveTrack("playlist:pl_main");
+          await new Promise((r) => setTimeout(r, 80));
+        });
+      };
+
+      await jump();
+      const trackY = happyWindow.scrollY;
+      expect(trackY).toBeGreaterThan(0);
+
+      // The listener scrolls away, then asks again
+      act(() => {
+        happyWindow.scrollTo(0, 0);
+      });
+      await jump();
+
+      expect(happyWindow.scrollY).toBe(trackY);
+    });
+  }
+
   it("does not reset scroll position when activeTrackScrollRequest is cleared on the same view", async () => {
     usePlayerStore.setState({
       activePlaylistPlayingId: "pl_main",

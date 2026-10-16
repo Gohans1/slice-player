@@ -641,6 +641,10 @@ function getStoredMasterVolume(): number {
 const initialMasterVolume = getStoredMasterVolume();
 audioEngine.setMasterVolume(initialMasterVolume);
 
+// Numbers the requests to jump to the playing track. Views remember the last one they handled, and the request is
+// cleared once handled, so the count has to keep going rather than restart from the cleared request.
+let activeTrackScrollRequestCount = 0;
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   tracks: [],
   isLoadingTracks: false,
@@ -798,13 +802,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   activeTrackScrollRequest: null,
   requestScrollToActiveTrack: (targetKey?: string) => {
-    set((state) => ({
-      activeTrackScrollRequest: {
-        id: (state.activeTrackScrollRequest?.id ?? 0) + 1,
-        timestamp: Date.now(),
-        targetKey,
-      },
-    }));
+    activeTrackScrollRequestCount += 1;
+    set({ activeTrackScrollRequest: { id: activeTrackScrollRequestCount, timestamp: Date.now(), targetKey } });
   },
   clearActiveTrackScrollRequest: () => {
     set({ activeTrackScrollRequest: null });
