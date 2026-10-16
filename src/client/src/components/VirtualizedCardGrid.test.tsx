@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import * as React from "react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createAppRoot } from "../test/app-root";
 import { GlobalWindow } from "happy-dom";
 import { VirtualizedCardGrid, columnsForWidth, useGridColumnCount } from "./VirtualizedCardGrid";
 
@@ -28,7 +28,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     const testItems = Array.from({ length: 50 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
 
@@ -59,7 +59,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     await act(async () => {
       root.render(
@@ -123,7 +123,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
     try {
       await act(async () => {
         root.render(<TestColComponent />);
@@ -170,7 +170,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
     const items = Array.from({ length: 12 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
     let gridWidth = 1190;
     const resizeGrid = async (width: number) => {
@@ -217,7 +217,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     const testItems = Array.from({ length: 50 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
     let handledId: number | null = null;
@@ -255,7 +255,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     const testItems = [
       { id: "item_0", title: "Item 0" },
@@ -365,7 +365,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     const testItems = Array.from({ length: 8 }, (_, i) => ({ id: `item_${i}`, title: `Item ${i}` }));
     let lastReorder: [number, number] | null = null;
@@ -434,7 +434,7 @@ describe("VirtualizedCardGrid Component", () => {
 
     const container = happyWindow.document.createElement("div");
     happyWindow.document.body.appendChild(container);
-    const root = createRoot(container as any);
+    const root = createAppRoot(container as any);
 
     const testItems = [
       { id: "item_0", title: "Item 0" },

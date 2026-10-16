@@ -2,6 +2,7 @@ import * as React from "react";
 import { useWindowVirtualizer, defaultRangeExtractor, measureElement, type Range } from "@tanstack/react-virtual";
 import { GripVertical } from "lucide-react";
 import { cn } from "../lib/utils";
+import { RowContextMenu } from "./RowActionsMenu";
 
 export interface CardDragProps {
   canDrag: boolean;
@@ -495,56 +496,58 @@ export function VirtualizedCardGrid<T>({
         </div>
       )}
 
-      <div
-        role="presentation"
-        className="relative h-(--virtual-size) w-full"
-        style={{
-          "--virtual-size": `${virtualizer.getTotalSize()}px`,
-          "--card-width": `calc((100% - ${(cols - 1) * GRID_GAP}px) / ${cols})`,
-        }}
-      >
-        {virtualItems.map((virtualItem) => {
-          const itemIndex = virtualItem.index;
-          const item = items[itemIndex];
-          const isDragging = draggedIdx === itemIndex;
-          const isDragTarget = dragOverIdx === itemIndex && draggedIdx !== null && draggedIdx !== itemIndex;
-          const canDrag = Boolean(isReorderable && !isReordering);
+      <RowContextMenu>
+        <div
+          role="presentation"
+          className="relative h-(--virtual-size) w-full"
+          style={{
+            "--virtual-size": `${virtualizer.getTotalSize()}px`,
+            "--card-width": `calc((100% - ${(cols - 1) * GRID_GAP}px) / ${cols})`,
+          }}
+        >
+          {virtualItems.map((virtualItem) => {
+            const itemIndex = virtualItem.index;
+            const item = items[itemIndex];
+            const isDragging = draggedIdx === itemIndex;
+            const isDragTarget = dragOverIdx === itemIndex && draggedIdx !== null && draggedIdx !== itemIndex;
+            const canDrag = Boolean(isReorderable && !isReordering);
 
-          const dragProps: CardDragProps = {
-            canDrag,
-            isDragging,
-            isDragTarget,
-            isReordering,
-            onPointerDownHandle: handlePointerDownHandle,
-            onKeyDownHandle: (e) => {
-              handleKeyDownReorder(e, itemIndex);
-            },
-          };
+            const dragProps: CardDragProps = {
+              canDrag,
+              isDragging,
+              isDragTarget,
+              isReordering,
+              onPointerDownHandle: handlePointerDownHandle,
+              onKeyDownHandle: (e) => {
+                handleKeyDownReorder(e, itemIndex);
+              },
+            };
 
-          return (
-            <div
-              key={virtualItem.key}
-              data-index={itemIndex}
-              ref={virtualizer.measureElement}
-              draggable={canDrag}
-              onDragStart={(e) => handleDragStart(e, itemIndex)}
-              onDragOver={(e) => handleDragOver(e, itemIndex)}
-              onDragLeave={() => {
-                // Keep sticky until next target or drop
-              }}
-              onDrop={(e) => handleDrop(e, itemIndex)}
-              onDragEnd={handleDragEnd}
-              className="absolute top-0 left-(--lane-start) w-(--card-width) translate-y-(--virtual-start)"
-              style={{
-                "--virtual-start": `${virtualItem.start - virtualizer.options.scrollMargin}px`,
-                "--lane-start": `calc(${virtualItem.lane} * (var(--card-width) + ${GRID_GAP}px))`,
-              }}
-            >
-              {renderItem(item, itemIndex, dragProps)}
-            </div>
-          );
-        })}
-      </div>
+            return (
+              <div
+                key={virtualItem.key}
+                data-index={itemIndex}
+                ref={virtualizer.measureElement}
+                draggable={canDrag}
+                onDragStart={(e) => handleDragStart(e, itemIndex)}
+                onDragOver={(e) => handleDragOver(e, itemIndex)}
+                onDragLeave={() => {
+                  // Keep sticky until next target or drop
+                }}
+                onDrop={(e) => handleDrop(e, itemIndex)}
+                onDragEnd={handleDragEnd}
+                className="absolute top-0 left-(--lane-start) w-(--card-width) translate-y-(--virtual-start)"
+                style={{
+                  "--virtual-start": `${virtualItem.start - virtualizer.options.scrollMargin}px`,
+                  "--lane-start": `calc(${virtualItem.lane} * (var(--card-width) + ${GRID_GAP}px))`,
+                }}
+              >
+                {renderItem(item, itemIndex, dragProps)}
+              </div>
+            );
+          })}
+        </div>
+      </RowContextMenu>
     </div>
   );
 }

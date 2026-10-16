@@ -90,8 +90,8 @@ html {
     transition: opacity 150ms;
   }
 
-  &:has(> [data-tint="on"], > [data-tint="hover"] [data-popup-open])::before,
-  :has(> [data-tint="on"], > [data-tint="hover"] [data-popup-open]) + &::before {
+  &:has(> [data-tint="on"], > [data-tint="hover"] :is([data-popup-open], [data-context-menu-open]))::before,
+  :has(> [data-tint="on"], > [data-tint="hover"] :is([data-popup-open], [data-context-menu-open])) + &::before {
     opacity: 0;
   }
 

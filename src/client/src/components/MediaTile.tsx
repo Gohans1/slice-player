@@ -70,6 +70,7 @@ export function MediaTile({
 
   return (
     <div
+      data-slot="media-tile"
       data-dragging={isDragging || undefined}
       data-drop-target={isDropTarget || undefined}
       className={cn("group flex flex-col gap-2", isDragging && "opacity-40")}

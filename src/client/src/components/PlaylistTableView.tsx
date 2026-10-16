@@ -26,7 +26,7 @@ import {
   createPlaylistItemSelectedItem,
   type SelectedItem,
 } from "../store/useSelectionStore";
-import { RowActionsMenu } from "./RowActionsMenu";
+import { RowActionsMenu, RowContextMenu } from "./RowActionsMenu";
 import { EmptyState } from "./EmptyState";
 import { ConfirmModal } from "./ConfirmModal";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
@@ -61,7 +61,7 @@ function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, 
       ? "bg-accent ring-2 ring-primary/60"
       : !isReady
       ? "cursor-not-allowed opacity-60"
-      : "cursor-pointer hover:bg-accent/60 has-data-popup-open:bg-accent/60"
+      : "cursor-pointer hover:bg-accent/60 has-data-popup-open:bg-accent/60 has-data-context-menu-open:bg-accent/60"
   );
 }
 
@@ -317,40 +317,42 @@ function VirtualizedTableBody<T>({
   const virtualRows = virtualizer.getVirtualItems();
 
   return (
-    <div ref={containerRef} className="pt-1 [overflow-anchor:none]" role="rowgroup">
-      <div
-        role="presentation"
-        className="relative h-(--virtual-size) w-full"
-        style={{ "--virtual-size": `${virtualizer.getTotalSize()}px` }}
-      >
-        {virtualRows.map((virtualRow) => {
-          const item = items[virtualRow.index];
-          if (!item) return null;
+    <RowContextMenu>
+      <div ref={containerRef} className="pt-1 [overflow-anchor:none]" role="rowgroup">
+        <div
+          role="presentation"
+          className="relative h-(--virtual-size) w-full"
+          style={{ "--virtual-size": `${virtualizer.getTotalSize()}px` }}
+        >
+          {virtualRows.map((virtualRow) => {
+            const item = items[virtualRow.index];
+            if (!item) return null;
 
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
-              role="presentation"
-              // A drag slides rows aside while their wrappers stay put, so the hairlines would no longer sit between rows
-              className={cn(draggedIdx == null && "row-divider", "absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
-              style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
-              onDragOver={(e) => {
-                if (draggedIdx !== null && draggedIdx !== undefined) {
-                  e.preventDefault();
-                  if (e.dataTransfer) {
-                    e.dataTransfer.dropEffect = "move";
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                role="presentation"
+                // A drag slides rows aside while their wrappers stay put, so the hairlines would no longer sit between rows
+                className={cn(draggedIdx == null && "row-divider", "absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
+                style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
+                onDragOver={(e) => {
+                  if (draggedIdx !== null && draggedIdx !== undefined) {
+                    e.preventDefault();
+                    if (e.dataTransfer) {
+                      e.dataTransfer.dropEffect = "move";
+                    }
                   }
-                }
-              }}
-            >
-              {renderRow(item, virtualRow.index)}
-            </div>
-          );
-        })}
+                }}
+              >
+                {renderRow(item, virtualRow.index)}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </RowContextMenu>
   );
 }
 
