@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -51,8 +51,9 @@ describe("Shelf", () => {
 
   it("pages sideways by the width its items show in, as far as it goes", async () => {
     const list = container.querySelector("ul")!;
-    const scrollBy = mock((_options: ScrollToOptions) => {});
-    list.scrollBy = scrollBy as unknown as HTMLElement["scrollBy"];
+    // Records how far each page goes rather than scrolling
+    const paged: (number | undefined)[] = [];
+    Object.defineProperty(list, "scrollBy", { configurable: true, value: (options: ScrollToOptions) => paged.push(options.left) });
     // It scrolls out into the page's side margins, which a page leaves out
     list.style.paddingLeft = "24px";
     list.style.paddingRight = "24px";
@@ -60,11 +61,11 @@ describe("Shelf", () => {
 
     expect(button("Previous page of Heavy Rotation")?.disabled).toBe(true);
     await act(async () => button("Next page of Heavy Rotation")?.click());
-    expect(scrollBy.mock.calls).toEqual([[{ left: 600 }]]);
+    expect(paged).toEqual([600]);
 
     await layOut(648, 1500, 852);
     expect(button("Next page of Heavy Rotation")?.disabled).toBe(true);
     await act(async () => button("Previous page of Heavy Rotation")?.click());
-    expect(scrollBy.mock.calls.at(-1)).toEqual([{ left: -600 }]);
+    expect(paged).toEqual([600, -600]);
   });
 });

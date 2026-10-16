@@ -128,10 +128,10 @@ describe("Play history for Home", () => {
 });
 
 describe("parsePlayRecord", () => {
-  const valid = { track_id: "t1", segment_id: "s1", source_type: "playlist", playlist_id: "p1", via_home: true };
+  const valid: PlayRecord = { track_id: "t1", segment_id: "s1", source_type: "playlist", playlist_id: "p1", via_home: true };
 
   it("accepts a play as the client sends it", () => {
-    expect(parsePlayRecord(valid)).toEqual(valid as PlayRecord);
+    expect(parsePlayRecord(valid)).toEqual(valid);
   });
 
   it("rejects a source it doesn't know, a playlist play without its playlist, or a field of the wrong type", () => {
@@ -144,6 +144,6 @@ describe("parsePlayRecord", () => {
   });
 
   it("keeps a playlist only on plays credited to one", () => {
-    expect(parsePlayRecord({ ...valid, source_type: "mixed" })).toEqual({ ...valid, source_type: "mixed", playlist_id: null } as PlayRecord);
+    expect(parsePlayRecord({ ...valid, source_type: "mixed" })).toEqual({ ...valid, source_type: "mixed", playlist_id: null });
   });
 });

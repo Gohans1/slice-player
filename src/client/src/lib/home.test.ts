@@ -44,7 +44,7 @@ describe("homeShelvesOf", () => {
       { type: "page", mode: "original_only" },
       { type: "playlist", playlist: playlists[1] },
     ]);
-    expect(shelves.heavyRotation.map(({ track, plays }) => [track.id, plays])).toEqual([
+    expect(shelves.heavyRotation.map((song) => [song.track.id, song.plays])).toEqual([
       ["mid", 4],
       ["old", 1],
     ]);

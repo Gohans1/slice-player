@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HomePage } from "./HomePage";
 import { useHomeStore } from "../store/useHomeStore";
-import { usePlayerStore } from "../store/usePlayerStore";
+import { usePlayerStore, type PlayerState } from "../store/usePlayerStore";
 import i18n from "../i18n";
 import type { HomeSummary, Playlist, Track } from "@/server/types";
 
@@ -90,23 +90,23 @@ describe("HomePage", () => {
   });
 
   it("plays Heavy Rotation from the song chosen, as a list started from Home", async () => {
-    const playSegmentInMode = mock(async (..._args: unknown[]) => {});
-    usePlayerStore.setState({ playSegmentInMode: playSegmentInMode as never });
+    const playSegmentInMode = mock<PlayerState["playSegmentInMode"]>(async () => {});
+    usePlayerStore.setState({ playSegmentInMode });
     await renderHome();
 
     const rows = shelf("Heavy Rotation").querySelectorAll<HTMLButtonElement>("li button");
     await click(rows[1]);
 
-    const [mode, segment, played, queue, index, origin] = playSegmentInMode.mock.calls[0] as [string, { id: string }, Track, { track: Track }[], number, unknown];
+    const [mode, segment, played, queue, index, origin] = playSegmentInMode.mock.calls[0];
     expect([mode, segment.id, played.id, index]).toEqual(["original_only", "fallback_a", "a", 1]);
-    expect(queue.map((item) => item.track.id)).toEqual(["b", "a"]);
+    expect(queue?.map((item) => item.track.id)).toEqual(["b", "a"]);
     expect(origin).toEqual({ type: "home", shelf: "heavy_rotation", mode: "original_only", fromHome: true });
   });
 
   it("plays and queues a playlist as started from Home", async () => {
-    const buildPlaylistQueue = mock(async (..._args: unknown[]) => {});
-    const queuePlaylist = mock(async (..._args: unknown[]) => {});
-    usePlayerStore.setState({ buildPlaylistQueue: buildPlaylistQueue as never, queuePlaylist: queuePlaylist as never });
+    const buildPlaylistQueue = mock<PlayerState["buildPlaylistQueue"]>(async () => {});
+    const queuePlaylist = mock<PlayerState["queuePlaylist"]>(async () => {});
+    usePlayerStore.setState({ buildPlaylistQueue, queuePlaylist });
     await renderHome();
 
     await click(button("Play Road", shelf("Recently Played")));

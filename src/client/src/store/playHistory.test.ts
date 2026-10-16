@@ -11,6 +11,7 @@ const itemOf = (t: Track) => createQueueItem(createDefaultFullSegment(t), t, t.i
 const chorus: Segment = { id: "s1", track_id: "a", name: "Chorus", start_time: 20, end_time: 80 };
 const fresh: HomeSummary = { recently_played: [{ source_type: "original_only", playlist_id: null }], heavy_rotation: [{ track_id: "a", plays: 1 }], top_playlists: [] };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+const urlOf = (input: RequestInfo | URL) => (input instanceof Request ? input.url : input.toString());
 
 // Plays on from `from` to `to` seconds, reported every 100ms as playback does
 function listen(onTimeUpdate: (time: number) => void, from: number, to: number) {
@@ -26,7 +27,7 @@ describe("Counting plays", () => {
     fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
       Object.assign(
         async (input: RequestInfo | URL) =>
-          String(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 204 }),
+          urlOf(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 204 }),
         { preconnect: () => {} }
       )
     );
@@ -54,7 +55,9 @@ describe("Counting plays", () => {
     return playAudio.mock.calls.at(-1)![4]!;
   }
   const recordedPlays = (): PlayRecord[] =>
-    fetchSpy.mock.calls.filter(([url]) => String(url) === "/api/plays").map(([, init]) => JSON.parse(String(init?.body)));
+    fetchSpy.mock.calls
+      .filter(([input]) => urlOf(input) === "/api/plays")
+      .flatMap(([, init]) => (typeof init?.body === "string" ? [JSON.parse(init.body)] : []));
 
   it("records a play once half the song has been heard, credited to the page playing", async () => {
     const onTimeUpdate = await start(0);
@@ -108,7 +111,7 @@ describe("Counting plays", () => {
     fetchSpy.mockImplementation(
       Object.assign(
         async (input: RequestInfo | URL) =>
-          String(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 500 }),
+          urlOf(input) === "/api/home" ? Response.json(fresh) : new Response(null, { status: 500 }),
         { preconnect: () => {} }
       )
     );
