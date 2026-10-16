@@ -4,9 +4,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import i18n from "../../i18n";
 import { AppSidebar } from "./AppSidebar";
-import { SidebarProvider } from "../ui/sidebar";
+import { SidebarProvider, SidebarTrigger } from "../ui/sidebar";
 import { TooltipProvider } from "../ui/tooltip";
 import { usePlayerStore } from "../../store/usePlayerStore";
+import { happyWindow } from "../../test/dom";
 import type { Playlist, Track } from "@/server/types";
 
 const track = (id: string, status: Track["status"], segment_count = 0) =>
@@ -226,6 +227,114 @@ describe("AppSidebar", () => {
 
     expect(renamePlaylist).toHaveBeenCalledWith("rock", "Rock Classics");
     expect(container.querySelector('[data-sidebar="input"]')).toBeNull();
+  });
+
+  for (const opener of ["actions button", "right-click"] as const) {
+    it(`keeps the name field focused after another playlist's menu has been used (${opener})`, async () => {
+      await renderSidebar();
+      // Opening a menu from a focused button records it as somewhere focus can go back to
+      const emptyActions = container.querySelector<HTMLElement>('[aria-label="More options for Empty"]')!;
+      emptyActions.focus();
+      await click(emptyActions);
+      await act(async () => {
+        document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await tick();
+      });
+
+      if (opener === "actions button") {
+        const rockActions = container.querySelector<HTMLElement>('[aria-label="More options for Rock"]')!;
+        rockActions.focus();
+        await click(rockActions);
+      } else {
+        menuButton("Rock").focus();
+        await act(async () => {
+          menuButton("Rock").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+          await tick();
+        });
+      }
+      await click(menuItem("Rename"));
+
+      const input = container.querySelector<HTMLInputElement>('[data-sidebar="input"]');
+      expect(input?.value).toBe("Rock");
+      expect(document.activeElement === input).toBe(true);
+    });
+  }
+
+  it("hands focus back to the actions button once a rename is over", async () => {
+    await renderSidebar();
+    await openActions("Rock");
+    await click(menuItem("Rename"));
+    await act(async () => {
+      container.querySelector('[data-sidebar="input"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await tick();
+    });
+
+    const rockActions = container.querySelector<HTMLElement>('[aria-label="More options for Rock"]')!;
+    rockActions.focus();
+    await click(rockActions);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await tick();
+    });
+
+    expect(document.activeElement === rockActions).toBe(true);
+  });
+
+  it("hands focus back to the playlist once a rename is done from the keyboard, saving it once", async () => {
+    const renamePlaylist = mock(async (_id: string, _name: string) => true);
+    usePlayerStore.setState({ renamePlaylist });
+    await renderSidebar();
+
+    await openActions("Rock");
+    await click(menuItem("Rename"));
+    const input = container.querySelector<HTMLInputElement>('[data-sidebar="input"]')!;
+    await act(async () => {
+      Reflect.set(HTMLInputElement.prototype, "value", "Rock Classics", input);
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick();
+    });
+
+    expect(renamePlaylist.mock.calls).toEqual([["rock", "Rock Classics"]]);
+    expect(document.activeElement === menuButton("Rock")).toBe(true);
+  });
+
+  it("cancels a rename with Escape on a phone without closing the sidebar", async () => {
+    happyWindow.happyDOM.setViewport({ width: 390 });
+    try {
+      await act(async () => {
+        root.render(
+          <TooltipProvider>
+            <SidebarProvider>
+              <SidebarTrigger />
+              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+            </SidebarProvider>
+          </TooltipProvider>
+        );
+      });
+      await click(container.querySelector<HTMLElement>('[data-sidebar="trigger"]')!);
+      const sheet = () => document.querySelector('[data-mobile="true"]');
+      const actions = sheet()!.querySelector<HTMLElement>('[aria-label="More options for Rock"]')!;
+      actions.focus();
+      await click(actions);
+      await click(menuItem("Rename"));
+      const input = sheet()!.querySelector<HTMLInputElement>('[data-sidebar="input"]');
+      expect(document.activeElement === input).toBe(true);
+
+      await act(async () => {
+        input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        await tick();
+      });
+
+      expect(sheet() === null).toBe(false);
+      expect(sheet()?.querySelector('[data-sidebar="input"]') ?? null).toBe(null);
+      const rock = Array.from(sheet()!.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')).find((el) => el.textContent?.trim() === "Rock");
+      expect(document.activeElement === rock).toBe(true);
+    } finally {
+      happyWindow.happyDOM.setViewport({ width: 1024 });
+    }
   });
 
   it("cancels an inline rename with Escape", async () => {

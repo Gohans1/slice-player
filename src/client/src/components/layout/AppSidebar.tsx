@@ -255,36 +255,57 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const [draftName, setDraftName] = React.useState<string | null>(null);
-  const renameInputRef = React.useRef<HTMLInputElement>(null);
+  const isRenamingRef = React.useRef(false);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const focusAfterRenameRef = React.useRef(false);
   const isEmpty = (playlist.item_count || 0) === 0;
   const Icon = playlist.is_mix ? Combine : ListMusic;
   const hasArtwork = resolvePlaylistCover(playlist).kind !== "empty";
 
-  const commitRename = () => {
+  const startRename = () => {
+    isRenamingRef.current = true;
+    setDraftName(playlist.name);
+  };
+
+  // Finished from the keyboard, a rename hands focus back to the playlist, as in Finder
+  const endRename = (focusPlaylist: boolean) => {
+    isRenamingRef.current = false;
+    focusAfterRenameRef.current = focusPlaylist;
+    setDraftName(null);
+  };
+
+  const commitRename = (focusPlaylist: boolean) => {
     if (draftName === null) return;
     const name = draftName.trim();
-    setDraftName(null);
+    endRename(focusPlaylist);
     if (name && name !== playlist.name) void renamePlaylist(playlist.id, name);
   };
+
+  React.useEffect(() => {
+    if (draftName !== null || !focusAfterRenameRef.current) return;
+    focusAfterRenameRef.current = false;
+    buttonRef.current?.focus();
+  }, [draftName]);
 
   if (draftName !== null) {
     return (
       <SidebarMenuItem>
         <SidebarInput
-          ref={renameInputRef}
           autoFocus
           value={draftName}
           maxLength={100}
           aria-label={t("playlist.renameAria")}
           onChange={(e) => setDraftName(e.target.value)}
-          onBlur={commitRename}
+          onBlur={() => commitRename(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commitRename();
+              commitRename(true);
             } else if (e.key === "Escape") {
+              // Escape cancels the rename only; on a phone it would also close the sidebar sheet
               e.preventDefault();
-              setDraftName(null);
+              e.stopPropagation();
+              endRename(true);
             }
           }}
         />
@@ -300,7 +321,7 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
           <Shuffle />
           {t("nav.shuffle")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setDraftName(playlist.name)}>
+        <DropdownMenuItem onClick={startRename}>
           <Pencil />
           {t("playlist.rename")}
         </DropdownMenuItem>
@@ -314,14 +335,17 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
       </DropdownMenuGroup>
     </>
   );
-  // Renaming hands focus to the name field instead of back to whatever opened the menu
-  const focusRenameField = () => renameInputRef.current ?? true;
+  // Choosing Rename swaps the button that opened the menu for the name field, which focuses itself. The menu mustn't
+  // move focus as it goes: with its button gone it would fall back to whatever it last saw focused, blurring the field
+  // and ending the rename.
+  const keepFocusWhileRenaming = () => !isRenamingRef.current;
 
   return (
     <SidebarMenuItem>
       {/* The button itself is the context menu's trigger, so it stays the sibling the action and badge style against */}
       <ContextMenu>
         <SidebarMenuButton
+          ref={buttonRef}
           render={<ContextMenuTrigger render={<button type="button" />} />}
           size={size}
           isActive={isActive}
@@ -339,7 +363,7 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
           )}
           <span>{playlist.name}</span>
         </SidebarMenuButton>
-        <ContextMenuContent className="w-auto" finalFocus={focusRenameField}>
+        <ContextMenuContent className="w-auto" finalFocus={keepFocusWhileRenaming}>
           {actions}
         </ContextMenuContent>
       </ContextMenu>
@@ -349,7 +373,7 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" className="w-auto" finalFocus={focusRenameField}>
+        <DropdownMenuContent side="right" align="start" className="w-auto" finalFocus={keepFocusWhileRenaming}>
           {actions}
         </DropdownMenuContent>
       </DropdownMenu>
