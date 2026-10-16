@@ -117,7 +117,10 @@ for (const [what, add] of addingLater) {
       fetchSpy.mockRestore();
     }
 
-    expect(usePlayerStore.getState().queue.map((item) => item.track.id)).toEqual(["heavy"]);
+    const state = usePlayerStore.getState();
+    expect(state.queue.map((item) => item.queueItemId)).toEqual(["road-heavy"]);
+    // What turning shuffle off goes back to
+    expect(state.activePlaylistOriginalQueue.map((item) => item.queueItemId)).toEqual(["road-heavy"]);
   });
 }
 
