@@ -625,7 +625,10 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
                 ) : displayPlaylists.length === 0 ? (
                   <DropdownMenuItem disabled>
                     <Info />
-                    {t("player.noPlaylistsForTrack", "Not in any custom playlists")}
+                    {/* The playlist playing is left out, as the LCD names it already */}
+                    {containingPlaylists.length > 0
+                      ? t("player.noOtherPlaylistsForTrack", "Not in any other playlists")
+                      : t("player.noPlaylistsForTrack", "Not in any custom playlists")}
                   </DropdownMenuItem>
                 ) : (
                   displayPlaylists.map((pl) => (
@@ -655,7 +658,7 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             >
               {isMuted ? <VolumeX className="text-destructive" /> : <Volume2 />}
             </PopoverTrigger>
-            <PopoverContent side="top" align="end" className="w-auto">
+            <PopoverContent side="top" align="end" aria-label={t("player.volume", "Volume")} className="w-auto">
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"

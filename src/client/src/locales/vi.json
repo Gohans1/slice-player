@@ -189,6 +189,7 @@
     "shuffleCurrentQueue": "Hàng đợi hiện tại ({{name}})",
     "playlistsContainingTrack": "Danh sách phát chứa bài này",
     "noPlaylistsForTrack": "Chưa có trong danh sách phát nào",
+    "noOtherPlaylistsForTrack": "Không có trong danh sách phát nào khác",
     "playlistsTagLabel": "Danh sách phát",
     "lastUsed": "Gần nhất",
     "shuffleQuickTooltip": "Bấm để shuffle danh sách phát \"{{name}}\" (gần nhất), chuột phải để chọn danh sách phát",

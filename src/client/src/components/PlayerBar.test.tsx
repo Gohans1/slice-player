@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import * as React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -150,6 +150,37 @@ describe("PlayerBar Component", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(document.querySelector('[aria-label="Track volume"]') !== null).toBe(true);
+  });
+
+  it("names the volume popover after the button that opens it", async () => {
+    const track: Track = {
+      id: "track-vol",
+      source_type: "local",
+      source_uri: "local://vol.mp3",
+      title: "Volume Track",
+      artist: "Test Artist",
+      duration: 180,
+      volume: 0.8,
+      created_at: Date.now(),
+      status: "ready",
+    };
+    // A full track plays as a fallback segment spanning the whole track
+    const segment: Segment = { id: "fallback_track-vol", track_id: "track-vol", name: "Full Track", start_time: 0, end_time: 180, color: "#4385BE", created_at: Date.now() };
+    usePlayerStore.setState({ activeTrack: track, activeSegment: segment, queue: [{ track, segment }], queueIndex: 0, isPlaying: false });
+
+    await act(async () => {
+      root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="Volume"]')?.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    // A dialog's name comes from aria-label or from the element aria-labelledby points at
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const labelledBy = dialog?.getAttribute("aria-labelledby");
+    const name = dialog?.getAttribute("aria-label") ?? (labelledBy ? document.getElementById(labelledBy)?.textContent : null);
+    expect(dialog ? (name ?? "(unnamed)") : "(no dialog)").toBe("Volume");
   });
 
   it("renders loop track button and toggles isLoopTrack when clicked", async () => {
@@ -734,6 +765,51 @@ describe("PlayerBar Component", () => {
       expect(menuItemTexts()).toEqual([expect.stringContaining("chill vibes")]);
     } finally {
       globalThis.fetch = origFetch;
+    }
+  });
+
+  it("says the song is in no other playlist when only the playlist playing holds it", async () => {
+    const track: Track = {
+      id: "track-solo",
+      source_type: "local",
+      source_uri: "local://solo.mp3",
+      title: "LALALA",
+      artist: "Test Artist",
+      duration: 180,
+      volume: 0.8,
+      created_at: Date.now(),
+      status: "ready",
+    };
+    const segment: Segment = { id: "fallback_track-solo", track_id: "track-solo", name: "Full Track", start_time: 0, end_time: 180, color: "#4385BE", created_at: Date.now() };
+    usePlayerStore.setState({
+      activeTrack: track,
+      activeSegment: segment,
+      queue: [{ track, segment }],
+      queueIndex: 0,
+      playlists: [{ id: "pl_high", name: "High", item_count: 15, created_at: 1, updated_at: 1 }],
+      activePlaylistPlayingId: "pl_high",
+    });
+    const membershipsFetch: typeof fetch = Object.assign(
+      async (input: string | URL | Request) =>
+        (input instanceof Request ? input.url : String(input)).includes("/api/playlist-memberships")
+          ? Response.json([{ playlist_id: "pl_high", item_id: "it1" }])
+          : Response.json([]),
+      { preconnect: () => {} }
+    );
+    const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(membershipsFetch);
+
+    try {
+      await act(async () => {
+        root.render(<PlayerBar onToggleQueue={() => {}} isQueueOpen={false} />);
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      await pressMore("LALALA");
+      expect(menuItemTexts()).toEqual(["Not in any other playlists"]);
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 
