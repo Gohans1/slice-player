@@ -273,29 +273,24 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
             isExiting ? "animate-out fade-out slide-out-to-bottom-4 pointer-events-none" : "animate-in fade-in slide-in-from-bottom-4"
           )}
         >
-        {/* Selection count badge */}
+        {/* Selection count badge. Narrow screens show the number alone; the word stays for screen readers. */}
         <Badge className="shrink-0">
-          <span key={selectedCount} className="font-bold tabular-nums inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>
-          <span className="hidden sm:inline">{t("bulkActions.selected", "selected")}</span>
+          <span key={selectedCount} className="font-bold tabular-nums inline-block animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>{" "}
+          <span className="max-sm:sr-only">{t("bulkActions.selected", "selected")}</span>
         </Badge>
 
         {/* Select All Visible toggle */}
         {hasVisible && (
-          <Button
-            variant="ghost"
-            size="lg"
-            onClick={handleToggleSelectAllVisible}
-            title={allVisibleSelected ? t("bulkActions.deselectAllVisible", "Deselect view") : t("bulkActions.selectAllVisible", "Select all in view")}
-          >
+          <Button variant="ghost" size="lg" onClick={handleToggleSelectAllVisible}>
             {allVisibleSelected ? (
               <>
                 <CheckSquare data-icon="inline-start" className="text-primary" />
-                <span className="hidden md:inline">{t("bulkActions.deselectAll", "Deselect view")}</span>
+                <span className="max-md:sr-only">{t("bulkActions.deselectAll", "Deselect view")}</span>
               </>
             ) : (
               <>
                 <Square data-icon="inline-start" />
-                <span className="hidden md:inline">{t("bulkActions.selectAll", "Select view")}</span>
+                <span className="max-md:sr-only">{t("bulkActions.selectAll", "Select view")}</span>
               </>
             )}
           </Button>
@@ -310,7 +305,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         {!isMixView && (
           <Button variant="destructive" size="lg" onClick={handleDelete} disabled={isDeleting}>
             <Trash2 data-icon="inline-start" />
-            <span className="hidden sm:inline">{t("bulkActions.delete", "Delete")}</span>
+            <span className="max-sm:sr-only">{t("bulkActions.delete", "Delete")}</span>
           </Button>
         )}
 

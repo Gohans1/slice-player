@@ -400,8 +400,6 @@
     "deselect": "Deselect",
     "selectAll": "Select view",
     "deselectAll": "Deselect view",
-    "selectAllVisible": "Select all ({{count, number}})",
-    "deselectAllVisible": "Deselect all",
     "addToPlaylist": "Playlist",
     "delete": "Delete",
     "deleteTitle": "Delete selected items?",

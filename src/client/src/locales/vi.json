@@ -399,8 +399,6 @@
     "deselect": "Bỏ chọn",
     "selectAll": "Chọn view này",
     "deselectAll": "Bỏ chọn view này",
-    "selectAllVisible": "Chọn tất cả ({{count, number}})",
-    "deselectAllVisible": "Bỏ chọn tất cả",
     "addToPlaylist": "Playlist",
     "delete": "Xóa",
     "deleteTitle": "Xóa các mục đã chọn?",
