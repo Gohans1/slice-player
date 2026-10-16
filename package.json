@@ -9,7 +9,8 @@
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --isolate"
+    "test": "bun test --isolate",
+    "test:e2e": "bun --bun playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -30,6 +31,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@shadcn/lint": "^0.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "^1.4.2",

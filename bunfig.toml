@@ -1,2 +1,4 @@
 [test]
+# Unit tests live under src; e2e/ holds Playwright's browser tests, run with `bun run test:e2e`
+root = "src"
 preload = ["./src/client/src/test/dom.ts"]
