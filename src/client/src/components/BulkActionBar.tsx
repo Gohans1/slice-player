@@ -37,8 +37,9 @@ const mapItemsToBatchPayload = (items: SelectedItem[]) =>
   }));
 
 // What a confirmed delete does with the selection, which outlives a change of view. Playlist items leave their own
-// playlists and stay in the library; tracks and slices are deleted from the library. The confirmation is worded from
-// this same plan.
+// playlists; tracks and slices are deleted from the library, taking every playlist item of theirs with them. So a
+// playlist item stays in the library only while neither its track nor the slice it plays is deleted alongside it
+// (staying: how many per playlist). The confirmation is worded from this same plan.
 function planBulkDelete(items: SelectedItem[], activePlaylistId: string | null) {
   const playlistItems = new Map<string, string[]>();
   const trackIds: string[] = [];
@@ -53,7 +54,17 @@ function planBulkDelete(items: SelectedItem[], activePlaylistId: string | null) 
       trackIds.push(item.trackId || item.id);
     }
   }
-  return { playlistItems, trackIds, segmentIds };
+
+  const deletedTracks = new Set(trackIds);
+  const deletedSlices = new Set(segmentIds);
+  const staying = new Map<string, number>();
+  for (const item of items) {
+    const playlistId = item.playlistId || activePlaylistId;
+    if (item.type !== "playlist_item" || !playlistId) continue;
+    if (deletedTracks.has(item.trackId) || (item.segmentId && deletedSlices.has(item.segmentId))) continue;
+    staying.set(playlistId, (staying.get(playlistId) ?? 0) + 1);
+  }
+  return { playlistItems, trackIds, segmentIds, staying };
 }
 
 // Long enough to read the check mark before the menu closes
@@ -172,10 +183,11 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   const plan = planBulkDelete(Array.from(selectedItems.values()), activePlaylistId);
   const removedCount = Array.from(plan.playlistItems.values()).reduce((sum, ids) => sum + ids.length, 0);
   const deletedCount = plan.trackIds.length + plan.segmentIds.length;
+  const stayingCount = Array.from(plan.staying.values()).reduce((sum, count) => sum + count, 0);
   const isRemoving = removedCount > 0 && deletedCount === 0;
   const leftPlaylists = [
     ...new Set(
-      Array.from(plan.playlistItems.keys(), (id) => {
+      Array.from(plan.staying.keys(), (id) => {
         const name = playlists.find((p) => p.id === id)?.name;
         return name === undefined ? t("bulkActions.deletedPlaylist") : t("bulkActions.quoted", { name });
       })
@@ -186,14 +198,14 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         title: t("bulkActions.removeTitle", { count: removedCount }),
         description: t("bulkActions.confirmRemove", { count: removedCount, playlists: leftPlaylists }),
       }
-    : removedCount === 0
+    : stayingCount === 0
       ? {
-          title: t("bulkActions.deleteTitle", { count: deletedCount }),
-          description: t("bulkActions.confirmDelete", { count: deletedCount }),
+          title: t("bulkActions.deleteTitle", { count: removedCount + deletedCount }),
+          description: t("bulkActions.confirmDelete", { count: removedCount + deletedCount }),
         }
       : {
           title: t("bulkActions.deleteTitle", { count: removedCount + deletedCount }),
-          description: t("bulkActions.confirmDeleteMixed", { count: removedCount, playlists: leftPlaylists }),
+          description: t("bulkActions.confirmDeleteMixed", { count: stayingCount, playlists: leftPlaylists }),
         };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);

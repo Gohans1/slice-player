@@ -149,10 +149,18 @@ describe("BulkActionBar Component", () => {
 
     let removePlaylistItemsBatch: ReturnType<typeof mock<(playlistId: string, itemIds: string[]) => Promise<boolean>>>;
     let deleteTracksBatch: ReturnType<typeof mock<(trackIds: string[]) => Promise<boolean>>>;
+    let deleteSegmentsBatch: ReturnType<typeof mock<(segmentIds: string[]) => Promise<boolean>>>;
     beforeEach(() => {
       removePlaylistItemsBatch = mock(async (_playlistId: string, _itemIds: string[]) => true);
       deleteTracksBatch = mock(async (_trackIds: string[]) => true);
-      usePlayerStore.setState({ activePlaylistId: "pl_1", playlists: [roadTrip, gym], removePlaylistItemsBatch, deleteTracksBatch });
+      deleteSegmentsBatch = mock(async (_segmentIds: string[]) => true);
+      usePlayerStore.setState({
+        activePlaylistId: "pl_1",
+        playlists: [roadTrip, gym],
+        removePlaylistItemsBatch,
+        deleteTracksBatch,
+        deleteSegmentsBatch,
+      });
     });
 
     // Selects the items, opens the confirmation from the bar's button of that name and returns the dialog
@@ -198,6 +206,41 @@ describe("BulkActionBar Component", () => {
       const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_gone")]);
 
       expect(dialog?.querySelector("p")?.textContent).toBe("It stays in your library and only leaves a deleted playlist.");
+    });
+
+    // A playlist item goes with its song when the same selection deletes the song: its track, or the slice it plays
+    const playlistSlice = { id: "item_s", type: "playlist_item", trackId: "track_9", segmentId: "seg_1", playlistId: "pl_1", title: "Chorus" } as const;
+    it.each([
+      ["its track", playlistItem("item_1", "pl_1"), { id: "track_item_1", type: "track", trackId: "track_item_1", title: "Track 1" }],
+      ["the track of the slice it plays", playlistSlice, { id: "track_9", type: "track", trackId: "track_9", title: "Track 9" }],
+      ["the slice it plays", playlistSlice, { id: "seg_1", type: "slice", trackId: "track_9", segmentId: "seg_1", title: "Chorus" }],
+    ] as const)("doesn't promise a playlist item stays in the library while %s is deleted with it", async (_song, item, song) => {
+      const dialog = await confirmFrom("Delete", [item, song]);
+
+      expect(dialog?.querySelector("h2")?.textContent).toBe("Delete 2 items?");
+      expect(dialog?.querySelector("p")?.textContent).toBe(
+        "They're removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this."
+      );
+    });
+
+    it("names only the playlists whose items stay in the library when some go with deleted songs", async () => {
+      const dialog = await confirmFrom("Delete", [
+        playlistItem("item_1", "pl_1"),
+        playlistItem("item_2", "pl_2"),
+        { id: "track_item_1", type: "track", trackId: "track_item_1", title: "Track 1" },
+      ]);
+
+      expect(dialog?.querySelector("h2")?.textContent).toBe("Delete 3 items?");
+      expect(dialog?.querySelector("p")?.textContent).toBe(
+        "1 of them stays in your library and only leaves “Gym”. The others are removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this."
+      );
+      // Taking the item out of its playlist first changes nothing for the song that is deleted next
+      await act(async () => {
+        buttonNamed(dialog, "Delete")?.click();
+        await settle();
+      });
+      expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1"]], ["pl_2", ["item_2"]]]);
+      expect(deleteTracksBatch.mock.calls).toEqual([[["track_item_1"]]]);
     });
 
     it("tells apart what a mixed selection only removes from a playlist and what it deletes", async () => {
