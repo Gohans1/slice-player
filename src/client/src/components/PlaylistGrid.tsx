@@ -163,7 +163,7 @@ export function PlaylistDetails({ playlist: pl, parent, isPlaying }: { playlist:
         </span>
       )}
       {parent && (
-        <span className="flex max-w-30 items-center gap-1 font-medium text-flexoki-blue" title={t("playlist.subPlaylistOf", { name: parent.name })}>
+        <span className="flex max-w-30 min-w-0 items-center gap-1 font-medium text-flexoki-blue" title={t("playlist.subPlaylistOf", { name: parent.name })}>
           <FolderTree className="size-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{parent.name}</span>
           <span aria-hidden="true">·</span>
