@@ -79,6 +79,20 @@ html {
   can play (data-tint="hover"). Goes on the virtualizer's row wrappers; each holds one row, so the next wrapper holds the
   next row.
 */
+/* Selected rows that touch merge into one block, as in a macOS table: only the ends of the block stay rounded. Goes on
+   the wrappers that hold one row each. */
+@utility merge-selected-rows {
+  &:has(+ * > [data-selected]) > [data-selected] {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  :has(> [data-selected]) + & > [data-selected] {
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+}
+
 @utility row-divider {
   &::before {
     content: "";

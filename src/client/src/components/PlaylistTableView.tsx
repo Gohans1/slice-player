@@ -47,14 +47,15 @@ interface TableRowState {
   isDragTarget?: boolean;
 }
 
-// Apple Music style rows: hairlines between them (the row-divider utility), a rounded tint on hover and a ring on
-// selected rows. The playing row isn't tinted: its artwork shows the equalizer and its title turns primary.
+// Apple Music style rows: hairlines between them (the row-divider utility), a rounded tint on hover and a stronger
+// one on selected rows, which merge into one block where they touch (merge-selected-rows). The playing row isn't
+// tinted: its artwork shows the equalizer and its title turns primary.
 function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
   return cn(
     "group grid h-13.5 items-center gap-x-2 rounded-md px-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-x-4",
     gridCols,
     isSelected
-      ? "bg-primary/10 ring-1 ring-primary/50"
+      ? "bg-primary/15"
       : isDragging
       ? "opacity-40 outline-1 outline-dashed outline-primary/60"
       : isDragTarget
@@ -346,7 +347,7 @@ function VirtualizedTableBody<T>({
                 ref={virtualizer.measureElement}
                 role="presentation"
                 // A drag slides rows aside while their wrappers stay put, so the hairlines would no longer sit between rows
-                className={cn(draggedIdx == null && "row-divider", "absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
+                className={cn(draggedIdx == null && "row-divider", "merge-selected-rows absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
                 style={{ "--virtual-start": `${virtualRow.start - virtualizer.options.scrollMargin}px` }}
                 onDragOver={(e) => {
                   if (draggedIdx !== null && draggedIdx !== undefined) {
@@ -1446,6 +1447,7 @@ export function PlaylistTableView({
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
                 data-tint={tableRowTint(rowState)}
+                data-selected={isSelected || undefined}
                 style={shiftY !== 0 ? { "--drag-shift": `${shiftY}px` } : undefined}
                 aria-label={
                   isSelectionActive
@@ -1787,6 +1789,7 @@ export function PlaylistTableView({
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
                 data-tint={tableRowTint(rowState)}
+                data-selected={isSelected || undefined}
                 aria-label={
                   isSelectionActive
                     ? (isSelected ? t("trackCard.deselectTrack", { title: item.segment.name }) : t("trackCard.selectTrack", { title: item.segment.name }))
@@ -1948,6 +1951,7 @@ export function PlaylistTableView({
                 aria-rowindex={idx + 2}
                 tabIndex={isSelectionActive || isReady ? 0 : -1}
                 data-tint={tableRowTint(rowState)}
+                data-selected={isSelected || undefined}
                 aria-label={
                   isSelectionActive
                     ? (isSelected
@@ -2155,6 +2159,7 @@ export function PlaylistTableView({
               aria-rowindex={idx + 2}
               tabIndex={isSelectionActive || isReady ? 0 : -1}
               data-tint={tableRowTint(rowState)}
+              data-selected={isSelected || undefined}
               aria-label={rowAriaLabel}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
