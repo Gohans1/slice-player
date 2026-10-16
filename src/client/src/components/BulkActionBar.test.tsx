@@ -203,14 +203,64 @@ describe("BulkActionBar Component", () => {
     });
 
     // Taking a song out of a playlist also takes it out of the playlist's sub-playlists
+    const roadTripSlow = { id: "pl_1a", name: "Road Trip Slow", parent_id: "pl_1", created_at: 3, updated_at: 3, item_count: 2 };
+    const track = (id: string) => ({ id, type: "track", trackId: id, title: id }) as const;
+
     it("says a song leaves the sub-playlists of a playlist it is removed from", async () => {
-      usePlayerStore.setState({ playlists: [roadTrip, gym, { id: "pl_1a", name: "Road Trip Slow", parent_id: "pl_1", created_at: 3, updated_at: 3, item_count: 2 }] });
+      usePlayerStore.setState({ playlists: [roadTrip, gym, roadTripSlow] });
 
       const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_1"), playlistItem("item_2", "pl_2")]);
 
       expect(dialog?.querySelector("p")?.textContent).toBe(
         "They stay in your library and only leave “Road Trip” (with its sub-playlists) and “Gym”."
       );
+    });
+
+    it("says so in a mixed selection too", async () => {
+      usePlayerStore.setState({ playlists: [roadTrip, gym, roadTripSlow] });
+
+      const dialog = await confirmFrom("Delete", [playlistItem("item_1", "pl_1"), track("track_9")]);
+
+      expect(dialog?.querySelector("p")?.textContent).toBe(
+        "1 of them stays in your library and only leaves “Road Trip” (with its sub-playlists). The others are removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this."
+      );
+    });
+
+    // Vietnamese has one plural form, so its wording has to fit one item as well as many
+    describe("in Vietnamese", () => {
+      beforeEach(async () => {
+        await i18n.changeLanguage("vi");
+        usePlayerStore.setState({ playlists: [roadTrip, gym, roadTripSlow] });
+      });
+
+      const wording = (dialog: Element | null) => [dialog?.querySelector("h2")?.textContent, dialog?.querySelector("p")?.textContent];
+
+      it("removes one song from a playlist and its sub-playlists", async () => {
+        const dialog = await confirmFrom("Xóa khỏi danh sách", [playlistItem("item_1", "pl_1")]);
+
+        expect(wording(dialog)).toEqual([
+          "Xóa 1 mục khỏi danh sách phát?",
+          "Mục đã chọn vẫn còn trong thư viện, chỉ rời khỏi “Road Trip” (cùng các danh sách con của nó).",
+        ]);
+      });
+
+      it("deletes one song from the library", async () => {
+        const dialog = await confirmFrom("Xóa", [track("track_9")]);
+
+        expect(wording(dialog)).toEqual([
+          "Xóa 1 mục?",
+          "Mục đã chọn sẽ bị xóa khỏi thư viện và khỏi mọi danh sách phát. Xóa một bài hát cũng xóa các lát cắt của nó. Không thể hoàn tác.",
+        ]);
+      });
+
+      it("tells apart what a mixed selection only removes and what it deletes", async () => {
+        const dialog = await confirmFrom("Xóa", [playlistItem("item_1", "pl_1"), track("track_9")]);
+
+        expect(wording(dialog)).toEqual([
+          "Xóa 2 mục?",
+          "1 mục trong số đó vẫn còn trong thư viện, chỉ rời khỏi “Road Trip” (cùng các danh sách con của nó). Các mục còn lại bị xóa khỏi thư viện và khỏi mọi danh sách phát. Xóa một bài hát cũng xóa các lát cắt của nó. Không thể hoàn tác.",
+        ]);
+      });
     });
 
     it("calls a playlist that is gone a deleted playlist", async () => {
