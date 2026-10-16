@@ -9,6 +9,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from "
 import { Spinner } from "./ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { usePlayerStore } from "../store/usePlayerStore";
+import { useHomeStore } from "../store/useHomeStore";
 
 type StatusMessage = { type: "success" | "error"; text: string };
 
@@ -23,6 +24,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
   const playlists = usePlayerStore((s) => s.playlists);
   const fetchTracks = usePlayerStore((s) => s.fetchTracks);
   const fetchPlaylists = usePlayerStore((s) => s.fetchPlaylists);
+  const refreshHome = useHomeStore((s) => s.refresh);
 
   const [activeTab, setActiveTab] = React.useState<"export" | "import">("export");
   const [isExporting, setIsExporting] = React.useState(false);
@@ -129,9 +131,10 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
         fileInputRef.current.value = "";
       }
 
-      // Refresh store with new data
+      // Refresh store with new data, and Home with the restored listening history
       await fetchTracks(true);
       await fetchPlaylists();
+      await refreshHome();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setImportMessage({ type: "error", text: t("backupModal.importError", { message: msg }) });

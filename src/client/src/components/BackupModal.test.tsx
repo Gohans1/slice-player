@@ -88,8 +88,11 @@ describe("BackupModal Component", () => {
   it("restores the library from a chosen backup file", async () => {
     await i18n.changeLanguage("en");
     const importCalls: string[] = [];
+    const requested: string[] = [];
     globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      if (url.toString().includes("/api/library/import")) {
+      const href = url instanceof Request ? url.url : url.toString();
+      requested.push(href);
+      if (href.includes("/api/library/import")) {
         importCalls.push(init?.method ?? "GET");
         return new Response(JSON.stringify({ success: true, message: "Restored 12 tracks" }));
       }
@@ -114,6 +117,8 @@ describe("BackupModal Component", () => {
 
     expect(importCalls).toEqual(["POST"]);
     expect(document.body.textContent).toContain("Restored 12 tracks");
+    // The restored library comes with its own listening history
+    expect(requested).toContain("/api/home");
   });
 
   it("should call export API when download button is clicked", async () => {

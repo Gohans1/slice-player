@@ -26,11 +26,13 @@ const initialStore = usePlayerStore.getState();
 const track: Track = { id: "ws-track", source_type: "local", source_uri: "track.opus", title: "Track", duration: 60, status: "ready", segment_count: 0 };
 const slice: Segment = { id: "ws-slice", track_id: track.id, name: "New slice", start_time: 10, end_time: 20 };
 let segments: Segment[] = [];
+let homeRequests = 0;
 let root: Root;
 let container: HTMLDivElement;
 
 beforeEach(() => {
   segments = [];
+  homeRequests = 0;
   TestSocket.instances = [];
   resetEtagCache();
   // Browser CustomEvent must belong to the happy-dom window, not Bun\'s native EventTarget realm.
@@ -39,6 +41,7 @@ beforeEach(() => {
     const url = input instanceof Request ? input.url : String(input);
     if (url === "/api/tracks") return Response.json([{ ...track, segment_count: segments.length }]);
     if (url === "/api/segments") return Response.json(segments);
+    if (url === "/api/home") homeRequests++;
     return Response.json([]);
   }, { preconnect: originalFetch.preconnect });
   usePlayerStore.setState({ ...initialStore, tracks: [], queue: [], queueIndex: -1,
@@ -55,6 +58,16 @@ afterEach(() => {
   container.remove();
   Object.assign(globalThis, { WebSocket: originalSocket, fetch: originalFetch, CustomEvent: originalCustomEvent });
   usePlayerStore.setState(initialStore);
+});
+
+// Home stays where it was if open, so its shelves would go on showing the old history
+it("brings Home's listening history up to date when a backup is restored", async () => {
+  await act(async () => { root.render(<App />); });
+  const before = homeRequests;
+
+  await act(async () => { TestSocket.instances[0].emit({ type: "library_restored" }); });
+
+  expect(homeRequests).toBe(before + 1);
 });
 
 for (const event of [{ type: "track_updated", trackId: track.id }, { type: "library_restored" }]) {

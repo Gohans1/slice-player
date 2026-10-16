@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { usePlayerStore, createQueueItem, isPlaybackMode, type PlaybackMode, type QueueItem, type QueueOrigin } from "./store/usePlayerStore";
+import { useHomeStore } from "./store/useHomeStore";
 import { ImportActions } from "./components/ImportActions";
 import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
@@ -337,6 +338,8 @@ export function App() {
             }
             if (data.type === "library_restored") {
               scheduleLibraryRefresh(true, 100);
+              // The restored library has its own listening history
+              void useHomeStore.getState().refresh();
             }
           } catch {}
         };
