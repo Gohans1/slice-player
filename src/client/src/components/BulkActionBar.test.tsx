@@ -136,39 +136,87 @@ describe("BulkActionBar Component", () => {
     expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
   });
 
-  // As in Apple Music, a playlist's songs are removed from it, not deleted: they stay in the library
-  it("removes the selection from the playlist being viewed, saying the songs stay in the library", async () => {
-    const removePlaylistItemsBatch = mock(async (_playlistId: string, _itemIds: string[]) => true);
-    usePlayerStore.setState({
-      activePlaylistId: "pl_1",
-      playlists: [{ id: "pl_1", name: "Road Trip", created_at: 1, updated_at: 1, item_count: 5 }],
-      removePlaylistItemsBatch,
-    });
-    act(() => {
-      for (const id of ["item_1", "item_2"]) {
-        useSelectionStore.getState().toggleTrack({ id, type: "playlist_item", trackId: `track_${id}`, playlistId: "pl_1", title: id });
-      }
-    });
-    act(() => {
-      root.render(<BulkActionBar visibleTrackIds={["item_1", "item_2"]} />);
-    });
+  // As in Apple Music, a playlist's songs are removed from it, not deleted: they stay in the library. The selection
+  // outlives a change of view, so the confirmation names each playlist it touches rather than "this playlist".
+  describe("removing and deleting", () => {
+    const roadTrip = { id: "pl_1", name: "Road Trip", created_at: 1, updated_at: 1, item_count: 5 };
+    const gym = { id: "pl_2", name: "Gym", created_at: 2, updated_at: 2, item_count: 5 };
+    const playlistItem = (id: string, playlistId: string) =>
+      ({ id, type: "playlist_item", trackId: `track_${id}`, playlistId, title: id }) as const;
     const buttonNamed = (scope: ParentNode | null | undefined, name: string) =>
       Array.from(scope?.querySelectorAll("button") ?? []).find((btn) => btn.textContent?.trim() === name);
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(buttonNamed(container, "Delete") === undefined).toBe(true);
-    await act(async () => {
-      buttonNamed(container, "Remove")?.click();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    const dialog = document.querySelector('[role="alertdialog"]');
-    expect(dialog?.querySelector("h2")?.textContent).toBe("Remove 2 items from this playlist?");
-    expect(dialog?.textContent).toContain("They stay in your library.");
-    await act(async () => {
-      buttonNamed(dialog, "Remove")?.click();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    let removePlaylistItemsBatch: ReturnType<typeof mock<(playlistId: string, itemIds: string[]) => Promise<boolean>>>;
+    let deleteTracksBatch: ReturnType<typeof mock<(trackIds: string[]) => Promise<boolean>>>;
+    beforeEach(() => {
+      removePlaylistItemsBatch = mock(async (_playlistId: string, _itemIds: string[]) => true);
+      deleteTracksBatch = mock(async (_trackIds: string[]) => true);
+      usePlayerStore.setState({ activePlaylistId: "pl_1", playlists: [roadTrip, gym], removePlaylistItemsBatch, deleteTracksBatch });
     });
 
-    expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1", "item_2"]]]);
+    // Selects the items, opens the confirmation from the bar's button of that name and returns the dialog
+    async function confirmFrom(buttonName: string, items: Parameters<ReturnType<typeof useSelectionStore.getState>["toggleTrack"]>[0][]) {
+      act(() => {
+        for (const item of items) useSelectionStore.getState().toggleTrack(item);
+      });
+      act(() => {
+        root.render(<BulkActionBar visibleTrackIds={[]} />);
+      });
+      await act(async () => {
+        buttonNamed(container, buttonName)?.click();
+        await settle();
+      });
+      return document.querySelector('[role="alertdialog"]');
+    }
+
+    it("removes a playlist's songs from it, saying they stay in the library", async () => {
+      const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_1"), playlistItem("item_2", "pl_1")]);
+
+      expect(buttonNamed(container, "Delete") === undefined).toBe(true);
+      expect(dialog?.querySelector("h2")?.textContent).toBe("Remove 2 items?");
+      expect(dialog?.querySelector("p")?.textContent).toBe("They stay in your library and only leave “Road Trip”.");
+      await act(async () => {
+        buttonNamed(dialog, "Remove")?.click();
+        await settle();
+      });
+      expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1", "item_2"]]]);
+    });
+
+    it("names every playlist a selection made across playlists leaves, and removes from each", async () => {
+      const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_1"), playlistItem("item_2", "pl_2")]);
+
+      expect(dialog?.querySelector("p")?.textContent).toBe("They stay in your library and only leave “Road Trip” and “Gym”.");
+      await act(async () => {
+        buttonNamed(dialog, "Remove")?.click();
+        await settle();
+      });
+      expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1"]], ["pl_2", ["item_2"]]]);
+    });
+
+    it("calls a playlist that is gone a deleted playlist", async () => {
+      const dialog = await confirmFrom("Remove", [playlistItem("item_1", "pl_gone")]);
+
+      expect(dialog?.querySelector("p")?.textContent).toBe("It stays in your library and only leaves a deleted playlist.");
+    });
+
+    it("tells apart what a mixed selection only removes from a playlist and what it deletes", async () => {
+      const dialog = await confirmFrom("Delete", [
+        playlistItem("item_1", "pl_1"),
+        { id: "track_9", type: "track", trackId: "track_9", title: "Track 9" },
+      ]);
+
+      expect(dialog?.querySelector("h2")?.textContent).toBe("Delete 2 items?");
+      expect(dialog?.querySelector("p")?.textContent).toBe(
+        "1 of them stays in your library and only leaves “Road Trip”. The others are removed from your library and from every playlist. Deleting a track deletes its slices too. You can't undo this."
+      );
+      await act(async () => {
+        buttonNamed(dialog, "Delete")?.click();
+        await settle();
+      });
+      expect(removePlaylistItemsBatch.mock.calls).toEqual([["pl_1", ["item_1"]]]);
+      expect(deleteTracksBatch.mock.calls).toEqual([[["track_9"]]]);
+    });
   });
 
   it("offers no delete action while viewing a mix playlist (its songs live in the sources)", () => {

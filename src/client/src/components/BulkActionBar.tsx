@@ -36,6 +36,26 @@ const mapItemsToBatchPayload = (items: SelectedItem[]) =>
     segment_id: item.segmentId || (item.type === "slice" ? item.id : null),
   }));
 
+// What a confirmed delete does with the selection, which outlives a change of view. Playlist items leave their own
+// playlists and stay in the library; tracks and slices are deleted from the library. The confirmation is worded from
+// this same plan.
+function planBulkDelete(items: SelectedItem[], activePlaylistId: string | null) {
+  const playlistItems = new Map<string, string[]>();
+  const trackIds: string[] = [];
+  const segmentIds: string[] = [];
+  for (const item of items) {
+    if (item.type === "playlist_item") {
+      const playlistId = item.playlistId || activePlaylistId;
+      if (playlistId) playlistItems.set(playlistId, [...(playlistItems.get(playlistId) ?? []), item.id]);
+    } else if (item.type === "slice") {
+      segmentIds.push(item.segmentId || item.id);
+    } else {
+      trackIds.push(item.trackId || item.id);
+    }
+  }
+  return { playlistItems, trackIds, segmentIds };
+}
+
 // Long enough to read the check mark before the menu closes
 const ADDED_CLOSE_DELAY_MS = 600;
 
@@ -145,9 +165,36 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
   const removePlaylistItemsBatch = usePlayerStore((s) => s.removePlaylistItemsBatch);
   const addTracksToPlaylistBatch = usePlayerStore((s) => s.addTracksToPlaylistBatch);
   const activePlaylistId = usePlayerStore((s) => s.activePlaylistId);
-  const isMixView = usePlayerStore((s) => Boolean(s.playlists.find((p) => p.id === s.activePlaylistId)?.is_mix));
-  // In a playlist, as in Apple Music, songs are removed from it and stay in the library; elsewhere they are deleted
-  const isRemoving = selectedItems.size > 0 && Array.from(selectedItems.values()).every((item) => item.type === "playlist_item");
+  const playlists = usePlayerStore((s) => s.playlists);
+  const isMixView = Boolean(playlists.find((p) => p.id === activePlaylistId)?.is_mix);
+
+  // As in Apple Music, songs picked in a playlist are removed from it and stay in the library; anything else is deleted
+  const plan = planBulkDelete(Array.from(selectedItems.values()), activePlaylistId);
+  const removedCount = Array.from(plan.playlistItems.values()).reduce((sum, ids) => sum + ids.length, 0);
+  const deletedCount = plan.trackIds.length + plan.segmentIds.length;
+  const isRemoving = removedCount > 0 && deletedCount === 0;
+  const leftPlaylists = [
+    ...new Set(
+      Array.from(plan.playlistItems.keys(), (id) => {
+        const name = playlists.find((p) => p.id === id)?.name;
+        return name === undefined ? t("bulkActions.deletedPlaylist") : t("bulkActions.quoted", { name });
+      })
+    ),
+  ];
+  const confirmation = isRemoving
+    ? {
+        title: t("bulkActions.removeTitle", { count: removedCount }),
+        description: t("bulkActions.confirmRemove", { count: removedCount, playlists: leftPlaylists }),
+      }
+    : removedCount === 0
+      ? {
+          title: t("bulkActions.deleteTitle", { count: deletedCount }),
+          description: t("bulkActions.confirmDelete", { count: deletedCount }),
+        }
+      : {
+          title: t("bulkActions.deleteTitle", { count: removedCount + deletedCount }),
+          description: t("bulkActions.confirmDeleteMixed", { count: removedCount, playlists: leftPlaylists }),
+        };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -200,24 +247,11 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     let allSucceeded = true;
     try {
       const items = Array.from(selectedItems.values());
-      const trackIdsToDelete: string[] = [];
-      const segmentIdsToDelete: string[] = [];
-      const playlistItemsToDelete = new Map<string, string[]>();
-
-      for (const item of items) {
-        if (item.type === "playlist_item") {
-          const plId = item.playlistId || activePlaylistId;
-          if (plId) {
-            const list = playlistItemsToDelete.get(plId) || [];
-            list.push(item.id);
-            playlistItemsToDelete.set(plId, list);
-          }
-        } else if (item.type === "slice") {
-          segmentIdsToDelete.push(item.segmentId || item.id);
-        } else {
-          trackIdsToDelete.push(item.trackId || item.id);
-        }
-      }
+      const {
+        playlistItems: playlistItemsToDelete,
+        trackIds: trackIdsToDelete,
+        segmentIds: segmentIdsToDelete,
+      } = planBulkDelete(items, activePlaylistId);
 
       // Delete playlist items
       for (const [plId, itemIds] of playlistItemsToDelete.entries()) {
@@ -333,8 +367,8 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
       onClose={() => !isDeleting && setIsConfirmOpen(false)}
       onConfirm={handleConfirmBulkDelete}
       isLoading={isDeleting}
-      title={t(isRemoving ? "bulkActions.removeTitle" : "bulkActions.deleteTitle", { count: selectedCount })}
-      description={t(isRemoving ? "bulkActions.confirmRemove" : "bulkActions.confirmDelete", { count: selectedCount })}
+      title={confirmation.title}
+      description={confirmation.description}
       confirmText={isRemoving ? t("bulkActions.remove") : t("common.delete")}
       cancelText={t("common.cancel", "Cancel")}
       variant="destructive"
