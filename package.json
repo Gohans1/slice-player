@@ -6,6 +6,7 @@
     "dev": "bun run src/server/index.ts",
     "start": "bun run src/server/index.ts",
     "build": "vite build",
+    "build:exe": "vite build && bun build --compile --production --windows-hide-console --asset ./dist --target=bun-windows-x64 ./src/server/index.ts --outfile SlicePlayer.exe",
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc --noEmit",
