@@ -1,22 +1,13 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Combine, FolderTree, MoreHorizontal, Play, Plus, Shuffle, Trash2 } from "lucide-react";
-import { Button } from "./ui/button";
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "./ui/context-menu";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { Combine, FolderTree, Play, Plus, Shuffle, Trash2 } from "lucide-react";
+import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator } from "./ui/dropdown-menu";
+import { CollectionTile } from "./CollectionTile";
 import { DeletePlaylistModal } from "./DeletePlaylistModal";
 import { QueueMenuItems } from "./QueueMenuItems";
 import { PlaylistCover } from "./PlaylistCover";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { cn, REVEAL_ON_HOVER } from "../lib/utils";
 import { canStartMix } from "../lib/mixPlaylist";
 import type { Playlist } from "@/server/types";
 
@@ -96,13 +87,11 @@ interface PlaylistTileProps {
   onDelete: (playlist: ListedPlaylist) => void;
 }
 
-// Apple Music's playlist tile: artwork with Play and "..." on hover, and the same menu on a right-click or long press
 function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, onMixWith, canMix, onEditSources, onDelete }: PlaylistTileProps) {
   const { t } = useTranslation();
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
   const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
   const isEmpty = (pl.item_count || 0) === 0;
-  const moreLabel = t("sidebar.playlistActions", { name: pl.name });
   // A mix's sources are edited here; any other playlist can start a mix
   const mixItem = pl.is_mix
     ? onEditSources && (
@@ -148,70 +137,41 @@ function PlaylistTile({ playlist: pl, parent, isPlaying: isPlayingThis, onOpen, 
   );
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger render={<li className="group flex min-w-0 flex-col" />}>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => onOpen(pl.id)}
-            aria-label={t("playlist.openNamed", { name: pl.name })}
-            className="block w-full cursor-pointer overflow-hidden rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          >
-            <PlaylistCover playlist={pl} />
-          </button>
-          {!isEmpty && (
-            <div className={cn("absolute bottom-2 left-2", REVEAL_ON_HOVER)}>
-              <Button
-                size="icon-lg"
-                onClick={() => buildPlaylistQueue(pl.id, false)}
-                aria-label={t("playlist.playNamed", { name: pl.name })}
-                title={t("playlist.playNamed", { name: pl.name })}
-              >
-                <Play className="fill-current" />
-              </Button>
-            </div>
-          )}
-          <div className={cn("absolute right-2 bottom-2", REVEAL_ON_HOVER)}>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="secondary" size="icon-lg" aria-label={moreLabel} title={moreLabel} />}>
-                <MoreHorizontal />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto">
-                {actions}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-        <div className="mt-2 min-w-0">
-          <h3 title={pl.name} className="truncate text-xs text-foreground">
-            {pl.name}
-          </h3>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            {isPlayingThis && <NowPlayingEqualizer className="text-flexoki-green" />}
-            {pl.is_mix && (
-              <span className="flex shrink-0 items-center gap-1 font-medium text-flexoki-magenta">
-                <Combine className="size-3" aria-hidden="true" />
-                {t("mixPlaylist.badge")}
-                <span aria-hidden="true">·</span>
-              </span>
-            )}
-            {parent && (
-              <span
-                className="flex max-w-30 items-center gap-1 font-medium text-flexoki-blue"
-                title={t("playlist.subPlaylistOf", { name: parent.name })}
-              >
-                <FolderTree className="size-3 shrink-0" aria-hidden="true" />
-                <span className="truncate">{parent.name}</span>
-                <span aria-hidden="true">·</span>
-                <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
-              </span>
-            )}
-            <span className="shrink-0 tabular-nums">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
-          </p>
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-auto">{actions}</ContextMenuContent>
-    </ContextMenu>
+    <CollectionTile
+      name={pl.name}
+      artwork={<PlaylistCover playlist={pl} />}
+      openLabel={t("playlist.openNamed", { name: pl.name })}
+      onOpen={() => onOpen(pl.id)}
+      onPlay={isEmpty ? undefined : () => buildPlaylistQueue(pl.id, false)}
+      menu={actions}
+      details={<PlaylistDetails playlist={pl} parent={parent} isPlaying={isPlayingThis} />}
+    />
+  );
+}
+
+// Under a playlist tile's name: playing, a mix, a sub-playlist of which, and how many songs
+export function PlaylistDetails({ playlist: pl, parent, isPlaying }: { playlist: ListedPlaylist; parent?: ListedPlaylist; isPlaying: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {isPlaying && <NowPlayingEqualizer className="text-flexoki-green" />}
+      {pl.is_mix && (
+        <span className="flex shrink-0 items-center gap-1 font-medium text-flexoki-magenta">
+          <Combine className="size-3" aria-hidden="true" />
+          {t("mixPlaylist.badge")}
+          <span aria-hidden="true">·</span>
+        </span>
+      )}
+      {parent && (
+        <span className="flex max-w-30 items-center gap-1 font-medium text-flexoki-blue" title={t("playlist.subPlaylistOf", { name: parent.name })}>
+          <FolderTree className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{parent.name}</span>
+          <span aria-hidden="true">·</span>
+          <span className="sr-only">{t("playlist.subPlaylistOf", { name: parent.name })}</span>
+        </span>
+      )}
+      <span className="shrink-0 tabular-nums">{t("playlist.itemCount", { count: pl.item_count || 0 })}</span>
+    </>
   );
 }
 
