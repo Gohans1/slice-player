@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { Playlist, Segment, Track } from "../src/server/types";
+import type { HomeSummary, Playlist, Segment, Track } from "../src/server/types";
 
 export interface Library {
   tracks?: Track[];
@@ -15,6 +15,7 @@ export async function mockLibrary(page: Page, library: Library) {
     ["/api/segments", library.segments ?? []],
     ["/api/playlists", library.playlists ?? []],
     ["/api/logs", []],
+    ["/api/home", { recently_played: [], heavy_rotation: [], top_playlists: [] } satisfies HomeSummary],
   ]);
   await page.route("**/api/**", (route) => {
     const request = route.request();
@@ -22,6 +23,14 @@ export async function mockLibrary(page: Page, library: Library) {
     return body === undefined ? route.fulfill({ status: 404 }) : route.fulfill({ json: body });
   });
   await page.routeWebSocket("**/ws", () => {});
+}
+
+// The app opens on Home. Goes to a library page as a person would, from the sidebar; below shadcn's mobile breakpoint
+// (768px) that is a sheet, opened from the toolbar first
+export async function openLibraryPage(page: Page, name: "Mix" | "Slices" | "Tracks") {
+  const viewport = page.viewportSize();
+  if (viewport && viewport.width < 768) await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await page.getByRole("button", { name, exact: true }).click();
 }
 
 export function makeTracks(count: number): Track[] {

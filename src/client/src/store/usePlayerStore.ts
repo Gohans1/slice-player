@@ -1,14 +1,15 @@
 import { create } from "zustand";
 import { audioEngine } from "../lib/audio";
 import { createDefaultFullSegment } from "../lib/utils";
-import { pickSmartRandomItem } from "../lib/shufflePicker";
 import { logClientInfo, logClientError } from "./useLogStore";
 import { useSelectionStore } from "./useSelectionStore";
 import { type PlaylistSortMode, getSortedPlaylistItems, getShuffledItemIds, getShuffledEntityIds } from "../lib/playlistSort";
 import { searchItems } from "../lib/search";
 import { showsItemsOf } from "../lib/mixPlaylist";
 import { notifyChangeFailed, sendChange } from "../lib/sendChange";
-import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails } from "@/server/types";
+import { createListenCounter, postPlay } from "../lib/plays";
+import { useHomeStore } from "./useHomeStore";
+import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaySource } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
 
@@ -16,6 +17,10 @@ export interface QueueItem {
   queueItemId?: string;
   segment: Segment;
   track: Track;
+  // Added with Play Next or Play Later: it stays through library refreshes whatever page is playing, as long as it can play
+  userQueued?: boolean;
+  // Where a song added with Play Next or Play Later came from, which its play is credited to
+  source?: PlaySource;
 }
 
 let nextQueueItemCounter = 0;
@@ -32,10 +37,25 @@ export function createQueueItem(segment: Segment, track: Track, queueItemId?: st
 }
 
 export type PlaybackMode = "mixed" | "slices_only" | "original_only";
-export type SystemCategory = PlaybackMode | "downloading_only" | "error_only" | "playlists";
+// Play Next puts songs right after the current one, Play Later after the rest of the queue
+export type QueuePlacement = "next" | "later";
+export type SystemCategory = "home" | PlaybackMode | "downloading_only" | "error_only" | "playlists";
 
 export function isPlaybackMode(cat: unknown): cat is PlaybackMode {
   return cat === "mixed" || cat === "slices_only" || cat === "original_only";
+}
+
+// Like Apple Music, a Home shelf or a search's results play as they were when played. A library page's or a playlist's
+// queue instead takes in what it comes to list: songs that become ready, slices cut, songs added to the playlist
+function playsListAsPlayed(s: PlayerState): boolean {
+  const origin = s.queueOrigin?.type;
+  return origin === "home" || origin === "search";
+}
+
+// The library page, or Home's song list, that the queue plays: null while a playlist plays or nothing does
+export function selectPlayingPage(s: PlayerState): PlaybackMode | "home" | null {
+  if (!s.activeTrack || s.activePlaylistPlayingId) return null;
+  return s.queueOrigin?.type === "home" ? "home" : s.playbackMode;
 }
 
 export function getViewScrollKey(
@@ -61,8 +81,6 @@ export const dismissedTrackIdsByMode: Record<PlaybackMode, Set<string>> = {
   original_only: new Set<string>(),
 };
 
-const inFlightEnsureModeFetches = new Set<PlaybackMode>();
-
 export function clearDismissedSegments(mode?: PlaybackMode) {
   if (mode) {
     dismissedSegmentIdsByMode[mode].clear();
@@ -77,17 +95,46 @@ export function clearDismissedSegments(mode?: PlaybackMode) {
   }
 }
 
-export const shuffleHistory = new Map<string, number>();
-export let shuffleTurnCounter = 0;
-export function clearShuffleHistory() {
-  shuffleHistory.clear();
-  shuffleTurnCounter = 0;
+// The play being listened to, by its queue entry. Playback restarting where it paused carries on with it
+let listening: { entryId: string; tick: (time: number) => void; resumeFrom: (time: number) => void } | null = null;
+
+// A song added with Play Next keeps where it came from; any other is credited to what the queue plays
+function playSourceOf(entry: QueueItem | undefined, state: PlayerState): PlaySource {
+  if (entry?.source) return entry.source;
+  const via_home = state.queueOrigin?.fromHome === true;
+  if (state.activePlaylistPlayingId) return { source_type: "playlist", playlist_id: state.activePlaylistPlayingId, via_home };
+  return { source_type: state.queueOrigin?.type === "home" ? "home" : state.playbackMode, playlist_id: null, via_home };
+}
+
+function startListening(state: PlayerState, segment: Segment, track: Track, startTime: number, resuming: boolean) {
+  const current = state.queue[state.queueIndex];
+  const entry = current?.segment.id === segment.id ? current : undefined;
+  const entryId = entry?.queueItemId ?? segment.id;
+  if (resuming && listening?.entryId === entryId) return listening;
+
+  const play = {
+    track_id: track.id,
+    segment_id: segment.id.startsWith("fallback_") ? null : segment.id,
+    ...playSourceOf(entry, state),
+  };
+  const counter = createListenCounter(segment.end_time - segment.start_time, startTime, performance.now());
+  listening = {
+    entryId,
+    tick: (time) => {
+      if (!counter.tick(time, performance.now())) return;
+      // Home may be open, or opened next: either way its shelves should count this play
+      void postPlay(play).then((recorded) => {
+        if (recorded) void useHomeStore.getState().refresh();
+      });
+    },
+    resumeFrom: (time) => counter.resumeFrom(time, performance.now()),
+  };
+  return listening;
 }
 
 let activeInitiationCount = 0;
 let playbackIntentId = 0;
 let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
-let latestPlaybackModeRequestId = 0;
 let latestFetchTracksRequestId = 0;
 
 let pendingSegmentReconciliation = false;
@@ -215,12 +262,18 @@ function patchTrackVolumeDebounced(trackId: string, volume: number): Promise<voi
   });
 }
 
+// Home's song lists, which play as a queue of their own
+export type HomeShelf = "heavy_rotation" | "recently_added";
+
 export interface QueueOrigin {
-  type: "search" | "playlist" | "system";
+  type: "search" | "playlist" | "system" | "home";
   query?: string;
   count?: number;
   playlistId?: string;
   mode?: PlaybackMode;
+  shelf?: HomeShelf;
+  // Started from Home, so its plays tell how much listening starts there
+  fromHome?: boolean;
 }
 
 export interface PlayerState {
@@ -282,9 +335,10 @@ export interface PlayerState {
   toggleShuffle: () => void;
   toggleLoopQueue: () => void;
   toggleLoopTrack: () => void;
-  setPlaybackMode: (mode: PlaybackMode) => Promise<boolean>;
   setActiveSystemCategory: (cat: SystemCategory) => void;
-  playModeQueue: (mode: PlaybackMode, startIndex?: number, forceShuffle?: boolean) => Promise<void>;
+  playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
+  enqueue: (items: QueueItem[], placement: QueuePlacement, source: PlaySource) => boolean;
+  queuePlaylist: (playlistId: string, placement: QueuePlacement, options?: { fromHome?: boolean }) => Promise<void>;
   playSegmentInMode: (mode: PlaybackMode, segment: Segment, track: Track, customQueue?: QueueItem[], customIndex?: number, origin?: QueueOrigin | null) => Promise<void>;
   setSystemSortMode: (mode: PlaybackMode, sortMode: PlaylistSortMode, itemIds?: string[]) => void;
   randomizeSystemSort: (mode: PlaybackMode, itemIds?: string[]) => void;
@@ -303,8 +357,6 @@ export interface PlayerState {
   closeSliceStudio: () => void;
   buildShuffleQueue: (allSegments: Segment[], allTracks: Track[], modeOverride?: PlaybackMode, forceShuffle?: boolean) => void;
   reshuffleCurrentQueue: (modeOverride?: PlaybackMode) => void;
-  quickShufflePlay: (allSegmentsOverride?: Segment[]) => Promise<void>;
-  ensureModeQueue: (mode: PlaybackMode) => Promise<void>;
   syncUpdatedSegment: (seg: Segment) => void;
 
   // Playlist Actions
@@ -411,6 +463,19 @@ export function sortQueueItems(items: QueueItem[]): QueueItem[] {
   });
 }
 
+// The same song can be queued more than once, so an entry is found by its queue id, not its segment
+function indexOfEntry(queue: QueueItem[], entry: QueueItem | null | undefined): number {
+  return entry?.queueItemId ? queue.findIndex((it) => it.queueItemId === entry.queueItemId) : -1;
+}
+
+// The full-track segment for a refreshed track: the queued one while it still covers the whole track, so unchanged
+// entries keep their identity
+function refreshedFallbackSegment(segment: Segment, track: Track): Segment {
+  return segment.start_time === 0 && segment.end_time === track.duration && segment.id === `fallback_${track.id}`
+    ? segment
+    : createDefaultFullSegment(track);
+}
+
 export function reconcileSingleModeQueue(
   mode: PlaybackMode,
   existingQueue: QueueItem[],
@@ -468,6 +533,17 @@ export function reconcileSingleModeQueue(
 
   // 1. Reconcile existing queue items
   for (const item of existingQueue) {
+    if (item.userQueued) {
+      const queuedTrack = trackMap.get(item.track.id);
+      if (!queuedTrack || queuedTrack.status !== "ready" || queuedTrack.duration <= 0) continue;
+      if (item.segment.id.startsWith("fallback_")) {
+        validQueue.push({ ...createQueueItem(refreshedFallbackSegment(item.segment, queuedTrack), queuedTrack, item.queueItemId), userQueued: true, source: item.source });
+      } else {
+        const queuedSegment = segmentObjMap.get(item.segment.id);
+        if (queuedSegment) validQueue.push({ ...createQueueItem(queuedSegment, queuedTrack, item.queueItemId), userQueued: true, source: item.source });
+      }
+      continue;
+    }
     if (!trackMap.has(item.track.id) || modeDismissedTracks.has(item.track.id)) continue;
     const freshTrack = trackMap.get(item.track.id)!;
     if (freshTrack.status !== "ready" || freshTrack.duration <= 0) continue;
@@ -479,13 +555,7 @@ export function reconcileSingleModeQueue(
       }
       if (!seenSegmentIds.has(item.segment.id) && (!modeDismissed.has(item.segment.id) || item.segment.id === currentActiveSegment?.id)) {
         seenSegmentIds.add(item.segment.id);
-        const fallbackSeg =
-          item.segment.start_time === 0 &&
-          item.segment.end_time === freshTrack.duration &&
-          item.segment.id === `fallback_${freshTrack.id}`
-            ? item.segment
-            : createDefaultFullSegment(freshTrack);
-        validQueue.push(createQueueItem(fallbackSeg, freshTrack, item.queueItemId));
+        validQueue.push(createQueueItem(refreshedFallbackSegment(item.segment, freshTrack), freshTrack, item.queueItemId));
       }
     } else {
       if (mode === "original_only" && item.segment.id !== currentActiveSegment?.id) continue;
@@ -548,6 +618,32 @@ export function reconcileSingleModeQueue(
   }
 
   return validQueue;
+}
+
+// A playlist's songs as its page lists them: the playable ones in the page's sort, narrowed to a search's matches
+async function loadPlaylistQueue(get: () => PlayerState, playlistId: string, query?: string): Promise<QueueItem[]> {
+  let items: PlaylistItemWithDetails[] = [];
+  if (playlistId === get().activePlaylistId && get().activePlaylistItems.length > 0) {
+    items = get().activePlaylistItems;
+  } else {
+    const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`);
+    if (!res.ok) return [];
+    const data: { items?: PlaylistItemWithDetails[] } = await res.json();
+    items = data.items || [];
+  }
+  let playable = items.filter((it) => it.track && it.track.status === "ready" && it.track.duration > 0);
+  if (query) {
+    playable = searchItems(playable, query, (item) => ({
+      title: item.segment?.name || item.track?.title,
+      artist: item.track?.artist,
+      segmentName: item.segment ? item.track?.title : undefined,
+      createdAt: item.added_at,
+    }));
+  }
+  const playlist = get().playlists.find((p) => p.id === playlistId);
+  return getSortedPlaylistItems(playable, get().playlistSortMode, get().playlistRandomMap[playlistId], playlist?.is_custom_ordered).map(
+    (item) => createQueueItem(item.segment || createDefaultFullSegment(item.track), item.track, item.id)
+  );
 }
 
 function transitionActiveItemOnRemoval(
@@ -768,7 +864,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }));
   },
   viewMode: getStoredViewMode(),
-  activeSystemCategory: "mixed",
+  // Like Apple Music, the app opens on Home
+  activeSystemCategory: "home",
   viewScrollPositions: {},
   saveViewScrollPosition: (key: string, scrollY: number) => {
     if (!key) return;
@@ -1045,11 +1142,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             updates.sliceStudioTrack = freshStudio;
           }
           if (!isPlayingPlaylist && validQueue.length !== queue.length) {
+            const sameEntryIdx = indexOfEntry(validQueue, currentItem);
             const newIdx = validQueue.length === 0
               ? -1
-              : currentItem
-                ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
-                : (queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1)));
+              : sameEntryIdx !== -1
+                ? sameEntryIdx
+                : currentItem
+                  ? validQueue.findIndex((it) => it.segment.id === currentItem.segment.id)
+                  : (queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1)));
             const fallbackIdx = queueIndex === -1 ? -1 : Math.max(0, Math.min(queueIndex, validQueue.length - 1));
             updates.queueIndex = validQueue.length === 0 ? -1 : (newIdx >= 0 ? newIdx : fallbackIdx);
           }
@@ -1107,10 +1207,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const newlyReadyTracks = finalTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
         const modesToReconcile: PlaybackMode[] = ["mixed", "slices_only", "original_only"];
         const nextQueuesByMode: Record<PlaybackMode, QueueItem[]> = { ...freshState.queuesByMode };
+        // A list played as it was keeps its entries, and what was queued onto them, refreshed; what the library has
+        // gained goes to the library pages' queues. A search in a playlist plays the playlist's queue, not this one
+        const playsOwnList = !freshState.activePlaylistPlayingId && playsListAsPlayed(freshState);
 
         for (const m of modesToReconcile) {
           const prevQueue = freshState.queuesByMode[m] || [];
-          const reconciled = reconcileSingleModeQueue(
+          let reconciled = reconcileSingleModeQueue(
             m,
             prevQueue,
             validSegments,
@@ -1122,6 +1225,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             newlyReadyTracks,
             freshState.shuffleByMode[m]
           );
+          if (m === currentMode && playsOwnList) {
+            const listEntries = new Set(prevQueue.map((item) => item.queueItemId));
+            reconciled = reconciled.filter((item) => listEntries.has(item.queueItemId));
+          }
           const isIdentical =
             reconciled.length === prevQueue.length &&
             reconciled.every((it, idx) => it.track === prevQueue[idx].track && it.segment === prevQueue[idx].segment);
@@ -1130,7 +1237,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
         const validQueue = nextQueuesByMode[currentMode];
         let newIdx = -1;
-        if (validQueue.length > 0 && currentItem) {
+        const sameEntryIdx = indexOfEntry(validQueue, currentItem);
+        if (sameEntryIdx !== -1) {
+          newIdx = sameEntryIdx;
+        } else if (validQueue.length > 0 && currentItem) {
           const segIdx = validQueue.findIndex((it) => it.segment.id === currentItem.segment.id);
           if (segIdx !== -1) {
             newIdx = segIdx;
@@ -1369,6 +1479,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       autoSkipTimer = null;
     }
 
+    const listen = startListening(get(), segment, track, initialTime, seekTime !== undefined);
+
     activeInitiationCount++;
     try {
       const isSlice = !segment.id.startsWith("fallback_");
@@ -1388,7 +1500,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           get().nextSegment(true);
         },
         (time) => {
-          set({ currentTime: time });
+          listen.tick(time);
+          // Nothing to draw while the window is hidden; the music, and the listening, carry on
+          if (document.visibilityState !== "hidden") set({ currentTime: time });
         },
         segment.start_time
       );
@@ -1459,7 +1573,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const intentId = ++playbackIntentId;
     audioEngine.updateCurrentSegmentBounds(activeSegment.start_time, activeSegment.end_time);
     audioEngine.setOnSegmentEnd(() => get().nextSegment(true));
-
+    // A seek while paused moved playback without it being heard; this holds for the reload below too
+    listening?.resumeFrom(audioEngine.getCurrentTime());
     const ok = await audioEngine.resume();
     if (intentId !== playbackIntentId || ok === null) return;
     if (ok) {
@@ -1658,7 +1773,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     let newIndex = -1;
-    if (activeSegment) {
+    // Follow the entry that is playing, when the one at the index is (a transitional slice can play while it isn't)
+    const entryAtIndex = queue[get().queueIndex];
+    const sameEntry = entryAtIndex?.segment.id === activeSegment?.id ? indexOfEntry(newQueue, entryAtIndex) : -1;
+    if (sameEntry >= 0) {
+      newIndex = sameEntry;
+    } else if (activeSegment) {
       const found = newQueue.findIndex((item) => item.segment.id === activeSegment.id);
       if (found >= 0) {
         newIndex = found;
@@ -1904,7 +2024,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (!Number.isInteger(index) || index < 0 || index >= targetQueue.length) return;
     const itemToRemove = targetQueue[index];
-    if (itemToRemove && !isPlayingPlaylist) {
+    // A queued copy isn't the page's own entry of the song, so removing it leaves the page's entry to future refreshes
+    if (itemToRemove && !isPlayingPlaylist && !itemToRemove.userQueued) {
       dismissedSegmentIdsByMode[targetMode].add(itemToRemove.segment.id);
     }
 
@@ -2087,82 +2208,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ sliceStudioTrack: null });
   },
 
-  setPlaybackMode: async (mode: PlaybackMode): Promise<boolean> => {
-    // A playing playlist keeps playbackMode, so the same mode still has to swap its queue back in
-    if (mode === get().playbackMode && !get().activePlaylistPlayingId) return true;
-    const requestId = ++latestPlaybackModeRequestId;
-
-    const { queuesByMode, initializedModes } = get();
-    let targetQueue = queuesByMode[mode];
-    const isInitialized = initializedModes[mode] || (targetQueue && targetQueue.length > 0);
-
-    // If queue for this mode hasn't been created yet, populate it sequentially
-    if (!isInitialized && (!targetQueue || targetQueue.length === 0)) {
-      let segments: Segment[] = [];
-      if (mode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        // Guard against stale switch if another tab was clicked during network fetch
-        if (requestId !== latestPlaybackModeRequestId) return false;
-
-        if (!segRes.success) {
-          console.warn(`[Store] Failed to fetch segments for mode "${mode}"; aborting mode queue generation.`);
-          return false;
-        }
-        segments = segRes.segments;
-      }
-
-      const freshTracks = get().tracks;
-      targetQueue = generateModeQueueItems(mode, segments, freshTracks);
-      if (get().shuffleByMode[mode]) {
-        targetQueue = shuffleArray(targetQueue);
-      }
-    }
-
-    if (requestId !== latestPlaybackModeRequestId) return false;
-
-    const currentActiveSegment = get().activeSegment;
-    const currentActiveTrack = get().activeTrack;
-    let newIndex = -1;
-    let newActiveSegment = currentActiveSegment;
-
-    if (currentActiveSegment) {
-      const foundIdx = targetQueue.findIndex((item) => item.segment.id === currentActiveSegment.id);
-      if (foundIdx >= 0) {
-        newIndex = foundIdx;
-      }
-    }
-    if (newIndex === -1 && currentActiveTrack) {
-      const foundTrkIdx = targetQueue.findIndex((item) => item.track.id === currentActiveTrack.id);
-      if (foundTrkIdx >= 0) {
-        newIndex = foundTrkIdx;
-        const targetItem = targetQueue[foundTrkIdx];
-        if (mode === "original_only" && targetItem.segment.id.startsWith("fallback_")) {
-          newActiveSegment = targetItem.segment;
-          audioEngine.updateCurrentSegmentBounds(targetItem.segment.start_time, targetItem.segment.end_time);
-        }
-      }
-    }
-
-    set({
-      playbackMode: mode,
-      activePlaylistPlayingId: null,
-      initializedModes: {
-        ...get().initializedModes,
-        [mode]: true,
-      },
-      queuesByMode: {
-        ...get().queuesByMode,
-        [mode]: targetQueue,
-      },
-      activeSegment: newActiveSegment,
-      queue: targetQueue,
-      queueIndex: newIndex,
-      isShuffle: get().shuffleByMode[mode],
-      queueOrigin: { type: "system", mode },
-    });
-    return true;
-  },
-
   buildShuffleQueue: (
     allSegments: Segment[],
     allTracks: Track[],
@@ -2310,161 +2355,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
     if (firstItem) {
       void get().playSegment(firstItem.segment, firstItem.track, 0);
-    }
-  },
-
-  quickShufflePlay: async (allSegmentsOverride?: Segment[]) => {
-    const activePlId = get().activePlaylistId;
-    if (activePlId) {
-      await get().buildPlaylistQueue(activePlId, true);
-      return;
-    }
-
-    const requestedMode = get().playbackMode;
-    let currentQueue = get().queuesByMode[requestedMode] || [];
-
-    if (currentQueue.length === 0) {
-      let segments: Segment[] = allSegmentsOverride || [];
-      if (segments.length === 0 && requestedMode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        if (segRes.success) {
-          segments = segRes.segments;
-        }
-      }
-
-      const freshState = get();
-      currentQueue = generateModeQueueItems(requestedMode, segments, freshState.tracks);
-      if (currentQueue.length > 0) {
-        set({
-          queuesByMode: {
-            ...freshState.queuesByMode,
-            [requestedMode]: currentQueue,
-          },
-          queue: freshState.playbackMode === requestedMode ? currentQueue : freshState.queue,
-          initializedModes: {
-            ...freshState.initializedModes,
-            [requestedMode]: true,
-          },
-        });
-      }
-    }
-
-    if (currentQueue.length === 0) {
-      // Fallback if the requested mode has no items (e.g. slices_only with no custom slices)
-      const fallbackMode: PlaybackMode = requestedMode === "slices_only" ? "mixed" : "original_only";
-      let fallbackQueue = get().queuesByMode[fallbackMode] || [];
-      if (fallbackQueue.length === 0) {
-        fallbackQueue = generateModeQueueItems(fallbackMode, [], get().tracks);
-      }
-      if (fallbackQueue.length > 0) {
-        currentQueue = fallbackQueue;
-      }
-    }
-
-    if (currentQueue.length === 0) return;
-
-    shuffleTurnCounter++;
-
-    // Always penalize the currently active segment (treated as just played at turn - 1) so it is never immediately re-picked
-    const currentActiveSegment = get().activeSegment;
-    if (currentActiveSegment) {
-      shuffleHistory.set(currentActiveSegment.id, shuffleTurnCounter - 1);
-    }
-
-    // Prune stale history entries older than 30 turns when map grows
-    if (shuffleHistory.size > 50) {
-      for (const [id, turn] of shuffleHistory.entries()) {
-        if (shuffleTurnCounter - turn > 30) {
-          shuffleHistory.delete(id);
-        }
-      }
-    }
-
-    const pickResult = pickSmartRandomItem(
-      currentQueue,
-      (item) => item.segment.id,
-      shuffleHistory,
-      shuffleTurnCounter
-    );
-
-    if (!pickResult) return;
-
-    const { item, index } = pickResult;
-    shuffleHistory.set(item.segment.id, shuffleTurnCounter);
-
-    // Sync target index with current mode's active queue
-    const activeModeQueue = get().queuesByMode[get().playbackMode] || [];
-    const targetIdx = activeModeQueue.findIndex((qItem) => qItem.segment.id === item.segment.id);
-
-    await get().playSegment(item.segment, item.track, targetIdx >= 0 ? targetIdx : undefined);
-  },
-
-  ensureModeQueue: async (mode: PlaybackMode) => {
-    const { queuesByMode, initializedModes } = get();
-    if (initializedModes[mode] || (queuesByMode[mode] && queuesByMode[mode].length > 0)) {
-      return;
-    }
-    if (inFlightEnsureModeFetches.has(mode)) {
-      return;
-    }
-    inFlightEnsureModeFetches.add(mode);
-
-    let segments: Segment[] = [];
-    let didFetchSucceed = mode === "original_only";
-    try {
-      if (mode !== "original_only") {
-        const segRes = await fetchAllSegmentsWithEtag();
-        if (segRes.success) {
-          segments = segRes.segments;
-          didFetchSucceed = true;
-        } else {
-          console.warn(`[Store] ensureModeQueue: failed to fetch segments for mode "${mode}"; aborting initialization.`);
-          return;
-        }
-      }
-
-      if (!didFetchSucceed) {
-        return;
-      }
-
-      // Guard against race conditions if setPlaybackMode or fetchTracks ran while fetch was pending
-      if (get().initializedModes[mode] || (get().queuesByMode[mode] && get().queuesByMode[mode].length > 0)) {
-        return;
-      }
-
-      const freshTracks = get().tracks;
-      let targetQueue = generateModeQueueItems(mode, segments, freshTracks);
-      if (get().shuffleByMode[mode]) {
-        targetQueue = shuffleArray(targetQueue);
-      }
-      const isCurrentMode = mode === get().playbackMode;
-      let newIndex = get().queueIndex;
-      if (isCurrentMode) {
-        const currentActiveSegment = get().activeSegment;
-        const currentActiveTrack = get().activeTrack;
-        if (currentActiveSegment) {
-          const foundIdx = targetQueue.findIndex((item) => item.segment.id === currentActiveSegment.id);
-          if (foundIdx >= 0) newIndex = foundIdx;
-        }
-        if (newIndex === -1 && currentActiveTrack) {
-          const foundTrkIdx = targetQueue.findIndex((item) => item.track.id === currentActiveTrack.id);
-          if (foundTrkIdx >= 0) newIndex = foundTrkIdx;
-        }
-      }
-
-      set({
-        queuesByMode: {
-          ...get().queuesByMode,
-          [mode]: targetQueue,
-        },
-        ...(isCurrentMode ? { queue: targetQueue, queueIndex: newIndex } : {}),
-        initializedModes: {
-          ...get().initializedModes,
-          [mode]: true,
-        },
-      });
-    } finally {
-      inFlightEnsureModeFetches.delete(mode);
     }
   },
 
@@ -2661,7 +2551,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (res) {
         try {
           const newItem = await res.json();
-          if (newItem && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
+          if (newItem && !playsListAsPlayed(get()) && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const isAlreadyInQueue = get().queue.some((it) => it.queueItemId === newItem.id);
             if (!isAlreadyInQueue) {
               const track = newItem.track || get().tracks.find((t) => t.id === trackId);
@@ -2709,7 +2599,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         try {
           const data = await res.json();
           const newItems: PlaylistItemWithDetails[] = Array.isArray(data?.items) ? data.items : [];
-          if (newItems.length > 0 && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
+          if (newItems.length > 0 && !playsListAsPlayed(get()) && showsItemsOf(get().activePlaylistPlayingId, playlistId, get().playlists)) {
             const currentQueue = get().queue;
             const existingQueueItemIds = new Set(currentQueue.map((it) => it.queueItemId).filter(Boolean));
             const queuedSegmentIds = new Set(currentQueue.map((it) => it.segment.id));
@@ -3225,45 +3115,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     origin?: QueueOrigin | null
   ) => {
     try {
-      let items: PlaylistItemWithDetails[] = [];
-      if (playlistId === get().activePlaylistId && get().activePlaylistItems.length > 0) {
-        items = get().activePlaylistItems;
-      } else {
-        const res = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        items = data.items || [];
-      }
-      const validItems = items.filter(
-        (it) => it.track && it.track.status === "ready" && it.track.duration > 0
-      );
-      if (validItems.length === 0) return;
-
-      let effectiveItems = validItems;
-      if (origin?.type === "search" && origin.query?.trim()) {
-        effectiveItems = searchItems(validItems, origin.query.trim(), (item) => ({
-          title: item.segment?.name || item.track?.title,
-          artist: item.track?.artist,
-          segmentName: item.segment ? item.track?.title : undefined,
-          createdAt: item.added_at,
-        }));
-      }
-      if (effectiveItems.length === 0) return;
-
-      const sortMode = get().playlistSortMode;
-      const currentPl = get().playlists.find((p) => p.id === playlistId);
-      const randomOrder = get().playlistRandomMap[playlistId];
-      const sortedValidItems = getSortedPlaylistItems(
-        effectiveItems,
-        sortMode,
-        randomOrder,
-        currentPl?.is_custom_ordered
-      );
-
-      const rawQueueItems: QueueItem[] = sortedValidItems.map((item) => {
-        const seg = item.segment || createDefaultFullSegment(item.track);
-        return createQueueItem(seg, item.track, item.id);
-      });
+      const query = origin?.type === "search" ? origin.query?.trim() : undefined;
+      const rawQueueItems = await loadPlaylistQueue(get, playlistId, query);
+      if (rawQueueItems.length === 0) return;
 
       let queueItems = [...rawQueueItems];
       let targetIndex = 0;
@@ -3346,47 +3200,46 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     await get().buildPlaylistQueue(playlistId, false, indexOrItemId);
   },
 
-  playModeQueue: async (mode: PlaybackMode, startIndex = 0, forceShuffle = false) => {
-    try {
-      let modeItems = get().queuesByMode[mode] || [];
-      if (modeItems.length === 0) {
-        let segments: Segment[] = [];
-        if (mode !== "original_only") {
-          const segRes = await fetchAllSegmentsWithEtag();
-          if (segRes.success) segments = segRes.segments;
-        }
-        modeItems = generateModeQueueItems(mode, segments, get().tracks);
-      }
-      if (modeItems.length === 0) return;
+  // Play and Shuffle on a library page: the page's songs as shown, from the top or shuffled
+  playModeQueue: async (mode: PlaybackMode, items: QueueItem[], { shuffle = false, origin }: { shuffle?: boolean; origin?: QueueOrigin } = {}) => {
+    if (items.length === 0) return;
+    // Playing the whole page brings back songs taken out of this mode's queue earlier
+    clearDismissedSegments(mode);
+    const queue = shuffle ? shuffleArray(items) : [...items];
+    set({
+      queue,
+      queueIndex: 0,
+      isShuffle: shuffle,
+      shuffleByMode: { ...get().shuffleByMode, [mode]: shuffle },
+      playbackMode: mode,
+      activePlaylistPlayingId: null,
+      queueOrigin: origin ?? { type: "system", mode },
+      queuesByMode: { ...get().queuesByMode, [mode]: queue },
+      initializedModes: { ...get().initializedModes, [mode]: true },
+    });
+    await get().playSegment(queue[0].segment, queue[0].track, 0);
+  },
 
-      let queueItems = [...modeItems];
-      if (forceShuffle) {
-        queueItems = shuffleArray(queueItems);
-        startIndex = 0;
-      }
-      const clampedIndex = Math.max(0, Math.min(startIndex, queueItems.length - 1));
-      set({
-        queue: queueItems,
-        queueIndex: clampedIndex,
-        isShuffle: forceShuffle,
-        playbackMode: mode,
-        activePlaylistPlayingId: null,
-        queueOrigin: { type: "system", mode },
-        queuesByMode: {
-          ...get().queuesByMode,
-          [mode]: queueItems,
-        },
-        initializedModes: {
-          ...get().initializedModes,
-          [mode]: true,
-        },
-      });
-      const target = queueItems[clampedIndex];
-      if (target) {
-        await get().playSegment(target.segment, target.track, clampedIndex);
-      }
+  enqueue: (items: QueueItem[], placement: QueuePlacement, source: PlaySource) => {
+    const { queue, queueIndex, activePlaylistPlayingId, playbackMode, queuesByMode } = get();
+    // Nothing is queued for the songs to come after: the caller plays them instead
+    if (queue.length === 0) return false;
+    // Copies, so a song queued twice is two entries
+    const copies = items.map((item) => ({ ...createQueueItem(item.segment, item.track), userQueued: true, source }));
+    const at = placement === "next" ? queueIndex + 1 : queue.length;
+    const next = [...queue.slice(0, at), ...copies, ...queue.slice(at)];
+    // While a library page plays, a refresh rebuilds the queue from its mode's queue, so they go there too
+    set(activePlaylistPlayingId ? { queue: next } : { queue: next, queuesByMode: { ...queuesByMode, [playbackMode]: next } });
+    return true;
+  },
+
+  queuePlaylist: async (playlistId: string, placement: QueuePlacement, { fromHome = false } = {}) => {
+    if (get().queue.length === 0) return get().buildPlaylistQueue(playlistId, false, 0, false, { type: "playlist", playlistId, fromHome });
+    try {
+      const items = await loadPlaylistQueue(get, playlistId);
+      if (items.length > 0) get().enqueue(items, placement, { source_type: "playlist", playlist_id: playlistId, via_home: fromHome });
     } catch (e) {
-      console.error(`[Store] Failed to play mode queue for "${mode}":`, e);
+      console.error("[Store] Failed to queue playlist:", e);
     }
   },
 

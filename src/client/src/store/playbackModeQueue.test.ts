@@ -29,7 +29,6 @@ const {
   clearDismissedSegments,
   dismissedSegmentIdsByMode,
   dismissedTrackIdsByMode,
-  clearShuffleHistory,
 } = await import("./usePlayerStore");
 const { audioEngine } = await import("../lib/audio");
 const { createDefaultFullSegment } = await import("../lib/utils");
@@ -97,41 +96,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       activeSegment: null,
     });
   });
-
-  it("should preserve independent queue orders when switching between playback modes without reshuffling", async () => {
-    // Build initial queues for all modes
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "original_only", false);
-
-    const initialMixed = usePlayerStore.getState().queuesByMode.mixed.map((it) => it.segment.id);
-    const initialSlices = usePlayerStore.getState().queuesByMode.slices_only.map((it) => it.segment.id);
-    const initialOriginal = usePlayerStore.getState().queuesByMode.original_only.map((it) => it.segment.id);
-
-    expect(initialSlices.length).toBe(2);
-    expect(initialOriginal.length).toBe(2);
-    expect(initialMixed.length).toBe(4);
-
-    // Switch to slices_only
-    await usePlayerStore.getState().setPlaybackMode("slices_only");
-    expect(usePlayerStore.getState().playbackMode).toBe("slices_only");
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(initialSlices);
-
-    // Switch to original_only
-    await usePlayerStore.getState().setPlaybackMode("original_only");
-    expect(usePlayerStore.getState().playbackMode).toBe("original_only");
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(initialOriginal);
-
-    // Switch back to mixed
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-    expect(usePlayerStore.getState().playbackMode).toBe("mixed");
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(initialMixed);
-
-    // Switch back to slices_only - order MUST be 100% identical
-    await usePlayerStore.getState().setPlaybackMode("slices_only");
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(initialSlices);
-  });
-
   it("should only shuffle the current playback mode without affecting other tabs", async () => {
     // Populate queues
     usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
@@ -141,8 +105,7 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     const originalMixed = [...usePlayerStore.getState().queuesByMode.mixed.map((it) => it.segment.id)];
     const originalSlices = [...usePlayerStore.getState().queuesByMode.slices_only.map((it) => it.segment.id)];
 
-    // We are on original_only
-    await usePlayerStore.getState().setPlaybackMode("original_only");
+    usePlayerStore.setState({ playbackMode: "original_only" });
     expect(usePlayerStore.getState().isShuffle).toBe(false);
 
     // Reshuffle original_only
@@ -156,11 +119,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     expect(usePlayerStore.getState().shuffleByMode.slices_only).toBe(false);
     expect(usePlayerStore.getState().queuesByMode.mixed.map((it) => it.segment.id)).toEqual(originalMixed);
     expect(usePlayerStore.getState().queuesByMode.slices_only.map((it) => it.segment.id)).toEqual(originalSlices);
-
-    // Switch to mixed: isShuffle should be false (since mixed is not shuffled)
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-    expect(usePlayerStore.getState().isShuffle).toBe(false);
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(originalMixed);
   });
 
   it("should purge removed track from all 3 modes", () => {
@@ -175,33 +133,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     expect(state.queuesByMode.slices_only.some((it) => it.track.id === "trk_1")).toBe(false);
     expect(state.queuesByMode.original_only.some((it) => it.track.id === "trk_1")).toBe(false);
   });
-
-  it("should maintain valid queueIndex by track fallback when switching from slices_only to original_only", async () => {
-    // Populate queues
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "original_only", false);
-
-    // Currently playing slice 2 (trk_2) on slices_only
-    usePlayerStore.setState({
-      playbackMode: "slices_only",
-      activeSegment: segment2,
-      activeTrack: track2,
-      queue: usePlayerStore.getState().queuesByMode.slices_only,
-      queueIndex: 1,
-    });
-
-    // Switch to original_only where segment2 does not exist (only fallback_trk_1 and fallback_trk_2 exist)
-    await usePlayerStore.getState().setPlaybackMode("original_only");
-
-    const state = usePlayerStore.getState();
-    expect(state.playbackMode).toBe("original_only");
-    // queueIndex must NOT be -1! It must point to track2's original segment in target queue
-    expect(state.queueIndex).toBeGreaterThanOrEqual(0);
-    const activeItemInQueue = state.queue[state.queueIndex];
-    expect(activeItemInQueue.track.id).toBe("trk_2");
-  });
-
   it("should remove item only from active mode queue without blacklisting it across other modes", () => {
     usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
     usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
@@ -475,75 +406,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     expect(reconciledSlices.some((it) => it.track.id === "trk_1")).toBe(false);
     expect(reconciledSlices.some((it) => it.track.id === "trk_2")).toBe(true);
   });
-
-  it("should purge track custom slices from uninitialized slices_only mode when removed from original_only mode", async () => {
-    // Only original_only is initialized
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "original_only", false);
-
-    usePlayerStore.setState({
-      playbackMode: "original_only",
-      queuesByMode: {
-        mixed: [],
-        slices_only: [],
-        original_only: usePlayerStore.getState().queuesByMode.original_only,
-      },
-      initializedModes: {
-        mixed: false,
-        slices_only: false,
-        original_only: true,
-      },
-    });
-
-    // Remove track 1 while on original_only (where only fallback_trk_1 was present)
-    usePlayerStore.getState().removeTrackFromQueue("trk_1");
-
-    // Switch to slices_only which was never initialized
-    // Mock global fetch for /api/segments
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = ((url: string) => {
-      if (url === "/api/segments") {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(segments),
-        });
-      }
-      return Promise.resolve({ ok: false, json: () => Promise.resolve([]) });
-    }) as any;
-
-    try {
-      await usePlayerStore.getState().setPlaybackMode("slices_only");
-      const slicesQueue = usePlayerStore.getState().queue;
-
-      // trk_1 custom slices MUST NOT appear in slices_only!
-      expect(slicesQueue.some((it) => it.track.id === "trk_1")).toBe(false);
-      expect(slicesQueue.some((it) => it.track.id === "trk_2")).toBe(true);
-    } finally {
-      globalThis.fetch = origFetch;
-    }
-  });
-
-  it("should maintain empty queue and not resurrect items when switching between tabs after queue was emptied", async () => {
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
-
-    // Switch to slices_only and empty it
-    await usePlayerStore.getState().setPlaybackMode("slices_only");
-    while (usePlayerStore.getState().queue.length > 0) {
-      usePlayerStore.getState().removeQueueItemAtIndex(0);
-    }
-    expect(usePlayerStore.getState().queue.length).toBe(0);
-
-    // Switch away to mixed
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-    expect(usePlayerStore.getState().queue.length).toBeGreaterThan(0);
-
-    // Switch back to slices_only
-    await usePlayerStore.getState().setPlaybackMode("slices_only");
-    // slices_only queue MUST remain empty and not resurrect!
-    expect(usePlayerStore.getState().queue.length).toBe(0);
-    expect(usePlayerStore.getState().queuesByMode.slices_only.length).toBe(0);
-  });
-
   it("should keep queueIndex -1 in toggleShuffle if activeSegment is absent from target queue", () => {
     usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
     const slicesQueue = usePlayerStore.getState().queuesByMode.slices_only;
@@ -821,27 +683,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       usePlayerStore.setState({ playSegment: origPlaySegment });
     }
   });
-
-  it("setPlaybackMode to original_only smoothly retargets activeSegment to full track fallback", async () => {
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "slices_only", false);
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "original_only", false);
-
-    usePlayerStore.setState({
-      playbackMode: "slices_only",
-      activeTrack: track1,
-      activeSegment: segment1, // Slice 1 of track 1
-      isPlaying: true,
-    });
-
-    await usePlayerStore.getState().setPlaybackMode("original_only");
-
-    const state = usePlayerStore.getState();
-    expect(state.playbackMode).toBe("original_only");
-    // activeSegment should now be the fallback full track of track 1
-    expect(state.activeSegment?.id).toBe(`fallback_${track1.id}`);
-    expect(state.queue[state.queueIndex].segment.id).toBe(`fallback_${track1.id}`);
-  });
-
   it("reconcileSingleModeQueue restores custom slices of newly ready tracks after re-download", () => {
     // Dismiss track 1 previously
     const dismissedSegs = new Set<string>([segment1.id, `fallback_${track1.id}`]);
@@ -911,29 +752,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     // Queue must be empty, NOT resurrected with fallback full tracks!
     expect(reconciled.length).toBe(0);
   });
-
-  it("setPlaybackMode aborts queue generation if /api/segments fetch fails", async () => {
-    const origFetch = global.fetch;
-    (global as any).fetch = () => Promise.reject(new Error("Network failure"));
-
-    try {
-      usePlayerStore.setState({
-        playbackMode: "mixed",
-        initializedModes: { mixed: true, slices_only: false, original_only: false },
-        queuesByMode: { mixed: [{ track: track1, segment: segment1 }], slices_only: [], original_only: [] },
-      });
-
-      await usePlayerStore.getState().setPlaybackMode("slices_only");
-
-      // Because network failed, slices_only should not be initialized with dummy fallback queue
-      const state = usePlayerStore.getState();
-      expect(state.initializedModes.slices_only).toBe(false);
-      expect(state.queuesByMode.slices_only.length).toBe(0);
-    } finally {
-      global.fetch = origFetch;
-    }
-  });
-
   it("prevSegment retargets smoothly when activeSegment is an out-of-mode transitional segment", () => {
     const item0: QueueItem = { track: track1, segment: segment1 };
     const item1: QueueItem = { track: track2, segment: segment2 };
@@ -1201,40 +1019,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       usePlayerStore.setState({ playSegment: origPlaySegment });
     }
   });
-
-  it("setPlaybackMode to original_only succeeds even if /api/segments fails", async () => {
-    const origFetch = global.fetch;
-    (global as any).fetch = (url: string) => {
-      if (url === "/api/segments") {
-        return Promise.reject(new Error("Segments service down"));
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-    };
-
-    try {
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "slices_only",
-        initializedModes: { mixed: true, slices_only: true, original_only: false },
-        queuesByMode: {
-          mixed: [{ track: track1, segment: segment1 }],
-          slices_only: [{ track: track1, segment: segment1 }],
-          original_only: [],
-        },
-      });
-
-      await usePlayerStore.getState().setPlaybackMode("original_only");
-
-      const state = usePlayerStore.getState();
-      expect(state.playbackMode).toBe("original_only");
-      expect(state.initializedModes.original_only).toBe(true);
-      expect(state.queue.length).toBe(2);
-      expect(state.queue[0].segment.id).toBe(`fallback_${track1.id}`);
-    } finally {
-      global.fetch = origFetch;
-    }
-  });
-
   it("buildShuffleQueue preserves valid queueIndex when player is idle", () => {
     usePlayerStore.setState({
       queue: [{ segment: segment1, track: track1 }, { segment: segment2, track: track2 }],
@@ -1337,199 +1121,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       global.fetch = origFetch;
     }
   });
-
-  it("quickShufflePlay selects and plays a random item without scrambling the queue in any tab", async () => {
-    clearShuffleHistory();
-    const origEnginePlay = audioEngine.playSegment;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      const items = [
-        { segment: segment1, track: track1 },
-        { segment: segment2, track: track2 },
-      ];
-      const initialOrderIds = items.map((it) => it.segment.id);
-
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "slices_only",
-        queuesByMode: {
-          mixed: [{ segment: segment1, track: track1 }, { segment: segment2, track: track2 }],
-          slices_only: [...items],
-          original_only: [],
-        },
-        queue: [...items],
-        queueIndex: -1,
-        isPlaying: false,
-      });
-
-      // Execute quickShufflePlay
-      await usePlayerStore.getState().quickShufflePlay();
-
-      const state = usePlayerStore.getState();
-      // 1. A segment is playing
-      expect(state.isPlaying).toBe(true);
-      expect(state.activeSegment).not.toBeNull();
-      // 2. queueIndex points directly to the active segment in current queue
-      expect(state.queueIndex).toBeGreaterThanOrEqual(0);
-      expect(state.queue[state.queueIndex].segment.id).toBe(state.activeSegment!.id);
-      // 3. Queue order in slices_only is NOT scrambled
-      const currentOrderIds = state.queuesByMode.slices_only.map((it) => it.segment.id);
-      expect(currentOrderIds).toEqual(initialOrderIds);
-      // 4. Mixed queue order is also completely untouched
-      const mixedOrderIds = state.queuesByMode.mixed.map((it) => it.segment.id);
-      expect(mixedOrderIds).toEqual(initialOrderIds);
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-    }
-  });
-
-  it("quickShufflePlay penalizes recently played items avoiding immediate repetition", async () => {
-    clearShuffleHistory();
-    const origEnginePlay = audioEngine.playSegment;
-    const origRandom = Math.random;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      const items = [
-        { segment: segment1, track: track1 },
-        { segment: segment2, track: track2 },
-      ];
-
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "slices_only",
-        queuesByMode: {
-          mixed: [],
-          slices_only: [...items],
-          original_only: [],
-        },
-        queue: [...items],
-        queueIndex: -1,
-        isPlaying: false,
-      });
-
-      // First pick with median random
-      Math.random = () => 0.4;
-      await usePlayerStore.getState().quickShufflePlay();
-      const firstPickedId = usePlayerStore.getState().activeSegment?.id;
-
-      // Second pick: first item now has weight 0.02, second has weight 1.0
-      Math.random = () => 0.5;
-      await usePlayerStore.getState().quickShufflePlay();
-      const secondPickedId = usePlayerStore.getState().activeSegment?.id;
-
-      expect(firstPickedId).not.toBeNull();
-      expect(secondPickedId).not.toBeNull();
-      expect(secondPickedId).not.toBe(firstPickedId);
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-      Math.random = origRandom;
-    }
-  });
-
-  it("quickShufflePlay penalizes currently active segment even if started manually", async () => {
-    clearShuffleHistory();
-    const origEnginePlay = audioEngine.playSegment;
-    const origRandom = Math.random;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      const items = [
-        { segment: segment1, track: track1 },
-        { segment: segment2, track: track2 },
-      ];
-
-      // Simulate segment1 started manually (e.g. from TrackCard or user click)
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "slices_only",
-        activeTrack: track1,
-        activeSegment: segment1,
-        queuesByMode: {
-          mixed: [],
-          slices_only: [...items],
-          original_only: [],
-        },
-        queue: [...items],
-        queueIndex: 0,
-        isPlaying: true,
-      });
-
-      // quickShufflePlay should register active segment1 and pick segment2
-      Math.random = () => 0.5;
-      await usePlayerStore.getState().quickShufflePlay();
-      const pickedSegment = usePlayerStore.getState().activeSegment;
-
-      expect(pickedSegment?.id).toBe(segment2.id);
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-      Math.random = origRandom;
-    }
-  });
-
-  it("quickShufflePlay works in original_only mode without scrambling queues", async () => {
-    clearShuffleHistory();
-    const origEnginePlay = audioEngine.playSegment;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      const origQueue = [
-        { segment: { id: `fallback_${track1.id}`, track_id: track1.id, name: track1.title, start_time: 0, end_time: track1.duration }, track: track1 },
-        { segment: { id: `fallback_${track2.id}`, track_id: track2.id, name: track2.title, start_time: 0, end_time: track2.duration }, track: track2 },
-      ];
-
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "original_only",
-        queuesByMode: {
-          mixed: [],
-          slices_only: [],
-          original_only: [...origQueue],
-        },
-        queue: [...origQueue],
-        queueIndex: -1,
-        isPlaying: false,
-      });
-
-      await usePlayerStore.getState().quickShufflePlay();
-      const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(true);
-      expect(state.activeSegment?.id.startsWith("fallback_")).toBe(true);
-      expect(state.queuesByMode.original_only.map((i) => i.segment.id)).toEqual(origQueue.map((i) => i.segment.id));
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-    }
-  });
-
-  it("quickShufflePlay falls back to mixed queue if slices_only queue is empty", async () => {
-    clearShuffleHistory();
-    const origEnginePlay = audioEngine.playSegment;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      usePlayerStore.setState({
-        tracks: [track1, track2],
-        playbackMode: "slices_only",
-        queuesByMode: {
-          mixed: [{ segment: segment1, track: track1 }],
-          slices_only: [],
-          original_only: [],
-        },
-        queue: [],
-        queueIndex: -1,
-        isPlaying: false,
-      });
-
-      await usePlayerStore.getState().quickShufflePlay([]);
-      const state = usePlayerStore.getState();
-      expect(state.isPlaying).toBe(true);
-      expect(state.activeSegment?.id).toBe(segment1.id);
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-    }
-  });
-
   it("reorderQueue with modeOverride reorders target mode without altering active playback or active queue", () => {
     const originalItems = [
       { segment: { id: "fallback_trk_1", track_id: "trk_1", name: "Full A", start_time: 0, end_time: 100 }, track: track1 },
@@ -1637,60 +1228,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     expect(state.shuffleByMode.original_only).toBe(true);
     expect(state.queuesByMode.original_only.length).toBe(3);
   });
-
-  it("switching mode via setPlaybackMode and playing clicked item plays that item and auto-advances within that tab's playlist", async () => {
-    const origEnginePlay = audioEngine.playSegment;
-    audioEngine.playSegment = (() => Promise.resolve()) as any;
-
-    try {
-      const originalItems = [
-        { segment: { id: "fallback_trk_1", track_id: "trk_1", name: "Full A", start_time: 0, end_time: 100 }, track: track1 },
-        { segment: { id: "fallback_trk_2", track_id: "trk_2", name: "Full B", start_time: 0, end_time: 120 }, track: track2 },
-      ];
-      const slicesItems = [
-        { segment: segment1, track: track1 },
-        { segment: segment2, track: track1 },
-      ];
-
-      usePlayerStore.setState({
-        playbackMode: "original_only",
-        queue: [...originalItems],
-        queueIndex: 0,
-        activeTrack: track1,
-        activeSegment: originalItems[0].segment,
-        queuesByMode: {
-          original_only: [...originalItems],
-          slices_only: [...slicesItems],
-          mixed: [],
-        },
-        initializedModes: {
-          original_only: true,
-          slices_only: true,
-          mixed: false,
-        },
-      });
-
-      // User in original_only tab clicks segment2 in slices_only tab
-      await usePlayerStore.getState().setPlaybackMode("slices_only");
-      await usePlayerStore.getState().playSegment(segment2, track1, 1);
-
-      let state = usePlayerStore.getState();
-      expect(state.playbackMode).toBe("slices_only");
-      expect(state.activeSegment?.id).toBe(segment2.id);
-      expect(state.queueIndex).toBe(1);
-
-      // Auto-advance (nextSegment) advances in slices_only playlist (with isLoopQueue enabled)
-      usePlayerStore.setState({ isLoopQueue: true });
-      usePlayerStore.getState().nextSegment();
-      state = usePlayerStore.getState();
-      expect(state.queueIndex).toBe(0); // Loops back to index 0 of slices_only
-      expect(state.activeSegment?.id).toBe(segment1.id);
-      usePlayerStore.setState({ isLoopQueue: false });
-    } finally {
-      audioEngine.playSegment = origEnginePlay;
-    }
-  });
-
   it("playing a custom slice while in original_only does not contaminate original_only queue", async () => {
     const origEnginePlay = audioEngine.playSegment;
     audioEngine.playSegment = (() => Promise.resolve()) as any;
@@ -1732,7 +1269,7 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     }
   });
 
-  it("removeQueueItemAtIndex to 0 items marks initializedModes as true and does not resurrect on tab switch", async () => {
+  it("removeQueueItemAtIndex to 0 items marks initializedModes as true", () => {
     const originalItems = [
       { segment: { id: "fallback_trk_1", track_id: "trk_1", name: "Full A", start_time: 0, end_time: 100 }, track: track1 },
     ];
@@ -1758,42 +1295,10 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
     // Remove the only item in original_only
     usePlayerStore.getState().removeQueueItemAtIndex(0, "original_only");
 
-    let state = usePlayerStore.getState();
+    const state = usePlayerStore.getState();
     expect(state.queuesByMode.original_only.length).toBe(0);
     expect(state.initializedModes.original_only).toBe(true);
-
-    // Switch away to mixed, then back to original_only
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-    await usePlayerStore.getState().setPlaybackMode("original_only");
-
-    state = usePlayerStore.getState();
-    // original_only must REMAIN empty and not resurrect the deleted item
-    expect(state.queuesByMode.original_only.length).toBe(0);
   });
-
-  it("setPlaybackMode returns true on success and false on abort", async () => {
-    usePlayerStore.setState({
-      playbackMode: "original_only",
-      queuesByMode: {
-        original_only: [],
-        slices_only: [],
-        mixed: [],
-      },
-      initializedModes: {
-        original_only: true,
-        slices_only: true,
-        mixed: true,
-      },
-    });
-
-    const res1 = await usePlayerStore.getState().setPlaybackMode("original_only");
-    expect(res1).toBe(true);
-
-    const res2 = await usePlayerStore.getState().setPlaybackMode("mixed");
-    expect(res2).toBe(true);
-    expect(usePlayerStore.getState().playbackMode).toBe("mixed");
-  });
-
   it("playSegment does not un-dismiss fallback_${track.id} in mixed mode when playing a custom slice", async () => {
     const origEnginePlay = audioEngine.playSegment;
     audioEngine.playSegment = (() => Promise.resolve()) as any;
@@ -1850,113 +1355,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       audioEngine.playSegment = origEnginePlay;
     }
   });
-
-  it("ensureModeQueue lazily populates uninitialized mode queue without disturbing active queue", async () => {
-    usePlayerStore.setState({
-      playbackMode: "mixed",
-      queue: [{ segment: segment1, track: track1 }],
-      queueIndex: 0,
-      activeTrack: track1,
-      activeSegment: segment1,
-      tracks: [track1, track2],
-      queuesByMode: {
-        mixed: [{ segment: segment1, track: track1 }],
-        slices_only: [],
-        original_only: [],
-      },
-      initializedModes: {
-        mixed: true,
-        slices_only: false,
-        original_only: false,
-      },
-    });
-
-    // Call ensureModeQueue for original_only
-    await usePlayerStore.getState().ensureModeQueue("original_only");
-
-    const state = usePlayerStore.getState();
-    // original_only must be populated now
-    expect(state.initializedModes.original_only).toBe(true);
-    expect(state.queuesByMode.original_only.length).toBe(2);
-    // Active playback and active queue must NOT be changed!
-    expect(state.playbackMode).toBe("mixed");
-    expect(state.queue.length).toBe(1);
-    expect(state.queue[0].segment.id).toBe(segment1.id);
-  });
-
-  it("ensureModeQueue aborts and does NOT mark initializedModes as true if /api/segments fails", async () => {
-    const origFetch = global.fetch;
-    (global as any).fetch = (url: string) => {
-      if (url === "/api/segments") {
-        return Promise.reject(new Error("Network offline"));
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-    };
-
-    try {
-      usePlayerStore.setState({
-        playbackMode: "original_only",
-        tracks: [track1, track2],
-        queuesByMode: {
-          mixed: [],
-          slices_only: [],
-          original_only: [{ segment: segment1, track: track1 }],
-        },
-        initializedModes: {
-          mixed: false,
-          slices_only: false,
-          original_only: true,
-        },
-      });
-
-      await usePlayerStore.getState().ensureModeQueue("slices_only");
-
-      const state = usePlayerStore.getState();
-      // slices_only must NOT be marked as initialized because fetch failed!
-      expect(state.initializedModes.slices_only).toBe(false);
-      expect(state.queuesByMode.slices_only.length).toBe(0);
-    } finally {
-      global.fetch = origFetch;
-    }
-  });
-
-  it("ensureModeQueue synchronizes active queue when mode === playbackMode", async () => {
-    const origFetch = global.fetch;
-    (global as any).fetch = (url: string) => {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([segment1]) });
-    };
-
-    try {
-      usePlayerStore.setState({
-        playbackMode: "slices_only",
-        queue: [],
-        queueIndex: -1,
-        tracks: [track1],
-        queuesByMode: {
-          mixed: [],
-          slices_only: [],
-          original_only: [],
-        },
-        initializedModes: {
-          mixed: false,
-          slices_only: false,
-          original_only: false,
-        },
-      });
-
-      await usePlayerStore.getState().ensureModeQueue("slices_only");
-
-      const state = usePlayerStore.getState();
-      expect(state.initializedModes.slices_only).toBe(true);
-      expect(state.queuesByMode.slices_only.length).toBe(1);
-      // Both queuesByMode and active queue must be updated!
-      expect(state.queue.length).toBe(1);
-      expect(state.queue[0].segment.id).toBe(segment1.id);
-    } finally {
-      global.fetch = origFetch;
-    }
-  });
-
   it("fetchTracks full reconciliation does not leak currentActiveSegment dismissal immunity to inactive modes", async () => {
     const origFetch = global.fetch;
     (global as any).fetch = (url: string) => {
@@ -2008,65 +1406,6 @@ describe("usePlayerStore playbackModeQueue isolation", () => {
       dismissedSegmentIdsByMode.mixed.delete(segment1.id);
     }
   });
-
-  it("ensureModeQueue synchronizes queueIndex to match activeSegment when mode === playbackMode", async () => {
-    const origFetch = global.fetch;
-    (global as any).fetch = (url: string) => {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([segment2, segment1]) });
-    };
-
-    try {
-      usePlayerStore.setState({
-        playbackMode: "slices_only",
-        activeTrack: track1,
-        activeSegment: segment1,
-        queue: [],
-        queueIndex: -1,
-        tracks: [track1, track2],
-        queuesByMode: {
-          slices_only: [],
-          original_only: [],
-          mixed: [],
-        },
-        initializedModes: {
-          slices_only: false,
-          original_only: false,
-          mixed: false,
-        },
-      });
-
-      await usePlayerStore.getState().ensureModeQueue("slices_only");
-
-      const state = usePlayerStore.getState();
-      expect(state.initializedModes.slices_only).toBe(true);
-      expect(state.queue.length).toBe(2);
-      // targetQueue is sorted by title and start_time -> segment1 is index 0
-      const expectedIdx = state.queue.findIndex((it) => it.segment.id === segment1.id);
-      expect(expectedIdx).toBeGreaterThanOrEqual(0);
-      expect(state.queueIndex).toBe(expectedIdx);
-    } finally {
-      global.fetch = origFetch;
-    }
-  });
-
-  it("setPlaybackMode with the current mode leaves a playing playlist for that mode's queue", async () => {
-    usePlayerStore.getState().buildShuffleQueue(segments, tracks, "mixed", false);
-    const mixedIds = usePlayerStore.getState().queuesByMode.mixed.map((it) => it.segment.id);
-
-    // Playing a playlist swaps the queue but keeps playbackMode as it was
-    usePlayerStore.setState({
-      activePlaylistPlayingId: "pl_1",
-      queue: [usePlayerStore.getState().queuesByMode.mixed[1]],
-      queueIndex: 0,
-    });
-    expect(usePlayerStore.getState().playbackMode).toBe("mixed");
-
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-
-    expect(usePlayerStore.getState().activePlaylistPlayingId).toBeNull();
-    expect(usePlayerStore.getState().queue.map((it) => it.segment.id)).toEqual(mixedIds);
-  });
-
   it("playSegment with stale overrideIndex falls back to true segment index", async () => {
     const origAudioPlay = audioEngine.playSegment;
     audioEngine.playSegment = () => Promise.resolve();

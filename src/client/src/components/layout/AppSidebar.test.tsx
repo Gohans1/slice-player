@@ -26,6 +26,8 @@ describe("AppSidebar", () => {
   let initialState: ReturnType<typeof usePlayerStore.getState>;
   let fetchSpy: ReturnType<typeof spyOn>;
   let onCreatePlaylist: ReturnType<typeof mock>;
+  let onPlayCategory: ReturnType<typeof mock>;
+  let onNewMix: ReturnType<typeof mock>;
 
   beforeEach(() => {
     initialState = usePlayerStore.getState();
@@ -34,6 +36,8 @@ describe("AppSidebar", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     onCreatePlaylist = mock(() => {});
+    onPlayCategory = mock(() => {});
+    onNewMix = mock(() => {});
     usePlayerStore.setState({
       tracks: [track("a", "ready", 3), track("b", "ready", 1), track("c", "downloading"), track("d", "error")],
       playlists: [
@@ -60,7 +64,14 @@ describe("AppSidebar", () => {
       root.render(
         <TooltipProvider>
           <SidebarProvider>
-            <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+            <AppSidebar
+              onCreatePlaylist={onCreatePlaylist}
+              onPlayCategory={onPlayCategory}
+              onNewMix={onNewMix}
+              searchQuery=""
+              onSearchChange={() => {}}
+              onOpenShortcuts={() => {}}
+            />
           </SidebarProvider>
         </TooltipProvider>
       );
@@ -90,6 +101,33 @@ describe("AppSidebar", () => {
   async function openActions(name: string) {
     await click(container.querySelector<HTMLElement>(`[aria-label="More options for ${name}"]`)!);
   }
+
+  async function rightClick(label: string) {
+    await act(async () => {
+      menuButton(label).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+      await tick();
+    });
+  }
+  const openMenuItems = () => Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
+
+  // Right-clicking Mix, Slices or Tracks plays or queues that whole page, like a playlist in the sidebar
+  it("plays or queues a library page from its right-click menu", async () => {
+    await renderSidebar();
+
+    await rightClick("Slices");
+    expect(openMenuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later"]);
+    await click(menuItem("Play Next"));
+
+    expect(onPlayCategory.mock.calls).toEqual([["slices_only", "next"]]);
+  });
+
+  it("has no play menu on the Downloading and Errors pages", async () => {
+    await renderSidebar();
+
+    await rightClick("Downloading");
+
+    expect(openMenuItems()).toEqual([]);
+  });
 
   it("lists the library categories with counts derived from the tracks", async () => {
     await renderSidebar();
@@ -309,7 +347,14 @@ describe("AppSidebar", () => {
           <TooltipProvider>
             <SidebarProvider>
               <SidebarTrigger />
-              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+              <AppSidebar
+                onCreatePlaylist={onCreatePlaylist}
+                onPlayCategory={onPlayCategory}
+                onNewMix={onNewMix}
+                searchQuery=""
+                onSearchChange={() => {}}
+                onOpenShortcuts={() => {}}
+              />
             </SidebarProvider>
           </TooltipProvider>
         );
@@ -352,7 +397,14 @@ describe("AppSidebar", () => {
           <TooltipProvider>
             <SidebarProvider>
               <SidebarTrigger />
-              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+              <AppSidebar
+                onCreatePlaylist={onCreatePlaylist}
+                onPlayCategory={onPlayCategory}
+                onNewMix={onNewMix}
+                searchQuery=""
+                onSearchChange={() => {}}
+                onOpenShortcuts={() => {}}
+              />
             </SidebarProvider>
           </TooltipProvider>
         );
@@ -391,6 +443,17 @@ describe("AppSidebar", () => {
     expect(menuButton("Rock")).toBeDefined();
   });
 
+  it("queues a playlist after the rest of the queue from its actions", async () => {
+    const queuePlaylist = mock(async (_id: string, _placement: "next" | "later") => {});
+    usePlayerStore.setState({ queuePlaylist });
+    await renderSidebar();
+
+    await openActions("Rock");
+    await click(menuItem("Play Later"));
+
+    expect(queuePlaylist.mock.calls).toEqual([["rock", "later"]]);
+  });
+
   it("opens a playlist's actions on right-click, without opening the playlist", async () => {
     const renamePlaylist = mock(async () => true);
     usePlayerStore.setState({ renamePlaylist });
@@ -402,7 +465,7 @@ describe("AppSidebar", () => {
     });
 
     const items = Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
-    expect(items).toEqual(["Shuffle", "Rename", "Delete playlist"]);
+    expect(items).toEqual(["Shuffle", "Play Next", "Play Later", "Rename", "New Mix with This Playlist", "Delete playlist"]);
     expect(usePlayerStore.getState().activePlaylistId).toBeNull();
 
     await click(menuItem("Rename"));
@@ -420,12 +483,55 @@ describe("AppSidebar", () => {
     expect(document.body.textContent).toContain("Delete playlist?");
   });
 
-  it("asks the app to create a playlist from the Playlists group action", async () => {
+  // Like File > New in Apple Music: the Playlists group's + makes either kind of playlist
+  it("asks the app for a new playlist or a new mix from the Playlists group action", async () => {
     await renderSidebar();
+    const newMenu = container.querySelector<HTMLElement>('[aria-label="New Playlist or Mix"]')!;
 
-    await click(container.querySelector<HTMLElement>('[aria-label="New Playlist"]')!);
+    await click(newMenu);
+    expect(openMenuItems()).toEqual(["New Playlist", "New Mix"]);
+    await click(menuItem("New Playlist"));
+    await click(newMenu);
+    await click(menuItem("New Mix"));
 
     expect(onCreatePlaylist).toHaveBeenCalledTimes(1);
+    // Once, with no playlist to start from (not, say, the click event)
+    expect(onNewMix.mock.calls.map((args) => args.length)).toEqual([0]);
+  });
+
+  it("starts a mix with a playlist from its actions, but not with a mix", async () => {
+    usePlayerStore.setState({
+      playlists: [
+        playlist("rock", "Rock"),
+        playlist("jazz", "Jazz"),
+        playlist("night", "Night", { is_mix: true, source_ids: ["rock", "jazz"] }),
+      ],
+    });
+    await renderSidebar();
+
+    await openActions("Rock");
+    await click(menuItem("New Mix with This Playlist"));
+    await openActions("Night");
+
+    expect(onNewMix.mock.calls).toEqual([["rock"]]);
+    expect(openMenuItems()).not.toContain("New Mix with This Playlist");
+  });
+
+  // A mix needs two playlists, so with one there is nothing to start
+  it("turns off new mixes until there are two playlists to mix", async () => {
+    usePlayerStore.setState({ playlists: [playlist("rock", "Rock")] });
+    await renderSidebar();
+    const isOff = (label: string) => menuItem(label).getAttribute("aria-disabled") === "true";
+
+    await click(container.querySelector<HTMLElement>('[aria-label="New Playlist or Mix"]')!);
+    expect([isOff("New Playlist"), isOff("New Mix")]).toEqual([false, true]);
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await tick();
+    });
+    await openActions("Rock");
+
+    expect(isOff("New Mix with This Playlist")).toBe(true);
   });
 
   it("shows the now-playing equalizer on the playlist that is playing", async () => {
@@ -435,6 +541,17 @@ describe("AppSidebar", () => {
     expect(menuButton("Rock").innerHTML).toContain("animate-eq-1");
     expect(menuButton("Rock 90s").innerHTML).not.toContain("animate-eq-1");
     expect(menuButton("Mix").innerHTML).not.toContain("animate-eq-1");
+  });
+
+  it("shows the now-playing equalizer on the library page playing, and on Home for its song lists", async () => {
+    usePlayerStore.setState({ playbackMode: "original_only", activeTrack: track("a", "ready"), isPlaying: true });
+    await renderSidebar();
+    expect([menuButton("Tracks"), menuButton("Home")].map((el) => el.innerHTML.includes("animate-eq-1"))).toEqual([true, false]);
+
+    await act(async () => {
+      usePlayerStore.setState({ queueOrigin: { type: "home", shelf: "heavy_rotation", mode: "original_only", fromHome: true } });
+    });
+    expect([menuButton("Tracks"), menuButton("Home")].map((el) => el.innerHTML.includes("animate-eq-1"))).toEqual([false, true]);
   });
 
   it("shows each playlist's cover beside its name, and an icon for one without artwork", async () => {

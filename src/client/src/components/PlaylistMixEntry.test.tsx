@@ -48,10 +48,90 @@ describe("Mix playlist entry points", () => {
 
     buttonNamed("Mix Playlists")!.click();
 
-    expect(onMix).toHaveBeenCalledTimes(1);
+    // Once, with no playlist to start from (not, say, the click event)
+    expect(onMix.mock.calls.map((args) => args.length)).toEqual([0]);
+  });
+
+  const menuItem = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')).find((el) => el.textContent?.trim() === label);
+  const openMenu = (label: string) =>
+    act(async () => {
+      container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+  it("starts a mix with a playlist from its tile's menu, but not with a mix", async () => {
+    const onMixWith = mock((_firstSourceId: string) => {});
+    await act(async () => {
+      root.render(<PlaylistGrid playlists={[plA, plB, mix]} onOpen={() => {}} onCreate={() => {}} onMixWith={onMixWith} onEditSources={() => {}} />);
+    });
+
+    await openMenu("More options for Chill");
+    await act(async () => menuItem("New Mix with This Playlist")?.click());
+    await openMenu("More options for Chill + Gym");
+
+    expect(onMixWith.mock.calls).toEqual([["pl_a"]]);
+    expect(menuItem("New Mix with This Playlist") === undefined).toBe(true);
+  });
+
+  // Mixing draws on the whole library, whatever a search left on the page
+  it("keeps New Mix on for a playlist a search found on its own", async () => {
+    await act(async () => {
+      root.render(<PlaylistGrid playlists={[plA]} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} onMixWith={() => {}} />);
+    });
+
+    await openMenu("More options for Chill");
+
+    expect(menuItem("New Mix with This Playlist")?.getAttribute("aria-disabled") === "true").toBe(false);
+    expect(buttonNamed("Mix Playlists") === undefined).toBe(false);
+  });
+
+  it("starts a mix with a sub-playlist from its tile in the parent's header", async () => {
+    const sub: Listed = { id: "pl_sub", name: "Chill Morning", created_at: 4, updated_at: 4, item_count: 2, parent_id: "pl_a" };
+    const onNewMix = mock((_firstSourceId: string) => {});
+    usePlayerStore.setState({ playlists: [plA, plB, sub, mix] });
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={plA} items={[]} onNewMix={onNewMix} />);
+    });
+
+    await openMenu("More options for Chill Morning");
+    await act(async () => menuItem("New Mix with This Playlist")?.click());
+
+    expect(onNewMix.mock.calls).toEqual([["pl_sub"]]);
+  });
+
+  it("starts a mix with the open playlist from its More menu, once there is another to mix it with", async () => {
+    const onNewMix = mock((_firstSourceId: string) => {});
+    usePlayerStore.setState({ playlists: [plA, mix] });
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={plA} items={[]} onNewMix={onNewMix} />);
+    });
+    await openMenu("More actions for Chill");
+    expect(menuItem("New Mix with This Playlist")?.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      document.activeElement?.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    await act(async () => usePlayerStore.setState({ playlists: [plA, plB, mix] }));
+    await openMenu("More actions for Chill");
+    await act(async () => menuItem("New Mix with This Playlist")?.click());
+
+    expect(onNewMix.mock.calls).toEqual([["pl_a"]]);
+  });
+
+  it("offers no mix of a mix in its header", async () => {
+    await act(async () => {
+      root.render(<PlaylistHeader playlist={mix} items={[]} onEditSources={() => {}} onNewMix={() => {}} />);
+    });
+    await openMenu("More actions for Chill + Gym");
+
+    expect(menuItem("Delete playlist") === undefined).toBe(false);
+    expect(menuItem("New Mix with This Playlist") === undefined).toBe(true);
   });
 
   it("hides the Mix Playlists tile when there are fewer than two playlists to mix", async () => {
+    usePlayerStore.setState({ playlists: [plA, mix] });
     await act(async () => {
       root.render(<PlaylistGrid playlists={[plA, mix]} onOpen={() => {}} onCreate={() => {}} onMix={() => {}} onEditSources={() => {}} />);
     });

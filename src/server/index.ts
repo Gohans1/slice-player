@@ -21,6 +21,7 @@ import { exportLibraryArchive, importLibraryArchive, isLibraryRestoring, isLibra
 import { createCachedJsonResponse } from "./etag";
 import { THUMBNAIL_VARIANTS_DIR, THUMBNAIL_WIDTHS, isThumbnailSize, removeThumbnailVariants, resizedThumbnail } from "./thumbnails";
 import { isServerRunning, openAppWindow } from "./appWindow";
+import { getHomeSummary, parsePlayRecord, recordPlay } from "./plays";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -1399,6 +1400,30 @@ const server = serve({
           clearServerLogs();
           serverEvents.emit("logs_cleared");
           return Response.json({ success: true }, { headers: corsHeaders });
+        }
+      }
+
+      // 7b. Play history: a play the client counted, and the Home shelves made from them
+      if (url.pathname === "/api/plays" && req.method === "POST") {
+        try {
+          const play = parsePlayRecord(await parseJsonBody(req));
+          if (!play) {
+            return Response.json({ error: "Invalid play" }, { status: 400, headers: corsHeaders });
+          }
+          if (!recordPlay(play)) {
+            return Response.json({ error: "Track not found" }, { status: 404, headers: corsHeaders });
+          }
+          return new Response(null, { status: 204, headers: corsHeaders });
+        } catch (e) {
+          return formatError(e, e instanceof SyntaxError || e instanceof TypeError);
+        }
+      }
+
+      if (url.pathname === "/api/home" && req.method === "GET") {
+        try {
+          return Response.json(getHomeSummary(), { headers: corsHeaders });
+        } catch (e) {
+          return formatError(e);
         }
       }
 

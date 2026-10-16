@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { usePlayerStore, createQueueItem, type PlaybackMode, type QueueItem } from "./store/usePlayerStore";
+import { usePlayerStore, createQueueItem, isPlaybackMode, type PlaybackMode, type QueueItem, type QueueOrigin } from "./store/usePlayerStore";
+import { useHomeStore } from "./store/useHomeStore";
 import { ImportActions } from "./components/ImportActions";
 import { MasterVolume } from "./components/MasterVolume";
 import { TrackCard } from "./components/TrackCard";
@@ -13,7 +14,9 @@ const MixPlaylistModal = React.lazy(() => import("./components/MixPlaylistModal"
 const ShortcutsModal = React.lazy(() => import("./components/ShortcutsModal").then((m) => ({ default: m.ShortcutsModal })));
 import { PlaylistTableView } from "./components/PlaylistTableView";
 import { PlaylistGrid } from "./components/PlaylistGrid";
+import { HomePage } from "./components/HomePage";
 import { PlaylistHeader } from "./components/PlaylistHeader";
+import { LibraryPageActions, type PlayChoice } from "./components/LibraryPageActions";
 import { PlaylistItemCard } from "./components/PlaylistItemCard";
 import { SliceCard } from "./components/SliceCard";
 import { VirtualizedCardGrid } from "./components/VirtualizedCardGrid";
@@ -106,11 +109,14 @@ export function App() {
   const viewMode = usePlayerStore((s) => s.viewMode);
   const fetchPlaylists = usePlayerStore((s) => s.fetchPlaylists);
   const setActivePlaylist = usePlayerStore((s) => s.setActivePlaylist);
+  const setActiveSystemCategory = usePlayerStore((s) => s.setActiveSystemCategory);
   const setViewMode = usePlayerStore((s) => s.setViewMode);
   const removeFromPlaylist = usePlayerStore((s) => s.removeFromPlaylist);
   const reorderPlaylist = usePlayerStore((s) => s.reorderPlaylist);
   const playPlaylistItemAtIndex = usePlayerStore((s) => s.playPlaylistItemAtIndex);
   const playSegmentInMode = usePlayerStore((s) => s.playSegmentInMode);
+  const playModeQueue = usePlayerStore((s) => s.playModeQueue);
+  const enqueue = usePlayerStore((s) => s.enqueue);
   const openSliceStudio = usePlayerStore((s) => s.openSliceStudio);
   const deleteSegmentsBatch = usePlayerStore((s) => s.deleteSegmentsBatch);
   const isRetryingAll = usePlayerStore((s) => s.isRetryingAll);
@@ -156,7 +162,9 @@ export function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   // null = closed; {} = create a new mix; { mix } = edit that mix's sources
-  const [mixModal, setMixModal] = React.useState<{ mix?: Playlist } | null>(null);
+  const [mixModal, setMixModal] = React.useState<{ mix?: Playlist; firstSourceId?: string } | null>(null);
+  // Stable, since each playlist in the sidebar is memoized with it
+  const startMix = React.useCallback((firstSourceId?: string) => setMixModal({ firstSourceId }), []);
   const [deleteTarget, setDeleteTarget] = React.useState<{
     type: "track" | "slice" | "playlist_item";
     id: string;
@@ -330,6 +338,8 @@ export function App() {
             }
             if (data.type === "library_restored") {
               scheduleLibraryRefresh(true, 100);
+              // The restored library has its own listening history
+              void useHomeStore.getState().refresh();
             }
           } catch {}
         };
@@ -713,6 +723,29 @@ export function App() {
     [playFromQueue, filteredTracks]
   );
 
+  // A library page's songs as the page lists them; searched, only what the search found
+  const pageQueueOf = React.useCallback(
+    (mode: PlaybackMode, searched: boolean): QueueItem[] => {
+      if (mode === "slices_only") return sliceQueueOf(searched ? filteredSliceItems : allSliceItems);
+      if (mode === "mixed") return mixedQueueOf(searched ? filteredMixedItems : allMixedItems);
+      return trackQueueOf(searched ? filteredTracks : originalTracks);
+    },
+    [filteredSliceItems, allSliceItems, filteredMixedItems, allMixedItems, filteredTracks, originalTracks]
+  );
+  const pageQueue = React.useMemo(
+    () => (!activePlaylistId && isPlaybackMode(activeSystemCategory) ? pageQueueOf(activeSystemCategory, true) : []),
+    [activePlaylistId, activeSystemCategory, pageQueueOf]
+  );
+  // Play, Shuffle, Play Next or Play Later a library page's songs; queued with nothing to follow, they play
+  const playCategory = React.useCallback(
+    (mode: PlaybackMode, choice: PlayChoice, items: QueueItem[], origin?: QueueOrigin) => {
+      const source = { source_type: mode, playlist_id: null, via_home: origin?.fromHome === true };
+      if ((choice === "next" || choice === "later") && enqueue(items, choice, source)) return;
+      void playModeQueue(mode, items, { shuffle: choice === "shuffle", origin });
+    },
+    [enqueue, playModeQueue]
+  );
+
   const currentViewKey = getViewScrollKey(activePlaylistId, activeSystemCategory);
 
   const [gridScrollRequest, setGridScrollRequest] = React.useState<{ index: number; requestId: number } | null>(null);
@@ -1041,6 +1074,8 @@ export function App() {
       };
     }
     switch (activeSystemCategory) {
+      case "home":
+        return { title: t("categories.home"), count: "", description: t("categories.homeDesc") };
       case "playlists":
         return {
           title: t("categories.playlists"),
@@ -1111,15 +1146,21 @@ export function App() {
   return (
     <AppShell
       searchQuery={searchQuery}
-      onSearchChange={setSearchQuery}
+      onSearchChange={(query) => {
+        setSearchQuery(query);
+        // Home lists no songs to filter, so a search there looks through the whole library
+        if (query.trim() && activePlaylistId === null && activeSystemCategory === "home") setActiveSystemCategory("mixed");
+      }}
       onCreatePlaylist={() => setIsCreateModalOpen(true)}
+      onPlayCategory={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false))}
+      onNewMix={startMix}
       onOpenShortcuts={() => setIsShortcutsOpen(true)}
     >
       <SidebarInset id={MAIN_CONTENT_ID} className="min-w-0">
         {/* Sticky toolbar: view title, sort and view mode, library actions, master volume.
             A container, so control labels give way to icons when the column is narrow rather than wrapping */}
         <header ref={toolbarRef} data-testid="sticky-library-header" className="@container sticky top-0 z-30 w-full bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs">
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-2">
+          <div className="w-full page-gutter py-2">
             {/* Title on the left; controls wrap below it when the column is narrow */}
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="flex flex-1 items-center gap-2.5 min-w-48">
@@ -1145,7 +1186,8 @@ export function App() {
                 {(activePlaylistId || activeSystemCategory === "mixed" || activeSystemCategory === "slices_only" || activeSystemCategory === "original_only") && (
                   <PlaylistSortSelector builtInItemIds={builtInItemIds} />
                 )}
-                <ViewModeToggle value={viewMode} onValueChange={setViewMode} />
+                {/* Home's shelves have one layout */}
+                {(activePlaylistId || activeSystemCategory !== "home") && <ViewModeToggle value={viewMode} onValueChange={setViewMode} />}
                 <ImportActions />
                 <div className="hidden xl:flex">
                   <MasterVolume />
@@ -1156,7 +1198,7 @@ export function App() {
         </header>
 
         {/* Content Area */}
-        <div className="clear-sticky-bars w-full px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-6">
+        <div className="clear-sticky-bars w-full page-gutter pt-4 sm:pt-6 pb-6">
           <div
             id="main-library-panel"
             role="region"
@@ -1172,6 +1214,19 @@ export function App() {
               <span className="text-xs text-muted-foreground tabular-nums">{headerMeta.count}</span>
             </div>
             {headerMeta.description && <p className="text-2xs font-semibold text-muted-foreground">{headerMeta.description}</p>}
+            {isPlaybackMode(activeSystemCategory) && (
+              <LibraryPageActions
+                name={headerMeta.title}
+                canPlay={pageQueue.length > 0}
+                onPlay={(choice) => {
+                  const query = deferredQuery.trim();
+                  const origin: QueueOrigin | undefined = query
+                    ? { type: "search", query, count: pageQueue.length, mode: activeSystemCategory }
+                    : undefined;
+                  playCategory(activeSystemCategory, choice, pageQueue, origin);
+                }}
+              />
+            )}
           </div>
         )}
         {isLoadingTracks && isLibraryEmpty ? (
@@ -1184,6 +1239,7 @@ export function App() {
               playlist={activePl}
               items={activePlaylistItems}
               onEditSources={() => setMixModal({ mix: activePl })}
+              onNewMix={startMix}
             />
           )}
           {viewMode === "list" ? (
@@ -1237,6 +1293,10 @@ export function App() {
             />
           )}
           </>
+        ) : activeSystemCategory === "home" ? (
+          <HomePage
+            onPlayPage={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false), { type: "system", mode, fromHome: true })}
+          />
         ) : activeSystemCategory === "playlists" ? (
           /* Playlists library: one cover card per custom playlist */
           displayedPlaylists.length === 0 && isSearching ? (
@@ -1254,7 +1314,8 @@ export function App() {
               playlists={displayedPlaylists}
               onOpen={(id) => setActivePlaylist(id)}
               onCreate={() => setIsCreateModalOpen(true)}
-              onMix={() => setMixModal({})}
+              onMix={startMix}
+              onMixWith={startMix}
               onEditSources={(mix) => setMixModal({ mix })}
             />
           )
@@ -1601,6 +1662,7 @@ export function App() {
           <MixPlaylistModal
             isOpen
             mix={mixModal.mix}
+            firstSourceId={mixModal.firstSourceId}
             onClose={() => setMixModal(null)}
             onCreated={(id) => setActivePlaylist(id)}
           />

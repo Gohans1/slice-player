@@ -21,6 +21,8 @@ interface MixPlaylistModalProps {
   onCreated?: (id: string) => void;
   /** When given, edits this mix's sources instead of creating a new mix. */
   mix?: Playlist;
+  /** A new mix started from a playlist's menu has that playlist in its first row. */
+  firstSourceId?: string;
 }
 
 // A row of the mix: a source playlist, or none yet. The key stays with the row as it moves.
@@ -32,7 +34,7 @@ interface SourceRow {
 type RowControl = "picker" | "up" | "down";
 
 // Like a Smart Playlist's rules: one row per source playlist, played top to bottom
-export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylistModalProps) {
+export function MixPlaylistModal({ isOpen, onClose, onCreated, mix, firstSourceId }: MixPlaylistModalProps) {
   const { t } = useTranslation();
   const playlists = usePlayerStore((s) => s.playlists);
   const createMixPlaylist = usePlayerStore((s) => s.createMixPlaylist);
@@ -44,7 +46,8 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix }: MixPlaylis
   const newRow = (id: string | null): SourceRow => ({ key: nextKeyRef.current++, id });
   const [rows, setRows] = React.useState<SourceRow[]>(() => {
     // Deleting a mix's playlists can leave it fewer than the two it needs; empty rows make up the rest
-    const ids: (string | null)[] = (mix?.source_ids ?? []).filter((id) => candidates.some((p) => p.id === id));
+    const seed = mix ? (mix.source_ids ?? []) : firstSourceId ? [firstSourceId] : [];
+    const ids: (string | null)[] = seed.filter((id) => candidates.some((p) => p.id === id));
     while (ids.length < 2) ids.push(null);
     return ids.map(newRow);
   });

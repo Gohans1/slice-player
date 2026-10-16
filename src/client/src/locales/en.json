@@ -2,6 +2,7 @@
   "sidebar": {
     "allPlaylists": "All Playlists",
     "playlistActions": "More options for {{name}}",
+    "newMenu": "New Playlist or Mix",
     "shortcuts": "Keyboard Shortcuts",
     "language": "Language"
   },
@@ -90,6 +91,8 @@
   },
   "categories": {
     "mixed": "Mix",
+    "home": "Home",
+    "homeDesc": "What you've been listening to lately.",
     "mixedDesc": "Shuffle playback across both slices and full tracks.",
     "slices": "Slices",
     "slicesDesc": "All slices created across library tracks.",
@@ -121,6 +124,23 @@
     "tracksCountFiltered": "({{filtered, number}}/{{total, number}} tracks)",
     "playlists": "Playlists",
     "playlistsDesc": "Your playlists. Open one or play it straight from its card."
+  },
+  "home": {
+    "recentlyPlayed": "Recently Played",
+    "heavyRotation": "Heavy Rotation",
+    "heavyRotationDesc": "Your most played songs of the past 30 days",
+    "topPlaylists": "Top Playlists",
+    "topPlaylistsDesc": "Most played in the past 30 days",
+    "recentlyAdded": "Recently Added",
+    "plays": "{{count, number}} plays",
+    "plays_one": "{{count, number}} play",
+    "plays_other": "{{count, number}} plays",
+    "noPlays": "Play some music, and what you listen to shows up here.",
+    "loadFailed": "Couldn't load your listening history.",
+    "retry": "Try Again",
+    "openPage": "Open {{name}}",
+    "previousPage": "Previous page of {{name}}",
+    "nextPage": "Next page of {{name}}"
   },
   "table": {
     "trackOrSlice": "Track / Slice",
@@ -204,6 +224,8 @@
   },
   "queue": {
     "title": "Now Playing Queue",
+    "playNext": "Play Next",
+    "playLater": "Play Later",
     "restoreOrder": "Restore original order",
     "reshuffle": "Reshuffle queue",
     "shuffle": "Shuffle queue",
@@ -214,9 +236,9 @@
     "loopQueueTitle": "Loop playback of queue",
     "loopQueueActiveDesc": "Queue loop is active. Plays from the beginning after finishing.",
     "close": "Close queue",
-    "playingLabel": "Playing:",
+    "playingFrom": "Playing from",
+    "goToSource": "Go to {{name}}",
     "regionAria": "Current playback queue",
-    "playbackMode": "Playback mode",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "remove": "Remove from queue",
@@ -447,6 +469,8 @@
     "save": "Save",
     "serverError": "Failed to save the mix. Please try again.",
     "newTile": "Mix Playlists",
+    "newMix": "New Mix",
+    "newWith": "New Mix with This Playlist",
     "badge": "Mix",
     "sources": "Mix of {{names}}",
     "editSources": "Edit sources",

@@ -145,6 +145,29 @@ function runMigrations(db: Database): void {
         db.run("PRAGMA user_version = 9;");
       })();
     }
+
+    if (userVersion < 10) {
+      db.transaction(() => {
+        // v10: Play history for Home. A play outlives its slice and its playlist, which still counted for the song
+        db.run(`
+          CREATE TABLE IF NOT EXISTS plays (
+            id INTEGER PRIMARY KEY,
+            track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+            segment_id TEXT REFERENCES segments(id) ON DELETE SET NULL,
+            source_type TEXT NOT NULL CHECK(source_type IN ('playlist', 'mixed', 'slices_only', 'original_only', 'home')),
+            playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL,
+            via_home INTEGER NOT NULL DEFAULT 0 CHECK(via_home IN (0, 1)),
+            played_at INTEGER NOT NULL DEFAULT (unixepoch())
+          );
+        `);
+        db.run("CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);");
+        // Foreign keys are looked up from the parent on every delete, so each one gets an index
+        db.run("CREATE INDEX IF NOT EXISTS idx_plays_track ON plays(track_id);");
+        db.run("CREATE INDEX IF NOT EXISTS idx_plays_segment ON plays(segment_id);");
+        db.run("CREATE INDEX IF NOT EXISTS idx_plays_playlist ON plays(playlist_id);");
+        db.run("PRAGMA user_version = 10;");
+      })();
+    }
   } catch (err) {
     console.error("[db] Error executing database migrations:", err);
     throw err;

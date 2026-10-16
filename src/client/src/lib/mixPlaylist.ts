@@ -7,6 +7,11 @@ export function showsItemsOf(viewId: string | null | undefined, changedId: strin
   return Boolean(playlists.find((p) => p.id === viewId)?.source_ids?.includes(changedId));
 }
 
+/** A mix plays two or more playlists that aren't mixes themselves. */
+export function canStartMix(playlists: Playlist[]): boolean {
+  return playlists.filter((p) => !p.is_mix).length >= 2;
+}
+
 export function defaultMixName(names: string[]): string {
   const [first = "", second = ""] = names;
   const rest = names.length > 2 ? ` + ${names.length - 2}` : "";

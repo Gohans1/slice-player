@@ -242,42 +242,6 @@ describe("usePlayerStore reorderQueue", () => {
       "seg_3",
     ]);
   });
-
-  it("should preserve custom reordered queue when switching tabs back and forth via setPlaybackMode", async () => {
-    const queueItems = dummySegments.map((s) => ({ segment: s, track: dummyTrack }));
-    usePlayerStore.setState({
-      playbackMode: "mixed",
-      queue: [...queueItems],
-      queueIndex: 0,
-      initializedModes: {
-        mixed: false,
-        slices_only: false,
-        original_only: false,
-      },
-      queuesByMode: {
-        mixed: [...queueItems],
-        slices_only: [...queueItems],
-        original_only: [...queueItems],
-      },
-    });
-
-    // Reorder in mixed mode
-    usePlayerStore.getState().reorderQueue(0, 3);
-    const reorderedIds = usePlayerStore.getState().queue.map((item) => item.segment.id);
-    expect(reorderedIds).toEqual(["seg_1", "seg_2", "seg_3", "seg_0"]);
-    expect(usePlayerStore.getState().initializedModes.mixed).toBe(true);
-
-    // Switch to slices_only
-    await usePlayerStore.getState().setPlaybackMode("slices_only");
-    expect(usePlayerStore.getState().playbackMode).toBe("slices_only");
-
-    // Switch back to mixed
-    await usePlayerStore.getState().setPlaybackMode("mixed");
-    expect(usePlayerStore.getState().playbackMode).toBe("mixed");
-    expect(usePlayerStore.getState().queue.map((item) => item.segment.id)).toEqual(["seg_1", "seg_2", "seg_3", "seg_0"]);
-    expect(usePlayerStore.getState().queuesByMode.mixed.map((item) => item.segment.id)).toEqual(["seg_1", "seg_2", "seg_3", "seg_0"]);
-  });
-
   it("should maintain correct order and update queueIndex when removing an item from a reordered queue", () => {
     const queueItems = dummySegments.map((s) => ({ segment: s, track: dummyTrack }));
     usePlayerStore.setState({

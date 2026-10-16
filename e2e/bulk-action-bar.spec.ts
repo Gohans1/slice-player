@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { makeTracks, mockLibrary } from "./mock-library";
+import { makeTracks, mockLibrary, openLibraryPage } from "./mock-library";
 
 // Selecting rows brings up the bulk action bar. It floats just above the player capsule and centred on it, wherever
 // the main column sits between the sidebar and the queue panel and however short the list is.
@@ -21,6 +21,7 @@ const centreOf = async (locator: Locator) => boxOf(locator).then((box) => box.x 
 async function selectTwoOf(page: Page, trackCount: number) {
   await mockLibrary(page, { tracks: makeTracks(trackCount) });
   await page.goto("/");
+  await openLibraryPage(page, "Mix");
   await page.getByRole("button", { name: "More options for Track 001", exact: true }).click();
   await page.getByRole("menuitem", { name: "Select", exact: true }).click();
   await page.getByRole("row", { name: "Select Track 002", exact: true }).click();

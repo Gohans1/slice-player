@@ -2,6 +2,7 @@
   "sidebar": {
     "allPlaylists": "Tất cả danh sách",
     "playlistActions": "Tùy chọn khác cho {{name}}",
+    "newMenu": "Tạo danh sách mới hoặc danh sách gộp",
     "shortcuts": "Phím tắt",
     "language": "Ngôn ngữ"
   },
@@ -90,6 +91,8 @@
   },
   "categories": {
     "mixed": "Trộn cả 2",
+    "home": "Trang chủ",
+    "homeDesc": "Những gì bạn nghe gần đây.",
     "mixedDesc": "Xáo trộn ngẫu nhiên cả các lát cắt và toàn bộ bài hát gốc.",
     "slices": "Lát cắt",
     "slicesDesc": "Tất cả các lát cắt bạn đã tạo từ các bài hát trong thư viện.",
@@ -121,6 +124,23 @@
     "tracksCountFiltered": "({{filtered, number}}/{{total, number}} bài)",
     "playlists": "Playlist",
     "playlistsDesc": "Các danh sách phát của bạn. Mở ra hoặc phát ngay từ thẻ."
+  },
+  "home": {
+    "recentlyPlayed": "Nghe gần đây",
+    "heavyRotation": "Nghe nhiều",
+    "heavyRotationDesc": "Những bài bạn nghe nhiều nhất trong 30 ngày qua",
+    "topPlaylists": "Playlist nghe nhiều",
+    "topPlaylistsDesc": "Nghe nhiều nhất trong 30 ngày qua",
+    "recentlyAdded": "Mới thêm",
+    "plays": "{{count, number}} lượt nghe",
+    "plays_one": "{{count, number}} lượt nghe",
+    "plays_other": "{{count, number}} lượt nghe",
+    "noPlays": "Hãy phát nhạc, những gì bạn nghe sẽ hiện ở đây.",
+    "loadFailed": "Không tải được lịch sử nghe.",
+    "retry": "Thử lại",
+    "openPage": "Mở {{name}}",
+    "previousPage": "Trang trước của {{name}}",
+    "nextPage": "Trang sau của {{name}}"
   },
   "table": {
     "trackOrSlice": "Bài hát / Lát cắt",
@@ -204,6 +224,8 @@
   },
   "queue": {
     "title": "Hàng Đợi Phát",
+    "playNext": "Phát tiếp theo",
+    "playLater": "Phát sau",
     "restoreOrder": "Khôi phục thứ tự ban đầu",
     "reshuffle": "Xáo trộn lại hàng đợi",
     "shuffle": "Xáo trộn hàng đợi",
@@ -214,9 +236,9 @@
     "loopQueueTitle": "Lặp lại toàn bộ hàng đợi",
     "loopQueueActiveDesc": "Đang bật lặp lại hàng đợi. Sẽ phát lại từ đầu sau khi hết danh sách.",
     "close": "Đóng hàng đợi phát",
-    "playingLabel": "Đang phát:",
+    "playingFrom": "Đang phát từ",
+    "goToSource": "Đi tới {{name}}",
     "regionAria": "Danh sách phát hiện tại",
-    "playbackMode": "Chế độ phát",
     "moveUp": "Chuyển lên",
     "moveDown": "Chuyển xuống",
     "remove": "Xóa khỏi hàng đợi",
@@ -446,6 +468,8 @@
     "save": "Lưu",
     "serverError": "Không thể lưu danh sách gộp. Vui lòng thử lại.",
     "newTile": "Gộp danh sách",
+    "newMix": "Tạo danh sách gộp mới",
+    "newWith": "Tạo danh sách gộp từ danh sách này",
     "badge": "Gộp",
     "sources": "Gộp từ {{names}}",
     "editSources": "Sửa nguồn",

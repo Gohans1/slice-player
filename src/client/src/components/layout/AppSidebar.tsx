@@ -5,11 +5,13 @@ import {
   AlertCircle,
   Combine,
   Disc,
+  House,
   LibraryBig,
   ListMusic,
   Loader2,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Scissors,
   Shuffle,
@@ -46,10 +48,13 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/conte
 import { LibrarySearch } from "./LibrarySearch";
 import { SidebarUtilities } from "./SidebarUtilities";
 import { DeletePlaylistModal } from "../DeletePlaylistModal";
+import { QueueMenuItems } from "../QueueMenuItems";
+import type { PlayChoice } from "../LibraryPageActions";
 import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
 import { PlaylistCover } from "../PlaylistCover";
-import { usePlayerStore, type SystemCategory } from "../../store/usePlayerStore";
+import { isPlaybackMode, selectPlayingPage, usePlayerStore, type PlaybackMode, type SystemCategory } from "../../store/usePlayerStore";
 import { resolvePlaylistCover } from "../../lib/playlistCover";
+import { canStartMix } from "../../lib/mixPlaylist";
 import { cn } from "../../lib/utils";
 import type { Playlist } from "@/server/types";
 
@@ -78,10 +83,22 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreatePlaylist: () => void;
+  // Plays or queues a whole library page from its right-click menu
+  onPlayCategory: (mode: PlaybackMode, choice: PlayChoice) => void;
+  // Starts a new mix, with the playlist whose menu it came from first
+  onNewMix: (firstSourceId?: string) => void;
   onOpenShortcuts: () => void;
 }
 
-export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOpenShortcuts, ...props }: AppSidebarProps) {
+export function AppSidebar({
+  searchQuery,
+  onSearchChange,
+  onCreatePlaylist,
+  onPlayCategory,
+  onNewMix,
+  onOpenShortcuts,
+  ...props
+}: AppSidebarProps) {
   const { t } = useTranslation();
   const formatNumber = useFormatNumber();
   const tracks = usePlayerStore((s) => s.tracks);
@@ -108,7 +125,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const hasActiveTrack = usePlayerStore((s) => Boolean(s.activeTrack));
   const playingPlaylistId = usePlayerStore((s) => s.activePlaylistPlayingId);
-  const playbackMode = usePlayerStore((s) => s.playbackMode);
+  const playingPage = usePlayerStore(selectPlayingPage);
 
   const [playlistToDelete, setPlaylistToDelete] = React.useState<Playlist | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -141,6 +158,7 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
   ];
 
   const tree = React.useMemo(() => buildPlaylistTree(playlists), [playlists]);
+  const canMix = canStartMix(playlists);
   const isPlaylistsOverview = activePlaylistId === null && activeSystemCategory === "playlists";
 
   const handleConfirmDelete = async (keepChildren: boolean) => {
@@ -161,6 +179,8 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
       isActive={activePlaylistId === playlist.id}
       nowPlaying={hasActiveTrack && playingPlaylistId === playlist.id ? (isPlaying ? "playing" : "paused") : null}
       onOpen={openPlaylist}
+      onNewMix={onNewMix}
+      canMix={canMix}
       onDelete={setPlaylistToDelete}
     />
   );
@@ -172,26 +192,72 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
       </SidebarHeader>
       {/* Scrolling past the end of the playlists doesn't carry on into the library */}
       <SidebarContent className="overscroll-contain">
+        {/* Home sits above the library, as in Apple Music */}
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={activePlaylistId === null && activeSystemCategory === "home"}
+                tooltip={t("categories.home")}
+                onClick={() => openCategory("home")}
+              >
+                {playingPage === "home" ? (
+                  <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
+                ) : (
+                  <House className="text-primary" />
+                )}
+                <span>{t("categories.home")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.systemHeader")}</SidebarGroupLabel>
           <SidebarMenu>
             {categories.map((category) => {
-              const isNowPlaying = hasActiveTrack && playingPlaylistId === null && playbackMode === category.id;
+              const mode = category.id;
+              const isNowPlaying = playingPage === mode;
               const Icon = category.icon;
+              const button = (
+                <SidebarMenuButton
+                  render={isPlaybackMode(mode) ? <ContextMenuTrigger render={<button type="button" />} /> : undefined}
+                  isActive={activePlaylistId === null && activeSystemCategory === mode}
+                  tooltip={category.label}
+                  onClick={() => openCategory(mode)}
+                >
+                  {isNowPlaying ? (
+                    <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
+                  ) : (
+                    <Icon className={cn("text-primary", mode === "downloading_only" && counts.downloading > 0 && "animate-spin")} />
+                  )}
+                  <span>{category.label}</span>
+                </SidebarMenuButton>
+              );
               return (
-                <SidebarMenuItem key={category.id}>
-                  <SidebarMenuButton
-                    isActive={activePlaylistId === null && activeSystemCategory === category.id}
-                    tooltip={category.label}
-                    onClick={() => openCategory(category.id)}
-                  >
-                    {isNowPlaying ? (
-                      <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
-                    ) : (
-                      <Icon className={cn("text-primary", category.id === "downloading_only" && counts.downloading > 0 && "animate-spin")} />
-                    )}
-                    <span>{category.label}</span>
-                  </SidebarMenuButton>
+                <SidebarMenuItem key={mode}>
+                  {/* Pages that play get the menu a playlist has on a right-click; Downloading and Errors don't */}
+                  {isPlaybackMode(mode) ? (
+                    <ContextMenu>
+                      {button}
+                      <ContextMenuContent className="w-auto">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem disabled={category.count === 0} onClick={() => onPlayCategory(mode, "play")}>
+                            <Play />
+                            {t("playlist.play")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={category.count === 0} onClick={() => onPlayCategory(mode, "shuffle")}>
+                            <Shuffle />
+                            {t("nav.shuffle")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <QueueMenuItems disabled={category.count === 0} onQueue={(placement) => onPlayCategory(mode, placement)} />
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ) : (
+                    button
+                  )}
                   <SidebarMenuBadge>{formatNumber(category.count)}</SidebarMenuBadge>
                 </SidebarMenuItem>
               );
@@ -201,9 +267,24 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
 
         <SidebarGroup>
           <SidebarGroupLabel>{t("playlist.customHeader")}</SidebarGroupLabel>
-          <SidebarGroupAction aria-label={t("library.newPlaylist")} title={t("library.newPlaylist")} onClick={onCreatePlaylist}>
-            <Plus />
-          </SidebarGroupAction>
+          {/* Like File > New in Apple Music */}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<SidebarGroupAction aria-label={t("sidebar.newMenu")} title={t("sidebar.newMenu")} />}>
+              <Plus />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" className="w-auto">
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={onCreatePlaylist}>
+                  <ListMusic />
+                  {t("library.newPlaylist")}
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!canMix} onClick={() => onNewMix()}>
+                  <Combine />
+                  {t("mixPlaylist.newMix")}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
@@ -252,6 +333,8 @@ interface PlaylistMenuItemProps {
   isActive: boolean;
   nowPlaying: "playing" | "paused" | null;
   onOpen: (playlistId: string) => void;
+  onNewMix: (firstSourceId: string) => void;
+  canMix: boolean;
   onDelete: (playlist: SidebarPlaylist) => void;
 }
 
@@ -262,11 +345,14 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
   isActive,
   nowPlaying,
   onOpen,
+  onNewMix,
+  canMix,
   onDelete,
 }: PlaylistMenuItemProps) {
   const { t } = useTranslation();
   const renamePlaylist = usePlayerStore((s) => s.renamePlaylist);
   const buildPlaylistQueue = usePlayerStore((s) => s.buildPlaylistQueue);
+  const queuePlaylist = usePlayerStore((s) => s.queuePlaylist);
   const [draftName, setDraftName] = React.useState<string | null>(null);
   const isRenamingRef = React.useRef(false);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
@@ -334,10 +420,20 @@ const PlaylistMenuItem = React.memo(function PlaylistMenuItem({
           <Shuffle />
           {t("nav.shuffle")}
         </DropdownMenuItem>
+      </DropdownMenuGroup>
+      <QueueMenuItems disabled={isEmpty} onQueue={(placement) => void queuePlaylist(playlist.id, placement)} />
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
         <DropdownMenuItem onClick={startRename}>
           <Pencil />
           {t("playlist.rename")}
         </DropdownMenuItem>
+        {!playlist.is_mix && (
+          <DropdownMenuItem disabled={!canMix} onClick={() => onNewMix(playlist.id)}>
+            <Combine />
+            {t("mixPlaylist.newWith")}
+          </DropdownMenuItem>
+        )}
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
