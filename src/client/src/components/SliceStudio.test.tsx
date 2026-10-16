@@ -718,14 +718,19 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
-  it("saves a pending edit before it hands back on closing", async () => {
+  it("waits for a pending edit to be saved before it hands back on closing", async () => {
     const segment: Segment = { id: "seg-1", track_id: "test-track-1", name: "Verse", start_time: 10, end_time: 20, color: "#4385BE" };
     const events: string[] = [];
+    let answerSave = () => {};
+    const saveAnswered = new Promise<void>((resolve) => {
+      answerSave = resolve;
+    });
     const recordingFetch: typeof fetch = Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = input instanceof Request ? input.url : String(input);
         if (init?.method === "PUT") {
           events.push(`PUT ${url} ${typeof init.body === "string" ? init.body : ""}`);
+          await saveAnswered;
           return Response.json({ ...segment, name: "Chorus" });
         }
         return url.includes("/segments") ? Response.json([segment]) : Response.json(mockTrack);
@@ -754,7 +759,13 @@ describe("SliceStudio Keyboard & Playback Interactions", () => {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50));
       });
+      // The parent refetches on close, so the Studio stays until the server has the rename
+      expect(events).toEqual(['PUT /api/segments/seg-1 {"name":"Chorus"}']);
 
+      await act(async () => {
+        answerSave();
+        await new Promise((r) => setTimeout(r, 50));
+      });
       expect(events).toEqual(['PUT /api/segments/seg-1 {"name":"Chorus"}', "closed"]);
     } finally {
       fetchSpy.mockRestore();
