@@ -2757,6 +2757,23 @@ describe("PlaylistTableView", () => {
       expect(useSelectionStore.getState().selectedTrackIds.size).toBe(2);
       expect(selectAll.getAttribute("aria-checked")).toBe("true");
     });
+
+    // Its checked state tells whether every row is selected. A name that changed along with it would read as
+    // "Deselect view, checked".
+    it("keeps select-all's name as it is checked", async () => {
+      await act(async () => {
+        root.render(<PlaylistTableView filteredTracks={[dummyTrack, dummyTrack2]} />);
+      });
+      const selectAll = container.querySelector("[role='columnheader'] [role='checkbox']");
+      if (!(selectAll instanceof HTMLElement)) throw new Error("no select-all checkbox");
+      const name = selectAll.getAttribute("aria-label");
+
+      await act(async () => {
+        selectAll.click();
+      });
+
+      expect([selectAll.getAttribute("aria-checked"), selectAll.getAttribute("aria-label")]).toEqual(["true", name]);
+    });
   });
 
   it("lets page shortcuts like Escape through from a row's action buttons, but not the row's play keys", async () => {

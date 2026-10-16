@@ -197,7 +197,8 @@ function SelectAllCell({ hasRows, allSelected, partiallySelected, onToggle }: Se
         <Checkbox
           checked={allSelected}
           indeterminate={partiallySelected && !allSelected}
-          aria-label={allSelected ? t("bulkActions.deselectAll", "Deselect all") : t("bulkActions.selectAll", "Select all")}
+          // One name whatever its state: checked, mixed or not says how much of the view is selected
+          aria-label={t("bulkActions.selectAll")}
           onCheckedChange={onToggle}
         />
       )}
