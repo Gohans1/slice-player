@@ -1138,6 +1138,7 @@ export function App() {
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       onCreatePlaylist={() => setIsCreateModalOpen(true)}
+      onPlayCategory={(mode, choice) => playCategory(mode, choice, pageQueueOf(mode, false))}
       onOpenShortcuts={() => setIsShortcutsOpen(true)}
     >
       <SidebarInset id={MAIN_CONTENT_ID} className="min-w-0">

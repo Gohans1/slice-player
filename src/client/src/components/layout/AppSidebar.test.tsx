@@ -26,6 +26,7 @@ describe("AppSidebar", () => {
   let initialState: ReturnType<typeof usePlayerStore.getState>;
   let fetchSpy: ReturnType<typeof spyOn>;
   let onCreatePlaylist: ReturnType<typeof mock>;
+  let onPlayCategory: ReturnType<typeof mock>;
 
   beforeEach(() => {
     initialState = usePlayerStore.getState();
@@ -34,6 +35,7 @@ describe("AppSidebar", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     onCreatePlaylist = mock(() => {});
+    onPlayCategory = mock(() => {});
     usePlayerStore.setState({
       tracks: [track("a", "ready", 3), track("b", "ready", 1), track("c", "downloading"), track("d", "error")],
       playlists: [
@@ -60,7 +62,13 @@ describe("AppSidebar", () => {
       root.render(
         <TooltipProvider>
           <SidebarProvider>
-            <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+            <AppSidebar
+              onCreatePlaylist={onCreatePlaylist}
+              onPlayCategory={onPlayCategory}
+              searchQuery=""
+              onSearchChange={() => {}}
+              onOpenShortcuts={() => {}}
+            />
           </SidebarProvider>
         </TooltipProvider>
       );
@@ -90,6 +98,33 @@ describe("AppSidebar", () => {
   async function openActions(name: string) {
     await click(container.querySelector<HTMLElement>(`[aria-label="More options for ${name}"]`)!);
   }
+
+  async function rightClick(label: string) {
+    await act(async () => {
+      menuButton(label).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+      await tick();
+    });
+  }
+  const openMenuItems = () => Array.from(document.body.querySelectorAll('[role="menu"] [role="menuitem"]')).map((el) => el.textContent?.trim());
+
+  // Right-clicking Mix, Slices or Tracks plays or queues that whole page, like a playlist in the sidebar
+  it("plays or queues a library page from its right-click menu", async () => {
+    await renderSidebar();
+
+    await rightClick("Slices");
+    expect(openMenuItems()).toEqual(["Play", "Shuffle", "Play Next", "Play Later"]);
+    await click(menuItem("Play Next"));
+
+    expect(onPlayCategory.mock.calls).toEqual([["slices_only", "next"]]);
+  });
+
+  it("has no play menu on the Downloading and Errors pages", async () => {
+    await renderSidebar();
+
+    await rightClick("Downloading");
+
+    expect(openMenuItems()).toEqual([]);
+  });
 
   it("lists the library categories with counts derived from the tracks", async () => {
     await renderSidebar();
@@ -309,7 +344,13 @@ describe("AppSidebar", () => {
           <TooltipProvider>
             <SidebarProvider>
               <SidebarTrigger />
-              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+              <AppSidebar
+                onCreatePlaylist={onCreatePlaylist}
+                onPlayCategory={onPlayCategory}
+                searchQuery=""
+                onSearchChange={() => {}}
+                onOpenShortcuts={() => {}}
+              />
             </SidebarProvider>
           </TooltipProvider>
         );
@@ -352,7 +393,13 @@ describe("AppSidebar", () => {
           <TooltipProvider>
             <SidebarProvider>
               <SidebarTrigger />
-              <AppSidebar onCreatePlaylist={onCreatePlaylist} searchQuery="" onSearchChange={() => {}} onOpenShortcuts={() => {}} />
+              <AppSidebar
+                onCreatePlaylist={onCreatePlaylist}
+                onPlayCategory={onPlayCategory}
+                searchQuery=""
+                onSearchChange={() => {}}
+                onOpenShortcuts={() => {}}
+              />
             </SidebarProvider>
           </TooltipProvider>
         );

@@ -10,6 +10,7 @@ import {
   Loader2,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Scissors,
   Shuffle,
@@ -46,9 +47,11 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "../ui/conte
 import { LibrarySearch } from "./LibrarySearch";
 import { SidebarUtilities } from "./SidebarUtilities";
 import { DeletePlaylistModal } from "../DeletePlaylistModal";
+import { QueueMenuItems } from "../QueueMenuItems";
+import type { PlayChoice } from "../LibraryPageActions";
 import { NowPlayingEqualizer } from "../NowPlayingEqualizer";
 import { PlaylistCover } from "../PlaylistCover";
-import { usePlayerStore, type SystemCategory } from "../../store/usePlayerStore";
+import { isPlaybackMode, usePlayerStore, type PlaybackMode, type SystemCategory } from "../../store/usePlayerStore";
 import { resolvePlaylistCover } from "../../lib/playlistCover";
 import { cn } from "../../lib/utils";
 import type { Playlist } from "@/server/types";
@@ -78,10 +81,12 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onCreatePlaylist: () => void;
+  // Plays or queues a whole library page from its right-click menu
+  onPlayCategory: (mode: PlaybackMode, choice: PlayChoice) => void;
   onOpenShortcuts: () => void;
 }
 
-export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOpenShortcuts, ...props }: AppSidebarProps) {
+export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onPlayCategory, onOpenShortcuts, ...props }: AppSidebarProps) {
   const { t } = useTranslation();
   const formatNumber = useFormatNumber();
   const tracks = usePlayerStore((s) => s.tracks);
@@ -176,22 +181,48 @@ export function AppSidebar({ searchQuery, onSearchChange, onCreatePlaylist, onOp
           <SidebarGroupLabel>{t("playlist.systemHeader")}</SidebarGroupLabel>
           <SidebarMenu>
             {categories.map((category) => {
-              const isNowPlaying = hasActiveTrack && playingPlaylistId === null && playbackMode === category.id;
+              const mode = category.id;
+              const isNowPlaying = hasActiveTrack && playingPlaylistId === null && playbackMode === mode;
               const Icon = category.icon;
+              const button = (
+                <SidebarMenuButton
+                  render={isPlaybackMode(mode) ? <ContextMenuTrigger render={<button type="button" />} /> : undefined}
+                  isActive={activePlaylistId === null && activeSystemCategory === mode}
+                  tooltip={category.label}
+                  onClick={() => openCategory(mode)}
+                >
+                  {isNowPlaying ? (
+                    <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
+                  ) : (
+                    <Icon className={cn("text-primary", mode === "downloading_only" && counts.downloading > 0 && "animate-spin")} />
+                  )}
+                  <span>{category.label}</span>
+                </SidebarMenuButton>
+              );
               return (
-                <SidebarMenuItem key={category.id}>
-                  <SidebarMenuButton
-                    isActive={activePlaylistId === null && activeSystemCategory === category.id}
-                    tooltip={category.label}
-                    onClick={() => openCategory(category.id)}
-                  >
-                    {isNowPlaying ? (
-                      <NowPlayingEqualizer isAnimated={isPlaying} className="w-4 justify-center text-primary" />
-                    ) : (
-                      <Icon className={cn("text-primary", category.id === "downloading_only" && counts.downloading > 0 && "animate-spin")} />
-                    )}
-                    <span>{category.label}</span>
-                  </SidebarMenuButton>
+                <SidebarMenuItem key={mode}>
+                  {/* Pages that play get the menu a playlist has on a right-click; Downloading and Errors don't */}
+                  {isPlaybackMode(mode) ? (
+                    <ContextMenu>
+                      {button}
+                      <ContextMenuContent className="w-auto">
+                        <DropdownMenuGroup>
+                          <DropdownMenuItem disabled={category.count === 0} onClick={() => onPlayCategory(mode, "play")}>
+                            <Play />
+                            {t("playlist.play")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem disabled={category.count === 0} onClick={() => onPlayCategory(mode, "shuffle")}>
+                            <Shuffle />
+                            {t("nav.shuffle")}
+                          </DropdownMenuItem>
+                        </DropdownMenuGroup>
+                        <DropdownMenuSeparator />
+                        <QueueMenuItems disabled={category.count === 0} onQueue={(placement) => onPlayCategory(mode, placement)} />
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ) : (
+                    button
+                  )}
                   <SidebarMenuBadge>{formatNumber(category.count)}</SidebarMenuBadge>
                 </SidebarMenuItem>
               );

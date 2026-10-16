@@ -146,6 +146,27 @@ describe("Play Next and Play Later on a library page", () => {
     expect(played).toEqual([]);
   });
 
+  // The sidebar's menu is about the whole page, not what the search on the open page found
+  it("queues the whole page from the sidebar, whatever the open page's search", async () => {
+    await renderPage("original_only", "First");
+    const tracksInSidebar = Array.from(container.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')).find(
+      (el) => el.textContent?.trim() === "Tracks"
+    );
+
+    await act(async () => {
+      tracksInSidebar?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 40 }));
+      await tick();
+    });
+    await act(async () => {
+      Array.from(document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'))
+        .find((el) => el.textContent?.trim() === "Play Next")
+        ?.click();
+      await tick();
+    });
+
+    expect(queued).toEqual([[[`fallback_${first.id}`, `fallback_${second.id}`], "next"]]);
+  });
+
   it("plays the page when nothing is queued for its songs to follow", async () => {
     queueAccepts = false;
     await renderPage("original_only");

@@ -35,7 +35,13 @@ describe("AppShell", () => {
   const renderShell = () =>
     act(async () => {
       root.render(
-        <AppShell searchQuery="" onSearchChange={() => {}} onCreatePlaylist={() => {}} onOpenShortcuts={() => {}}>
+        <AppShell
+          searchQuery=""
+          onSearchChange={() => {}}
+          onCreatePlaylist={() => {}}
+          onPlayCategory={() => {}}
+          onOpenShortcuts={() => {}}
+        >
           <div />
         </AppShell>
       );
