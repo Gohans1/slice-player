@@ -134,10 +134,12 @@ describe("parsePlayRecord", () => {
     expect(parsePlayRecord(valid)).toEqual(valid as PlayRecord);
   });
 
-  it("rejects a source it doesn't know, or a playlist play without its playlist", () => {
+  it("rejects a source it doesn't know, a playlist play without its playlist, or a field of the wrong type", () => {
     expect(parsePlayRecord({ ...valid, source_type: "radio" })).toBeNull();
     expect(parsePlayRecord({ ...valid, playlist_id: null })).toBeNull();
     expect(parsePlayRecord({ ...valid, track_id: 1 })).toBeNull();
+    expect(parsePlayRecord({ ...valid, segment_id: 1 })).toBeNull();
+    expect(parsePlayRecord({ ...valid, via_home: "true" })).toBeNull();
     expect(parsePlayRecord(null)).toBeNull();
   });
 
