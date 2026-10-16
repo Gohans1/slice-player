@@ -1200,6 +1200,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         const newlyReadyTracks = finalTracks.filter((t) => t.status === "ready" && !prevReadyTrackIds.has(t.id));
         const modesToReconcile: PlaybackMode[] = ["mixed", "slices_only", "original_only"];
         const nextQueuesByMode: Record<PlaybackMode, QueueItem[]> = { ...freshState.queuesByMode };
+        // A Home shelf, or a search's results, play as they were when played: their songs, and what was queued onto them,
+        // are refreshed, but what the library has gained since (songs that became ready, new slices) belongs to the
+        // library pages. A search in a playlist plays the playlist's own queue, not this one
+        const origin = freshState.queueOrigin?.type;
+        const playsOwnList = !freshState.activePlaylistPlayingId && (origin === "home" || origin === "search");
 
         for (const m of modesToReconcile) {
           const prevQueue = freshState.queuesByMode[m] || [];
@@ -1215,11 +1220,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             newlyReadyTracks,
             freshState.shuffleByMode[m]
           );
-          // A Home shelf plays a list of its own: its songs, and what was queued onto them, are refreshed, but the songs
-          // that became ready since belong to the library pages, not to it
-          if (m === currentMode && freshState.queueOrigin?.type === "home") {
-            const shelfEntries = new Set(prevQueue.map((item) => item.queueItemId));
-            reconciled = reconciled.filter((item) => shelfEntries.has(item.queueItemId));
+          if (m === currentMode && playsOwnList) {
+            const listEntries = new Set(prevQueue.map((item) => item.queueItemId));
+            reconciled = reconciled.filter((item) => listEntries.has(item.queueItemId));
           }
           const isIdentical =
             reconciled.length === prevQueue.length &&
