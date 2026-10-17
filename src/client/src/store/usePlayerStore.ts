@@ -9,6 +9,7 @@ import { showsItemsOf } from "../lib/mixPlaylist";
 import { notifyChangeFailed, sendChange } from "../lib/sendChange";
 import { createListenCounter, postPlay } from "../lib/plays";
 import { useHomeStore } from "./useHomeStore";
+import { loadSavedQueue, saveQueue } from "../lib/savedQueue";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaySource } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -138,6 +139,8 @@ let autoSkipTimer: ReturnType<typeof setTimeout> | null = null;
 let latestFetchTracksRequestId = 0;
 
 let pendingSegmentReconciliation = false;
+// The saved queue comes back on the first full load; until then, the queue built on startup isn't saved over it
+let isSavedQueueRestored = false;
 let cachedTracksEtag: string | null = null;
 let cachedSegmentsEtag: string | null = null;
 let cachedSegmentsData: Segment[] = [];
@@ -644,6 +647,28 @@ async function loadPlaylistQueue(get: () => PlayerState, playlistId: string, que
   return getSortedPlaylistItems(playable, get().playlistSortMode, get().playlistRandomMap[playlistId], playlist?.is_custom_ordered).map(
     (item) => createQueueItem(item.segment || createDefaultFullSegment(item.track), item.track, item.id)
   );
+}
+
+// The queue the app was left with, paused where it was, unless something already plays
+function restoreSavedQueue(set: (partial: Partial<PlayerState>) => void, get: () => PlayerState, segments: Segment[]) {
+  isSavedQueueRestored = true;
+  if (get().activeTrack) return;
+  const restored = loadSavedQueue(get().tracks, segments);
+  if (!restored) return;
+  const { playbackMode, queue, isShuffle, activePlaylistPlayingId, activeTrack } = restored;
+  const trackGain = normalizeTrackVolume(activeTrack?.volume, 0.5);
+  audioEngine.setVolume(trackGain);
+  set({
+    ...restored,
+    volume: trackGain,
+    // A library page's queue is its mode's queue, which a refresh rebuilds the queue from
+    ...(activePlaylistPlayingId
+      ? {}
+      : {
+          queuesByMode: { ...get().queuesByMode, [playbackMode]: queue },
+          shuffleByMode: { ...get().shuffleByMode, [playbackMode]: isShuffle },
+        }),
+  });
 }
 
 function transitionActiveItemOnRemoval(
@@ -1357,6 +1382,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         cachedTracksEtag = nextTracksEtag;
         pendingSegmentReconciliation = false;
         set(reconcileUpdates);
+        if (!isSavedQueueRestored) restoreSavedQueue(set, get, validSegments);
 
         // Synchronize activeSegment boundaries if segment was edited externally / trimmed on server
         if (activeSegment && segmentObjMap.has(activeSegment.id)) {
@@ -3349,3 +3375,28 @@ audioEngine.setOnBufferingCallback((isBuffering) => {
   usePlayerStore.setState({ isBuffering });
 });
 
+const SAVED_QUEUE_FIELDS = [
+  "queue",
+  "activePlaylistOriginalQueue",
+  "queueIndex",
+  "activeSegment",
+  "queueOrigin",
+  "activePlaylistPlayingId",
+  "playbackMode",
+  "isShuffle",
+  "isLoopQueue",
+  "isLoopTrack",
+  "isPlaying",
+] as const satisfies (keyof PlayerState)[];
+
+// The queue is saved as it changes, and a pause saves the time. The page going away saves the time heard last: while
+// the window is hidden the store's time stands still, the music doesn't
+if (typeof window !== "undefined") {
+  usePlayerStore.subscribe((state, prev) => {
+    if (isSavedQueueRestored && SAVED_QUEUE_FIELDS.some((field) => state[field] !== prev[field])) saveQueue(state);
+  });
+  window.addEventListener("pagehide", () => {
+    const state = usePlayerStore.getState();
+    if (isSavedQueueRestored) saveQueue(state.isPlaying ? { ...state, currentTime: audioEngine.getCurrentTime() } : state);
+  });
+}
