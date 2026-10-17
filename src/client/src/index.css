@@ -590,77 +590,10 @@ html {
 }
 
 /* ==========================================================================
-   Impeccable Motion System (Keyframes & GPU-Accelerated Utilities)
+   Motion: the now-playing equalizer and reduced motion. Enter and exit animations come from tw-animate-css
+   (animate-in / animate-out) and CSS transitions (ease-out; --ease-standard for things moving on screen), so add no
+   keyframes for them here
    ========================================================================== */
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes zoomIn95 {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes zoomIn75 {
-  from {
-    opacity: 0;
-    transform: scale(0.75);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInLeft {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInBottom4 {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 /* Authentic multi-frequency audio equalizer bar keyframes (GPU scaleY) */
 @keyframes eqBar1 {
@@ -688,87 +621,6 @@ html {
   50% {
     transform: scaleY(0.9);
   }
-}
-
-@keyframes zoomOut95 {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-}
-
-@keyframes slideOutRight {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes slideOutLeft {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-100%);
-  }
-}
-
-@keyframes slideOutBottom4 {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-}
-
-/* Dedicated motion classes */
-.animate-fade-in {
-  animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-fade-out {
-  animation: fadeOut 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-zoom-in {
-  animation: zoomIn95 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-zoom-out {
-  animation: zoomOut95 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-right {
-  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-left {
-  animation: slideInLeft 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-bottom {
-  animation: slideInBottom4 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-out-right {
-  animation: slideOutRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-out-left {
-  animation: slideOutLeft 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-slide-out-bottom {
-  animation: slideOutBottom4 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .animate-eq-1 {

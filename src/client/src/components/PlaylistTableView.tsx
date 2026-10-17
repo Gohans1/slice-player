@@ -15,6 +15,7 @@ import {
 } from "../lib/activeItemIndex";
 import { searchItems } from "../lib/search";
 import { getSortedPlaylistItems } from "../lib/playlistSort";
+import { dragShift } from "../lib/dragShift";
 import { usePlayerStore, isPlaybackMode, createQueueItem, type QueueItem } from "../store/usePlayerStore";
 import {
   useSelectionStore,
@@ -1415,27 +1416,7 @@ export function PlaylistTableView({
             const isDragTarget = isManualSort && dragOverIdx === originalIdx && draggedIdx !== null && draggedIdx !== originalIdx;
 
             // FLIP shift animation for rows to smoothly move out of the way
-            let shiftY = 0;
-            if (
-              draggedIdx !== null &&
-              dragOverIdx !== null &&
-              draggedIdx !== dragOverIdx &&
-              originalIdx !== draggedIdx &&
-              originalIdx >= 0
-            ) {
-              const rowShiftPx = PLAYLIST_ROW_HEIGHT;
-              if (draggedIdx > dragOverIdx) {
-                // Dragging UP: items from dragOverIdx to draggedIdx - 1 shift DOWN
-                if (originalIdx >= dragOverIdx && originalIdx < draggedIdx) {
-                  shiftY = rowShiftPx;
-                }
-              } else {
-                // Dragging DOWN: items from draggedIdx + 1 to dragOverIdx shift UP
-                if (originalIdx <= dragOverIdx && originalIdx > draggedIdx) {
-                  shiftY = -rowShiftPx;
-                }
-              }
-            }
+            const shiftY = dragShift(originalIdx, draggedIdx, dragOverIdx, PLAYLIST_ROW_HEIGHT);
 
             const isSelected = selectedTrackIds.has(item.id);
 
