@@ -99,6 +99,18 @@ it("reports a cancelled resume without restarting audio or requesting fallback p
   expect(audioEngine.isPaused()).toBe(true);
 });
 
+it("asks for the song to be loaded again when nothing is loaded, rather than wait on a play that never starts", async () => {
+  audioEngine.unload();
+  // Chrome's play() with no source waits for one to be set
+  const play = spyOn(audios[0], "play").mockImplementation(() => new Promise<void>(() => {}));
+  releaseContext();
+  try {
+    expect(await audioEngine.resume()).toBe(false);
+  } finally {
+    play.mockRestore();
+  }
+});
+
 for (const outcome of [true, false]) {
   it(`keeps the store paused when an obsolete resume completes with ${outcome}`, async () => {
     const track = { id: "track", source_type: "local" as const, source_uri: "fixture.opus", title: "Track", duration: 60, status: "ready" as const };
