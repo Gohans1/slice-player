@@ -1,5 +1,5 @@
 import * as React from "react";
-import { FolderPlus, AlertCircle, UploadCloud, CheckCircle2, FileAudio, ChevronDown, ChevronRight } from "lucide-react";
+import { FolderPlus, AlertCircle, UploadCloud, CheckCircle2, FileAudio, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -11,6 +11,7 @@ import { Textarea } from "./ui/textarea";
 import { Modal } from "./Modal";
 import { YoutubeIngestModal, YoutubeIcon } from "./YoutubeIngestModal";
 import { usePlayerStore } from "../store/usePlayerStore";
+import { cn } from "../lib/utils";
 
 interface UploadQueueItem {
   id: string;
@@ -442,7 +443,7 @@ export function ImportActions() {
 
           <Collapsible open={showPathFallback} onOpenChange={setShowPathFallback}>
             <CollapsibleTrigger render={<Button type="button" variant="ghost" size="sm" />}>
-              {showPathFallback ? <ChevronDown data-icon="inline-start" /> : <ChevronRight data-icon="inline-start" />}
+              <ChevronRight data-icon="inline-start" className={cn("transition-transform duration-150", showPathFallback && "rotate-90")} />
               {t("localModal.pathFallback")}
             </CollapsibleTrigger>
             <CollapsibleContent>
