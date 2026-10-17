@@ -329,7 +329,7 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
         >
         {/* Narrow screens show the number alone; the word stays for screen readers */}
         <span className="shrink-0 px-2.5 text-xs font-semibold whitespace-nowrap">
-          <span key={selectedCount} className="inline-block tabular-nums animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>{" "}
+          <span className="tabular-nums">{formatNumber(selectedCount)}</span>{" "}
           <span className="max-sm:sr-only">{t("bulkActions.selected", "selected")}</span>
         </span>
 
