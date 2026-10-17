@@ -45,13 +45,12 @@ interface TableRowState {
   isSelected: boolean;
   isReady: boolean;
   isDragging?: boolean;
-  isDragTarget?: boolean;
 }
 
 // Apple Music style rows: hairlines between them (the row-divider utility), a rounded tint on hover and a stronger
 // one on selected rows, which merge into one block where they touch (merge-selected-rows). The playing row isn't
 // tinted: its artwork shows the equalizer and its title turns primary.
-function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
+function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging }: TableRowState) {
   return cn(
     "group grid h-13.5 items-center gap-x-2 rounded-md px-3 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-x-4",
     gridCols,
@@ -59,8 +58,6 @@ function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, 
       ? "bg-primary/15"
       : isDragging
       ? "opacity-40 outline-1 outline-dashed outline-primary/60"
-      : isDragTarget
-      ? "bg-accent ring-2 ring-primary/60"
       : !isReady
       ? "cursor-not-allowed opacity-60"
       : "cursor-pointer hover:bg-accent/60 has-data-popup-open:bg-accent/60 has-data-context-menu-open:bg-accent/60"
@@ -68,8 +65,8 @@ function tableRowClassName(gridCols: string, { isSelected, isReady, isDragging, 
 }
 
 // Tells the row-divider utility when a row is tinted, so the hairlines on both sides of it hide
-function tableRowTint({ isSelected, isReady, isDragging, isDragTarget }: TableRowState) {
-  if (isSelected || isDragTarget) return "on";
+function tableRowTint({ isSelected, isReady, isDragging }: TableRowState) {
+  if (isSelected) return "on";
   return isReady && !isDragging ? "hover" : undefined;
 }
 
@@ -475,9 +472,8 @@ export function PlaylistTableView({
       if (clientY >= rect.bottom - threshold) {
         return Math.max(0, sortedPlaylistItems.length - 1);
       }
-      const offsetInTable = clientY - rect.top;
-      const scrollMargin = virtualizerRef.current?.options?.scrollMargin ?? 0;
-      const vItem = virtualizerRef.current?.getVirtualItemForOffset?.(offsetInTable + scrollMargin);
+      // The window virtualizer places rows in page coordinates
+      const vItem = virtualizerRef.current?.getVirtualItemForOffset?.(window.scrollY + clientY);
       if (
         vItem &&
         typeof vItem.index === "number" &&
@@ -1354,12 +1350,7 @@ export function PlaylistTableView({
             if (playlistSortMode !== "manual" || draggedIdxRef.current === null) return;
             handleDrop(e, 0);
           }}
-          className={cn(
-            TABLE_HEADER_CLASS,
-            PLAYLIST_GRID,
-            "transition-colors",
-            dragOverIdx === 0 && draggedIdx !== null && draggedIdx !== 0 && "border-primary bg-accent text-foreground ring-2 ring-primary/60"
-          )}
+          className={cn(TABLE_HEADER_CLASS, PLAYLIST_GRID)}
         >
           <SelectAllCell
             hasRows={visiblePlaylistItemIds.length > 0}
@@ -1413,15 +1404,12 @@ export function PlaylistTableView({
             const showDragHandle = isManualSort && !isSearching && originalIdx >= 0;
             const canDrag = showDragHandle && !isReordering;
             const isDragging = isManualSort && draggedIdx === originalIdx;
-            const isDragTarget = isManualSort && dragOverIdx === originalIdx && draggedIdx !== null && draggedIdx !== originalIdx;
-
-            // FLIP shift animation for rows to smoothly move out of the way
             const shiftY = dragShift(originalIdx, draggedIdx, dragOverIdx, PLAYLIST_ROW_HEIGHT);
 
             const isSelected = selectedTrackIds.has(item.id);
 
             const toggleSelected = (shiftKey: boolean) => toggleTrack(item.id, visiblePlaylistSelectedItems, shiftKey, createPlaylistItemSelectedItem(item, activePlaylistId));
-            const rowState = { isSelected, isReady, isDragging, isDragTarget };
+            const rowState = { isSelected, isReady, isDragging };
 
             return (
               <div
@@ -1487,9 +1475,11 @@ export function PlaylistTableView({
                 aria-current={isCurrentPlaying ? "true" : undefined}
                 className={cn(
                   tableRowClassName(PLAYLIST_GRID, rowState),
-                  // FLIP: rows slide aside to open a gap under the dragged item
+                  // While a row is dragged, the rows slide to show the order a drop would make: the others part and the
+                  // dragged one moves into the gap. They let the pointer through to the slots they sit in, which stay
+                  // put, so what's under the pointer is a place in the list rather than a row sliding through it
                   shiftY !== 0 && "translate-y-(--drag-shift)",
-                  draggedIdx !== null && "transition duration-220 ease-standard"
+                  draggedIdx !== null && "pointer-events-none transition duration-220 ease-standard"
                 )}
               >
                 <RowLeadingCell

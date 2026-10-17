@@ -1,10 +1,12 @@
 import type { Page } from "@playwright/test";
-import type { HomeSummary, Playlist, Segment, Track } from "../src/server/types";
+import type { HomeSummary, Playlist, PlaylistItemWithDetails, Segment, Track } from "../src/server/types";
 
 export interface Library {
   tracks?: Track[];
   segments?: Segment[];
   playlists?: Playlist[];
+  // The playlists' songs, each served with its playlist as GET /api/playlists/:id does
+  playlistItems?: PlaylistItemWithDetails[];
 }
 
 // Answers every /api request from memory and keeps the live-update WebSocket in the browser. Without this, Vite would
@@ -17,6 +19,10 @@ export async function mockLibrary(page: Page, library: Library) {
     ["/api/logs", []],
     ["/api/home", { recently_played: [], heavy_rotation: [], top_playlists: [] } satisfies HomeSummary],
   ]);
+  for (const playlist of library.playlists ?? []) {
+    const items = (library.playlistItems ?? []).filter((item) => item.playlist_id === playlist.id);
+    reads.set(`/api/playlists/${encodeURIComponent(playlist.id)}`, { ...playlist, items });
+  }
   await page.route("**/api/**", (route) => {
     const request = route.request();
     const body = request.method() === "GET" ? reads.get(new URL(request.url()).pathname) : undefined;
