@@ -1088,7 +1088,17 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
                 {segments.map((seg) => {
                   const isSelected = seg.id === selectedSliceId;
                   return (
-                    <div key={seg.id} role="listitem">
+                    // A slice made with New Slice mounts already picked, so it alone slides in; @starting-style
+                    // only applies as an element first renders, so opening the Studio or picking a row doesn't animate
+                    <div
+                      key={seg.id}
+                      role="listitem"
+                      className={
+                        seg.id === pickedSliceId
+                          ? "transition duration-200 ease-out starting:translate-y-1 starting:opacity-0"
+                          : undefined
+                      }
+                    >
                       <Item
                         size="xs"
                         variant={isSelected ? "muted" : "default"}
