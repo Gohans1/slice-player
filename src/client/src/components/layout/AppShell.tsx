@@ -28,7 +28,8 @@ export function AppShell({ children, ...sidebarProps }: AppShellProps) {
   }
 
   return (
-    <TooltipProvider>
+    // A pause before the first tooltip, Base UI's default; the next ones in the group open at once, without animation
+    <TooltipProvider delay={600}>
       <RowActionsMenuProvider>
         <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
           {/* The first Tab stop lets keyboard users skip past the sidebar; it shows only while focused */}

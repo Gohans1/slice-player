@@ -229,24 +229,19 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
     return () => window.removeEventListener("keydown", handleEscape);
   }, [selectedCount, clearSelection]);
 
+  // The bar stays mounted while it slides out. Its exit styles and this timer start on the same render, so it unmounts
+  // once the 150ms slide is over
   const [isRendered, setIsRendered] = React.useState(selectedCount > 0);
-  const [isExiting, setIsExiting] = React.useState(false);
+  if (selectedCount > 0 && !isRendered) setIsRendered(true);
+  const isExiting = selectedCount === 0;
 
   React.useEffect(() => {
-    if (selectedCount > 0) {
-      setIsRendered(true);
-      setIsExiting(false);
-    } else if (isRendered) {
-      setIsExiting(true);
-      const timer = setTimeout(() => {
-        setIsRendered(false);
-        setIsExiting(false);
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedCount, isRendered]);
+    if (!isExiting || !isRendered) return;
+    const timer = setTimeout(() => setIsRendered(false), 150);
+    return () => clearTimeout(timer);
+  }, [isExiting, isRendered]);
 
-  if (selectedCount === 0 && !isRendered) return null;
+  if (!isRendered) return null;
 
   const allVisibleSelected = isAllVisibleSelected(selectedTrackIds, visibleTrackIds);
   const hasVisible = visibleTrackIds.length > 0;
@@ -321,15 +316,16 @@ export function BulkActionBar({ visibleTrackIds = [], visibleItems }: BulkAction
       <div className="pointer-events-none sticky bottom-[calc(var(--player-bar-height,0px)+1.5rem)] z-40 flex h-0 items-end justify-center px-2">
         <aside
           aria-label={t("bulkActions.barLabel", "Bulk actions")}
-          // The same glass capsule as the player
+          // The same glass capsule as the player. It slides with transitions rather than keyframes, so selecting again
+          // while it leaves turns it back from where it is
           className={cn(
-            "pointer-events-auto flex h-11 max-w-full items-center gap-1 rounded-full border bg-card/70 p-1.5 shadow-xl backdrop-blur-lg backdrop-saturate-200 duration-150",
-            isExiting ? "animate-out fade-out slide-out-to-bottom-4 pointer-events-none" : "animate-in fade-in slide-in-from-bottom-4"
+            "pointer-events-auto flex h-11 max-w-full items-center gap-1 rounded-full border bg-card/70 p-1.5 shadow-xl backdrop-blur-lg backdrop-saturate-200 transition duration-150 ease-out starting:translate-y-4 starting:opacity-0",
+            isExiting && "pointer-events-none translate-y-4 opacity-0"
           )}
         >
         {/* Narrow screens show the number alone; the word stays for screen readers */}
         <span className="shrink-0 px-2.5 text-xs font-semibold whitespace-nowrap">
-          <span key={selectedCount} className="inline-block tabular-nums animate-in zoom-in-75 duration-100 motion-reduce:animate-none">{formatNumber(selectedCount)}</span>{" "}
+          <span className="tabular-nums">{formatNumber(selectedCount)}</span>{" "}
           <span className="max-sm:sr-only">{t("bulkActions.selected", "selected")}</span>
         </span>
 

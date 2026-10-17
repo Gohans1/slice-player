@@ -436,9 +436,9 @@ export function PlayerBar({ onToggleQueue, isQueueOpen, isQueueDocked = false }:
             {isBuffering && isPlaying ? (
               <Spinner className="size-5" />
             ) : isPlaying ? (
-              <Pause className="size-5 fill-current animate-in zoom-in-75 duration-100" />
+              <Pause className="size-5 fill-current" />
             ) : (
-              <Play className="size-5 fill-current animate-in zoom-in-75 duration-100" />
+              <Play className="size-5 fill-current" />
             )}
           </Button>
 
