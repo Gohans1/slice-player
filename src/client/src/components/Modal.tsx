@@ -26,7 +26,8 @@ export function Modal({ isOpen, onClose, title, description, children, className
         if (!open) onClose();
       }}
     >
-      <DialogContent showCloseButton={false} className={cn("max-h-[90svh] overflow-y-auto sm:max-w-lg", className)}>
+      {/* grid-cols-1 holds the grid's one column to the dialog's width; by default it grows to fit a line that never wraps */}
+      <DialogContent showCloseButton={false} className={cn("grid-cols-1 max-h-[90svh] overflow-y-auto sm:max-w-lg", className)}>
         {/* The margin keeps long titles clear of the close button */}
         <DialogHeader className="mr-6">
           <DialogTitle>{title}</DialogTitle>
