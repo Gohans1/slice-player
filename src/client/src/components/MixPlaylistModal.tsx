@@ -132,7 +132,7 @@ export function MixPlaylistModal({ isOpen, onClose, onCreated, mix, firstSourceI
       description={t("mixPlaylist.description")}
     >
       {/* A fieldset is as wide as its content by default, which would push the rows past a phone's screen */}
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-col gap-4">
         <FieldSet className="min-w-0">
           <FieldLegend variant="label">{t("mixPlaylist.rulesLead")}</FieldLegend>
           <ol ref={listRef} className="flex max-h-80 flex-col divide-y overflow-y-auto rounded-lg border">
