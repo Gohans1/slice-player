@@ -1148,11 +1148,15 @@ export function SliceStudio({ track, onClose }: SliceStudioProps) {
         <DialogFooter>
           {/* Mounted throughout, so screen readers announce each save */}
           <span role="status" className="flex items-center gap-1 text-xs text-flexoki-green sm:mr-auto">
+            {/* Each new status settles in. It leaves at once: a copy kept to fade out would linger for screen readers */}
             {saveStatus && (
-              <>
+              <span
+                key={saveStatus}
+                className="flex items-center gap-1 transition duration-150 ease-out starting:translate-y-0.5 starting:opacity-0"
+              >
                 <Check className="size-3.5" />
                 {saveStatus}
-              </>
+              </span>
             )}
           </span>
           <Button onClick={() => void handleCloseStudio()}>{t("studio.doneButton")}</Button>
