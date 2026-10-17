@@ -420,6 +420,8 @@ class AudioEngine {
       this.pauseTimer = null;
     }
     this.isFadingOut = false;
+    // Nothing loaded (unloaded, or a queue restored on startup): play() would wait for a source that never comes
+    if (!this.audioEl.src) return false;
 
     await this.resumeContext();
     if (this.currentPlayRequestId !== requestId) return null;
