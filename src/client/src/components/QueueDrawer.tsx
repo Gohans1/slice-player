@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { cn, formatDuration, DEFAULT_SLICE_COLOR, REVEAL_ON_HOVER } from "../lib/utils";
+import { dragShift } from "../lib/dragShift";
 import { TrackThumbnail } from "./TrackThumbnail";
 import { NowPlayingEqualizer } from "./NowPlayingEqualizer";
 import { usePlaybackSource } from "../hooks/use-playback-source";
@@ -65,7 +66,9 @@ interface QueueItemRowProps {
   isCurrent: boolean;
   isPlaying?: boolean;
   isDragging: boolean;
-  isDragTarget: boolean;
+  // A row is being dragged somewhere in the queue
+  isDragActive: boolean;
+  shiftY: number;
   onDragStart: (e: React.DragEvent, idx: number, name: string) => void;
   onDragOver: (e: React.DragEvent, idx: number) => void;
   onDrop: (e: React.DragEvent, idx: number) => void;
@@ -84,7 +87,8 @@ const QueueItemRow = React.memo(function QueueItemRow({
   isCurrent,
   isPlaying,
   isDragging,
-  isDragTarget,
+  isDragActive,
+  shiftY,
   onDragStart,
   onDragOver,
   onDrop,
@@ -111,16 +115,19 @@ const QueueItemRow = React.memo(function QueueItemRow({
       onDragOver={(e) => onDragOver(e, idx)}
       onDrop={(e) => onDrop(e, idx)}
       onDragEnd={onDragEnd}
-      data-tint={isCurrent || isDragTarget ? "on" : isDragging ? undefined : "hover"}
+      data-tint={isCurrent ? "on" : isDragging ? undefined : "hover"}
+      style={shiftY !== 0 ? { "--drag-shift": `${shiftY}px` } : undefined}
       className={cn(
         "group flex min-h-13.5 items-center gap-2 rounded-md p-1.5 select-none transition-colors",
         isDragging
           ? "opacity-40 outline-1 outline-dashed outline-primary/60"
-          : isDragTarget
-          ? "bg-accent ring-2 ring-primary/60"
           : isCurrent
           ? "bg-primary/10"
-          : "hover:bg-accent/60"
+          : "hover:bg-accent/60",
+        // As in the playlist table: while a row is dragged, the rows slide to show the order a drop would make, and let
+        // the pointer through to the slots they sit in, which stay put
+        shiftY !== 0 && "translate-y-(--drag-shift)",
+        isDragActive && "pointer-events-none transition duration-220 ease-standard"
       )}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -903,6 +910,10 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
     else pendingFocusRef.current = { index: nextIdx, target: "any", timestamp: Date.now() };
   }, []);
 
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  // A drag slides rows by the dragged row's height. Rows share one height, taller where the up/down buttons show
+  const dragRowSize = virtualRows.find((row) => row.index === draggedIdx)?.size ?? ESTIMATED_ITEM_HEIGHT;
+
   return (
     <div ref={drawerRef} tabIndex={-1} onKeyDown={handleKeyDown} className="flex min-h-0 flex-1 flex-col p-4 focus:outline-none">
         {/* Header */}
@@ -1170,7 +1181,7 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
             className="relative h-(--virtual-size) w-full"
             style={{ "--virtual-size": `${rowVirtualizer.getTotalSize()}px` }}
           >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            {virtualRows.map((virtualRow) => {
               const item = displayQueue[virtualRow.index];
               if (!item) return null;
 
@@ -1181,7 +1192,6 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
                 item.segment.id === activeSegment.id
               );
               const isDragging = draggedIdx === virtualRow.index;
-              const isDragTarget = dragOverIdx === virtualRow.index && draggedIdx !== null && draggedIdx !== virtualRow.index;
 
               return (
                 <div
@@ -1192,7 +1202,8 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
                   aria-current={isCurrent ? "true" : undefined}
                   aria-setsize={displayQueue.length}
                   aria-posinset={virtualRow.index + 1}
-                  className="row-divider absolute inset-x-0 top-0 translate-y-(--virtual-start)"
+                  // A drag slides rows aside while their wrappers stay put, so the hairlines would no longer sit between rows
+                  className={cn(draggedIdx === null && "row-divider", "absolute inset-x-0 top-0 translate-y-(--virtual-start)")}
                   style={{ "--virtual-start": `${virtualRow.start}px` }}
                 >
                   <QueueItemRow
@@ -1202,7 +1213,8 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
                     isCurrent={isCurrent}
                     isPlaying={isCurrent && isPlaying}
                     isDragging={isDragging}
-                    isDragTarget={isDragTarget}
+                    isDragActive={draggedIdx !== null}
+                    shiftY={dragShift(virtualRow.index, draggedIdx, dragOverIdx, dragRowSize)}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}

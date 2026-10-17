@@ -1662,6 +1662,66 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     }
   });
 
+  describe("while a row is dragged", () => {
+    const dummyTrack3: Track = { ...dummyTrack, id: "trk_test_3", title: "Test Track 3" };
+    const dummySegment3: Segment = { ...dummySegment, id: "seg_test_3", track_id: "trk_test_3", name: "Verse 3" };
+
+    const renderThreeRowsAndDragTheFirst = () => {
+      usePlayerStore.setState({
+        queue: [
+          { segment: dummySegment, track: dummyTrack },
+          { segment: dummySegment2, track: dummyTrack2 },
+          { segment: dummySegment3, track: dummyTrack3 },
+        ],
+        queueIndex: 0,
+      });
+      act(() => {
+        root.render(<QueuePanel onClose={() => {}} />);
+      });
+
+      const rows = container.querySelectorAll('[draggable="true"]');
+      const dataTransfer = { setData() {}, getData: () => "", effectAllowed: "none", dropEffect: "none" };
+      const dragStartEvent = new window.Event("dragstart", { bubbles: true, cancelable: true });
+      dragStartEvent.dataTransfer = dataTransfer;
+      act(() => {
+        rows[0].querySelector('[data-drag-handle="true"]').dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 }));
+        rows[0].dispatchEvent(dragStartEvent);
+      });
+      return { rows, dataTransfer };
+    };
+
+    it("slides the rows between it and the drop target aside, and it into the gap they open", () => {
+      const { rows, dataTransfer } = renderThreeRowsAndDragTheFirst();
+
+      const dragOverEvent = new window.Event("dragover", { bubbles: true, cancelable: true });
+      dragOverEvent.dataTransfer = dataTransfer;
+      act(() => {
+        rows[2].dispatchEvent(dragOverEvent);
+      });
+
+      const shifts = () => Array.from(rows, (row: HTMLElement) => row.style.getPropertyValue("--drag-shift"));
+      expect(shifts()).toEqual(["108px", "-54px", "-54px"]);
+      expect(rows[1].classList.contains("ease-standard")).toBe(true);
+
+      act(() => {
+        rows[0].dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+      // The rows settle at once when the drag ends, so a drop doesn't slide them a second time
+      expect(shifts()).toEqual(["", "", ""]);
+      expect(rows[1].classList.contains("ease-standard")).toBe(false);
+    });
+
+    it("drops the row dividers, since the rows sliding aside no longer line up with them", () => {
+      const { rows } = renderThreeRowsAndDragTheFirst();
+      expect(container.querySelectorAll(".row-divider").length).toBe(0);
+
+      act(() => {
+        rows[0].dispatchEvent(new window.Event("dragend", { bubbles: true }));
+      });
+      expect(container.querySelectorAll(".row-divider").length).toBe(3);
+    });
+  });
+
   it("QueueDrawer renders track title on top and artist on bottom for full tracks (no repetitive Full Track label)", () => {
     const fullTrackItem = {
       segment: {

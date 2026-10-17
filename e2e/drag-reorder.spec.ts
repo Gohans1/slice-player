@@ -78,3 +78,18 @@ test("drops a playlist row in the gap the other rows open for it", async ({ page
   await page.mouse.up();
   expect((await reorder).postDataJSON()).toEqual({ itemIds: ["item_2", "item_3", "item_1", "item_4", "item_5"] });
 });
+
+test("drops a queue row in the gap the other rows open for it", async ({ page }) => {
+  await mockLibrary(page, { tracks });
+  await page.goto("/");
+  const queue = page.getByRole("list", { name: "Current playback queue" });
+  // The rows that slide; the list items holding them stay put
+  const rows = queue.locator("[draggable='true']");
+  await expect(rows).toHaveCount(5);
+
+  const slots = await dragFirstRowToThird(page, rows);
+  await expectGapUnderPointer(rows, "Track 001", slots[2]);
+
+  await page.mouse.up();
+  await expect(queue.getByRole("paragraph").filter({ hasText: /^Track/ })).toHaveText(["Track 002", "Track 003", "Track 001", "Track 004", "Track 005"]);
+});
