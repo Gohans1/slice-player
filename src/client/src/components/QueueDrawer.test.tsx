@@ -322,6 +322,22 @@ describe("QueueDrawer & PlayerBar Mode UI", () => {
     }
   });
 
+  it("turns crossfade off and on from the queue, as Music's queue does", async () => {
+    usePlayerStore.setState({ isCrossfade: true });
+    act(() => {
+      root.render(<QueuePanel onClose={() => {}} />);
+    });
+    const crossfade = container.querySelector('button[aria-label="Crossfade"], button[aria-label="Chuyển bài hoà trộn"]') as HTMLButtonElement;
+    expect(crossfade.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      crossfade.click();
+    });
+
+    expect(usePlayerStore.getState().isCrossfade).toBe(false);
+    expect(crossfade.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("QueueDrawer displays custom playlist name when activePlaylistPlayingId is set", () => {
     usePlayerStore.setState({
       activePlaylistPlayingId: "pl_my_mix",
