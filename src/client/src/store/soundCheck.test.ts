@@ -62,8 +62,12 @@ describe("Sound Check in playback", () => {
   it("takes in a song's measurement made while the app is open", async () => {
     const measuredLater = song("trk_measured_later", { loudness: null, true_peak: null });
     const serve = (track: Track) =>
-      spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-        (input instanceof Request ? input.url : input.toString()) === "/api/tracks" ? Response.json([track]) : Response.json([])
+      spyOn(globalThis, "fetch").mockImplementation(
+        Object.assign(
+          async (input: RequestInfo | URL) =>
+            (input instanceof Request ? input.url : input.toString()) === "/api/tracks" ? Response.json([track]) : Response.json([]),
+          { preconnect: globalThis.fetch.preconnect }
+        )
       );
     serve(measuredLater);
     await usePlayerStore.getState().fetchTracks();

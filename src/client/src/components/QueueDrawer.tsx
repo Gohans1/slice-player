@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, House, Repeat } from "lucide-react";
+import { X, Shuffle, RotateCcw, Music, Trash2, GripVertical, ChevronUp, ChevronDown, Scissors, Disc, Folder, House, Repeat, Blend } from "lucide-react";
 import { useVirtualizer, defaultRangeExtractor, type Range } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { useFormatNumber } from "../hooks/use-format-number";
@@ -360,6 +360,8 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
   const isLoopQueue = usePlayerStore((s) => s.isLoopQueue);
   const toggleLoopQueue = usePlayerStore((s) => s.toggleLoopQueue);
+  const isCrossfade = usePlayerStore((s) => s.isCrossfade);
+  const toggleCrossfade = usePlayerStore((s) => s.toggleCrossfade);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
 
   const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
@@ -1059,6 +1061,23 @@ function QueueContent({ onClose, titleAs: Title = "h2", closeOnNavigate = false 
               }
             >
               <Repeat />
+            </Button>
+            {/* Like the transitions button at the top of Music's queue */}
+            <Button
+              variant={isCrossfade ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => {
+                toggleCrossfade();
+                const msg = isCrossfade
+                  ? t("queue.announcementCrossfadeDisabled", "Crossfade off")
+                  : t("queue.announcementCrossfadeEnabled", "Crossfade on");
+                setLiveAnnouncement((prev) => (prev === msg ? `${msg}\u200B` : msg));
+              }}
+              title={t("queue.crossfadeTitle", "Fade each song into the next as it ends")}
+              aria-label={t("queue.crossfade", "Crossfade")}
+              aria-pressed={isCrossfade}
+            >
+              <Blend />
             </Button>
           </div>
         </div>

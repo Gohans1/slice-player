@@ -290,6 +290,8 @@ export interface PlayerState {
   isShuffle: boolean;
   isLoopQueue: boolean;
   isLoopTrack: boolean;
+  // Songs cross into each other as one ends, as Crossfade in Music does
+  isCrossfade: boolean;
   playbackMode: PlaybackMode;
   queuesByMode: Record<PlaybackMode, QueueItem[]>;
   shuffleByMode: Record<PlaybackMode, boolean>;
@@ -339,6 +341,7 @@ export interface PlayerState {
   toggleShuffle: () => void;
   toggleLoopQueue: () => void;
   toggleLoopTrack: () => void;
+  toggleCrossfade: () => void;
   setActiveSystemCategory: (cat: SystemCategory) => void;
   playModeQueue: (mode: PlaybackMode, items: QueueItem[], options?: { shuffle?: boolean; origin?: QueueOrigin }) => Promise<void>;
   enqueue: (items: QueueItem[], placement: QueuePlacement, source: PlaySource) => boolean;
@@ -763,6 +766,22 @@ function getStoredMasterVolume(): number {
 const initialMasterVolume = getStoredMasterVolume();
 audioEngine.setMasterVolume(initialMasterVolume);
 
+const CROSSFADE_KEY = "slice_player_crossfade";
+// How long two songs overlap. Music lets the seconds be set; a slice is a chorus of 20 to 40 seconds, which a longer
+// crossing would eat into
+const CROSSFADE_SECONDS = 5;
+
+// On unless turned off before
+function getStoredCrossfade(): boolean {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage.getItem(CROSSFADE_KEY) !== "off";
+  } catch {}
+  return true;
+}
+
+const initialCrossfade = getStoredCrossfade();
+audioEngine.setCrossfade(initialCrossfade ? CROSSFADE_SECONDS : 0);
+
 // Numbers the requests to jump to the playing track. Views remember the last one they handled, and the request is
 // cleared once handled, so the count has to keep going rather than restart from the cleared request.
 let activeTrackScrollRequestCount = 0;
@@ -777,6 +796,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   isShuffle: false, // Default to sequential order! Only shuffle when user clicks shuffle!
   isLoopQueue: false,
   isLoopTrack: false,
+  isCrossfade: initialCrossfade,
   playbackMode: "mixed",
   queuesByMode: {
     mixed: [],
@@ -1716,6 +1736,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   toggleLoopTrack: () => {
     set((state) => ({ isLoopTrack: !state.isLoopTrack }));
+  },
+
+  toggleCrossfade: () => {
+    const isCrossfade = !get().isCrossfade;
+    set({ isCrossfade });
+    audioEngine.setCrossfade(isCrossfade ? CROSSFADE_SECONDS : 0);
+    try {
+      window.localStorage.setItem(CROSSFADE_KEY, isCrossfade ? "on" : "off");
+    } catch {}
   },
 
   toggleShuffle: () => {
@@ -3372,6 +3401,20 @@ audioEngine.setOnErrorCallback((err) => {
       consecutivePlaybackFailures = 0;
     }
   }
+});
+
+// Whether the queue goes on once the playing song ends, as nextSegment's auto-advance decides
+function goesOnAfterSong({ queue, queueIndex, isLoopQueue, isLoopTrack }: PlayerState): boolean {
+  if (queue.length === 0) return false;
+  if (isLoopTrack && consecutivePlaybackFailures === 0) return true;
+  return queueIndex < queue.length - 1 || (isLoopQueue && queue.length > 1);
+}
+
+// As a song's crossfade begins, the next one starts over it; the last song of the queue plays to its end. The engine
+// only asks while a song plays, which can be before isPlaying is set on a resume
+audioEngine.setOnCrossfade(() => {
+  const state = usePlayerStore.getState();
+  if (goesOnAfterSong(state)) state.nextSegment(true);
 });
 
 // Audio element buffering listener for loading spinner feedback
