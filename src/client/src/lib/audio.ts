@@ -24,6 +24,7 @@ class AudioEngine {
   private volumeGainNode: GainNode | null = null;
   private currentVolume = 0.5;
   private masterVolume = 0.5;
+  private soundCheckGain = 1;
   private isInitialized = false;
 
   private currentSegmentStart: number | null = null;
@@ -458,15 +459,21 @@ class AudioEngine {
     this.applyGain();
   }
 
+  // The playing song's Sound Check gain, which can raise a quiet song past unity
+  public setSoundCheckGain(gain: number) {
+    this.soundCheckGain = Number.isFinite(gain) && gain > 0 ? gain : 1;
+    this.applyGain();
+  }
+
   private applyGain() {
-    const gainVal = outputGain(this.currentVolume, this.masterVolume);
+    const gainVal = outputGain(this.currentVolume, this.masterVolume) * this.soundCheckGain;
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
       const now = this.audioCtx.currentTime;
       this.volumeGainNode.gain.cancelScheduledValues?.(now);
       this.volumeGainNode.gain.setValueAtTime?.(gainVal, now);
     } else {
-      this.audioEl.volume = gainVal;
+      this.audioEl.volume = Math.min(1, gainVal);
     }
   }
 

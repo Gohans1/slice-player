@@ -334,7 +334,8 @@ export function App() {
               data.type === "segments_deleted" ||
               data.type === "segment_updated"
             ) {
-              scheduleLibraryRefresh(data.type !== "track_updated" || data.reason !== "volume", 250);
+              // A volume or a Sound Check measurement changes the songs, not what the library lists
+              scheduleLibraryRefresh(data.type !== "track_updated" || (data.reason !== "volume" && data.reason !== "loudness"), 250);
             }
             if (data.type === "library_restored") {
               scheduleLibraryRefresh(true, 100);
