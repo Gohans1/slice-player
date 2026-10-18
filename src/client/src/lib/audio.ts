@@ -17,6 +17,23 @@ export function outputGain(trackVolume: number, masterVolume: number): number {
   return volumeToGain(trackVolume) * volumeToGain(masterVolume);
 }
 
+// An equal-power fade (Boris Smus, Web Audio API ch. 3): as one song fades out and the next fades in, their summed power
+// stays even, with no dip halfway as a linear crossfade has
+function equalPowerFade(direction: "in" | "out", from = 1): Float32Array {
+  const steps = 64;
+  return Float32Array.from({ length: steps }, (_, i) => {
+    const angle = (i / (steps - 1)) * (Math.PI / 2);
+    return direction === "in" ? Math.sin(angle) : from * Math.cos(angle);
+  });
+}
+
+// One <audio> and its gain nodes. A crossfade plays two at once: the song fading out keeps its own level
+interface Deck {
+  el: HTMLAudioElement;
+  fade: GainNode | null;
+  volume: GainNode | null;
+}
+
 class AudioEngine {
   private audioEl: HTMLAudioElement;
   private audioCtx: AudioContext | null = null;
@@ -46,6 +63,15 @@ class AudioEngine {
   private onBufferingCallback: ((isBuffering: boolean) => void) | null = null;
   private isUnloading = false;
 
+  // Crossfade: near a song's end the engine asks for the next one, which starts on the other deck as this one fades out
+  private crossfadeSeconds = 0;
+  private onCrossfadeCallback: (() => void) | null = null;
+  private isCrossfadeAsked = false;
+  // The next song is being started from the crossfade callback, so it goes on the other deck
+  private isHandingOver = false;
+  private spareDeck: Deck | null = null;
+  private fadingDeck: { deck: Deck; timer: ReturnType<typeof setTimeout> } | null = null;
+
   public setOnErrorCallback(cb: ((err: MediaError | null) => void) | null) {
     this.onErrorCallback = cb;
   }
@@ -60,48 +86,7 @@ class AudioEngine {
 
   constructor() {
     if (typeof Audio !== "undefined") {
-      this.audioEl = new Audio();
-      this.audioEl.crossOrigin = "anonymous";
-      this.audioEl.preload = "auto";
-      this.audioEl.addEventListener("waiting", () => {
-        this.onBufferingCallback?.(true);
-      });
-      this.audioEl.addEventListener("playing", () => {
-        this.onBufferingCallback?.(false);
-      });
-      this.audioEl.addEventListener("pause", () => {
-        this.onBufferingCallback?.(false);
-      });
-      this.audioEl.addEventListener("error", () => {
-        this.stopTicker();
-        this.stopRafLoop();
-        this.isFadingOut = false;
-
-        // Ignore error events fired during intentional unload or when src is empty
-        if (this.isUnloading || !this.audioEl.src || (typeof window !== "undefined" && this.audioEl.src === window.location.href)) {
-          return;
-        }
-
-        const err = this.audioEl.error;
-        // Code 1 is MEDIA_ERR_ABORTED - triggered during normal track switching or pauses
-        if (err?.code === 1) {
-          return;
-        }
-
-        let msg = "Browser audio playback error";
-        if (err) {
-          switch (err.code) {
-            case 2: msg = "Network error while streaming audio (MEDIA_ERR_NETWORK)"; break;
-            case 3: msg = "Audio decoding error (MEDIA_ERR_DECODE)"; break;
-            case 4: msg = "Format not supported or 404 (MEDIA_ERR_SRC_NOT_SUPPORTED)"; break;
-          }
-        }
-        if (this.onErrorCallback) {
-          this.onErrorCallback(err);
-        } else {
-          logClientError("playback", msg, { code: err?.code, message: err?.message, src: this.audioEl.src });
-        }
-      });
+      this.audioEl = this.createAudioElement();
     } else {
       this.audioEl = {
         crossOrigin: "",
@@ -137,6 +122,54 @@ class AudioEngine {
     }
   }
 
+  // The engine's <audio>, which reports only while it is the one playing: a song fading out has nothing to tell
+  private createAudioElement(): HTMLAudioElement {
+    const el = new Audio();
+    el.crossOrigin = "anonymous";
+    el.preload = "auto";
+    el.addEventListener("waiting", () => {
+      if (el === this.audioEl) this.onBufferingCallback?.(true);
+    });
+    el.addEventListener("playing", () => {
+      if (el === this.audioEl) this.onBufferingCallback?.(false);
+    });
+    el.addEventListener("pause", () => {
+      if (el === this.audioEl) this.onBufferingCallback?.(false);
+    });
+    el.addEventListener("error", () => {
+      if (el !== this.audioEl) return;
+      this.stopTicker();
+      this.stopRafLoop();
+      this.isFadingOut = false;
+
+      // Ignore error events fired during intentional unload or when src is empty
+      if (this.isUnloading || !this.audioEl.src || (typeof window !== "undefined" && this.audioEl.src === window.location.href)) {
+        return;
+      }
+
+      const err = this.audioEl.error;
+      // Code 1 is MEDIA_ERR_ABORTED - triggered during normal track switching or pauses
+      if (err?.code === 1) {
+        return;
+      }
+
+      let msg = "Browser audio playback error";
+      if (err) {
+        switch (err.code) {
+          case 2: msg = "Network error while streaming audio (MEDIA_ERR_NETWORK)"; break;
+          case 3: msg = "Audio decoding error (MEDIA_ERR_DECODE)"; break;
+          case 4: msg = "Format not supported or 404 (MEDIA_ERR_SRC_NOT_SUPPORTED)"; break;
+        }
+      }
+      if (this.onErrorCallback) {
+        this.onErrorCallback(err);
+      } else {
+        logClientError("playback", msg, { code: err?.code, message: err?.message, src: this.audioEl.src });
+      }
+    });
+    return el;
+  }
+
   public init() {
     if (typeof window === "undefined" || this.isInitialized) return;
     this.isInitialized = true;
@@ -144,25 +177,36 @@ class AudioEngine {
     try {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new AudioContextClass();
-      const source = this.audioCtx.createMediaElementSource(this.audioEl);
-
-      // Two-stage gain graph:
-      // [source] -> [fadeGainNode] (0.0001 <-> 1.0 micro-fades) -> [volumeGainNode] (user volume) -> [destination]
-      this.fadeGainNode = this.audioCtx.createGain();
-      this.fadeGainNode.gain.value = 1.0;
-
-      this.volumeGainNode = this.audioCtx.createGain();
-      this.volumeGainNode.gain.value = outputGain(this.currentVolume, this.masterVolume);
-
-      source.connect(this.fadeGainNode);
-      this.fadeGainNode.connect(this.volumeGainNode);
-      this.volumeGainNode.connect(this.audioCtx.destination);
-      this.audioEl.volume = 1.0;
+      ({ fade: this.fadeGainNode, volume: this.volumeGainNode } = this.connectDeck(this.audioEl));
     } catch (e) {
       console.warn("[AudioEngine] Web Audio graph init fallback to direct audio element", e);
     }
 
-    this.audioEl.addEventListener("ended", () => {
+    this.watchPlayback(this.audioEl);
+    this.initTickerWorker();
+  }
+
+  // Two-stage gain graph for each deck:
+  // [source] -> [fade] (0.0001 <-> 1.0 micro-fades and crossfades) -> [volume] (user volume) -> [destination]
+  private connectDeck(el: HTMLAudioElement): { fade: GainNode; volume: GainNode } {
+    const ctx = this.audioCtx!;
+    const source = ctx.createMediaElementSource(el);
+    const fade = ctx.createGain();
+    fade.gain.value = 1.0;
+    const volume = ctx.createGain();
+    volume.gain.value = outputGain(this.currentVolume, this.masterVolume) * this.soundCheckGain;
+    source.connect(fade);
+    fade.connect(volume);
+    volume.connect(ctx.destination);
+    el.volume = 1.0;
+    return { fade, volume };
+  }
+
+  // A deck's end and progress count while it is the one playing. Boundaries are also checked every animation frame and on
+  // a Web Worker tick, so Chromium's 1000ms timer throttling of a background window never misses one
+  private watchPlayback(el: HTMLAudioElement) {
+    el.addEventListener("ended", () => {
+      if (el !== this.audioEl) return;
       this.stopTicker();
       this.stopRafLoop();
       if (this.onSegmentEndCallback) {
@@ -173,8 +217,7 @@ class AudioEngine {
         cb();
       }
     });
-
-    this.startBoundaryMonitor();
+    el.addEventListener("timeupdate", this.checkBoundary);
   }
 
   public async resumeContext() {
@@ -198,6 +241,69 @@ class AudioEngine {
     }
   }
 
+  public setCrossfade(seconds: number) {
+    this.crossfadeSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  }
+
+  // Asked once per song, as its crossfade begins: starting the next song from here crosses into it
+  public setOnCrossfade(cb: (() => void) | null) {
+    this.onCrossfadeCallback = cb;
+  }
+
+  // How long the playing song and the next overlap: at most half the song, so a short slice is mostly heard alone
+  private crossfadeLength(): number {
+    if (!this.audioCtx || this.crossfadeSeconds <= 0 || this.currentSegmentStart === null || this.currentSegmentEnd === null) return 0;
+    return Math.min(this.crossfadeSeconds, (this.currentSegmentEnd - this.currentSegmentStart) / 2);
+  }
+
+  // The playing song fades out to its end on its own deck, and the other deck becomes the one playing.
+  // Returns how long the next song fades in, or 0 when there is no crossing
+  private beginCrossfade(): number {
+    this.isHandingOver = false;
+    const length = this.crossfadeLength();
+    const end = this.currentSegmentEnd;
+    if (length <= 0 || end === null || !this.audioCtx || !this.fadeGainNode) return 0;
+    if (!this.spareDeck) {
+      const el = this.createAudioElement();
+      this.spareDeck = { el, ...this.connectDeck(el) };
+      this.watchPlayback(el);
+    }
+    const outgoing: Deck = { el: this.audioEl, fade: this.fadeGainNode, volume: this.volumeGainNode };
+    const fadeOut = Math.max(0.05, end - this.audioEl.currentTime);
+    const now = this.audioCtx.currentTime;
+    const from = this.fadeGainNode.gain.value;
+    this.cancelFadeGain(now);
+    this.fadeGainNode.gain.setValueCurveAtTime(equalPowerFade("out", from), now, fadeOut);
+    this.fadingDeck = { deck: outgoing, timer: setTimeout(() => this.stopFadingDeck(0), fadeOut * 1000 + 20) };
+
+    ({ el: this.audioEl, fade: this.fadeGainNode, volume: this.volumeGainNode } = this.spareDeck);
+    this.spareDeck = null;
+    this.applyGain();
+    return length;
+  }
+
+  // Stops the song fading out, at once or after a short ramp when it can still be heard; its deck is spare again
+  private stopFadingDeck(rampSeconds: number) {
+    const fading = this.fadingDeck;
+    if (!fading) return;
+    this.fadingDeck = null;
+    clearTimeout(fading.timer);
+    const { deck } = fading;
+    if (rampSeconds > 0 && deck.fade && this.audioCtx) {
+      const now = this.audioCtx.currentTime;
+      deck.fade.gain.cancelScheduledValues(now);
+      deck.fade.gain.setValueAtTime(deck.fade.gain.value, now);
+      deck.fade.gain.linearRampToValueAtTime(0.0001, now + rampSeconds);
+      // A crossing begun before this runs has made the deck the playing one again
+      setTimeout(() => {
+        if (deck.el !== this.audioEl) deck.el.pause();
+      }, rampSeconds * 1000 + 5);
+    } else {
+      deck.el.pause();
+    }
+    this.spareDeck = deck;
+  }
+
   public setSource(streamUrl: string) {
     this.init();
     this.audioEl.src = streamUrl;
@@ -213,6 +319,9 @@ class AudioEngine {
   ) {
     const requestId = ++this.currentPlayRequestId;
     this.init();
+    // Started from the crossfade callback, the song crosses in; any other start cuts off a song still fading out
+    const fadeIn = this.isHandingOver ? this.beginCrossfade() : 0;
+    if (!fadeIn) this.stopFadingDeck(0.015);
     await this.resumeContext();
     if (this.currentPlayRequestId !== requestId) return;
 
@@ -351,13 +460,18 @@ class AudioEngine {
         : startTime;
       this.currentSegmentEnd = endTime;
       this.onSegmentEndCallback = onEnd;
+      this.isCrossfadeAsked = false;
 
-      // Ramp gain up to 1.0 in 15ms after playback successfully starts
+      // Ramp gain up to 1.0 in 15ms after playback successfully starts, or over the crossfade
       if (this.fadeGainNode && this.audioCtx) {
         const playNow = this.audioCtx.currentTime;
         this.cancelFadeGain(playNow);
-        this.fadeGainNode.gain.setValueAtTime(0.0001, playNow);
-        this.fadeGainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
+        if (fadeIn > 0) {
+          this.fadeGainNode.gain.setValueCurveAtTime(equalPowerFade("in"), playNow, fadeIn);
+        } else {
+          this.fadeGainNode.gain.setValueAtTime(0.0001, playNow);
+          this.fadeGainNode.gain.linearRampToValueAtTime(1.0, playNow + 0.015);
+        }
       }
     } catch (err) {
       if (this.currentPlayRequestId === requestId) {
@@ -369,6 +483,7 @@ class AudioEngine {
   public pause() {
     this.currentPlayRequestId++;
     this.stopRafLoop();
+    this.stopFadingDeck(0.012);
     const currentPauseId = ++this.pauseRequestId;
     if (this.pauseTimer) {
       clearTimeout(this.pauseTimer);
@@ -466,6 +581,8 @@ class AudioEngine {
   }
 
   private applyGain() {
+    // The next song's volume, set before it crosses in, is for its deck: the song fading out keeps its own
+    if (this.isHandingOver) return;
     const gainVal = outputGain(this.currentVolume, this.masterVolume) * this.soundCheckGain;
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
@@ -484,6 +601,9 @@ class AudioEngine {
   public seek(seconds: number) {
     if (!Number.isFinite(seconds) || seconds < 0) return;
     this.isSeekingSettled = false;
+    this.stopFadingDeck(0.012);
+    // Seeking back before the crossfade asks for the next song again when it gets there
+    this.isCrossfadeAsked = false;
 
     // Disarm previous seek listener and timeout
     if (this.activeSeekCleanup) {
@@ -594,6 +714,7 @@ class AudioEngine {
       if (this.activeSeekCleanup) {
         this.activeSeekCleanup();
       }
+      this.stopFadingDeck(0);
       this.audioEl.pause();
       this.stopTicker();
       this.stopRafLoop();
@@ -653,6 +774,19 @@ class AudioEngine {
     }
 
     if (this.currentSegmentEnd !== null) {
+      const crossfade = this.crossfadeLength();
+      if (crossfade > 0 && this.onCrossfadeCallback && !this.isCrossfadeAsked && curTime >= this.currentSegmentEnd - crossfade) {
+        this.isCrossfadeAsked = true;
+        this.isHandingOver = true;
+        try {
+          this.onCrossfadeCallback();
+        } finally {
+          this.isHandingOver = false;
+        }
+        // The next song crossed in: this deck is fading out on its own
+        if (this.fadingDeck) return;
+      }
+
       // Step 1: Pre-fade 60ms before boundary to eliminate DC-offset clicks without bleeding
       // (60ms window ensures a 30ms Web Worker tick NEVER skips the fade)
       const leadTime = 0.060;
@@ -824,16 +958,6 @@ class AudioEngine {
     } catch {
       // Worker not supported, will fallback to interval when active
     }
-  };
-
-  /**
-   * Monitor currentTime using requestAnimationFrame, supplemented by timeupdate and a controllable Web Worker ticker
-   * to ensure background/minimized windows never miss segment boundaries due to Chromium 1000ms timer throttling.
-   */
-  private startBoundaryMonitor = () => {
-    // Native timeupdate listener
-    this.audioEl.addEventListener("timeupdate", this.checkBoundary);
-    this.initTickerWorker();
   };
 }
 
