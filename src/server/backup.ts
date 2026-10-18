@@ -9,6 +9,7 @@ import { join, resolve, dirname, extname } from "node:path";
 import { initDatabase, closeDatabase, healTrackFilePaths, getCrossPlatformBasename } from "./db";
 import { abortIngestProcesses, pauseIngestOperations, SUPPORTED_AUDIO_EXTENSIONS } from "./ingest";
 import { abortWaveformProcesses } from "./waveform";
+import { pauseMeasuringLoudness } from "./loudness";
 import { serverEvents } from "./events";
 import { pauseLibraryMutations, drainLibraryMutations } from "./libraryRequests";
 import { logEvent } from "./logger";
@@ -214,6 +215,7 @@ export async function importLibraryArchive(
   isRestoring = true;
   const resumeIngest = pauseIngestOperations();
   const resumeMutations = pauseLibraryMutations();
+  const resumeLoudness = pauseMeasuringLoudness();
 
   const targetDbPath = resolve(paths.dbPath || "./data/music.db");
   const targetAudioCacheDir = resolve(paths.audioCacheDir || "./data/cache/audio");
@@ -434,6 +436,7 @@ export async function importLibraryArchive(
     isRestoring = false;
     resumeIngest();
     resumeMutations();
+    resumeLoudness();
     if (!keepRecoveryFiles) {
       for (const stageDir of stageDirs.values()) {
         try { rmSync(stageDir, { recursive: true, force: true }); } catch (error) {
