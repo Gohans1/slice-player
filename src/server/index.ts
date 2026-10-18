@@ -22,6 +22,7 @@ import { createCachedJsonResponse } from "./etag";
 import { THUMBNAIL_VARIANTS_DIR, THUMBNAIL_WIDTHS, isThumbnailSize, removeThumbnailVariants, resizedThumbnail } from "./thumbnails";
 import { isServerRunning, openAppWindow } from "./appWindow";
 import { getHomeSummary, parsePlayRecord, recordPlay } from "./plays";
+import { measureMissingLoudness } from "./loudness";
 import type { Segment, Track, Playlist, PlaylistItem } from "./types";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -39,6 +40,11 @@ if (process.env.NODE_ENV === "production" && await isServerRunning(APP_URL)) {
 // Initialize SQLite database
 initDatabase("./data/music.db");
 await recoverIncompleteIngests();
+
+// Sound Check measures the songs not measured yet in the background, and each one as it becomes ready
+void measureMissingLoudness();
+serverEvents.on("track_created", () => void measureMissingLoudness());
+serverEvents.on("track_updated", () => void measureMissingLoudness());
 
 logEvent("info", "system", `Máy chủ Slice Player đang chạy tại ${APP_URL}`);
 

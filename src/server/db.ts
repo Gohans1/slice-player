@@ -168,6 +168,16 @@ function runMigrations(db: Database): void {
         db.run("PRAGMA user_version = 10;");
       })();
     }
+
+    if (userVersion < 11) {
+      db.transaction(() => {
+        // v11: Sound Check. A song's integrated loudness (LUFS) and true peak (dBTP), measured once; NULL until then
+        const cols = db.query("PRAGMA table_info(tracks);").all() as { name: string }[];
+        if (!cols.some((c) => c.name === "loudness")) db.run("ALTER TABLE tracks ADD COLUMN loudness REAL;");
+        if (!cols.some((c) => c.name === "true_peak")) db.run("ALTER TABLE tracks ADD COLUMN true_peak REAL;");
+        db.run("PRAGMA user_version = 11;");
+      })();
+    }
   } catch (err) {
     console.error("[db] Error executing database migrations:", err);
     throw err;
@@ -394,6 +404,8 @@ export function updateTrack(id: string, updates: Partial<Track>): Track | null {
     return true;
   });
   if (keysToUpdate.length === 0) return getTrack(id);
+  // A new file is a new recording to measure for Sound Check
+  if (keysToUpdate.includes("file_path")) keysToUpdate.push("loudness", "true_peak");
 
   const setClauses = keysToUpdate.map((k) => `${k} = $${k}`).join(", ");
   const params: Record<string, any> = { $id: id };
@@ -416,6 +428,23 @@ export function updateTrack(id: string, updates: Partial<Track>): Track | null {
   return query.get(params) as Track | null;
 }
 
+// Ready songs Sound Check hasn't measured yet, the newest first: a song just added comes before the backlog
+export function listTracksToMeasure(): { id: string; file_path: string }[] {
+  return getDb().query<{ id: string; file_path: string }, []>(`
+    SELECT id, file_path FROM tracks
+    WHERE status = 'ready' AND file_path IS NOT NULL AND loudness IS NULL
+    ORDER BY created_at DESC
+  `).all();
+}
+
+export function setTrackLoudness(id: string, loudness: number, truePeak: number): void {
+  getDb().query("UPDATE tracks SET loudness = $loudness, true_peak = $true_peak WHERE id = $id").run({
+    $id: id,
+    $loudness: loudness,
+    $true_peak: truePeak,
+  });
+}
+
 export function getTrack(id: string): Track | null {
   const db = getDb();
   return db.query("SELECT * FROM tracks WHERE id = $id").get({ $id: id }) as Track | null;
@@ -426,7 +455,7 @@ export function listTracks(): (Track & { segment_count: number })[] {
   return db.query(`
     SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
            tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
-           tracks.status, tracks.error_message, tracks.volume, tracks.created_at,
+           tracks.status, tracks.error_message, tracks.volume, tracks.loudness, tracks.true_peak, tracks.created_at,
            (SELECT COUNT(*) FROM segments WHERE segments.track_id = tracks.id) AS segment_count
     FROM tracks
     ORDER BY tracks.created_at DESC

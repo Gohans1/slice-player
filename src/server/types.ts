@@ -14,6 +14,9 @@ export interface Track {
   status: TrackStatus;
   error_message?: string | null;
   volume?: number; // 0.0 - 1.0, default 0.5
+  // Sound Check: integrated loudness (LUFS) and true peak (dBTP), null until measured
+  loudness?: number | null;
+  true_peak?: number | null;
   created_at?: number;
   segment_count?: number;
   download_index?: number;

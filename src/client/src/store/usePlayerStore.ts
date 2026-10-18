@@ -10,6 +10,7 @@ import { notifyChangeFailed, sendChange } from "../lib/sendChange";
 import { createListenCounter, postPlay } from "../lib/plays";
 import { useHomeStore } from "./useHomeStore";
 import { loadSavedQueue, saveQueue } from "../lib/savedQueue";
+import { soundCheckGain } from "../lib/soundCheck";
 import type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaySource } from "@/server/types";
 export type { Track, Segment, Playlist, PlaylistItem, PlaylistItemWithDetails, PlaylistSortMode };
 
@@ -1031,6 +1032,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             prev.thumbnail_url === fresh.thumbnail_url &&
             prev.error_message === fresh.error_message &&
             prev.download_index === fresh.download_index &&
+            prev.loudness === fresh.loudness &&
+            prev.true_peak === fresh.true_peak &&
             prev.volume === effectiveFreshVolume;
           if (isSame) return prev;
           return isVolumePending ? { ...fresh, volume: prev.volume } : fresh;
@@ -1469,6 +1472,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     const trackGain = normalizeTrackVolume(track.volume, 0.5);
     audioEngine.setVolume(trackGain);
+    audioEngine.setSoundCheckGain(soundCheckGain(track));
 
     const { playbackMode, queuesByMode, initializedModes } = get();
     const isPlayingPlaylist = Boolean(activePlaylistPlayingId);
