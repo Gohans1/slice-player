@@ -430,11 +430,11 @@ export function updateTrack(id: string, updates: Partial<Track>): Track | null {
 
 // Ready songs Sound Check hasn't measured yet, the newest first: a song just added comes before the backlog
 export function listTracksToMeasure(): { id: string; file_path: string }[] {
-  return getDb().query(`
+  return getDb().query<{ id: string; file_path: string }, []>(`
     SELECT id, file_path FROM tracks
     WHERE status = 'ready' AND file_path IS NOT NULL AND loudness IS NULL
     ORDER BY created_at DESC
-  `).all() as { id: string; file_path: string }[];
+  `).all();
 }
 
 export function setTrackLoudness(id: string, loudness: number, truePeak: number): void {
