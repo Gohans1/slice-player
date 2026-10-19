@@ -29,31 +29,31 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/db/mod.rs`, `crates/engine/src/db/migrations.rs`, `crates/engine/src/db/maintenance.rs`, `crates/engine/src/models.rs`, `crates/engine/tests/db_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Task 3a (`task-3a`): Security Middleware, `/ws` Hub, Logs, Weak ETag & Tracks/Segments CRUD Routes**
+- [x] **Task 3a (`task-3a`): Security Middleware, `/ws` Hub, Logs, Weak ETag & Tracks/Segments CRUD Routes**
   - **Description**: Port security middleware (`Host`, `Origin`, `Sec-Fetch-Site`, payload caps, `libraryRequests` mutation tracking), `/ws` WebSocket hub (`websocketEvents.ts`), `/api/logs` (`logger.ts`), weak ETag helper (`etag.ts`), static `./dist` serving, and Tracks/Segments CRUD routes. Port tests from `etag.test.ts`, `logger.test.ts`, `websocketEvents.test.ts`, and `security.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Enforces `Host`, `Origin`, `Sec-Fetch-Site: cross-site`, `Transfer-Encoding: chunked` (`400`), `Content-Length` (`411`/`413`), and `503 Retry-After: 5` during restore (`pause_library_mutations` / `drain_library_mutations`).
-    - [ ] `/ws` sends `{"type":"connected"}`, replies `"pong"` to `"ping"`, and broadcasts all 14 `websocketEvents.ts` event types.
-    - [ ] Implements `GET /api/logs`, `DELETE /api/logs` (with `sanitize_internal_paths`), `GET /api/tracks` (weak ETag `304`, omits `peaks_json`, attaches `download_index`), `GET /api/tracks/:id` (with `peaks_json`), `PUT/PATCH /api/tracks/:id` (resets `loudness`/`true_peak` when `file_path` changes unless explicitly supplied in the same update payload), `DELETE /api/tracks/:id`, `POST /api/tracks/batch-delete`, `GET /api/tracks/:id/segments`, `POST /api/tracks/:id/segments`, `PUT /api/segments/:id`, `DELETE /api/segments/:id`, `POST /api/segments/batch-delete`, and `GET /api/segments` (weak ETag `304`).
+    - [x] Enforces `Host`, `Origin`, `Sec-Fetch-Site: cross-site`, `Transfer-Encoding: chunked` (`400`), `Content-Length` (`411`/`413`), and `503 Retry-After: 5` during restore (`pause_library_mutations` / `drain_library_mutations`).
+    - [x] `/ws` sends `{"type":"connected"}`, replies `"pong"` to `"ping"`, and broadcasts all 14 `websocketEvents.ts` event types.
+    - [x] Implements `GET /api/logs`, `DELETE /api/logs` (with `sanitize_internal_paths`), `GET /api/tracks` (weak ETag `304`, omits `peaks_json`, attaches `download_index`), `GET /api/tracks/:id` (with `peaks_json`), `PUT/PATCH /api/tracks/:id` (resets `loudness`/`true_peak` when `file_path` changes unless explicitly supplied in the same update payload), `DELETE /api/tracks/:id`, `POST /api/tracks/batch-delete`, `GET /api/tracks/:id/segments`, `POST /api/tracks/:id/segments`, `PUT /api/segments/:id`, `DELETE /api/segments/:id`, `POST /api/segments/batch-delete`, and `GET /api/segments` (weak ETag `304`).
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine http::`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test http_and_crud_test`
   - **Dependencies**: `task-2`
   - **Files likely touched**: `crates/engine/src/http/mod.rs`, `crates/engine/src/http/security.rs`, `crates/engine/src/http/ws_and_logs.rs`, `crates/engine/src/http/routes_tracks_segments.rs`, `crates/engine/src/db/tracks_segments.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Task 3b (`task-3b`): Playlists, Mix Playlists, 1-Level Sub-Playlists, Plays & Home Summary Routes**
+- [x] **Task 3b (`task-3b`): Playlists, Mix Playlists, 1-Level Sub-Playlists, Plays & Home Summary Routes**
   - **Description**: Port playlist CRUD, 1-level sub-playlists (`parent_id` auto-bubbling & cascade removal), live mix playlists (`is_mix`, `playlist_sources`), play history (`POST /api/plays`), and Home shelves (`GET /api/home`). Port tests from `mixPlaylist.test.ts`, `subPlaylist.test.ts`, and `plays.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Implements `GET /api/playlist-memberships`, `GET /api/playlists`, `POST /api/playlists`, `POST /api/playlists/mix`, `PUT /api/playlists/:id/sources`, `PUT /api/playlists/:id/reorder`, `GET /api/playlists/:id`, `PATCH /api/playlists/:id`, `DELETE /api/playlists/:id` (`keep_children` support), `POST /api/playlists/:id/items`, `POST /api/playlists/:id/items/batch`, `DELETE /api/playlists/:id/items/:itemId`, and `POST /api/playlists/:id/items/batch-delete`.
-    - [ ] Adding items to a sub-playlist auto-bubbles `(track_id, segment_id)` to `parent_id`; removing items from a parent playlist cascades deletion to all child sub-playlists.
-    - [ ] Implements `POST /api/plays` (`204 No Content`) and `GET /api/home` (`recently_played`, `heavy_rotation`, `top_playlists`).
+    - [x] Implements `GET /api/playlist-memberships`, `GET /api/playlists`, `POST /api/playlists`, `POST /api/playlists/mix`, `PUT /api/playlists/:id/sources`, `PUT /api/playlists/:id/reorder`, `GET /api/playlists/:id`, `PATCH /api/playlists/:id`, `DELETE /api/playlists/:id` (`keep_children` support), `POST /api/playlists/:id/items`, `POST /api/playlists/:id/items/batch`, `DELETE /api/playlists/:id/items/:itemId`, and `POST /api/playlists/:id/items/batch-delete`.
+    - [x] Adding items to a sub-playlist auto-bubbles `(track_id, segment_id)` to `parent_id`; removing items from a parent playlist cascades deletion to all child sub-playlists.
+    - [x] Implements `POST /api/plays` (`204 No Content`) and `GET /api/home` (`recently_played`, `heavy_rotation`, `top_playlists`).
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test playlists_and_plays_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test playlists_and_plays_test`
   - **Dependencies**: `task-3a`
   - **Files likely touched**: `crates/engine/src/db/playlists.rs`, `crates/engine/src/db/plays.rs`, `crates/engine/src/http/routes_playlists.rs`, `crates/engine/src/http/routes_plays.rs`, `crates/engine/tests/playlists_and_plays_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Checkpoint 1**: Verify Phase 1 SQLite, Security, WebSocket, Tracks, Segments, Playlists, Mix/Sub-Playlists & Plays Parity
+- [x] **Checkpoint 1**: Verify Phase 1 SQLite, Security, WebSocket, Tracks, Segments, Playlists, Mix/Sub-Playlists & Plays Parity
   - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine`
 
 ---

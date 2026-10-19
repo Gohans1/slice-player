@@ -110,3 +110,48 @@ pub fn open_app_window(url: &str) {
         let _ = url;
     }
 }
+
+pub struct WsLifecycleTracker {
+    active_clients: std::sync::atomic::AtomicUsize,
+    has_ever_connected: std::sync::atomic::AtomicBool,
+}
+
+impl Default for WsLifecycleTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WsLifecycleTracker {
+    pub fn new() -> Self {
+        Self {
+            active_clients: std::sync::atomic::AtomicUsize::new(0),
+            has_ever_connected: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    pub fn on_ws_open(&self) {
+        self.has_ever_connected
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.active_clients
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn on_ws_close(&self) {
+        let _ = self.active_clients.try_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+            |c| Some(c.saturating_sub(1)),
+        );
+    }
+
+    pub fn active_clients(&self) -> usize {
+        self.active_clients.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn has_ever_connected(&self) -> bool {
+        self.has_ever_connected
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+

@@ -1,6 +1,7 @@
 pub mod app_window;
 pub mod db;
 pub mod events;
+pub mod http;
 pub mod models;
 
 use std::path::PathBuf;

@@ -222,6 +222,24 @@ impl Db {
         })
     }
 
+    pub fn get_affected_playlist_ids_for_tracks(
+        &self,
+        track_ids: &[String],
+    ) -> Result<Vec<String>, String> {
+        self.with_conn(|conn| {
+            tracks_segments::get_affected_playlist_ids_for_tracks_in_conn(conn, track_ids)
+        })
+    }
+
+    pub fn get_affected_playlist_ids_for_segments(
+        &self,
+        segment_ids: &[String],
+    ) -> Result<Vec<String>, String> {
+        self.with_conn(|conn| {
+            tracks_segments::get_affected_playlist_ids_for_segments_in_conn(conn, segment_ids)
+        })
+    }
+
     pub fn create_playlist(
         &self,
         name: &str,

@@ -562,3 +562,94 @@ pub fn reconcile_track_segments_in_conn(
 
     Ok((pruned, clamped))
 }
+
+pub fn get_affected_playlist_ids_for_tracks_in_conn(
+    conn: &Connection,
+    track_ids: &[String],
+) -> Result<Vec<String>, String> {
+    if track_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut direct_set = std::collections::HashSet::new();
+    let mut direct_vec = Vec::new();
+    for chunk in track_ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT DISTINCT playlist_id FROM playlist_items WHERE track_id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let pid = r.map_err(|e| e.to_string())?;
+            if direct_set.insert(pid.clone()) {
+                direct_vec.push(pid);
+            }
+        }
+    }
+    let mut all_vec = direct_vec.clone();
+    for chunk in direct_vec.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT DISTINCT mix_playlist_id FROM playlist_sources WHERE source_playlist_id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let mid = r.map_err(|e| e.to_string())?;
+            if direct_set.insert(mid.clone()) {
+                all_vec.push(mid);
+            }
+        }
+    }
+    Ok(all_vec)
+}
+
+pub fn get_affected_playlist_ids_for_segments_in_conn(
+    conn: &Connection,
+    segment_ids: &[String],
+) -> Result<Vec<String>, String> {
+    if segment_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut direct_set = std::collections::HashSet::new();
+    let mut direct_vec = Vec::new();
+    for chunk in segment_ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT DISTINCT playlist_id FROM playlist_items WHERE segment_id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let pid = r.map_err(|e| e.to_string())?;
+            if direct_set.insert(pid.clone()) {
+                direct_vec.push(pid);
+            }
+        }
+    }
+    let mut all_vec = direct_vec.clone();
+    for chunk in direct_vec.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT DISTINCT mix_playlist_id FROM playlist_sources WHERE source_playlist_id IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let mid = r.map_err(|e| e.to_string())?;
+            if direct_set.insert(mid.clone()) {
+                all_vec.push(mid);
+            }
+        }
+    }
+    Ok(all_vec)
+}
+
