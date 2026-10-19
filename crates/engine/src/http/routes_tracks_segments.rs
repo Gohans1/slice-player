@@ -26,6 +26,8 @@ pub fn sanitize_control_chars(s: &str) -> String {
         .to_string()
 }
 
+const UNINDEXED_QUEUE_FALLBACK: usize = 999_999;
+
 fn is_valid_hex_color(s: &str) -> bool {
     if !s.starts_with('#') {
         return false;
@@ -37,11 +39,12 @@ fn is_valid_hex_color(s: &str) -> bool {
 pub async fn get_tracks_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
     match state.db.list_tracks() {
         Ok(mut tracks) => {
-            if let Some(ref idx_fn) = state.download_index_fn {
-                for t in &mut tracks {
-                    if let Some(idx) = idx_fn(&t.id) {
-                        t.download_index = Some(idx);
-                    }
+            // Queued/downloading tracks carry their place in the download queue (index.ts)
+            let queue = state.ingest.download_queue_order();
+            for t in &mut tracks {
+                if t.status == "downloading" || t.status == "queued" {
+                    let idx = queue.iter().position(|id| *id == t.id);
+                    t.download_index = Some(idx.unwrap_or(if t.status == "downloading" { 0 } else { UNINDEXED_QUEUE_FALLBACK }));
                 }
             }
             let body = serde_json::to_string(&tracks).unwrap_or_else(|_| "[]".to_string());
@@ -88,14 +91,7 @@ pub async fn get_track_by_id_handler(
             .into_response();
     };
     match state.db.get_track(&track_id) {
-        Ok(Some(mut track)) => {
-            if let Some(ref idx_fn) = state.download_index_fn {
-                if let Some(idx) = idx_fn(&track.id) {
-                    track.download_index = Some(idx);
-                }
-            }
-            Json(track).into_response()
-        }
+        Ok(Some(track)) => Json(track).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "Track not found" })),
@@ -257,6 +253,8 @@ pub async fn delete_track_handler(
             .into_response();
     };
 
+    // Settle any ingest of this track first, so it can't write the row back after the delete
+    state.ingest.cancel_download_if_active(&track_id).await;
     let Ok(Some(track)) = state.db.get_track(&track_id) else {
         return (
             StatusCode::NOT_FOUND,
@@ -274,11 +272,8 @@ pub async fn delete_track_handler(
         .list_segments_by_track(&track_id)
         .unwrap_or_default();
 
-    if let Some(ref cancel_dl) = state.cancel_download_fn {
-        cancel_dl(&track_id);
-    }
-    if let (Some(cancel_wf), Some(fp)) = (&state.cancel_waveform_fn, &track.file_path) {
-        cancel_wf(fp);
+    if let Some(fp) = &track.file_path {
+        crate::audio_analysis::cancel_waveform_for_file(fp);
     }
 
     let _ = state.db.delete_track(&track_id);
@@ -287,7 +282,7 @@ pub async fn delete_track_handler(
     for seg in segments {
         state
             .events
-            .emit("segment_deleted", json!({ "segmentId": seg.id }));
+            .emit("segment_deleted", json!({ "segmentId": seg.id, "trackId": track_id }));
     }
     state
         .events
@@ -356,11 +351,9 @@ pub async fn batch_delete_tracks_handler(
         .unwrap_or_default();
 
     for (tid, fp) in &tracks_to_delete {
-        if let Some(ref cancel_dl) = state.cancel_download_fn {
-            cancel_dl(tid);
-        }
-        if let (Some(cancel_wf), Some(fp_str)) = (&state.cancel_waveform_fn, fp.as_deref()) {
-            cancel_wf(fp_str);
+        state.ingest.cancel_download_if_active(tid).await;
+        if let Some(fp_str) = fp.as_deref() {
+            crate::audio_analysis::cancel_waveform_for_file(fp_str);
         }
     }
 

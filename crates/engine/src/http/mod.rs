@@ -1,4 +1,5 @@
 pub mod etag;
+pub mod routes_ingest;
 pub mod routes_playlists;
 pub mod routes_plays;
 pub mod routes_stream;
@@ -10,6 +11,7 @@ pub mod ws_and_logs;
 use crate::app_window::WsLifecycleTracker;
 use crate::db::{resolve_abs_path, Db};
 use crate::events::EventBus;
+use crate::ingest::Ingest;
 use crate::EngineConfig;
 use axum::body::{Body, Bytes};
 use axum::extract::State;
@@ -33,14 +35,13 @@ pub struct AppState {
     pub logger: ServerLogger,
     pub mutation_gate: LibraryMutationGate,
     pub ws_lifecycle: Option<Arc<WsLifecycleTracker>>,
-    pub cancel_download_fn: Option<Arc<dyn Fn(&str) + Send + Sync>>,
-    pub cancel_waveform_fn: Option<Arc<dyn Fn(&str) + Send + Sync>>,
-    pub download_index_fn: Option<Arc<dyn Fn(&str) -> Option<usize> + Send + Sync>>,
+    pub ingest: Ingest,
 }
 
 impl AppState {
     pub fn new(config: EngineConfig, db: Db, events: EventBus) -> Self {
         let logger = ServerLogger::new(events.clone());
+        let ingest = Ingest::new(db.clone(), events.clone(), logger.clone(), config.data_dir.clone());
         Self {
             config,
             db,
@@ -48,9 +49,7 @@ impl AppState {
             logger,
             mutation_gate: LibraryMutationGate::new(),
             ws_lifecycle: None,
-            cancel_download_fn: None,
-            cancel_waveform_fn: None,
-            download_index_fn: None,
+            ingest,
         }
     }
 }
@@ -210,6 +209,10 @@ pub fn build_router(state: AppState) -> Router {
             get(ws_and_logs::get_logs_handler).delete(ws_and_logs::delete_logs_handler),
         )
         .route("/api/tracks", get(routes_tracks_segments::get_tracks_handler))
+        .route("/api/tracks/ingest-youtube", post(routes_ingest::ingest_youtube_handler))
+        .route("/api/tracks/ingest-local", post(routes_ingest::ingest_local_handler))
+        .route("/api/tracks/retry-all", post(routes_ingest::retry_all_handler))
+        .route("/api/tracks/{id}/retry", post(routes_ingest::retry_track_handler))
         .route(
             "/api/tracks/batch-delete",
             post(routes_tracks_segments::batch_delete_tracks_handler),

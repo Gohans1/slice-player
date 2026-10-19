@@ -104,14 +104,14 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ## Phase 3: Ingest Engine (`yt-dlp` / Local / Uploads / Video) & Atomic `.tar.gz` Backup/Restore
 
-- [ ] **Task 7 (`task-7`): Port YouTube, Local File/Directory & Retry Ingest Pipeline**
+- [x] **Task 7 (`task-7`): Port YouTube, Local File/Directory & Retry Ingest Pipeline**
   - **Description**: Port `POST /api/tracks/ingest-youtube`, `POST /api/tracks/ingest-local`, `POST /api/tracks/retry-all`, and `POST /api/tracks/:id/retry` (`src/server/ingest.ts`). Port tests from `ingest.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Dynamic JS runtime probing (`bun`, `node`, `deno`, `quickjs`), 2-slot metadata semaphore (queue depth 20), 5-min cookie cooldown, fallback client retry, playlist batching (`MAX_PLAYLIST_ITEMS = 5000`), and sequential download worker (`concurrency = 1`) with single-pass peaks+loudness persistence and `reconcile_track_segments`.
-    - [ ] `POST /api/tracks/ingest-local` validates `validate_safe_local_audio_path` before filesystem access and supports single files and directories (up to 50 paths / 100 files per dir).
-    - [ ] `cancel_download_if_active` and `abort_ingest_processes` kill child process trees and await all in-flight `active_ingest_operations`.
+    - [x] JS runtimes `--js-runtimes bun --js-runtimes node` exactly as `getYouTubeAuthArgs` passes them (the plan's "dynamic probing" never existed in the legacy code), 2-slot metadata semaphore (queue depth 20), 5-min cookie cooldown, fallback client retry, playlist batching (`MAX_PLAYLIST_ITEMS = 5000`), and sequential download worker (`concurrency = 1`) with single-pass peaks+loudness persistence and `reconcile_track_segments`.
+    - [x] `POST /api/tracks/ingest-local` validates `validate_safe_local_audio_path` before filesystem access and supports single files and directories (up to 50 paths / 100 files per dir).
+    - [x] `cancel_download_if_active` and `abort_ingest_processes` kill child process trees and await all in-flight `active_ingest_operations`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test ingest_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test ingest_test`
   - **Dependencies**: `task-4`, `task-6`
   - **Files likely touched**: `crates/engine/src/ingest/mod.rs`, `crates/engine/src/ingest/ytdlp.rs`, `crates/engine/src/ingest/local.rs`, `crates/engine/src/http/routes_ingest.rs`, `crates/engine/tests/ingest_test.rs`
   - **Estimated scope**: `M`
