@@ -176,6 +176,7 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
     - [ ] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors.
     - [ ] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks`, `/api/segments`, `/api/playlists`, `/api/home`) + cache listing diff before/after Rust boot (orphan sweep). Any unexpected diff blocks cutover.
     - [ ] Rollback ready: consistent snapshot of the real `./data` stored outside `./data` before the first Rust run; `start:bun` / `dev:bun` scripts kept; rollback steps written in the PR.
+    - [ ] After acceptance: one-off job re-generates `peaks_json` for every track so old and new waveforms match (dev decision 2026-10-19).
     - [ ] *(Optional)* Baselines: analysis wall time + peak RSS (3-min and 30-min track, Bun+ffmpeg vs Rust) and `/api/tracks` latency while analyzing.
   - **Verification**:
     - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint && bun run test:e2e && bun run test:e2e:rust`
