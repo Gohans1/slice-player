@@ -266,7 +266,10 @@ fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir
 }
 
 pub async fn import_library_archive(state: &AppState, archive_path: &Path) -> Result<ImportResult, String> {
-    if state.mutation_gate.is_restoring() || state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
+    let Some(restoring_guard) = state.mutation_gate.try_begin_restore() else {
+        return Err(LIBRARY_BUSY_MESSAGE.into());
+    };
+    if state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(LIBRARY_BUSY_MESSAGE.into());
     }
     let size = std::fs::metadata(archive_path).map(|m| m.len()).unwrap_or(0);
@@ -278,7 +281,6 @@ pub async fn import_library_archive(state: &AppState, archive_path: &Path) -> Re
     }
 
     // Intake closes before the first await, so nothing new starts during staging either
-    state.mutation_gate.set_restoring(true);
     let ingest_pause = state.ingest.pause();
     state.mutation_gate.pause();
     let resume_loudness = state.loudness.pause();
@@ -287,7 +289,7 @@ pub async fn import_library_archive(state: &AppState, archive_path: &Path) -> Re
     let mut keep_recovery_files = false;
     let result = restore(state, archive_path, &mut stager, &mut keep_recovery_files).await;
 
-    state.mutation_gate.set_restoring(false);
+    drop(restoring_guard);
     drop(ingest_pause);
     state.mutation_gate.resume();
     resume_loudness();

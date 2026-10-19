@@ -513,15 +513,16 @@ impl Ingest {
                     let attempted = ingest.process_download(&track_id, &url).await;
                     ingest.inner.downloads.lock().unwrap().current = None;
                     let cancelled = operation.cancel.is_cancelled();
+                    drop(operation);
                     if attempted && !cancelled && !ingest.is_paused() {
-                        tokio::time::sleep(BETWEEN_DOWNLOADS).await;
+                        let deadline = tokio::time::Instant::now() + BETWEEN_DOWNLOADS;
+                        while !ingest.is_paused() && tokio::time::Instant::now() < deadline {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
                     }
                     if ingest.is_paused() {
-                        ingest.inner.downloads.lock().unwrap().worker_running = false;
-                        drop(operation);
-                        return;
+                        break;
                     }
-                    drop(operation);
                 }
                 ingest.inner.downloads.lock().unwrap().worker_running = false;
                 // A download queued between the last look and the flag reset starts its own worker

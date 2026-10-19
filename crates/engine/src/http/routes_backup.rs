@@ -78,6 +78,9 @@ where
 }
 
 pub async fn import_handler(State(state): State<AppState>, req: Request) -> Response {
+    if state.mutation_gate.is_restoring() || state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
+        return error(StatusCode::TOO_MANY_REQUESTS, LIBRARY_BUSY_MESSAGE);
+    }
     let is_multipart = req
         .headers()
         .get(header::CONTENT_TYPE)
@@ -115,6 +118,13 @@ pub async fn import_handler(State(state): State<AppState>, req: Request) -> Resp
     }
     match import_library_archive(&state, &archive).await {
         Ok(result) => Json(result).into_response(),
-        Err(message) => error(StatusCode::BAD_REQUEST, sanitize_internal_paths(&message)),
+        Err(message) => {
+            let status = if message == LIBRARY_BUSY_MESSAGE {
+                StatusCode::TOO_MANY_REQUESTS
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            error(status, sanitize_internal_paths(&message))
+        }
     }
 }

@@ -164,6 +164,11 @@ async fn wait_for_os_signal() {
 /// Recomputes the 1,000-point Rust 200Hz raw peak envelope for every `ready` track in the library
 /// while preserving existing EBU R128 loudness measurements (unless missing).
 pub async fn reanalyze_library_waveforms(config: &EngineConfig) -> Result<usize, String> {
+    if let (Ok(cwd), Ok(exe)) = (std::env::current_dir(), std::env::current_exe())
+        && let Some(target_dir) = maybe_chdir_to_exe_dir(&cwd, &exe)
+    {
+        let _ = std::env::set_current_dir(target_dir);
+    }
     let db = Db::open(&config.db_path, config.is_test)?;
     let audio_cache_dir = resolve_abs_path(&config.data_dir.join("cache").join("audio"));
     let tracks = db.list_tracks()?;

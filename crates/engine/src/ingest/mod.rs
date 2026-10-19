@@ -231,6 +231,9 @@ impl Ingest {
         // Killing a process is not completion: an ingest may still write after its next await
         let mut ops = self.inner.operations.subscribe();
         let _ = ops.wait_for(|o| o.total == 0).await;
+        while self.inner.downloads.lock().unwrap().worker_running {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
         let mut downloads = self.inner.downloads.lock().unwrap();
         downloads.queue.clear();
         downloads.queued.clear();

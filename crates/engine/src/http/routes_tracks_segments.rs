@@ -240,7 +240,7 @@ fn cleanup_deleted_track_files(state: &AppState, track_id: &str, file_path: Opti
     purge_track_cache_files(&audio_cache_dir, track_id);
 
     let thumbs_dir = state.config.data_dir.join("cache/thumbs");
-    for ext in [".jpg", ".webp", ".png"] {
+    for ext in [".jpg", ".jpeg", ".webp", ".png"] {
         let _ = fs::remove_file(thumbs_dir.join(format!("{track_id}{ext}")));
     }
     crate::thumbnails::remove_thumbnail_variants(

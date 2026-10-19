@@ -36,7 +36,7 @@ fn cover_art_version(path: &Path) -> Option<String> {
         meta.ctime() as i128 * 1_000_000_000 + meta.ctime_nsec() as i128
     };
     #[cfg(not(unix))]
-    let ctime = mtime as i128;
+    let ctime = meta.created().ok().map(nanos).unwrap_or(mtime) as i128;
     let digest = Md5::digest(format!("{}:{mtime}:{ctime}", meta.len()));
     Some(format!("{digest:x}")[..12].to_string())
 }

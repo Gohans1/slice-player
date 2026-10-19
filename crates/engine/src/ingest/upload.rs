@@ -2,7 +2,7 @@
 //! while its md5 is computed, renamed to `loc_<md5 12>.<ext>` (an `.mp4` keeps only its audio, as
 //! `.m4a`), then ingested like a local file.
 
-use super::video_extractor::extract_audio_from_video;
+use super::video_extractor::extract_audio_from_video_with;
 use super::{Ingest, IngestResult, OperationGuard, INGEST_PAUSED_MESSAGE};
 use crate::audio_source::SUPPORTED_AUDIO_EXTENSIONS;
 use bytes::Bytes;
@@ -97,6 +97,9 @@ impl Ingest {
     /// Moves a spooled upload to its content-addressed name and ingests it. An upload of a file the
     /// cache already holds reuses it; a failed ingest of a new file removes it.
     pub async fn ingest_spooled_upload(&self, spooled: SpooledUpload) -> IngestResult {
+        if self.is_paused() {
+            return IngestResult::fail(INGEST_PAUSED_MESSAGE);
+        }
         let audio_dir = self.audio_dir();
         let final_path = if spooled.ext == ".mp4" {
             audio_dir.join(format!("loc_{}.m4a", spooled.content_hash))
@@ -106,7 +109,12 @@ impl Ingest {
         let already_exists = final_path.exists();
         if !already_exists {
             let placed = if spooled.ext == ".mp4" {
-                extract_audio_from_video(&spooled.temp_path, &final_path).await
+                extract_audio_from_video_with(
+                    &spooled.temp_path,
+                    &final_path,
+                    &[&spooled._operation.cancel],
+                )
+                .await
             } else {
                 std::fs::rename(&spooled.temp_path, &final_path).map_err(|e| format!("Lỗi xử lý file upload: {e}"))
             };

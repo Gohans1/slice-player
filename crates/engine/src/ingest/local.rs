@@ -1,6 +1,6 @@
 //! Local files and folders (`ingestLocalFile` / `ingestLocalDirectory`)
 
-use super::video_extractor::extract_audio_from_video;
+use super::video_extractor::extract_audio_from_video_with;
 use super::{clean_input, file_name, round2, Ingest, IngestResult, DURATION_EPSILON_SECONDS, INGEST_PAUSED_MESSAGE, MAX_DURATION_SECONDS};
 use crate::audio_analysis::{analyze_audio_file_with, CancelFlag, WAVEFORM_POINTS};
 use crate::audio_source::{dotted_extension, validate_safe_local_audio_path, SUPPORTED_AUDIO_EXTENSIONS};
@@ -102,7 +102,7 @@ impl Ingest {
             std::fs::create_dir_all(&audio_dir).map_err(|e| e.to_string())?;
             let extracted = audio_dir.join(format!("{track_id}.m4a"));
             if !is_non_empty_file(&extracted) {
-                if let Err(message) = extract_audio_from_video(full_path, &extracted).await {
+                if let Err(message) = extract_audio_from_video_with(full_path, &extracted, &[&cancel]).await {
                     return Ok(IngestResult::fail(message));
                 }
                 *newly_extracted = Some(extracted.clone());

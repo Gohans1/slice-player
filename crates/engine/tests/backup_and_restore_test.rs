@@ -419,11 +419,22 @@ async fn blocks_concurrent_export_and_import_and_rejects_corrupted_archives() {
     let archive_path = sb.root.join("valid.tar.gz");
     std::fs::write(&archive_path, &archive_bytes).unwrap();
 
-    // Hold export stream open — import must fail with LIBRARY_BUSY_MESSAGE
+    // Hold export stream open even after producer thread completes — concurrent export and import must both fail
     let export_stream = export_library_archive(&sb.state, false).await.expect("start export");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(export_library_archive(&sb.state, false).await.is_err(), "second export must fail while first stream is open");
     let err = import_library_archive(&sb.state, &archive_path).await.unwrap_err();
     assert!(err.contains("đang diễn ra"));
     drop(export_stream);
+
+    // Hold restore lock — concurrent export and second import must both fail with LIBRARY_BUSY_MESSAGE
+    let restore_guard = sb.state.mutation_gate.try_begin_restore().expect("acquire restore lock");
+    assert!(sb.state.mutation_gate.try_begin_restore().is_none(), "second restore lock must fail");
+    let err_export = export_library_archive(&sb.state, false).await.err().unwrap();
+    assert!(err_export.contains("đang diễn ra"));
+    let err_import = import_library_archive(&sb.state, &archive_path).await.unwrap_err();
+    assert!(err_import.contains("đang diễn ra"));
+    drop(restore_guard);
 
     // Corrupted / non-SQLite music.db inside valid tar.gz preserves existing DB
     sb.state

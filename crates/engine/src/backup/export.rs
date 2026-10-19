@@ -188,10 +188,13 @@ pub type ArchiveStream = futures_util::stream::BoxStream<'static, Result<Bytes, 
 /// Starts streaming the library archive. Errs before any byte is sent (busy, missing audio, over
 /// the restore limits); a failure mid-stream aborts the download.
 pub async fn export_library_archive(state: &AppState, include_cookies: bool) -> Result<ArchiveStream, String> {
-    if state.mutation_gate.is_restoring() || state.exporting.swap(true, Ordering::SeqCst) {
+    if state.exporting.swap(true, Ordering::SeqCst) {
         return Err(LIBRARY_BUSY_MESSAGE.into());
     }
-    let guard = ExportingGuard(state.exporting.clone());
+    let guard = Arc::new(ExportingGuard(state.exporting.clone()));
+    if state.mutation_gate.is_restoring() {
+        return Err(LIBRARY_BUSY_MESSAGE.into());
+    }
     let paths = BackupPaths::of(state);
     let snapshot = tokio::task::spawn_blocking(move || read_library_snapshot(&paths).map(|s| (s, paths)))
         .await
@@ -246,7 +249,7 @@ pub async fn export_library_archive(state: &AppState, include_cookies: bool) -> 
         "Xuất thư viện thành công: {} bài, {} lát cắt, {} playlist",
         snapshot.track_count, snapshot.segment_count, snapshot.playlist_count
     );
-    let exporting = state.exporting.clone();
+    let worker_guard = guard.clone();
     tokio::task::spawn_blocking(move || {
         let error_tx = tx.clone();
         match write_archive(entries, ChunkSender { tx, written: 0 }) {
@@ -255,7 +258,7 @@ pub async fn export_library_archive(state: &AppState, include_cookies: bool) -> 
                 let _ = error_tx.blocking_send(Err(e));
             }
         }
-        exporting.store(false, Ordering::SeqCst);
+        drop(worker_guard);
         drop(error_tx);
     });
     Ok(Box::pin(futures_util::stream::unfold(

@@ -52,6 +52,13 @@ impl LibraryMutationGate {
         self.restoring.store(val, Ordering::SeqCst);
     }
 
+    pub fn try_begin_restore(&self) -> Option<RestoringGuard> {
+        if self.restoring.swap(true, Ordering::SeqCst) {
+            return None;
+        }
+        Some(RestoringGuard(self.restoring.clone()))
+    }
+
     pub fn is_restoring(&self) -> bool {
         self.restoring.load(Ordering::SeqCst)
     }
@@ -97,6 +104,14 @@ impl Drop for MutationGuard {
         if self.active_mutations.fetch_sub(1, Ordering::SeqCst) == 1 {
             self.notify.notify_waiters();
         }
+    }
+}
+
+pub struct RestoringGuard(Arc<AtomicBool>);
+
+impl Drop for RestoringGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 
