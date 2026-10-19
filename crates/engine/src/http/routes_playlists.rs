@@ -91,19 +91,19 @@ pub async fn create_playlist_handler(State(state): State<AppState>, body: Bytes)
     }
 
     let mut parent_id: Option<String> = None;
-    if let Some(p_val) = obj.get("parent_id") {
-        if !p_val.is_null() {
-            let Some(p_str) = p_val.as_str() else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "parent_id phải là chuỗi hoặc null" })),
-                )
-                    .into_response();
-            };
-            let trimmed = p_str.trim();
-            if !trimmed.is_empty() {
-                parent_id = Some(trimmed.to_string());
-            }
+    if let Some(p_val) = obj.get("parent_id")
+        && !p_val.is_null()
+    {
+        let Some(p_str) = p_val.as_str() else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "parent_id phải là chuỗi hoặc null" })),
+            )
+                .into_response();
+        };
+        let trimmed = p_str.trim();
+        if !trimmed.is_empty() {
+            parent_id = Some(trimmed.to_string());
         }
     }
 
@@ -588,33 +588,33 @@ pub async fn add_playlist_item_handler(
     };
 
     let mut clean_seg_id: Option<String> = None;
-    if let Some(seg_val) = val.get("segment_id") {
-        if !seg_val.is_null() {
-            let Some(seg_str) = seg_val.as_str() else {
+    if let Some(seg_val) = val.get("segment_id")
+        && !seg_val.is_null()
+    {
+        let Some(seg_str) = seg_val.as_str() else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "segment_id phải là chuỗi hoặc null" })),
+            )
+                .into_response();
+        };
+        let trimmed = seg_str.trim();
+        if !trimmed.is_empty() {
+            let Ok(Some(seg)) = state.db.get_segment(trimmed) else {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "segment_id phải là chuỗi hoặc null" })),
+                    Json(json!({ "error": "Lát cắt không tồn tại hoặc không thuộc bài hát này" })),
                 )
                     .into_response();
             };
-            let trimmed = seg_str.trim();
-            if !trimmed.is_empty() {
-                let Ok(Some(seg)) = state.db.get_segment(trimmed) else {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": "Lát cắt không tồn tại hoặc không thuộc bài hát này" })),
-                    )
-                        .into_response();
-                };
-                if seg.track_id != clean_track_id {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({ "error": "Lát cắt không tồn tại hoặc không thuộc bài hát này" })),
-                    )
-                        .into_response();
-                }
-                clean_seg_id = Some(trimmed.to_string());
+            if seg.track_id != clean_track_id {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Lát cắt không tồn tại hoặc không thuộc bài hát này" })),
+                )
+                    .into_response();
             }
+            clean_seg_id = Some(trimmed.to_string());
         }
     }
 
@@ -797,12 +797,11 @@ pub async fn delete_playlist_handler(
     };
 
     let mut keep_children = query.keep_children.as_deref() == Some("true");
-    if !body.is_empty() {
-        if let Ok(val) = serde_json::from_slice::<Value>(&body) {
-            if let Some(kc) = val.get("keep_children").and_then(|v| v.as_bool()) {
-                keep_children = kc;
-            }
-        }
+    if !body.is_empty()
+        && let Ok(val) = serde_json::from_slice::<Value>(&body)
+        && let Some(kc) = val.get("keep_children").and_then(|v| v.as_bool())
+    {
+        keep_children = kc;
     }
 
     let child_ids = state.db.get_child_playlist_ids(&pl_id).unwrap_or_default();

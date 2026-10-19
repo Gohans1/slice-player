@@ -18,16 +18,30 @@ pub fn get_cross_platform_basename(file_path: &str) -> String {
 }
 
 pub fn resolve_abs_path(path: &Path) -> PathBuf {
-    if let Ok(canon) = path.canonicalize() {
-        return canon;
-    }
-    if path.is_absolute() {
+    let abs = if path.is_absolute() {
         path.to_path_buf()
     } else {
         std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
+    };
+    let mut out = PathBuf::new();
+    for comp in abs.components() {
+        match comp {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
     }
+    let s = out.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix(r"\\?\")
+        && !stripped.starts_with("UNC\\")
+    {
+        return PathBuf::from(stripped);
+    }
+    out
 }
 
 pub fn heal_track_file_paths_in_conn(
@@ -88,10 +102,10 @@ pub fn purge_track_cache_files(audio_dir: &Path, track_id: &str) {
     let prefix = format!("{trimmed}.");
     if let Ok(entries) = fs::read_dir(audio_dir) {
         for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name == trimmed || name.starts_with(&prefix) {
-                    let _ = fs::remove_file(entry.path());
-                }
+            if let Some(name) = entry.file_name().to_str()
+                && (name == trimmed || name.starts_with(&prefix))
+            {
+                let _ = fs::remove_file(entry.path());
             }
         }
     }
@@ -136,11 +150,10 @@ pub fn sweep_startup_orphan_cache(
                 let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                     continue;
                 };
-                if file_name.ends_with(".part") || file_name.ends_with(".ytdl") {
-                    let _ = fs::remove_file(&path);
-                } else if !valid_paths.contains(&norm(&path))
-                    && !valid_basenames.contains(&file_name.to_lowercase())
-                {
+                let is_temp = file_name.ends_with(".part") || file_name.ends_with(".ytdl");
+                let is_orphan = !valid_paths.contains(&norm(&path))
+                    && !valid_basenames.contains(&file_name.to_lowercase());
+                if is_temp || is_orphan {
                     let _ = fs::remove_file(&path);
                 }
             }

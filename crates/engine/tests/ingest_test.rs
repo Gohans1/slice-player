@@ -602,4 +602,64 @@ mod youtube {
         let leftovers: Vec<_> = std::fs::read_dir(lib.dir.path().join("data/cache/audio")).unwrap().flatten().collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }
+
+    #[tokio::test]
+    async fn queued_downloads_resume_on_unpause_and_cancelled_metadata_waiter_cleans_up() {
+        let tools = TempDir::new().unwrap();
+        let fixture = tone(&tools.path().join("fixture.wav"), 1);
+        let script = fake_ytdlp(
+            tools.path(),
+            &video("vid00000009", "PausedThenResumed", 1.0),
+            &format!("sleep 0.15\ncp {:?} \"$OUT.wav\"", fixture),
+        );
+        let lib = library_with(|i| i.with_ytdlp(&script));
+
+        // 1. Two tracks queued; pause while first is downloading so second stays in queue when worker exits, then resumes on drop
+        errored_track(&lib.db, "yt_vid00000008", "youtube", "https://www.youtube.com/watch?v=vid00000008");
+        errored_track(&lib.db, "yt_vid00000009", "youtube", "https://www.youtube.com/watch?v=vid00000009");
+        {
+            let pause = lib.ingest.pause();
+            assert_eq!(lib.ingest.requeue_error_tracks(None), 0);
+            drop(pause);
+        }
+        assert_eq!(lib.ingest.requeue_error_tracks(None), 2);
+        wait_for_status(&lib.db, "yt_vid00000008", "downloading").await;
+        let pause = lib.ingest.pause();
+        wait_for_status(&lib.db, "yt_vid00000008", "ready").await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(lib.db.get_track("yt_vid00000009").unwrap().unwrap().status, "queued");
+        drop(pause);
+        wait_for_status(&lib.db, "yt_vid00000009", "ready").await;
+
+        // 2. Dropping a third concurrent metadata request while waiting on the 2-slot semaphore cleans up metadata_waiting
+        let slow_tools = TempDir::new().unwrap();
+        let slow_meta = slow_tools.path().join("slow-yt-dlp");
+        std::fs::write(
+            &slow_meta,
+            "#!/bin/sh\nsleep 0.25\necho 'ERROR: simulated metadata failure' >&2\nexit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&slow_meta, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let lib2 = library_with(|i| i.with_ytdlp(&slow_meta));
+        let i1 = lib2.ingest.clone();
+        let i2 = lib2.ingest.clone();
+        let i3 = lib2.ingest.clone();
+        let t1 = tokio::spawn(async move { i1.ingest_youtube_url("https://www.youtube.com/watch?v=vid00000011").await });
+        let t2 = tokio::spawn(async move { i2.ingest_youtube_url("https://www.youtube.com/watch?v=vid00000012").await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let t3 = tokio::spawn(async move { i3.ingest_youtube_url("https://www.youtube.com/watch?v=vid00000013").await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        t3.abort();
+        let _ = t1.await;
+        let _ = t2.await;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while lib2.ingest.is_busy() && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!lib2.ingest.is_busy(), "aborted metadata waiter must not leave ingest.is_busy() stuck true");
+    }
 }

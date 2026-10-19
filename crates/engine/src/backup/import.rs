@@ -302,9 +302,9 @@ async fn restore(state: &AppState, archive_path: &Path, stager: &mut Stager, kee
     let archive = archive_path.to_path_buf();
 
     // Phase 1: list, validate, extract and check everything without touching the live library
-    let staged = {
+    let (owned, paths, manifest) = {
         let mut owned = std::mem::take(stager);
-        let staged = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let mut run = || -> Result<Option<Value>, String> {
                 let entries = list_entries(&archive).map_err(|e| format!("Không thể giải nén file backup: {e}"))?;
                 validate_layout(&entries)?;
@@ -321,10 +321,8 @@ async fn restore(state: &AppState, archive_path: &Path, stager: &mut Stager, kee
             (owned, paths, result)
         })
         .await
-        .map_err(|e| e.to_string())?;
-        staged
+        .map_err(|e| e.to_string())?
     };
-    let (owned, paths, manifest) = staged;
     *stager = owned;
     let manifest = manifest?;
 

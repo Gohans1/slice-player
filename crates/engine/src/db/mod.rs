@@ -41,10 +41,11 @@ impl Db {
             ));
         }
 
-        if let Some(parent) = db_path.parent() {
-            if !parent.as_os_str().is_empty() && !parent.exists() {
-                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
+        if let Some(parent) = db_path.parent()
+            && !parent.as_os_str().is_empty()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
 
         let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;

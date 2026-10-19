@@ -195,6 +195,7 @@ fn write_mix_sources_in_conn(
     Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 pub fn get_playlist_in_conn(conn: &Connection, id: &str) -> Result<Option<Playlist>, String> {
     let row: Option<(String, String, i64, i64, i64, i64, Option<String>, Option<String>, i64)> = conn
         .query_row(
@@ -323,6 +324,7 @@ pub fn set_mix_sources_in_conn(
     get_playlist_in_conn(conn, mix_id)
 }
 
+#[allow(clippy::type_complexity)]
 pub fn list_playlists_in_conn(conn: &Connection) -> Result<Vec<Playlist>, String> {
     let mut stmt = conn
         .prepare(
@@ -546,10 +548,10 @@ pub fn get_playlist_items_in_conn(
         .optional()
         .map_err(|e| e.to_string())?;
 
-    if let Some((_, is_mix)) = pl_meta {
-        if is_mix != 0 {
-            return get_mix_items_in_conn(conn, playlist_id);
-        }
+    if let Some((_, is_mix)) = pl_meta
+        && is_mix != 0
+    {
+        return get_mix_items_in_conn(conn, playlist_id);
     }
 
     let is_custom = pl_meta.map(|(c, _)| c != 0).unwrap_or(false);

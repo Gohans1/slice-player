@@ -144,11 +144,11 @@ pub fn update_track_in_conn(
         current.error_message = error_message.clone();
         any_changed = true;
     }
-    if let Some(vol) = updates.volume {
-        if vol.is_finite() {
-            current.volume = vol.clamp(0.0, 1.0);
-            any_changed = true;
-        }
+    if let Some(vol) = updates.volume
+        && vol.is_finite()
+    {
+        current.volume = vol.clamp(0.0, 1.0);
+        any_changed = true;
     }
 
     // If file_path is updated, reset loudness and true_peak to None unless explicitly supplied

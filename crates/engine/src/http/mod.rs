@@ -82,6 +82,7 @@ impl AppState {
     }
 }
 
+#[allow(clippy::result_unit_err)]
 pub fn decode_uri_param(raw: &str) -> Result<String, ()> {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -103,6 +104,7 @@ pub fn decode_uri_param(raw: &str) -> Result<String, ()> {
     String::from_utf8(out).map_err(|_| ())
 }
 
+#[allow(clippy::result_large_err)]
 pub fn parse_json_bytes<T: DeserializeOwned>(body: &Bytes, max_bytes: u64) -> Result<T, Response> {
     if body.len() as u64 > max_bytes {
         return Err((
@@ -168,31 +170,37 @@ async fn fallback_handler(State(state): State<AppState>, req: Request<Body>) -> 
 
     let dist_dir = resolve_abs_path(&state.config.dist_dir);
     let candidate = resolve_abs_path(&dist_dir.join(&rel_path));
-    let is_inside = candidate == dist_dir || candidate.starts_with(&dist_dir);
+    let mut is_inside = candidate == dist_dir || candidate.starts_with(&dist_dir);
+    if is_inside
+        && let (Ok(canon_dist), Ok(canon_cand)) = (dist_dir.canonicalize(), candidate.canonicalize())
+    {
+        is_inside = canon_cand == canon_dist || canon_cand.starts_with(&canon_dist);
+    }
 
-    if is_inside && candidate.is_file() {
-        if let Ok(bytes) = std::fs::read(&candidate) {
-            let ext = candidate
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| format!(".{}", e.to_ascii_lowercase()))
-                .unwrap_or_default();
-            let ct = static_mime_type(&ext);
-            let is_asset = candidate
-                .components()
-                .any(|c| c.as_os_str().eq_ignore_ascii_case("assets"));
-            let cache_control = if is_asset {
-                "public, max-age=31536000, immutable"
-            } else {
-                "no-cache"
-            };
-            let mut resp = (StatusCode::OK, bytes).into_response();
-            resp.headers_mut()
-                .insert("Content-Type", HeaderValue::from_static(ct));
-            resp.headers_mut()
-                .insert("Cache-Control", HeaderValue::from_static(cache_control));
-            return resp;
-        }
+    if is_inside
+        && candidate.is_file()
+        && let Ok(bytes) = std::fs::read(&candidate)
+    {
+        let ext = candidate
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{}", e.to_ascii_lowercase()))
+            .unwrap_or_default();
+        let ct = static_mime_type(&ext);
+        let is_asset = candidate
+            .components()
+            .any(|c| c.as_os_str().eq_ignore_ascii_case("assets"));
+        let cache_control = if is_asset {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        };
+        let mut resp = (StatusCode::OK, bytes).into_response();
+        resp.headers_mut()
+            .insert("Content-Type", HeaderValue::from_static(ct));
+        resp.headers_mut()
+            .insert("Cache-Control", HeaderValue::from_static(cache_control));
+        return resp;
     }
 
     let has_ext = Path::new(pathname).extension().is_some();
@@ -205,17 +213,18 @@ async fn fallback_handler(State(state): State<AppState>, req: Request<Body>) -> 
     let is_nav = !has_ext || accepts_html;
 
     let fallback_index = dist_dir.join("index.html");
-    if is_nav && fallback_index.is_file() {
-        if let Ok(bytes) = std::fs::read(&fallback_index) {
-            let mut resp = (StatusCode::OK, bytes).into_response();
-            resp.headers_mut().insert(
-                "Content-Type",
-                HeaderValue::from_static("text/html; charset=utf-8"),
-            );
-            resp.headers_mut()
-                .insert("Cache-Control", HeaderValue::from_static("no-cache"));
-            return resp;
-        }
+    if is_nav
+        && fallback_index.is_file()
+        && let Ok(bytes) = std::fs::read(&fallback_index)
+    {
+        let mut resp = (StatusCode::OK, bytes).into_response();
+        resp.headers_mut().insert(
+            "Content-Type",
+            HeaderValue::from_static("text/html; charset=utf-8"),
+        );
+        resp.headers_mut()
+            .insert("Cache-Control", HeaderValue::from_static("no-cache"));
+        return resp;
     }
 
     if !is_nav {

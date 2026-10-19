@@ -118,11 +118,13 @@ impl Drop for OperationGuard {
 }
 
 /// Keeps intake closed until dropped (`pauseIngestOperations`)
-pub struct IngestPause(Arc<Inner>);
+pub struct IngestPause(Ingest);
 
 impl Drop for IngestPause {
     fn drop(&mut self) {
-        self.0.pause_depth.fetch_sub(1, Ordering::SeqCst);
+        if self.0.inner.pause_depth.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.0.start_download_worker();
+        }
     }
 }
 
@@ -204,7 +206,7 @@ impl Ingest {
     /// Closes intake (new ingests answer [`INGEST_PAUSED_MESSAGE`]) until the guard is dropped
     pub fn pause(&self) -> IngestPause {
         self.inner.pause_depth.fetch_add(1, Ordering::SeqCst);
-        IngestPause(self.inner.clone())
+        IngestPause(self.clone())
     }
 
     /// Stops everything in flight and waits until no ingest can still write (`abortIngestProcesses`)
@@ -295,7 +297,7 @@ impl Ingest {
 
     /// Queues the errored tracks again (all of them, or only `track_ids`); returns how many
     pub fn requeue_error_tracks(&self, track_ids: Option<&[String]>) -> usize {
-        if track_ids.is_some_and(|ids| ids.is_empty()) {
+        if self.is_paused() || track_ids.is_some_and(|ids| ids.is_empty()) {
             return 0;
         }
         self.reset_cookies_status();

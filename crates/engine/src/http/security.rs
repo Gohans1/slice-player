@@ -115,13 +115,13 @@ pub fn is_mutating_library_request(method: &Method, pathname: &str) -> bool {
 
 pub fn parse_host_header(raw_host: &str) -> (String, String) {
     let h = raw_host.trim().to_ascii_lowercase();
-    if h.starts_with('[') {
-        if let Some(bracket_end) = h.find(']') {
-            let host = h[..=bracket_end].to_string();
-            let rest = &h[bracket_end + 1..];
-            let port = rest.strip_prefix(':').unwrap_or("").to_string();
-            return (host, port);
-        }
+    if h.starts_with('[')
+        && let Some(bracket_end) = h.find(']')
+    {
+        let host = h[..=bracket_end].to_string();
+        let rest = &h[bracket_end + 1..];
+        let port = rest.strip_prefix(':').unwrap_or("").to_string();
+        return (host, port);
     }
     if h == "::1" {
         return ("::1".to_string(), String::new());
@@ -178,10 +178,10 @@ fn is_batch_route(pathname: &str) -> bool {
     if pathname == "/api/tracks/batch-delete" || pathname == "/api/segments/batch-delete" {
         return true;
     }
-    if let Some(rest) = pathname.strip_prefix("/api/playlists/") {
-        if let Some((_, suffix)) = rest.split_once('/') {
-            return matches!(suffix, "items/batch" | "items/batch-delete" | "reorder");
-        }
+    if let Some(rest) = pathname.strip_prefix("/api/playlists/")
+        && let Some((_, suffix)) = rest.split_once('/')
+    {
+        return matches!(suffix, "items/batch" | "items/batch-delete" | "reorder");
     }
     false
 }
@@ -190,10 +190,10 @@ fn is_optional_body_route(pathname: &str) -> bool {
     if pathname == "/api/tracks/retry-all" {
         return true;
     }
-    if let Some(rest) = pathname.strip_prefix("/api/tracks/") {
-        if let Some((id, suffix)) = rest.split_once('/') {
-            return !id.is_empty() && !id.contains('/') && suffix == "retry";
-        }
+    if let Some(rest) = pathname.strip_prefix("/api/tracks/")
+        && let Some((id, suffix)) = rest.split_once('/')
+    {
+        return !id.is_empty() && !id.contains('/') && suffix == "retry";
     }
     false
 }
@@ -222,11 +222,11 @@ pub fn apply_cors_and_security_headers(
     );
     headers.insert(
         "Access-Control-Allow-Headers",
-        HeaderValue::from_static("Content-Type, Range"),
+        HeaderValue::from_static("Content-Type, Authorization, If-None-Match, Range"),
     );
     headers.insert(
         "Access-Control-Expose-Headers",
-        HeaderValue::from_static("Content-Range, Accept-Ranges, Content-Length"),
+        HeaderValue::from_static("Content-Range, Content-Length, Accept-Ranges, ETag"),
     );
     headers.insert("Vary", HeaderValue::from_static("Origin"));
     headers.insert("X-Content-Type-Options", HeaderValue::from_static("nosniff"));
@@ -294,10 +294,10 @@ pub async fn security_middleware(
         .get("origin")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    if let Some(ref orig) = origin_hdr {
-        if !is_allowed_origin(orig, port, is_prod) {
-            return (StatusCode::FORBIDDEN, "Forbidden: Invalid Origin").into_response();
-        }
+    if let Some(ref orig) = origin_hdr
+        && !is_allowed_origin(orig, port, is_prod)
+    {
+        return (StatusCode::FORBIDDEN, "Forbidden: Invalid Origin").into_response();
     }
 
     let allowed_origin = origin_hdr.unwrap_or_else(|| format!("http://127.0.0.1:{port}"));
@@ -376,16 +376,17 @@ pub async fn security_middleware(
             .and_then(|v| v.to_str().ok());
 
         let is_optional_body = is_optional_body_route(&pathname);
-        if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
-            if raw_len.is_none() && !is_optional_body {
-                let mut resp = (
-                    StatusCode::LENGTH_REQUIRED,
-                    Json(json!({ "error": "Length Required: Content-Length header is mandatory" })),
-                )
-                    .into_response();
-                apply_cors_and_security_headers(resp.headers_mut(), &allowed_origin, port, is_prod);
-                return resp;
-            }
+        if matches!(method, Method::POST | Method::PUT | Method::PATCH)
+            && raw_len.is_none()
+            && !is_optional_body
+        {
+            let mut resp = (
+                StatusCode::LENGTH_REQUIRED,
+                Json(json!({ "error": "Length Required: Content-Length header is mandatory" })),
+            )
+                .into_response();
+            apply_cors_and_security_headers(resp.headers_mut(), &allowed_origin, port, is_prod);
+            return resp;
         }
 
         if let Some(len_str) = raw_len {

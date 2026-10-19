@@ -208,15 +208,22 @@ impl Ingest {
         if let Ok(permit) = slots.try_acquire() {
             return Ok(permit);
         }
+        struct WaitingGuard<'a>(&'a std::sync::atomic::AtomicUsize);
+        impl Drop for WaitingGuard<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
         let waiting = &self.inner.metadata_waiting;
         if waiting.fetch_add(1, Ordering::SeqCst) >= MAX_METADATA_QUEUE_DEPTH {
             waiting.fetch_sub(1, Ordering::SeqCst);
             return Err("Máy chủ đang bận xử lý nhiều yêu cầu tải nhạc, vui lòng thử lại sau.".into());
         }
+        let _waiting_guard = WaitingGuard(waiting);
         let deadline = Instant::now() + METADATA_QUEUE_TIMEOUT;
         let acquire = slots.acquire();
         tokio::pin!(acquire);
-        let result = loop {
+        loop {
             tokio::select! {
                 permit = &mut acquire => break permit.map_err(|e| e.to_string()),
                 _ = tokio::time::sleep(Duration::from_millis(100)) => {
@@ -228,9 +235,7 @@ impl Ingest {
                     }
                 }
             }
-        };
-        waiting.fetch_sub(1, Ordering::SeqCst);
-        result
+        }
     }
 
     async fn run_ytdlp(&self, args: Vec<String>, cancel: &[&CancelFlag], capture_stdout: bool) -> ToolOutput {
@@ -489,29 +494,42 @@ impl Ingest {
         self.start_download_worker();
     }
 
-    fn start_download_worker(&self) {
+    pub(crate) fn start_download_worker(&self) {
+        if self.is_paused() {
+            return;
+        }
         {
             let mut downloads = self.inner.downloads.lock().unwrap();
-            if downloads.worker_running || downloads.queue.is_empty() {
+            if self.is_paused() || downloads.worker_running || downloads.queue.is_empty() {
                 return;
             }
             downloads.worker_running = true;
         }
         let ingest = self.clone();
-        tokio::spawn(async move {
-            loop {
-                let Some((track_id, url, operation)) = ingest.take_next_download() else { break };
-                let attempted = ingest.process_download(&track_id, &url).await;
-                ingest.inner.downloads.lock().unwrap().current = None;
-                drop(operation);
-                if attempted {
-                    tokio::time::sleep(BETWEEN_DOWNLOADS).await;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                loop {
+                    let Some((track_id, url, operation)) = ingest.take_next_download() else { break };
+                    let attempted = ingest.process_download(&track_id, &url).await;
+                    ingest.inner.downloads.lock().unwrap().current = None;
+                    let cancelled = operation.cancel.is_cancelled();
+                    if attempted && !cancelled && !ingest.is_paused() {
+                        tokio::time::sleep(BETWEEN_DOWNLOADS).await;
+                    }
+                    if ingest.is_paused() {
+                        ingest.inner.downloads.lock().unwrap().worker_running = false;
+                        drop(operation);
+                        return;
+                    }
+                    drop(operation);
                 }
-            }
-            ingest.inner.downloads.lock().unwrap().worker_running = false;
-            // A download queued between the last look and the flag reset starts its own worker
-            ingest.start_download_worker();
-        });
+                ingest.inner.downloads.lock().unwrap().worker_running = false;
+                // A download queued between the last look and the flag reset starts its own worker
+                ingest.start_download_worker();
+            });
+        } else {
+            self.inner.downloads.lock().unwrap().worker_running = false;
+        }
     }
 
     fn take_next_download(&self) -> Option<(String, String, super::OperationGuard)> {
