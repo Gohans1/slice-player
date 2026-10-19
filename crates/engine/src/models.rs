@@ -95,18 +95,18 @@ pub struct Playlist {
     pub name: String,
     pub created_at: i64,
     pub updated_at: i64,
+    pub is_custom_ordered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_mix: Option<bool>,
+    pub cover_track_id: Option<String>,
+    pub parent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub item_count: Option<i64>,
-    pub is_custom_ordered: bool,
-    pub cover_track_id: Option<String>,
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mosaic_urls: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_mix: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub source_ids: Option<Vec<String>>,
-    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

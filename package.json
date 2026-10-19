@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run src/server/index.ts",
-    "start": "bun run src/server/index.ts",
+    "dev": "./target/release/slice-server",
+    "start": "./target/release/slice-server",
+    "dev:bun": "bun run src/server/index.ts",
+    "start:bun": "bun run src/server/index.ts",
     "refresh": "bun src/launcher/refresh.ts",
     "build": "vite build",
-    "build:exe": "vite build && bun build --compile --production --windows-hide-console --asset ./dist --target=bun-windows-x64 ./src/server/index.ts --outfile SlicePlayer.exe",
+    "build:server": "cargo build --release -p slice-engine --bin slice-server",
+    "build:exe": "vite build && cargo build --release -p slice-engine --bin slice-server",
     "lint": "oxlint --type-aware --format=agent",
     "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc --noEmit",
     "test": "bun test --isolate",
-    "test:e2e": "bun --bun playwright test"
+    "test:e2e": "bun --bun playwright test",
+    "test:e2e:rust": "bun --bun playwright test -c playwright.rust.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

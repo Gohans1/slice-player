@@ -49,10 +49,27 @@ if errorlevel 1 (
 
 :skip_build
 
-rem The server opens the app window itself; with one already running, it just opens another window and exits
-echo [2/2] Dang khoi dong server Bun va mo giao dien...
-start "SlicePlayerServer" /min bun run src/server/index.ts
+if "%~1"=="--bun" (
+    echo [2/2] Dang khoi dong server Bun ^(rollback^) va mo giao dien...
+    start "SlicePlayerServer" /min bun run src/server/index.ts
+    goto done
+)
 
+if not exist "target\release\slice-server.exe" (
+    echo [2/2] Dang build slice-server ^(Rust^)...
+    cargo build --release -p slice-engine --bin slice-server
+    if errorlevel 1 (
+        echo [ERROR] Build slice-server that bai voi ma loi %ERRORLEVEL%!
+        pause
+        exit /b %ERRORLEVEL%
+    )
+)
+
+rem The server opens the app window itself; with one already running, it just opens another window and exits
+echo [2/2] Dang khoi dong slice-server ^(Rust^) va mo giao dien...
+start "SlicePlayerServer" /min target\release\slice-server.exe
+
+:done
 echo ===================================================
 echo Slice Player da san sang tren http://127.0.0.1:%PORT_NUM%
 echo ===================================================

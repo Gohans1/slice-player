@@ -168,18 +168,18 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `Cargo.toml`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs`, `src/launcher/refresh.ts`
   - **Estimated scope**: `S`
 
-- [ ] **Task 11 (`task-11`): Full-Stack Integration Verification, Real-Backend E2E & Cutover Rehearsal**
+- [x] **Task 11 (`task-11`): Full-Stack Integration Verification, Real-Backend E2E & Cutover Rehearsal**
   - **Description**: Add `security_and_concurrency_test.rs`, a Playwright suite against the **real** `slice-server`, rehearse cutover on a copy of the real library, wire `package.json` / `start.bat` to `slice-server` while keeping `start:bun` for rollback, and verify the live app in `agent-browser`.
   - **Acceptance criteria**:
-    - [ ] All Rust integration tests, client unit tests (`bun test --isolate src/client src/launcher`), typechecks (`bun run typecheck`), lints (`bun run lint`), and the existing mocked Playwright suite (`bun run test:e2e`) pass.
-    - [ ] `bun run test:e2e:rust` (`playwright.rust.config.ts`): `webServer` = `target/release/slice-server` in a fresh temp cwd (`dist` symlinked, throwaway `./data`), **no** API/WS mocks; covers `/ws` + live `track_updated`, local ingest → waveform → `206` stream, segment/playlist/mix/sub-playlist CRUD, and export → import round-trip.
-    - [ ] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors.
-    - [ ] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks`, `/api/segments`, `/api/playlists`, `/api/home`) + cache listing diff before/after Rust boot (orphan sweep). Any unexpected diff blocks cutover.
-    - [ ] Rollback ready: consistent snapshot of the real `./data` stored outside `./data` before the first Rust run; `start:bun` / `dev:bun` scripts kept; rollback steps written in the PR.
-    - [ ] After acceptance: one-off job re-generates `peaks_json` for every track so old and new waveforms match (dev decision 2026-10-19).
-    - [ ] *(Optional)* Baselines: analysis wall time + peak RSS (3-min and 30-min track, Bun+ffmpeg vs Rust) and `/api/tracks` latency while analyzing.
+    - [x] All Rust integration tests, client unit tests (`bun test --isolate src/client src/launcher`), typechecks (`bun run typecheck`), lints (`bun run lint`), and the existing mocked Playwright suite (`bun run test:e2e`) pass.
+    - [x] `bun run test:e2e:rust` (`playwright.rust.config.ts`): `webServer` = `target/release/slice-server` in a fresh temp cwd (`dist` symlinked, throwaway `./data`), **no** API/WS mocks; covers `/ws` + live `track_updated`, local ingest → waveform → `206` stream, segment/playlist/mix/sub-playlist CRUD, and export → import round-trip.
+    - [x] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors.
+    - [x] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks`, `/api/segments`, `/api/playlists`, `/api/home`) + cache listing diff before/after Rust boot (orphan sweep). Any unexpected diff blocks cutover.
+    - [x] Rollback ready: consistent snapshot of the real `./data` stored outside `./data` before the first Rust run; `start:bun` / `dev:bun` scripts kept; rollback steps written in the PR.
+    - [ ] After acceptance: one-off job (`./target/release/slice-server --reanalyze-waveforms`) re-generates `peaks_json` for every track so old and new waveforms match (dev decision 2026-10-19; implemented & tested, awaiting dev go-ahead on live `./data`).
+    - [x] *(Optional)* Baselines: analysis wall time + peak RSS (3-min and 30-min track, Bun+ffmpeg vs Rust) and `/api/tracks` latency while analyzing.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint && bun run test:e2e && bun run test:e2e:rust`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint && bun run test:e2e && bun run test:e2e:rust`
   - **Dependencies**: `task-10`
   - **Files likely touched**: `crates/engine/tests/security_and_concurrency_test.rs`, `playwright.rust.config.ts`, `e2e/rust-backend/*.spec.ts`, `package.json`, `start.bat`
   - **Estimated scope**: `M`
@@ -194,5 +194,5 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `package.json`, `src/server/` (retain `src/server/types.ts`)
   - **Estimated scope**: `S`
 
-- [ ] **Checkpoint 4**: Final Cutover, E2E & Live Browser (`agent-browser`) Verification
+- [x] **Checkpoint 4**: Final Cutover, E2E & Live Browser (`agent-browser`) Verification
   - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run test:e2e && bun run test:e2e:rust`
