@@ -7,12 +7,17 @@ import { join } from "node:path";
 
 const root = realpathSync(join(import.meta.dir, "../.."));
 const port = Number(process.env.PORT) || 3000;
-const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
+const TEST_FILE = /(?:\.test\.[cm]?[jt]sx?|_test\.rs|(?:^|[\\/])tests[\\/].*\.rs)$/;
 // Config both sides run with
 const SHARED = ["package.json", "bun.lock", "tsconfig.json", "bunfig.toml"];
 // The client takes the server's types too
 const CLIENT = ["src", "index.html", "vite.config.ts", "components.json", ...SHARED];
-const SERVER = ["src/server", ...SHARED];
+export const RUST_SERVER = ["crates/engine/src", "Cargo.toml", "crates/engine/Cargo.toml"];
+const SERVER = [...RUST_SERVER, "src/server", ...SHARED];
+const SERVER_BIN = join(
+  root,
+  process.platform === "win32" ? "target/release/slice-server.exe" : "target/release/slice-server",
+);
 
 // When the newest of these files, or of the files in these folders, changed; tests don't change what runs
 export function newestChange(base: string, paths: string[]): number {
@@ -41,8 +46,20 @@ export function serverPlan(server: { startedAt: number; downloading: number | nu
   return server.downloading === 0 ? "restart" : "busy";
 }
 
+function spawnEnv(): Record<string, string | undefined> {
+  const home = process.env.HOME || process.env.USERPROFILE;
+  const cargoBin = home ? join(home, ".cargo", "bin") : "";
+  const currentPath = process.env.PATH || "";
+  const sep = process.platform === "win32" ? ";" : ":";
+  const path =
+    cargoBin && !currentPath.split(sep).includes(cargoBin)
+      ? `${cargoBin}${currentPath ? `${sep}${currentPath}` : ""}`
+      : currentPath;
+  return { ...process.env, PATH: path };
+}
+
 function run(command: string[], output: "inherit" | "pipe" = "pipe") {
-  const result = Bun.spawnSync(command, { cwd: root, stdout: output, stderr: output });
+  const result = Bun.spawnSync(command, { cwd: root, env: spawnEnv(), stdout: output, stderr: output });
   return { ok: result.exitCode === 0, out: result.stdout?.toString() ?? "" };
 }
 
@@ -121,6 +138,20 @@ if (import.meta.main) {
     }
   } else {
     console.log("Client: up to date");
+  }
+
+  let serverBuiltAt = 0;
+  try {
+    serverBuiltAt = statSync(SERVER_BIN).mtimeMs;
+  } catch {}
+  if (newestChange(root, RUST_SERVER) > serverBuiltAt) {
+    console.log("Server: its Rust sources changed, building");
+    if (!run(["cargo", "build", "--release", "-p", "slice-engine", "--bin", "slice-server"], "inherit").ok) {
+      console.warn("Server: build failed, the last binary stays");
+      ok = false;
+    }
+  } else {
+    console.log("Server: binary up to date");
   }
 
   if (!(await refreshServer())) ok = false;

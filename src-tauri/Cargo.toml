@@ -1,0 +1,15 @@
+[package]
+name = "slice-desktop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Optional Tauri v2 desktop wrapper for Slice Player"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+slice-engine = { path = "../crates/engine" }
+tauri = { version = "2", features = [] }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }
+url = "2.5"

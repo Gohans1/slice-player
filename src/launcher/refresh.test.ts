@@ -2,7 +2,7 @@ import { expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { newestChange, serverPlan } from "./refresh";
+import { newestChange, RUST_SERVER, serverPlan } from "./refresh";
 
 it("dates code by its newest source file, however deep, but not by its tests", () => {
   const root = mkdtempSync(join(tmpdir(), "refresh-"));
@@ -18,6 +18,14 @@ it("dates code by its newest source file, however deep, but not by its tests", (
     file("package.json", 2000);
 
     expect(newestChange(root, ["src/server", "package.json", "bunfig.toml"])).toBe(3_000_000);
+
+    file("Cargo.toml", 2500);
+    file("crates/engine/Cargo.toml", 3200);
+    file("crates/engine/src/server.rs", 3500);
+    file("crates/engine/src/db_test.rs", 5000);
+    file("crates/engine/tests/http_and_crud_test.rs", 6000);
+
+    expect(newestChange(root, RUST_SERVER)).toBe(3_500_000);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

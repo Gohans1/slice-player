@@ -156,14 +156,14 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/lib.rs`, `crates/engine/src/server.rs`, `crates/engine/src/bin/slice-server.rs`, `crates/engine/tests/server_runtime_test.rs`
   - **Estimated scope**: `S`
 
-- [ ] **Task 10 (`task-10`): Scaffold Optional `src-tauri` Desktop Wrapper & Update `src/launcher/refresh.ts`**
+- [x] **Task 10 (`task-10`): Scaffold Optional `src-tauri` Desktop Wrapper & Update `src/launcher/refresh.ts`**
   - **Description**: Create `src-tauri` (kept in `exclude = ["src-tauri"]` in root `Cargo.toml` so headless hosts without `webkit2gtk-4.1` never fail workspace builds) and update `src/launcher/refresh.ts` to watch `crates/engine/src`, `Cargo.toml`, and `crates/engine/Cargo.toml` (excluding `crates/engine/tests`) and rebuild `slice-server` when Rust sources change.
   - **Acceptance criteria**:
-    - [ ] `src-tauri/src/main.rs` boots `slice_engine` and points the Tauri window to `http://127.0.0.1:3000`.
-    - [ ] `src/launcher/refresh.ts` watches `crates/engine/src`, `Cargo.toml`, and `crates/engine/Cargo.toml` (ignoring Rust test files), rebuilds `slice-server` when stale, and passes `bun test --isolate src/launcher`.
+    - [x] `src-tauri/src/main.rs` boots `slice_engine` and points the Tauri window to `http://127.0.0.1:3000`.
+    - [x] `src/launcher/refresh.ts` watches `crates/engine/src`, `Cargo.toml`, and `crates/engine/Cargo.toml` (ignoring Rust test files), rebuilds `slice-server` when stale, and passes `bun test --isolate src/launcher`.
     - [ ] *(Optional, only if Tauri ships)* Playback smoke test inside the real WebView per OS (Linux WebKitGTK depends on GStreamer codecs even over HTTP loopback).
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/launcher`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/launcher`
   - **Dependencies**: `task-9`, `task-9b`
   - **Files likely touched**: `Cargo.toml`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs`, `src/launcher/refresh.ts`
   - **Estimated scope**: `S`
