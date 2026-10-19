@@ -4,14 +4,14 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ## Phase 1: Cargo Workspace, SQLite `./data/music.db` Parity & Core HTTP/CRUD Server
 
-- [ ] **Task 1 (`task-1`): Initialize Cargo Workspace & `crates/engine` Skeleton**
+- [x] **Task 1 (`task-1`): Initialize Cargo Workspace & `crates/engine` Skeleton**
   - **Description**: Create root `Cargo.toml` (`members = ["crates/engine"]`, `default-members = ["crates/engine"]`, `exclude = ["src-tauri"]`) and `crates/engine` (`slice-engine` lib + `slice-server` bin) with `EngineConfig` and `appWindow` single-instance/window-launcher/idle-shutdown helpers (`appWindow.test.ts` parity).
   - **Acceptance criteria**:
     - [x] `crates/engine` compiles with zero warnings and exports `EngineConfig` + `appWindow` helpers (`find_app_browser`, `is_server_running`, `open_app_window`, safe `<exe_dir>/dist` chdir check).
-    - [ ] `WsLifecycleTracker::wait_for_shutdown(is_busy)`: 180s no-client startup watchdog + 60s idle shutdown after last disconnect (restart on reconnect, re-arm while ingest busy), proven with paused Tokio time in `app_window_test.rs`. *(Reopened after review: only the WS counter existed. Binary wiring → Task 9b.)*
+    - [x] `WsLifecycleTracker::wait_for_shutdown(is_busy)`: 180s no-client startup watchdog + 60s idle shutdown after last disconnect (restart on reconnect, re-arm while ingest busy), proven with paused Tokio time in `app_window_test.rs`. *(Reopened after review: only the WS counter existed. Binary wiring → Task 9b.)*
     - [x] `.gitignore` excludes `/target`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test app_window_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test app_window_test`
     - [x] Build succeeds: `PATH="$HOME/.cargo/bin:$PATH" cargo check -p slice-engine`
   - **Dependencies**: None
   - **Files likely touched**: `Cargo.toml`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/bin/slice-server.rs`, `.gitignore`

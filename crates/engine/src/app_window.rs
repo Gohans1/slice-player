@@ -111,9 +111,21 @@ pub fn open_app_window(url: &str) {
     }
 }
 
+/// No window connected within this long after startup: the server is an orphan (index.ts watchdog)
+pub const INITIAL_CONNECTION_TIMEOUT: Duration = Duration::from_secs(180);
+/// The last window closed this long ago: the user is done (index.ts checkIdleShutdown)
+pub const IDLE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone, Copy, Default)]
+struct WsState {
+    active: usize,
+    ever_connected: bool,
+    // Bumped on every close so a reconnect + close between two checks still restarts the idle timer
+    closes: u64,
+}
+
 pub struct WsLifecycleTracker {
-    active_clients: std::sync::atomic::AtomicUsize,
-    has_ever_connected: std::sync::atomic::AtomicBool,
+    state: tokio::sync::watch::Sender<WsState>,
 }
 
 impl Default for WsLifecycleTracker {
@@ -125,33 +137,58 @@ impl Default for WsLifecycleTracker {
 impl WsLifecycleTracker {
     pub fn new() -> Self {
         Self {
-            active_clients: std::sync::atomic::AtomicUsize::new(0),
-            has_ever_connected: std::sync::atomic::AtomicBool::new(false),
+            state: tokio::sync::watch::Sender::new(WsState::default()),
         }
     }
 
     pub fn on_ws_open(&self) {
-        self.has_ever_connected
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        self.active_clients
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.state.send_modify(|s| {
+            s.active += 1;
+            s.ever_connected = true;
+        });
     }
 
     pub fn on_ws_close(&self) {
-        let _ = self.active_clients.try_update(
-            std::sync::atomic::Ordering::SeqCst,
-            std::sync::atomic::Ordering::SeqCst,
-            |c| Some(c.saturating_sub(1)),
-        );
+        self.state.send_modify(|s| {
+            s.active = s.active.saturating_sub(1);
+            s.closes += 1;
+        });
     }
 
     pub fn active_clients(&self) -> usize {
-        self.active_clients.load(std::sync::atomic::Ordering::SeqCst)
+        self.state.borrow().active
     }
 
     pub fn has_ever_connected(&self) -> bool {
-        self.has_ever_connected
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.state.borrow().ever_connected
+    }
+
+    /// Resolves when the production server should shut down: no window within
+    /// [`INITIAL_CONNECTION_TIMEOUT`] of startup, or [`IDLE_SHUTDOWN_DELAY`] after the last window
+    /// closed while `is_busy()` (an ingest in flight) is false. A busy check re-arms another delay.
+    pub async fn wait_for_shutdown(&self, is_busy: impl Fn() -> bool) {
+        let mut rx = self.state.subscribe();
+        if tokio::time::timeout(INITIAL_CONNECTION_TIMEOUT, rx.wait_for(|s| s.ever_connected))
+            .await
+            .is_err()
+        {
+            return;
+        }
+        loop {
+            // The sender lives in `self`, so these waits can only end by the predicate holding
+            let Ok(idle) = rx.wait_for(|s| s.active == 0).await.map(|s| *s) else {
+                return;
+            };
+            let interrupted = tokio::time::timeout(
+                IDLE_SHUTDOWN_DELAY,
+                rx.wait_for(|s| s.active > 0 || s.closes != idle.closes),
+            )
+            .await
+            .is_ok();
+            if !interrupted && !is_busy() {
+                return;
+            }
+        }
     }
 }
 

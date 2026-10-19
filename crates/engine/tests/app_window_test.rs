@@ -1,6 +1,12 @@
-use slice_engine::app_window::{find_app_browser, is_server_running, maybe_chdir_to_exe_dir};
+use slice_engine::app_window::{
+    find_app_browser, is_server_running, maybe_chdir_to_exe_dir, WsLifecycleTracker,
+};
 use std::collections::{HashMap, HashSet};
+use std::pin::pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tempfile::TempDir;
+use tokio::time::timeout;
 
 fn windows_env() -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -89,4 +95,75 @@ async fn detects_whether_tracks_endpoint_is_up() {
 
     assert!(is_server_running(&url).await);
     handle.abort();
+}
+
+// Lifecycle parity with index.ts: the production server exits when nobody opened a window within 180s of startup,
+// or 60s after the last window closed. Each `timeout` polls the same pinned shutdown future for a slice of
+// (paused) time; Err = still running, Ok = shutdown requested.
+
+#[tokio::test(start_paused = true)]
+async fn shuts_down_when_no_window_connects_within_180s() {
+    let tracker = WsLifecycleTracker::new();
+    let mut shutdown = pin!(tracker.wait_for_shutdown(|| false));
+
+    assert!(timeout(Duration::from_secs(179), &mut shutdown).await.is_err());
+    assert!(timeout(Duration::from_secs(2), &mut shutdown).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn shuts_down_60s_after_the_last_window_closes() {
+    let tracker = WsLifecycleTracker::new();
+    let mut shutdown = pin!(tracker.wait_for_shutdown(|| false));
+
+    assert!(timeout(Duration::from_secs(10), &mut shutdown).await.is_err());
+    tracker.on_ws_open();
+    // Connected well past the 180s watchdog: no shutdown
+    assert!(timeout(Duration::from_secs(300), &mut shutdown).await.is_err());
+    tracker.on_ws_close();
+
+    assert!(timeout(Duration::from_secs(59), &mut shutdown).await.is_err());
+    assert!(timeout(Duration::from_secs(2), &mut shutdown).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_reload_restarts_the_60s_idle_timer() {
+    let tracker = WsLifecycleTracker::new();
+    let mut shutdown = pin!(tracker.wait_for_shutdown(|| false));
+    tracker.on_ws_open();
+    tracker.on_ws_close();
+    assert!(timeout(Duration::from_secs(50), &mut shutdown).await.is_err());
+
+    // A page reload: the socket reconnects and drops again between two polls
+    tracker.on_ws_open();
+    tracker.on_ws_close();
+
+    assert!(timeout(Duration::from_secs(50), &mut shutdown).await.is_err());
+    assert!(timeout(Duration::from_secs(11), &mut shutdown).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn keeps_running_while_an_ingest_is_busy_then_waits_another_60s() {
+    let tracker = WsLifecycleTracker::new();
+    let busy = AtomicBool::new(true);
+    let mut shutdown = pin!(tracker.wait_for_shutdown(|| busy.load(Ordering::SeqCst)));
+    tracker.on_ws_open();
+    tracker.on_ws_close();
+
+    assert!(timeout(Duration::from_secs(600), &mut shutdown).await.is_err());
+    busy.store(false, Ordering::SeqCst);
+
+    // The idle check that saw the ingest finish re-arms a fresh 60s timer
+    assert!(timeout(Duration::from_secs(61), &mut shutdown).await.is_ok());
+}
+
+#[tokio::test(start_paused = true)]
+async fn stays_up_while_any_window_is_still_open() {
+    let tracker = WsLifecycleTracker::new();
+    let mut shutdown = pin!(tracker.wait_for_shutdown(|| false));
+    tracker.on_ws_open();
+    tracker.on_ws_open();
+    tracker.on_ws_close();
+
+    assert!(timeout(Duration::from_secs(3600), &mut shutdown).await.is_err());
+    assert_eq!(tracker.active_clients(), 1);
 }
