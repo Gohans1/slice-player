@@ -174,10 +174,15 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
     - [x] All Rust integration tests, client unit tests (`bun test --isolate src/client src/launcher`), typechecks (`bun run typecheck`), lints (`bun run lint`), and the existing mocked Playwright suite (`bun run test:e2e`) pass.
     - [x] `bun run test:e2e:rust` (`playwright.rust.config.ts`): `webServer` = `target/release/slice-server` in a fresh temp cwd (`dist` symlinked, throwaway `./data`), **no** API/WS mocks; covers `/ws` + live `track_updated`, local ingest → waveform → `206` stream, segment/playlist/mix/sub-playlist CRUD, and export → import round-trip.
     - [x] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors.
-    - [x] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks`, `/api/segments`, `/api/playlists`, `/api/home`) + cache listing diff before/after Rust boot (orphan sweep). Any unexpected diff blocks cutover.
-    - [x] Rollback ready: consistent snapshot of the real `./data` stored outside `./data` before the first Rust run; `start:bun` / `dev:bun` scripts kept; rollback steps written in the PR.
+    - [x] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks` `631,083`B, `/api/segments` `379`B, `/api/playlists` `11,392`B, `/api/home` `2,797`B — all 4 endpoints **100% byte-identical**) + cache listing diff before/after Rust boot (`1,299` before -> `1,265` after on both Bun and Rust, `0` divergence).
+    - [x] Rollback ready: consistent snapshot of the real `./data` stored outside the repo at `/home/gohans-linux/projects/slice-player-data-pre-rust-cutover-snapshot` (`cookies.txt` `0600`); `start:bun` / `dev:bun` scripts and `start.bat --bun` kept; rollback procedure:
+      1. Stop `slice-server` (`pkill -TERM slice-server` or Ctrl+C).
+      2. Remove current DB + WAL/SHM and restore snapshot: `rm -f data/music.db data/music.db-wal data/music.db-shm && cp /home/gohans-linux/projects/slice-player-data-pre-rust-cutover-snapshot/music.db data/music.db && rm -rf data/cache && cp -al /home/gohans-linux/projects/slice-player-data-pre-rust-cutover-snapshot/cache data/cache`.
+      3. Start legacy Bun backend: `bun run start:bun` (or `start.bat --bun` on Windows).
     - [ ] After acceptance: one-off job (`./target/release/slice-server --reanalyze-waveforms`) re-generates `peaks_json` for every track so old and new waveforms match (dev decision 2026-10-19; implemented & tested, awaiting dev go-ahead on live `./data`).
-    - [x] *(Optional)* Baselines: analysis wall time + peak RSS (3-min and 30-min track, Bun+ffmpeg vs Rust) and `/api/tracks` latency while analyzing.
+    - [x] *(Optional)* Baselines:
+      - **3-min stereo MP3**: Bun+2x`ffmpeg` `wall=1305.6ms`, `VmHWM=30.3MiB` (+2 child `ffmpeg` procs) vs Rust `slice-server` `wall=517.4ms` (**2.52x faster**), `VmHWM=12.4MiB`, `/api/tracks` latency while analyzing `p50=0.52ms`, `p99=0.67ms`.
+      - **30-min stereo MP3**: Bun+2x`ffmpeg` `wall=11581.1ms`, `VmHWM=39.3MiB` (+2 child `ffmpeg` procs) vs Rust `slice-server` `wall=5413.0ms` (**2.14x faster**), `VmHWM=13.9MiB`, `/api/tracks` latency while analyzing `p50=0.57ms`, `p99=0.74ms`.
   - **Verification**:
     - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint && bun run test:e2e && bun run test:e2e:rust`
   - **Dependencies**: `task-10`

@@ -2,6 +2,7 @@ node_modules
 dist
 SlicePlayer.exe
 data
+data-*
 *.log
 .DS_Store
 .codegraph

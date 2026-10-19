@@ -12,7 +12,7 @@ const TEST_FILE = /(?:\.test\.[cm]?[jt]sx?|_test\.rs|(?:^|[\\/])tests[\\/].*\.rs
 const SHARED = ["package.json", "bun.lock", "tsconfig.json", "bunfig.toml"];
 // The client takes the server's types too
 const CLIENT = ["src", "index.html", "vite.config.ts", "components.json", ...SHARED];
-export const RUST_SERVER = ["crates/engine/src", "Cargo.toml", "crates/engine/Cargo.toml"];
+export const RUST_SERVER = ["crates/engine/src", "Cargo.toml", "Cargo.lock", "crates/engine/Cargo.toml"];
 const SERVER = [...RUST_SERVER, "src/server", ...SHARED];
 const SERVER_BIN = join(
   root,
@@ -144,16 +144,18 @@ if (import.meta.main) {
   try {
     serverBuiltAt = statSync(SERVER_BIN).mtimeMs;
   } catch {}
+  let serverBuildOk = true;
   if (newestChange(root, RUST_SERVER) > serverBuiltAt) {
     console.log("Server: its Rust sources changed, building");
     if (!run(["cargo", "build", "--release", "-p", "slice-engine", "--bin", "slice-server"], "inherit").ok) {
       console.warn("Server: build failed, the last binary stays");
+      serverBuildOk = false;
       ok = false;
     }
   } else {
     console.log("Server: binary up to date");
   }
 
-  if (!(await refreshServer())) ok = false;
+  if (serverBuildOk && !(await refreshServer())) ok = false;
   process.exit(ok ? 0 : 1);
 }

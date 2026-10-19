@@ -20,6 +20,7 @@ it("dates code by its newest source file, however deep, but not by its tests", (
     expect(newestChange(root, ["src/server", "package.json", "bunfig.toml"])).toBe(3_000_000);
 
     file("Cargo.toml", 2500);
+    file("Cargo.lock", 3100);
     file("crates/engine/Cargo.toml", 3200);
     file("crates/engine/src/server.rs", 3500);
     file("crates/engine/src/db_test.rs", 5000);

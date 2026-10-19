@@ -8,15 +8,18 @@ import { defineConfig, devices } from "@playwright/test";
 // from the developer's real library, and runs with zero API or WebSocket mocks.
 const PORT = 5397;
 const repoRoot = resolve(import.meta.dir);
-const workDir = mkdtempSync(join(tmpdir(), "slice-rust-e2e-"));
-try {
-  symlinkSync(join(repoRoot, "dist"), join(workDir, "dist"), "dir");
-} catch {}
-process.on("exit", () => {
-  try {
-    rmSync(workDir, { recursive: true, force: true });
-  } catch {}
-});
+let workDir = process.env.SLICE_E2E_RUST_WORKDIR;
+if (!workDir) {
+  workDir = mkdtempSync(join(tmpdir(), "slice-rust-e2e-"));
+  process.env.SLICE_E2E_RUST_WORKDIR = workDir;
+  symlinkSync(join(repoRoot, "dist"), join(workDir, "dist"), "junction");
+  const dirToClean = workDir;
+  process.on("exit", () => {
+    try {
+      rmSync(dirToClean, { recursive: true, force: true });
+    } catch {}
+  });
+}
 
 const serverBin = join(
   repoRoot,

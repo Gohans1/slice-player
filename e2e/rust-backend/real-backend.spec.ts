@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -38,12 +38,13 @@ function writeStereoSineWav(filePath: string, durationSec = 2): void {
   writeFileSync(filePath, buf);
 }
 
-test("real Rust backend: /ws live updates, local ingest + waveform + 206 stream, segment/playlist/mix/sub-playlist CRUD, and export/import round-trip", async ({
+test("real Rust backend: /ws live updates, UI local ingest -> waveform rendered -> 206 stream, UI segment/playlist/mix/sub-playlist CRUD, and UI export/import round-trip", async ({
   page,
   request,
 }) => {
   const fixtureDir = mkdtempSync(join(tmpdir(), "slice-rust-fixture-"));
   const wavPath = join(fixtureDir, "rust-e2e-tone.wav");
+  const backupPath = join(fixtureDir, "exported-library.tar.gz");
   writeStereoSineWav(wavPath, 2);
 
   const wsMessages: string[] = [];
@@ -62,32 +63,62 @@ test("real Rust backend: /ws live updates, local ingest + waveform + 206 stream,
       .poll(() => wsMessages.some((m) => m.includes('"type":"connected"')), { timeout: 10_000 })
       .toBe(true);
 
-    // 2. Ingest local WAV fixture via real POST /api/tracks/ingest-local
-    const ingestRes = await request.post("/api/tracks/ingest-local", {
-      data: { path: wavPath },
-    });
-    expect(ingestRes.status()).toBe(200);
-    const ingestJson: {
-      success: boolean;
-      tracks: { id: string; title: string; status: string; peaks_json?: string | null }[];
-    } = await ingestRes.json();
-    expect(ingestJson.success).toBe(true);
-    expect(ingestJson.tracks.length).toBe(1);
-    expect(ingestJson.tracks[0].status).toBe("ready");
-    const trackId = ingestJson.tracks[0].id;
+    // 2. Ingest local WAV fixture through the browser UI:
+    // First upload via #local-audio-file-input (POST /api/tracks/upload), then inside the opened
+    // Local Audio Modal also exercise the manual path fallback (POST /api/tracks/ingest-local)
+    // so both endpoints are verified with real browser Origin / Sec-Fetch-Site headers.
+    const scanWavPath = join(fixtureDir, "rust-e2e-scan.wav");
+    writeStereoSineWav(scanWavPath, 2);
 
-    // Fetch full track details (including 1,000 waveform peaks) and wait for loudness worker
+    const uploadDonePromise = page.waitForResponse(
+      (res) => res.url().includes("/api/tracks/upload") && res.request().method() === "POST",
+    );
+    await page.locator("#local-audio-file-input").setInputFiles(wavPath);
+    const uploadRes = await uploadDonePromise;
+    expect(uploadRes.status()).toBe(200);
+
+    const localDialog = page.getByRole("dialog");
+    await expect(localDialog).toBeVisible();
+
+    await localDialog.getByRole("button", { name: /Or scan directory path/i }).click();
+    const ingestLocalPromise = page.waitForResponse(
+      (res) => res.url().includes("/api/tracks/ingest-local") && res.request().method() === "POST",
+    );
+    await localDialog.locator("#local-path-fallback-input").fill(scanWavPath);
+    await localDialog.getByRole("button", { name: /Scan Path/i }).click();
+    const ingestLocalRes = await ingestLocalPromise;
+    expect(ingestLocalRes.status()).toBe(200);
+
+    // Close the Local Audio Modal
+    await localDialog.getByRole("button", { name: "Close" }).first().click();
+    await expect(localDialog).toHaveCount(0);
+
+    // Navigate to Tracks in UI and verify both ingested tracks are rendered
+    await openLibraryPage(page, "Tracks");
+    await expect(page.getByText("rust-e2e-tone").first()).toBeVisible();
+    await expect(page.getByText("rust-e2e-scan").first()).toBeVisible();
+
+    // Wait for loudness worker to finish measuring rust-e2e-tone and verify 1,000 waveform peaks
+    let trackId = "";
+    let scanTrackId = "";
     let peaksJson = "";
     await expect
       .poll(
         async () => {
-          const r = await request.get(`/api/tracks/${trackId}`);
+          const listRes = await request.get("/api/tracks");
+          const tracks: { id: string; title: string }[] = await listRes.json();
+          const tone = tracks.find((t) => t.title === "rust-e2e-tone");
+          const scan = tracks.find((t) => t.title === "rust-e2e-scan");
+          if (!tone || !scan) return false;
+          trackId = tone.id;
+          scanTrackId = scan.id;
+          const detailRes = await request.get(`/api/tracks/${trackId}`);
           const detail: {
             id: string;
             peaks_json?: string | null;
             loudness?: number | null;
             true_peak?: number | null;
-          } = await r.json();
+          } = await detailRes.json();
           if (
             typeof detail.peaks_json === "string" &&
             detail.peaks_json.length > 0 &&
@@ -107,133 +138,200 @@ test("real Rust backend: /ws live updates, local ingest + waveform + 206 stream,
     expect(peaks.length).toBe(1000);
     expect(peaks.some((p) => p > 0.2)).toBe(true);
 
-    // Verify byte-range audio streaming answers 206 Partial Content
-    const streamRes = await request.get(`/api/tracks/${trackId}/stream`, {
-      headers: { Range: "bytes=0-1023" },
-    });
-    expect(streamRes.status()).toBe(206);
-    expect(streamRes.headers()["accept-ranges"]).toBe("bytes");
-    expect(streamRes.headers()["content-range"]).toMatch(/^bytes 0-1023\/\d+$/);
-    expect((await streamRes.body()).byteLength).toBe(1024);
+    // 3. Open Slice Studio in the browser UI via RowActionsMenu -> verify waveform renders and browser <audio>/Range stream returns 206
+    const streamResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/tracks/${trackId}/stream`) &&
+        (res.status() === 206 || res.status() === 200),
+    );
+    await page.getByRole("button", { name: "More options for rust-e2e-tone" }).click();
+    await page.getByRole("menuitem", { name: "Open Slice Studio" }).click();
 
-    // Navigate to Tracks in UI and verify ingested track is rendered
-    await openLibraryPage(page, "Tracks");
-    await expect(page.getByText("rust-e2e-tone").first()).toBeVisible();
+    const studioDialog = page.getByRole("dialog");
+    await expect(studioDialog).toBeVisible();
+    await expect(studioDialog.locator('[data-slot="studio-waveform"]')).toBeVisible();
+    await expect(studioDialog.getByText(/Loading.*waveform/i)).toHaveCount(0);
 
-    // Update track title via PATCH /api/tracks/:id and verify live WebSocket `track_updated` updates UI without reload
+    const browserStreamRes = await streamResponsePromise;
+    expect(browserStreamRes.headers()["accept-ranges"]).toBe("bytes");
+
+    // Also verify a browser-initiated Range request returns 206 Partial Content with exact byte range
+    const rangeCheck = await page.evaluate(async (id: string) => {
+      const r = await fetch(`/api/tracks/${id}/stream`, {
+        headers: { Range: "bytes=0-1023" },
+      });
+      const buf = await r.arrayBuffer();
+      return {
+        status: r.status,
+        acceptRanges: r.headers.get("accept-ranges"),
+        contentRange: r.headers.get("content-range"),
+        byteLength: buf.byteLength,
+      };
+    }, trackId);
+    expect(rangeCheck.status).toBe(206);
+    expect(rangeCheck.acceptRanges).toBe("bytes");
+    expect(rangeCheck.contentRange).toMatch(/^bytes 0-1023\/\d+$/);
+    expect(rangeCheck.byteLength).toBe(1024);
+
+    // 4. Create and rename a Slice inside Slice Studio UI
+    const createSegPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/tracks/${trackId}/segments`) && res.request().method() === "POST",
+    );
+    await studioDialog.getByRole("button", { name: "New Slice" }).first().click();
+    expect((await createSegPromise).status()).toBe(201);
+
+    const renameSegPromise = page.waitForResponse(
+      (res) => res.url().includes("/api/segments/") && res.request().method() === "PUT",
+    );
+    const sliceNameInput = studioDialog.getByRole("textbox", { name: "Slice name" });
+    await sliceNameInput.fill("Rust Hook Slice");
+    expect((await renameSegPromise).status()).toBe(200);
+
+    await studioDialog.getByRole("button", { name: "Done" }).click();
+    await expect(studioDialog).toHaveCount(0);
+
+    // Verify the slice is visible on the Slices page
+    await openLibraryPage(page, "Slices");
+    await expect(page.getByText("Rust Hook Slice").first()).toBeVisible();
+
+    // 5. Verify live WebSocket `track_updated` updates UI without page.reload()
     const patchRes = await request.patch(`/api/tracks/${trackId}`, {
       data: { title: "Rust Engine Live Track" },
     });
     expect(patchRes.status()).toBe(200);
+    await openLibraryPage(page, "Tracks");
     await expect(page.getByText("Rust Engine Live Track").first()).toBeVisible();
     expect(wsMessages.some((m) => m.includes('"type":"track_updated"'))).toBe(true);
 
-    // 3. Segment + Playlist + Sub-Playlist + Mix Playlist CRUD
-    const segRes = await request.post(`/api/tracks/${trackId}/segments`, {
-      data: { name: "Rust Hook Slice", start_time: 0.2, end_time: 1.4 },
-    });
-    expect(segRes.status()).toBe(201);
-    const segment: { id: string; name: string } = await segRes.json();
-    expect(segment.name).toBe("Rust Hook Slice");
+    // 6. Create Parent Playlist, Child Sub-Playlist, Second Source Playlist, and Mix Playlist through the UI
+    // Parent Playlist
+    const newMenuBtn = page.getByRole("button", { name: "New Playlist or Mix" });
+    await newMenuBtn.click();
+    await page.getByRole("menuitem", { name: "New Playlist" }).click();
+    const createPlDialog = page.getByRole("dialog");
+    await createPlDialog.locator("#create-playlist-name").fill("Rust Parent Playlist");
+    await createPlDialog.locator('button[type="submit"]').click();
+    await expect(createPlDialog).toHaveCount(0);
+    await expect(page.getByText("Rust Parent Playlist").first()).toBeVisible();
 
+    // Child Sub-Playlist under Rust Parent Playlist
+    await newMenuBtn.click();
+    await page.getByRole("menuitem", { name: "New Playlist" }).click();
+    await expect(createPlDialog).toBeVisible();
+    await createPlDialog.locator("#create-playlist-name").fill("Rust Sub Playlist");
+    await createPlDialog.locator("#create-playlist-parent").click();
+    await page.getByRole("option", { name: "Rust Parent Playlist" }).click();
+    await createPlDialog.locator('button[type="submit"]').click();
+    await expect(createPlDialog).toHaveCount(0);
+    await expect(page.getByText("Rust Sub Playlist").first()).toBeVisible();
+
+    // Add "Rust Hook Slice" to "Rust Sub Playlist" via UI RowActionsMenu and verify auto-bubbling to Parent
     await openLibraryPage(page, "Slices");
+    await page.getByRole("button", { name: "More options for Rust Hook Slice" }).click();
+    await page.getByRole("menuitem", { name: "Add to Playlist" }).hover();
+    const addItemPromise = page.waitForResponse(
+      (res) => res.url().includes("/api/playlists/") && res.url().endsWith("/items") && res.request().method() === "POST",
+    );
+    await page.getByRole("menuitemcheckbox", { name: "Rust Sub Playlist" }).click();
+    expect((await addItemPromise).status()).toBe(201);
+    await page.keyboard.press("Escape");
+
+    // Open "Rust Parent Playlist" in sidebar and verify "Rust Hook Slice" auto-bubbled into it
+    await page.getByRole("button", { name: "Rust Parent Playlist", exact: true }).click();
     await expect(page.getByText("Rust Hook Slice").first()).toBeVisible();
 
-    // Create Parent Playlist, Child Sub-Playlist, Second Source Playlist, and Mix Playlist
-    const parentPlRes = await request.post("/api/playlists", {
-      data: { name: "Rust Parent Playlist" },
+    // Create Second Source Playlist via UI
+    await newMenuBtn.click();
+    await page.getByRole("menuitem", { name: /New Playlist/i }).click();
+    await expect(createPlDialog).toBeVisible();
+    await createPlDialog.locator("#create-playlist-name").fill("Rust Second Source");
+    await createPlDialog.locator('button[type="submit"]').click();
+    await expect(createPlDialog).toHaveCount(0);
+    await expect(page.getByText("Rust Second Source").first()).toBeVisible();
+
+    // Create Mix Playlist via UI MixPlaylistModal
+    await newMenuBtn.click();
+    await page.getByRole("menuitem", { name: /New Mix/i }).click();
+    const mixDialog = page.getByRole("dialog");
+    await expect(mixDialog).toBeVisible();
+    await mixDialog.getByRole("combobox", { name: "Playlist 1" }).click();
+    await page.getByRole("option", { name: "Rust Parent Playlist" }).click();
+    await mixDialog.getByRole("combobox", { name: "Playlist 2" }).click();
+    await page.getByRole("option", { name: "Rust Second Source" }).click();
+    await mixDialog.getByRole("button", { name: "Create Mix" }).click();
+    await expect(mixDialog).toHaveCount(0);
+
+    const mixName = "Rust Parent Playlist + Rust Second Source";
+    await expect(page.getByText(mixName).first()).toBeVisible();
+
+    // Verify live WebSocket `playlist_created` updates sidebar without page.reload() when created externally
+    const extPlRes = await request.post("/api/playlists", {
+      data: { name: "Rust WS Live Playlist" },
     });
-    expect(parentPlRes.status()).toBe(201);
-    const parentPl: { id: string; name: string } = await parentPlRes.json();
+    expect(extPlRes.status()).toBe(201);
+    await expect(page.getByText("Rust WS Live Playlist").first()).toBeVisible();
+    expect(wsMessages.some((m) => m.includes('"type":"playlist_created"'))).toBe(true);
 
-    const childPlRes = await request.post("/api/playlists", {
-      data: { name: "Rust Sub Playlist", parent_id: parentPl.id },
-    });
-    expect(childPlRes.status()).toBe(201);
-    const childPl: { id: string; name: string; parent_id: string } = await childPlRes.json();
-    expect(childPl.parent_id).toBe(parentPl.id);
+    // 7. Library Export -> Wipe (verify empty UI) -> Import via BackupModal UI (multipart/form-data)
+    await page.getByRole("button", { name: "Backup / Transfer" }).click();
+    const backupDialog = page.getByRole("dialog");
+    await expect(backupDialog).toBeVisible();
 
-    // Adding an item to the child sub-playlist auto-bubbles it into the parent playlist
-    const addItemRes = await request.post(`/api/playlists/${childPl.id}/items`, {
-      data: { track_id: trackId, segment_id: segment.id },
-    });
-    expect(addItemRes.status()).toBe(201);
+    const downloadPromise = page.waitForEvent("download");
+    await backupDialog.getByRole("button", { name: /Download Backup/i }).click();
+    const download = await downloadPromise;
+    await download.saveAs(backupPath);
+    expect(statSync(backupPath).size).toBeGreaterThan(200);
 
-    const parentDetailRes = await request.get(`/api/playlists/${parentPl.id}`);
-    const parentDetail: { items: { track_id: string; segment_id: string }[] } =
-      await parentDetailRes.json();
-    expect(parentDetail.items.length).toBe(1);
-    expect(parentDetail.items[0].track_id).toBe(trackId);
-    expect(parentDetail.items[0].segment_id).toBe(segment.id);
+    await backupDialog.getByRole("button", { name: "Close" }).first().click();
+    await expect(backupDialog).toHaveCount(0);
 
-    const secondPlRes = await request.post("/api/playlists", {
-      data: { name: "Rust Second Source" },
-    });
-    expect(secondPlRes.status()).toBe(201);
-    const secondPl: { id: string } = await secondPlRes.json();
-
-    const mixPlRes = await request.post("/api/playlists/mix", {
-      data: { name: "Rust Live Mix", source_ids: [parentPl.id, secondPl.id] },
-    });
-    expect(mixPlRes.status()).toBe(201);
-    const mixPl: { id: string; is_mix: boolean } = await mixPlRes.json();
-    expect(mixPl.is_mix).toBe(true);
-
-    // Reload UI so sidebar playlists reflect created playlists and open Mix playlist
-    await page.reload();
-    await expect(page.getByText("Rust Parent Playlist").first()).toBeVisible();
-    await expect(page.getByText("Rust Live Mix").first()).toBeVisible();
-
-    // 4. Library Export -> Delete -> Import (.tar.gz round-trip + library_restored WebSocket event)
-    const exportRes = await request.get("/api/library/export");
-    expect(exportRes.status()).toBe(200);
-    expect(exportRes.headers()["content-type"]).toBe("application/gzip");
-    const archiveBytes = await exportRes.body();
-    expect(archiveBytes.byteLength).toBeGreaterThan(200);
-
-    // Wipe the library before importing the backup
+    // Wipe all tracks and playlists, and verify UI updates to empty BEFORE importing
+    const playlistsBeforeWipe: { id: string; parent_id?: string | null; is_mix?: boolean }[] = await (
+      await request.get("/api/playlists")
+    ).json();
     expect((await request.delete(`/api/tracks/${trackId}`)).status()).toBe(200);
-    expect((await request.delete(`/api/playlists/${mixPl.id}`)).status()).toBe(200);
-    expect((await request.delete(`/api/playlists/${parentPl.id}`)).status()).toBe(200);
-    expect((await request.delete(`/api/playlists/${secondPl.id}`)).status()).toBe(200);
+    expect((await request.delete(`/api/tracks/${scanTrackId}`)).status()).toBe(200);
+    // Delete mixes and root playlists so all playlists are removed
+    for (const pl of playlistsBeforeWipe.filter((p) => p.is_mix || !p.parent_id)) {
+      await request.delete(`/api/playlists/${pl.id}`);
+    }
 
-    const tracksAfterWipe: unknown[] = await (await request.get("/api/tracks")).json();
-    expect(tracksAfterWipe.length).toBe(0);
+    await openLibraryPage(page, "Tracks");
+    await expect(page.getByText("Rust Engine Live Track")).toHaveCount(0);
+    await expect(page.getByText("rust-e2e-scan")).toHaveCount(0);
+    await expect(page.getByText("Rust Parent Playlist")).toHaveCount(0);
 
-    // Import the exported .tar.gz archive via POST /api/library/import
-    const importRes = await request.post("/api/library/import", {
-      headers: { "Content-Type": "application/gzip" },
-      data: archiveBytes,
-    });
-    expect(importRes.status()).toBe(200);
-    const importJson: {
-      success: boolean;
-      manifest: { trackCount: number; segmentCount: number; playlistCount: number };
-    } = await importRes.json();
-    expect(importJson.success).toBe(true);
-    expect(importJson.manifest.trackCount).toBe(1);
-    expect(importJson.manifest.segmentCount).toBe(1);
-    expect(importJson.manifest.playlistCount).toBe(4);
+    // Open BackupModal -> Import / Restore tab -> upload backup.tar.gz via multipart/form-data
+    await page.getByRole("button", { name: "Backup / Transfer" }).click();
+    await expect(backupDialog).toBeVisible();
+    await backupDialog.getByRole("tab", { name: /Import|Restore/i }).click();
+    await backupDialog.locator('input[type="file"]').setInputFiles(backupPath);
+    await expect(backupDialog.getByText(/Selected file:/i)).toBeVisible();
 
-    // Verify `library_restored` WS event fired and tracks/segments/playlists are restored in both API and UI
+    const importRespPromise = page.waitForResponse(
+      (res) => res.url().includes("/api/library/import") && res.request().method() === "POST",
+    );
+    await backupDialog.getByRole("button", { name: /Start Restore/i }).click();
+    const importResp = await importRespPromise;
+    expect(importResp.status()).toBe(200);
+
     await expect
       .poll(() => wsMessages.some((m) => m.includes('"type":"library_restored"')), { timeout: 10_000 })
       .toBe(true);
 
-    const restoredTracks: { id: string; title: string }[] = await (
-      await request.get("/api/tracks")
-    ).json();
-    expect(restoredTracks.map((t) => t.title)).toEqual(["Rust Engine Live Track"]);
+    await backupDialog.getByRole("button", { name: "Close" }).first().click();
+    await expect(backupDialog).toHaveCount(0);
 
-    const restoredPlaylists: { name: string }[] = await (
-      await request.get("/api/playlists")
-    ).json();
-    expect(restoredPlaylists.map((p) => p.name).sort()).toEqual(
-      ["Rust Live Mix", "Rust Parent Playlist", "Rust Second Source", "Rust Sub Playlist"].sort(),
-    );
-
+    // Verify tracks, slices, and playlists are restored in the UI without page.reload()
     await openLibraryPage(page, "Tracks");
     await expect(page.getByText("Rust Engine Live Track").first()).toBeVisible();
+    await expect(page.getByText("rust-e2e-scan").first()).toBeVisible();
+    await expect(page.getByText("Rust Parent Playlist").first()).toBeVisible();
+    await expect(page.getByText(mixName).first()).toBeVisible();
+    await openLibraryPage(page, "Slices");
+    await expect(page.getByText("Rust Hook Slice").first()).toBeVisible();
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }

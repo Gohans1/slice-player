@@ -3,7 +3,7 @@
 use slice_engine::app_window::maybe_chdir_to_exe_dir;
 use slice_engine::{start_server, EngineConfig, RunningServer};
 use std::sync::Mutex;
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     if let (Ok(cwd), Ok(exe)) = (std::env::current_dir(), std::env::current_exe())
@@ -17,7 +17,7 @@ fn main() {
         .build()
         .expect("Failed to create Tokio runtime for Slice engine");
 
-    let config = EngineConfig::default_for_env();
+    let config = EngineConfig::default();
     let running: RunningServer = rt
         .block_on(start_server(config))
         .expect("Failed to start embedded Slice engine on 127.0.0.1");
@@ -29,10 +29,13 @@ fn main() {
 
     let app = tauri::Builder::default()
         .setup(move |app| {
-            if app.get_webview_window("main").is_none() {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.navigate(app_url);
+            } else {
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
                     .title("Slice")
                     .inner_size(1400.0, 900.0)
+                    .resizable(true)
                     .build()?;
             }
             Ok(())

@@ -47,6 +47,16 @@ if errorlevel 1 (
     exit /b %ERRORLEVEL%
 )
 
+if not "%~1"=="--bun" (
+    echo [1/2] Dang kiem tra va build slice-server ^(Rust^)...
+    cargo build --release -p slice-engine --bin slice-server
+    if errorlevel 1 (
+        echo [ERROR] Build slice-server that bai voi ma loi %ERRORLEVEL%!
+        pause
+        exit /b %ERRORLEVEL%
+    )
+)
+
 :skip_build
 
 if "%~1"=="--bun" (
