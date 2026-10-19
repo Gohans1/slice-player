@@ -75,13 +75,13 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/audio_analysis/mod.rs`, `crates/engine/src/audio_analysis/decoder.rs`, `crates/engine/src/audio_analysis/loudness_worker.rs`, `crates/engine/tests/loudness_and_waveform_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Task 5 (`task-5`): Read-Only Fallback Audio Source & HTTP Byte-Range Streaming (`/api/tracks/:id/stream`)**
+- [x] **Task 5 (`task-5`): Read-Only Fallback Audio Source & HTTP Byte-Range Streaming (`/api/tracks/:id/stream`)**
   - **Description**: Port `resolveAudioSource` (`src/server/audioSource.ts`) and `GET/HEAD /api/tracks/:id/stream` (`200`, `206`, `416`, `403`, `404`). Port tests from `audioSource.test.ts`.
   - **Acceptance criteria**:
-    - [ ] `resolve_audio_source` validates `validate_safe_local_audio_path` (`403`) and falls back to `./data/cache/audio/<basename>` **read-only without mutating SQLite**.
-    - [ ] Serves `.opus` as `audio/ogg` and handles `HEAD` and `GET` byte-range requests (`206 Partial Content` and `416 Range Not Satisfiable`).
+    - [x] `resolve_audio_source` validates `validate_safe_local_audio_path` (`403`) and falls back to `./data/cache/audio/<basename>` **read-only without mutating SQLite**.
+    - [x] Serves `.opus` as `audio/ogg` and handles `HEAD` and `GET` byte-range requests (`206 Partial Content` and `416 Range Not Satisfiable`).
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test audio_source_and_stream_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test audio_source_and_stream_test`
   - **Dependencies**: `task-3a`
   - **Files likely touched**: `crates/engine/src/audio_source.rs`, `crates/engine/src/http/routes_stream.rs`, `crates/engine/src/http/mod.rs`, `crates/engine/tests/audio_source_and_stream_test.rs`
   - **Estimated scope**: `S`

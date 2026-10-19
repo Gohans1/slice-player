@@ -1,6 +1,7 @@
 pub mod etag;
 pub mod routes_playlists;
 pub mod routes_plays;
+pub mod routes_stream;
 pub mod routes_tracks_segments;
 pub mod security;
 pub mod ws_and_logs;
@@ -218,6 +219,10 @@ pub fn build_router(state: AppState) -> Router {
                 .put(routes_tracks_segments::update_track_handler)
                 .patch(routes_tracks_segments::update_track_handler)
                 .delete(routes_tracks_segments::delete_track_handler),
+        )
+        .route(
+            "/api/tracks/{id}/stream",
+            get(routes_stream::stream_track_handler),
         )
         .route(
             "/api/tracks/{id}/segments",
