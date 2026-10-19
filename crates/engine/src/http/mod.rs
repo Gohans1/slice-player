@@ -1,4 +1,5 @@
 pub mod etag;
+pub mod routes_backup;
 pub mod routes_ingest;
 pub mod routes_playlists;
 pub mod routes_plays;
@@ -11,7 +12,9 @@ pub mod ws_and_logs;
 use crate::app_window::WsLifecycleTracker;
 use crate::db::{resolve_abs_path, Db};
 use crate::events::EventBus;
+use crate::audio_analysis::LoudnessWorker;
 use crate::ingest::Ingest;
+use std::sync::atomic::AtomicBool;
 use crate::EngineConfig;
 use axum::body::{Body, Bytes};
 use axum::extract::{DefaultBodyLimit, State};
@@ -36,12 +39,16 @@ pub struct AppState {
     pub mutation_gate: LibraryMutationGate,
     pub ws_lifecycle: Option<Arc<WsLifecycleTracker>>,
     pub ingest: Ingest,
+    pub loudness: LoudnessWorker,
+    /// Set while `/api/library/export` streams (only one at a time, never during a restore)
+    pub exporting: Arc<AtomicBool>,
 }
 
 impl AppState {
     pub fn new(config: EngineConfig, db: Db, events: EventBus) -> Self {
         let logger = ServerLogger::new(events.clone());
         let ingest = Ingest::new(db.clone(), events.clone(), logger.clone(), config.data_dir.clone());
+        let loudness = LoudnessWorker::new(db.clone(), events.clone());
         Self {
             config,
             db,
@@ -50,6 +57,8 @@ impl AppState {
             mutation_gate: LibraryMutationGate::new(),
             ws_lifecycle: None,
             ingest,
+            loudness,
+            exporting: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -294,6 +303,12 @@ pub fn build_router(state: AppState) -> Router {
             get(routes_playlists::get_playlist_detail_handler)
                 .patch(routes_playlists::patch_playlist_handler)
                 .delete(routes_playlists::delete_playlist_handler),
+        )
+        .route("/api/library/export", get(routes_backup::export_handler))
+        .route(
+            "/api/library/import",
+            // The security middleware caps this request at 2 GiB by Content-Length
+            post(routes_backup::import_handler).layer(DefaultBodyLimit::max(security::MAX_BACKUP_REQUEST_BYTES as usize)),
         )
         .route("/api/plays", post(routes_plays::record_play_handler))
         .route("/api/home", get(routes_plays::get_home_handler))

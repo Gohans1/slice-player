@@ -2,7 +2,7 @@
 
 use super::video_extractor::extract_audio_from_video;
 use super::{clean_input, file_name, round2, Ingest, IngestResult, DURATION_EPSILON_SECONDS, INGEST_PAUSED_MESSAGE, MAX_DURATION_SECONDS};
-use crate::audio_analysis::{analyze_audio_file, WAVEFORM_POINTS};
+use crate::audio_analysis::{analyze_audio_file_with, WAVEFORM_POINTS};
 use crate::audio_source::{dotted_extension, validate_safe_local_audio_path, SUPPORTED_AUDIO_EXTENSIONS};
 use crate::db::resolve_abs_path;
 use crate::metadata::{read_local_metadata, save_cover_art};
@@ -122,7 +122,8 @@ impl Ingest {
             .unwrap_or_default();
 
         // One decode for the waveform and Sound Check, stored together
-        let analysis = analyze_audio_file(&audio_path, WAVEFORM_POINTS).await?;
+        let cancel = self.inner.abort_epoch.lock().unwrap().clone();
+        let analysis = analyze_audio_file_with(&audio_path, WAVEFORM_POINTS, cancel).await?;
         let peaks_json = serde_json::to_string(&analysis.peaks).map_err(|e| e.to_string())?;
         let file_path = audio_path.to_string_lossy().to_string();
         let db = &self.inner.db;

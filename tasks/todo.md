@@ -126,18 +126,18 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/ingest/upload.rs`, `crates/engine/src/ingest/video_extractor.rs`, `crates/engine/src/http/routes_ingest.rs`, `crates/engine/tests/audio_extractor_test.rs`
   - **Estimated scope**: `S`
 
-- [ ] **Task 9 (`task-9`): Port Gzipped Tar Export & Two-Phase Atomic Restore (`/api/library/export` & `/api/library/import`)**
+- [x] **Task 9 (`task-9`): Port Gzipped Tar Export & Two-Phase Atomic Restore (`/api/library/export` & `/api/library/import`)**
   - **Description**: Port `src/server/backup.ts`, `src/server/archiveWriter.ts`, and `src/server/backupLimits.ts`. Port tests from `backupLimits.test.ts`, `backup.test.ts`, and `restoreIngest.test.ts`.
   - **Acceptance criteria**:
-    - [ ] `GET /api/library/export` runs `VACUUM INTO`, normalizes external audio paths to full 64-char SHA-256 `local_${sha256_hex(id)}${ext}`, aborts if any `ready` track is missing audio on disk, **excludes `cookies.txt` by default (`include_cookies = false`)**, enforces `assert_export_fits_restore`, and streams `slice-player-backup-${timestamp}.tar.gz`.
-    - [ ] `POST /api/library/import` pauses ingest/mutations/loudness, validates `is_safe_archive_filename` and size quotas, checks `PRAGMA quick_check` + `tracks`/`segments` tables, stages `.incoming` files, awaits `abort_ingest_processes()` + `drain_library_mutations()` (with deterministic test synchronization hook for `restoreIngest.test.ts` parity), swaps `.previous`/`.incoming` (including `-wal`/`-shm`) with full rollback on error, runs `init_database` + `heal_track_file_paths`, and emits `library_restored` + `playlist_items_changed`.
+    - [x] `GET /api/library/export` runs `VACUUM INTO`, normalizes external audio paths to full 64-char SHA-256 `local_${sha256_hex(id)}${ext}`, aborts if any `ready` track is missing audio on disk, **excludes `cookies.txt` by default (`include_cookies = false`)**, enforces `assert_export_fits_restore`, and streams `slice-player-backup-${timestamp}.tar.gz`.
+    - [x] `POST /api/library/import` pauses ingest/mutations/loudness, validates `is_safe_archive_filename` and size quotas, checks `PRAGMA quick_check` + `tracks`/`segments` tables, stages `.incoming` files, awaits `abort_ingest_processes()` + `drain_library_mutations()` (with deterministic test synchronization hook for `restoreIngest.test.ts` parity), swaps `.previous`/`.incoming` (including `-wal`/`-shm`) with full rollback on error, runs `init_database` + `heal_track_file_paths`, and emits `library_restored` + `playlist_items_changed`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test backup_and_restore_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test backup_and_restore_test`
   - **Dependencies**: `task-3b`, `task-4`, `task-7`
   - **Files likely touched**: `crates/engine/src/backup/mod.rs`, `crates/engine/src/backup/limits.rs`, `crates/engine/src/backup/export.rs`, `crates/engine/src/backup/import.rs`, `crates/engine/tests/backup_and_restore_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Checkpoint 3**: Verify Phase 3 Ingest, Upload, and Atomic Backup/Restore Parity
+- [x] **Checkpoint 3**: Verify Phase 3 Ingest, Upload, and Atomic Backup/Restore Parity
   - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine`
 
 ---

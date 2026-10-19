@@ -91,7 +91,7 @@ pub struct Ingest {
 }
 
 /// Holds one ingest operation open; dropping it settles the operation
-pub(crate) struct OperationGuard {
+pub struct OperationGuard {
     inner: Arc<Inner>,
     track_id: Option<String>,
 }
@@ -167,7 +167,7 @@ impl Ingest {
         self.inner.pause_depth.load(Ordering::SeqCst) > 0
     }
 
-    pub(crate) fn begin_operation(&self, track_id: Option<&str>) -> Option<OperationGuard> {
+    pub fn begin_operation(&self, track_id: Option<&str>) -> Option<OperationGuard> {
         // Counted before the pause check, so a drain that pauses next always waits for this one
         self.inner.operations.send_modify(|ops| {
             ops.total += 1;
@@ -208,7 +208,6 @@ impl Ingest {
             epoch.cancel();
             *epoch = CancelFlag::new();
         }
-        abort_waveform_processes();
         // Killing a process is not completion: an ingest may still write after its next await
         let mut ops = self.inner.operations.subscribe();
         let _ = ops.wait_for(|o| o.total == 0).await;
