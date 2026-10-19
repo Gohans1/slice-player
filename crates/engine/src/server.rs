@@ -39,7 +39,9 @@ impl RunningServer {
         }
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), self.server_task).await;
         self.state.ingest.abort().await;
+        let _ = self.state.loudness.pause();
         abort_waveform_processes();
+        self.state.loudness.drain().await;
         self.state.db.close();
     }
 }

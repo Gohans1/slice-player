@@ -111,7 +111,12 @@ pub async fn resized_thumbnail(source: &Path, width: u32, variants_dir: &Path) -
                 .flatten()
         }
     };
-    IN_FLIGHT.lock().unwrap().remove(&variant_path);
+    {
+        let mut in_flight = IN_FLIGHT.lock().unwrap();
+        if Arc::strong_count(&lock) == 2 {
+            in_flight.remove(&variant_path);
+        }
+    }
     result
 }
 

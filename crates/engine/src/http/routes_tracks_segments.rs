@@ -715,7 +715,7 @@ pub async fn update_segment_handler(
     let clean_sort_order = obj
         .get("sort_order")
         .and_then(|v| v.as_i64())
-        .filter(|so| (0..100_000).contains(so))
+        .filter(|so| (0..=100_000).contains(so))
         .unwrap_or(existing.sort_order);
 
     let updates = SegmentUpdates {

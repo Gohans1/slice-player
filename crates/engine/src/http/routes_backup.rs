@@ -36,7 +36,7 @@ pub async fn export_handler(State(state): State<AppState>) -> Response {
         }
         Err(message) => {
             let status = if message == LIBRARY_BUSY_MESSAGE { StatusCode::TOO_MANY_REQUESTS } else { StatusCode::INTERNAL_SERVER_ERROR };
-            error(status, format!("Lỗi xuất dữ liệu thư viện: {message}"))
+            error(status, format!("Lỗi xuất dữ liệu thư viện: {}", sanitize_internal_paths(&message)))
         }
     }
 }

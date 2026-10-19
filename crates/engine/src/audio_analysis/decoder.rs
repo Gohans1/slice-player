@@ -103,7 +103,7 @@ pub fn cancel_waveform_for_file(file_path: &str) {
 }
 
 pub fn abort_waveform_processes() {
-    for (_, cancel) in JOBS.lock().unwrap().drain().map(|(_, job)| job) {
+    for (_, cancel) in JOBS.lock().unwrap().values() {
         cancel.cancel();
     }
 }
