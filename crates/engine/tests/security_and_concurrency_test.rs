@@ -408,7 +408,8 @@ fn executes_list_tracks_without_temporary_b_tree_sorting_using_idx_tracks_create
                 EXPLAIN QUERY PLAN
                 SELECT tracks.id, tracks.source_type, tracks.source_uri, tracks.title,
                        tracks.artist, tracks.duration, tracks.thumbnail_url, tracks.file_path,
-                       tracks.status, tracks.error_message, tracks.volume, tracks.created_at,
+                       tracks.status, tracks.error_message, tracks.volume, tracks.loudness,
+                       tracks.true_peak, tracks.created_at,
                        (SELECT COUNT(*) FROM segments WHERE segments.track_id = tracks.id) AS segment_count
                 FROM tracks
                 ORDER BY tracks.created_at DESC

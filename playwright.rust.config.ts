@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
@@ -8,11 +8,20 @@ import { defineConfig, devices } from "@playwright/test";
 // from the developer's real library, and runs with zero API or WebSocket mocks.
 const PORT = 5397;
 const repoRoot = resolve(import.meta.dir);
+const distDir = join(repoRoot, "dist");
+const serverBin = join(
+  repoRoot,
+  process.platform === "win32" ? "target/release/slice-server.exe" : "target/release/slice-server",
+);
+if (!existsSync(join(distDir, "index.html")) || !existsSync(serverBin)) {
+  throw new Error("Run 'bun run build:exe' before running 'bun run test:e2e:rust'");
+}
+
 let workDir = process.env.SLICE_E2E_RUST_WORKDIR;
 if (!workDir) {
   workDir = mkdtempSync(join(tmpdir(), "slice-rust-e2e-"));
   process.env.SLICE_E2E_RUST_WORKDIR = workDir;
-  symlinkSync(join(repoRoot, "dist"), join(workDir, "dist"), "junction");
+  symlinkSync(distDir, join(workDir, "dist"), "junction");
   const dirToClean = workDir;
   process.on("exit", () => {
     try {
@@ -20,11 +29,6 @@ if (!workDir) {
     } catch {}
   });
 }
-
-const serverBin = join(
-  repoRoot,
-  process.platform === "win32" ? "target/release/slice-server.exe" : "target/release/slice-server",
-);
 
 export default defineConfig({
   testDir: "./e2e/rust-backend",

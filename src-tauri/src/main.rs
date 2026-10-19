@@ -17,7 +17,8 @@ fn main() {
         .build()
         .expect("Failed to create Tokio runtime for Slice engine");
 
-    let config = EngineConfig::default();
+    let mut config = EngineConfig::default();
+    config.is_production = config.is_production || !cfg!(debug_assertions);
     let running: RunningServer = rt
         .block_on(start_server(config))
         .expect("Failed to start embedded Slice engine on 127.0.0.1");
