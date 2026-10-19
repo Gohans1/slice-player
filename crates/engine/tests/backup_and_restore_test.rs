@@ -564,8 +564,14 @@ async fn restore_waits_for_active_ingest_and_admitted_mutations_before_replacing
     let archive_clone = archive_path.clone();
     let restore_task = tokio::spawn(async move { import_library_archive(&state_clone, &archive_clone).await });
 
-    // Wait briefly so restore enters Phase 2 (waiting on active_guard & mutation_guard)
-    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    // Wait deterministically until restore enters Phase 2 (which cancels active_guard and waits on active_guard & mutation_guard)
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while (!sb.state.mutation_gate.is_restoring() || !active_guard.cancel.is_cancelled())
+        && tokio::time::Instant::now() < deadline
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(sb.state.mutation_gate.is_restoring());
 
     // While restore is running, new ingest and non-library HTTP requests are rejected (503 Retry-After: 5)
     let blocked_ingest = sb.state.ingest.ingest_local_file(&audio.to_string_lossy(), None).await;

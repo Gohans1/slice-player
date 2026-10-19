@@ -225,7 +225,7 @@ pub fn apply_cors_and_security_headers(
         ""
     };
     let csp = format!(
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://i.ytimg.com https://*.ytimg.com https://yt3.ggpht.com; media-src 'self' blob: data:; connect-src 'self' ws://127.0.0.1:{server_port} ws://localhost:{server_port} ws://[::1]:{server_port}{dev_ws}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        "default-src 'self'; script-src 'self' blob:; worker-src blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' ws://127.0.0.1:{server_port} ws://localhost:{server_port} ws://[::1]:{server_port}{dev_ws}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     );
 
     if let Ok(v) = HeaderValue::from_str(allowed_origin) {

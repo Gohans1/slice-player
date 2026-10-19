@@ -332,6 +332,7 @@ async fn restore(state: &AppState, archive_path: &Path, stager: &mut Stager, kee
     state.ingest.abort().await;
     state.mutation_gate.drain().await;
     abort_waveform_processes();
+    state.loudness.drain().await;
     state.db.close();
 
     // The WAL and shared-memory files belong with the database they came from

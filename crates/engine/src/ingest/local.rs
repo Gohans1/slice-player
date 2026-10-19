@@ -85,6 +85,9 @@ impl Ingest {
         newly_extracted: &mut Option<PathBuf>,
     ) -> Result<IngestResult, String> {
         let meta = read_local_metadata(full_path).await;
+        if cancel.is_cancelled() {
+            return Err("Audio analysis cancelled".to_string());
+        }
         let duration = meta.duration;
         if duration < 0.5 {
             return Ok(IngestResult::fail("Thời lượng bài hát quá ngắn (tối thiểu 0.5 giây)!"));

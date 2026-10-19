@@ -33,7 +33,7 @@ fn is_valid_hex_color(s: &str) -> bool {
         return false;
     }
     let hex = &s[1..];
-    (3..=8).contains(&hex.len()) && hex.chars().all(|c| c.is_ascii_hexdigit())
+    matches!(hex.len(), 3 | 4 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 pub async fn get_tracks_handler(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -284,7 +284,13 @@ pub async fn delete_track_handler(
         crate::audio_analysis::cancel_waveform_for_file(fp);
     }
 
-    let _ = state.db.delete_track(&track_id);
+    if let Err(e) = state.db.delete_track(&track_id) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": e })),
+        )
+            .into_response();
+    }
     cleanup_deleted_track_files(&state, &track_id, track.file_path.as_deref());
 
     state

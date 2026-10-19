@@ -97,7 +97,7 @@ pub struct OperationGuard {
     inner: Arc<Inner>,
     op_id: u64,
     track_id: Option<String>,
-    pub(crate) cancel: CancelFlag,
+    pub cancel: CancelFlag,
 }
 
 impl Drop for OperationGuard {
@@ -330,15 +330,25 @@ impl Ingest {
                     requeued += 1;
                 }
                 "local" => {
+                    let Some(operation) = self.begin_operation(Some(&id)) else {
+                        continue;
+                    };
                     let ingest = self.clone();
                     let id = id.clone();
-                    tokio::spawn(async move {
-                        let res = ingest.ingest_local_file(&source_uri, None).await;
-                        if !res.success {
-                            let message = res.message.unwrap_or_else(|| "Tải lại thất bại".into());
-                            ingest.mark_error(&id, &message);
-                        }
-                    });
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        handle.spawn(async move {
+                            let res = ingest.ingest_local_file(&source_uri, None).await;
+                            if !res.success
+                                && !operation.cancel.is_cancelled()
+                                && !ingest.is_paused()
+                                && ingest.inner.db.get_track(&id).ok().flatten().is_some()
+                            {
+                                let message = res.message.unwrap_or_else(|| "Tải lại thất bại".into());
+                                ingest.mark_error(&id, &message);
+                            }
+                            drop(operation);
+                        });
+                    }
                     requeued += 1;
                 }
                 _ => {}

@@ -23,6 +23,7 @@ struct Inner {
     running: AtomicBool,
     run_again: AtomicBool,
     pause_depth: AtomicUsize,
+    notify: tokio::sync::Notify,
     // Songs nothing could measure are tried again after a restart or restore, not over and over
     unmeasurable: Mutex<HashSet<String>>,
     current: Mutex<Option<CancelFlag>>,
@@ -37,6 +38,7 @@ impl LoudnessWorker {
                 running: AtomicBool::new(false),
                 run_again: AtomicBool::new(false),
                 pause_depth: AtomicUsize::new(0),
+                notify: tokio::sync::Notify::new(),
                 unmeasurable: Mutex::new(HashSet::new()),
                 current: Mutex::new(None),
             }),
@@ -45,6 +47,16 @@ impl LoudnessWorker {
 
     fn is_paused(&self) -> bool {
         self.inner.pause_depth.load(Ordering::SeqCst) > 0
+    }
+
+    pub async fn drain(&self) {
+        loop {
+            let notified = self.inner.notify.notified();
+            if !self.inner.running.load(Ordering::SeqCst) {
+                return;
+            }
+            notified.await;
+        }
     }
 
     /// Measures every ready song still missing a loudness. Called while a run is in flight, it
@@ -72,6 +84,7 @@ impl LoudnessWorker {
                 }
             }
             inner.running.store(false, Ordering::SeqCst);
+            inner.notify.notify_waiters();
             // A request that slipped in after the last look starts another run, unless one already did
             if !inner.run_again.load(Ordering::SeqCst)
                 || self.is_paused()
@@ -103,16 +116,23 @@ impl LoudnessWorker {
                 return Ok(());
             };
 
-            let cancel = CancelFlag::new();
-            *inner.current.lock().unwrap() = Some(cancel.clone());
-            let measured = analyze_audio_file_with(&file_path, WAVEFORM_POINTS, cancel)
+            let cancel = {
+                let mut current = inner.current.lock().unwrap();
+                if self.is_paused() {
+                    return Ok(());
+                }
+                let cancel = CancelFlag::new();
+                *current = Some(cancel.clone());
+                cancel
+            };
+            let measured = analyze_audio_file_with(&file_path, WAVEFORM_POINTS, cancel.clone())
                 .await
                 .ok()
                 .and_then(|result| result.loudness);
             *inner.current.lock().unwrap() = None;
 
             // A pause (restore) cut this measurement short: it says nothing about the song
-            if self.is_paused() {
+            if self.is_paused() || cancel.is_cancelled() {
                 return Ok(());
             }
             let Some(measured) = measured else {
@@ -137,11 +157,14 @@ impl LoudnessWorker {
     /// once every pause has been resumed. Must be resumed from inside a Tokio runtime.
     pub fn pause(&self) -> Box<dyn FnOnce() + Send> {
         let inner = &self.inner;
-        inner.pause_depth.fetch_add(1, Ordering::SeqCst);
-        inner.unmeasurable.lock().unwrap().clear();
-        if let Some(cancel) = inner.current.lock().unwrap().as_ref() {
-            cancel.cancel();
+        {
+            let current = inner.current.lock().unwrap();
+            inner.pause_depth.fetch_add(1, Ordering::SeqCst);
+            if let Some(cancel) = current.as_ref() {
+                cancel.cancel();
+            }
         }
+        inner.unmeasurable.lock().unwrap().clear();
         let worker = self.clone();
         Box::new(move || {
             if worker.inner.pause_depth.fetch_sub(1, Ordering::SeqCst) == 1 {
