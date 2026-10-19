@@ -101,12 +101,14 @@ fn test_weak_etag_and_if_none_match() {
 fn test_logger_sanitization_and_ring_buffer() {
     let cwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
     let msg = format!(
-        "Failed at {cwd}/src/server/ingest.ts and /home/alice/secret/song.mp3 and C:\\Users\\Bob\\Music\\a.mp3"
+        "Failed at {cwd}/src/server/ingest.ts and /home/alice/secret/song.mp3 and /home/charlie and C:\\Users\\Bob\\Music\\a.mp3 and C:\\Users\\Dave"
     );
     let clean = sanitize_internal_paths(&msg);
     assert!(!clean.contains(&cwd));
     assert!(!clean.contains("alice"));
+    assert!(!clean.contains("charlie"));
     assert!(!clean.contains("Bob"));
+    assert!(!clean.contains("Dave"));
     assert!(clean.contains("[PROJECT_DIR]"));
     assert!(clean.contains("[USER_HOME]"));
 
@@ -123,7 +125,10 @@ fn test_logger_sanitization_and_ring_buffer() {
     }
     let recent = logger.get_recent_logs(300);
     assert_eq!(recent.len(), 200);
-    assert_eq!(recent[0].message, "log-204");
+    assert_eq!(recent[0].message, "log-5");
+    assert_eq!(recent[199].message, "log-204");
+    assert!(recent[0].id.starts_with("srv_"));
+    assert!(recent[0].id < recent[1].id);
     assert_eq!(received.lock().unwrap().len(), 205);
 
     logger.clear_logs();
@@ -169,6 +174,14 @@ async fn test_security_headers_and_mutation_gate() {
     .await;
     assert_eq!(status, 403);
 
+    // 1b. Empty Host header -> 403
+    let (status, _, _) = send_raw_http(
+        port,
+        "GET /api/tracks HTTP/1.1\r\nHost: \r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert_eq!(status, 403);
+
     // 2. Invalid Origin header -> 403
     let (status, _, _) = send_raw_http(
         port,
@@ -199,6 +212,16 @@ async fn test_security_headers_and_mutation_gate() {
     .await;
     assert_eq!(status, 411);
 
+    // 4b. Content-Length: 0 on required-body POST -> 400
+    let (status, _, _) = send_raw_http(
+        port,
+        &format!(
+            "POST /api/playlists HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ),
+    )
+    .await;
+    assert_eq!(status, 400);
+
     // 5. Payload Too Large (> 64 KiB on JSON route) -> 413
     let (status, _, _) = send_raw_http(
         port,
@@ -223,11 +246,31 @@ async fn test_security_headers_and_mutation_gate() {
     assert_eq!(status, 503);
     assert!(headers.iter().any(|(k, v)| k == "retry-after" && v == "5"));
     state.mutation_gate.resume();
+
+    // 7. Restoring gate -> GET /api/tracks also returns 503 with Retry-After: 5
+    state.mutation_gate.set_restoring(true);
+    let (status, headers, _) = send_raw_http(
+        port,
+        &format!("GET /api/tracks HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"),
+    )
+    .await;
+    assert_eq!(status, 503);
+    assert!(headers.iter().any(|(k, v)| k == "retry-after" && v == "5"));
+    state.mutation_gate.set_restoring(false);
 }
 
 #[tokio::test]
 async fn test_tracks_and_segments_crud_and_etags() {
     let (port, state, _dir) = spawn_test_server().await;
+
+    let emitted = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+    for &ev in &["track_updated", "segment_updated", "segment_deleted", "segments_deleted", "playlist_items_changed"] {
+        let e_clone = emitted.clone();
+        let name = ev.to_string();
+        state.events.on(ev, move |payload| {
+            e_clone.lock().unwrap().push((name.clone(), payload.clone()));
+        });
+    }
 
     state
         .db
@@ -312,6 +355,30 @@ async fn test_tracks_and_segments_crud_and_etags() {
     let seg_id = seg["id"].as_str().unwrap().to_string();
     assert_eq!(seg["end_time"], 100.0);
 
+    // Put segment into a regular playlist and create a mix playlist sourcing from that regular playlist
+    let pl = state.db.create_playlist("Source Pl", None, None).unwrap();
+    let pl2 = state.db.create_playlist("Source Pl 2", None, None).unwrap();
+    let mix = state
+        .db
+        .create_mix_playlist("Mix Pl", &[pl.id.clone(), pl2.id.clone()])
+        .unwrap();
+    state
+        .db
+        .add_playlist_item(&pl.id, "t1", Some(&seg_id))
+        .unwrap();
+    let affected_by_seg = state
+        .db
+        .get_affected_playlist_ids_for_segments(std::slice::from_ref(&seg_id))
+        .unwrap();
+    assert!(affected_by_seg.contains(&pl.id));
+    assert!(affected_by_seg.contains(&mix.id));
+    let affected_by_track = state
+        .db
+        .get_affected_playlist_ids_for_tracks(&["t1".to_string()])
+        .unwrap();
+    assert!(affected_by_track.contains(&pl.id));
+    assert!(affected_by_track.contains(&mix.id));
+
     // PUT /api/segments/:id
     let upd_seg_body = r#"{"name":"Chorus","start_time":20,"end_time":50}"#;
     let (status, _, body) = send_raw_http(
@@ -326,8 +393,13 @@ async fn test_tracks_and_segments_crud_and_etags() {
     let upd_seg: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(upd_seg["name"], "Chorus");
     assert_eq!(upd_seg["start_time"], 20.0);
+    assert!(emitted
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(ev, p)| ev == "segment_updated" && p["segmentId"] == seg_id && p["trackId"] == "t1"));
 
-    // DELETE /api/segments/:id
+    // DELETE /api/segments/:id emits segment_deleted and playlist_items_changed for both source and mix playlists
     let (status, _, _) = send_raw_http(
         port,
         &format!(
@@ -336,6 +408,18 @@ async fn test_tracks_and_segments_crud_and_etags() {
     )
     .await;
     assert_eq!(status, 200);
+    {
+        let evs = emitted.lock().unwrap();
+        assert!(evs
+            .iter()
+            .any(|(ev, p)| ev == "segment_deleted" && p["segmentId"] == seg_id && p["trackId"] == "t1"));
+        assert!(evs
+            .iter()
+            .any(|(ev, p)| ev == "playlist_items_changed" && p["playlistId"] == pl.id));
+        assert!(evs
+            .iter()
+            .any(|(ev, p)| ev == "playlist_items_changed" && p["playlistId"] == mix.id));
+    }
 
     // DELETE /api/tracks/t1
     let (status, _, _) = send_raw_http(

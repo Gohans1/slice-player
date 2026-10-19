@@ -31,22 +31,74 @@ fn open_archive(path: &Path) -> Result<tar::Archive<flate2::read::GzDecoder<std:
     Ok(tar::Archive::new(flate2::read::GzDecoder::new(file)))
 }
 
-/// (entry path, size) of every regular file in the archive
+fn entry_size_limit(name: &str) -> Result<u64, String> {
+    match name {
+        "manifest.json" => Ok(1024 * 1024),
+        "music.db" => Ok(MAX_DB_FILE_BYTES),
+        "cookies.txt" => Ok(MAX_COOKIE_FILE_BYTES),
+        _ => {
+            if let Some(file) = name.strip_prefix("cache/audio/") {
+                if !is_safe_archive_filename(file)
+                    || !SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(Path::new(file)).as_str())
+                {
+                    return Err(format!("File âm thanh không hợp lệ hoặc định dạng không được hỗ trợ: {file}"));
+                }
+                Ok(MAX_AUDIO_FILE_BYTES)
+            } else if let Some(file) = name.strip_prefix("cache/thumbs/") {
+                if !is_safe_archive_filename(file)
+                    || !ALLOWED_THUMB_EXTENSIONS.contains(&dotted_extension(Path::new(file)).as_str())
+                {
+                    return Err(format!("File ảnh bìa không hợp lệ hoặc định dạng không được hỗ trợ: {file}"));
+                }
+                Ok(MAX_THUMB_FILE_BYTES)
+            } else {
+                Err(format!("File không hợp lệ trong gói lưu trữ: {name}"))
+            }
+        }
+    }
+}
+
+/// (entry path, size) of every regular file in the archive. Validates entry type, entry count,
+/// filename layout, and per-file + cumulative size limits immediately upon reading each 512-byte
+/// tar header — BEFORE advancing the tar iterator (which would decompress the entry body).
 fn list_entries(path: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut archive = open_archive(path)?;
     let mut listed = Vec::new();
+    let mut total_size: u64 = 0;
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
-        if !entry.header().entry_type().is_file() {
+        let kind = entry.header().entry_type();
+        if kind.is_dir() {
             continue;
         }
+        if !kind.is_file() {
+            return Err("File không hợp lệ trong gói lưu trữ (symlink hoặc special file).".into());
+        }
+        if listed.len() >= MAX_ARCHIVE_ENTRIES {
+            return Err(format!(
+                "File backup vượt quá giới hạn số lượng file cho phép ({} > {MAX_ARCHIVE_ENTRIES}).",
+                listed.len() + 1
+            ));
+        }
         let name = String::from_utf8(entry.path_bytes().into_owned()).map_err(|_| "tên file không phải UTF-8".to_string())?;
-        listed.push((name, entry.size()));
+        let limit = entry_size_limit(&name)?;
+        let size = entry.size();
+        if name == "music.db" && size > MAX_DB_FILE_BYTES {
+            return Err(format!(
+                "File cơ sở dữ liệu vượt quá giới hạn cho phép ({:.1}MB > 500MB).",
+                size as f64 / 1024.0 / 1024.0
+            ));
+        }
+        total_size = total_size.saturating_add(size);
+        if size > limit || total_size > MAX_TOTAL_EXTRACTED_BYTES {
+            return Err(format!("File {name} hoặc tổng dung lượng giải nén vượt quá giới hạn cho phép."));
+        }
+        listed.push((name, size));
     }
     Ok(listed)
 }
 
-/// Rejects anything but the known layout before a single byte is extracted
+/// Rejects anything but the known layout before a single byte is extracted into staging
 fn validate_layout(entries: &[(String, u64)]) -> Result<(), String> {
     if !entries.iter().any(|(name, _)| name == "music.db") {
         return Err("File backup không hợp lệ: thiếu file music.db cơ sở dữ liệu.".into());
@@ -62,20 +114,7 @@ fn validate_layout(entries: &[(String, u64)]) -> Result<(), String> {
         if !seen.insert(name.as_str()) {
             return Err(format!("File không hợp lệ trong gói lưu trữ: {name}"));
         }
-        if matches!(name.as_str(), "manifest.json" | "music.db" | "cookies.txt") {
-            continue;
-        }
-        if let Some(file) = name.strip_prefix("cache/audio/") {
-            if !is_safe_archive_filename(file) || !SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(Path::new(file)).as_str()) {
-                return Err(format!("File âm thanh không hợp lệ hoặc định dạng không được hỗ trợ: {file}"));
-            }
-        } else if let Some(file) = name.strip_prefix("cache/thumbs/") {
-            if !is_safe_archive_filename(file) || !ALLOWED_THUMB_EXTENSIONS.contains(&dotted_extension(Path::new(file)).as_str()) {
-                return Err(format!("File ảnh bìa không hợp lệ hoặc định dạng không được hỗ trợ: {file}"));
-            }
-        } else {
-            return Err(format!("File không hợp lệ trong gói lưu trữ: {name}"));
-        }
+        entry_size_limit(name)?;
     }
     Ok(())
 }
@@ -117,14 +156,14 @@ impl Stager {
         Ok(Staged { target: target.to_path_buf(), previous, incoming: None, moved: false, installed: false })
     }
 
-    fn stage(&mut self, target: &Path, mut content: impl Read) -> Result<PathBuf, String> {
+    fn stage(&mut self, target: &Path, mut content: impl Read) -> Result<(PathBuf, u64), String> {
         let mut entry = self.prepare(target)?;
         let incoming = PathBuf::from(format!("{}.incoming", entry.previous.display()));
         let mut file = std::fs::File::create(&incoming).map_err(|e| e.to_string())?;
-        std::io::copy(&mut content, &mut file).map_err(|e| e.to_string())?;
+        let copied = std::io::copy(&mut content, &mut file).map_err(|e| e.to_string())?;
         entry.incoming = Some(incoming.clone());
         self.staged.push(entry);
-        Ok(incoming)
+        Ok((incoming, copied))
     }
 
     fn cleanup(&self) {
@@ -173,12 +212,14 @@ fn stage_archive(archive_path: &Path, paths: &BackupPaths, stager: &mut Stager) 
                 _ => continue,
             },
         };
-        total += size;
-        if size > limit || total > MAX_TOTAL_EXTRACTED_BYTES {
+        if size > limit || total.saturating_add(size) > MAX_TOTAL_EXTRACTED_BYTES {
             return Err(format!("File {name} hoặc tổng dung lượng giải nén vượt quá giới hạn cho phép."));
         }
-        // `take` holds the copy to the header's size even if the stream claims more
-        let incoming = stager.stage(&target, entry.by_ref().take(limit))?;
+        let (incoming, copied) = stager.stage(&target, entry.by_ref().take(limit + 1))?;
+        total = total.saturating_add(copied);
+        if copied > limit || total > MAX_TOTAL_EXTRACTED_BYTES {
+            return Err(format!("File {name} hoặc tổng dung lượng giải nén vượt quá giới hạn cho phép."));
+        }
         if name == "music.db" {
             db_incoming = Some(incoming);
         }

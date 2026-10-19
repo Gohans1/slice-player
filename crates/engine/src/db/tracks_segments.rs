@@ -592,7 +592,7 @@ pub fn get_affected_playlist_ids_for_tracks_in_conn(
     for chunk in direct_vec.chunks(500) {
         let placeholders = vec!["?"; chunk.len()].join(",");
         let sql = format!(
-            "SELECT DISTINCT mix_playlist_id FROM playlist_sources WHERE source_playlist_id IN ({placeholders})"
+            "SELECT DISTINCT mix_id FROM playlist_sources WHERE source_id IN ({placeholders})"
         );
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
@@ -637,7 +637,7 @@ pub fn get_affected_playlist_ids_for_segments_in_conn(
     for chunk in direct_vec.chunks(500) {
         let placeholders = vec!["?"; chunk.len()].join(",");
         let sql = format!(
-            "SELECT DISTINCT mix_playlist_id FROM playlist_sources WHERE source_playlist_id IN ({placeholders})"
+            "SELECT DISTINCT mix_id FROM playlist_sources WHERE source_id IN ({placeholders})"
         );
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt

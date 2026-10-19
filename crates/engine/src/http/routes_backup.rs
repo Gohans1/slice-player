@@ -41,19 +41,39 @@ pub async fn export_handler(State(state): State<AppState>) -> Response {
     }
 }
 
-/// Writes a byte stream to a temp file, so a 2 GB archive never sits in memory
-async fn spool<S, E>(dir: &std::path::Path, mut stream: S) -> Result<tempfile::TempPath, String>
+/// Writes a byte stream to a temp file, enforcing `MAX_BACKUP_REQUEST_BYTES` as chunks arrive so a
+/// 2 GB archive never sits in memory and an unannounced >2 GB stream is aborted immediately.
+async fn spool<S, E>(dir: &std::path::Path, mut stream: S) -> Result<tempfile::TempPath, (StatusCode, String)>
 where
     S: Stream<Item = Result<axum::body::Bytes, E>> + Unpin,
     E: std::fmt::Display,
 {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let temp = tempfile::Builder::new().prefix(".slice-import-").tempfile_in(dir).map_err(|e| e.to_string())?.into_temp_path();
-    let mut file = tokio::fs::File::create(&temp).await.map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let temp = tempfile::Builder::new()
+        .prefix(".slice-import-")
+        .tempfile_in(dir)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+        .into_temp_path();
+    let mut file = tokio::fs::File::create(&temp)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let mut written: u64 = 0;
     while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk.map_err(|e| e.to_string())?).await.map_err(|e| e.to_string())?;
+        let bytes = chunk.map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        written = written.saturating_add(bytes.len() as u64);
+        if written > crate::backup::MAX_BACKUP_REQUEST_BYTES {
+            return Err((
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Backup exceeds the 2GB restore upload limit.".into(),
+            ));
+        }
+        file.write_all(&bytes)
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     }
-    file.flush().await.map_err(|e| e.to_string())?;
+    file.flush()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(temp)
 }
 
@@ -87,7 +107,7 @@ pub async fn import_handler(State(state): State<AppState>, req: Request) -> Resp
     };
     let archive = match spooled {
         Some(Ok(path)) => path,
-        Some(Err(e)) => return error(StatusCode::BAD_REQUEST, sanitize_internal_paths(&e)),
+        Some(Err((status, e))) => return error(status, sanitize_internal_paths(&e)),
         None => return error(StatusCode::BAD_REQUEST, "File backup không hợp lệ hoặc bị rỗng"),
     };
     if std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0) < 50 {

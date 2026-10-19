@@ -185,11 +185,19 @@ pub async fn update_track_handler(
     }
 
     if !has_updates {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "No valid fields provided for update" })),
-        )
-            .into_response();
+        return match state.db.get_track(&track_id) {
+            Ok(Some(existing)) => Json(existing).into_response(),
+            Ok(None) => (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": "Track not found" })),
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e })),
+            )
+                .into_response(),
+        };
     }
 
     let is_volume_only =
@@ -279,19 +287,20 @@ pub async fn delete_track_handler(
     let _ = state.db.delete_track(&track_id);
     cleanup_deleted_track_files(&state, &track_id, track.file_path.as_deref());
 
+    state
+        .events
+        .emit("track_deleted", json!({ "trackId": track_id }));
     for seg in segments {
         state
             .events
             .emit("segment_deleted", json!({ "segmentId": seg.id, "trackId": track_id }));
     }
-    state
-        .events
-        .emit("track_deleted", json!({ "trackId": track_id }));
-    for pid in affected_playlists {
+    for pid in &affected_playlists {
         state
             .events
             .emit("playlist_items_changed", json!({ "playlistId": pid }));
     }
+    state.events.emit("playlist_items_changed", json!({}));
 
     Json(json!({ "success": true })).into_response()
 }
@@ -332,7 +341,12 @@ pub async fn batch_delete_tracks_handler(
     }
 
     if valid_ids.is_empty() {
-        return Json(json!({ "success": true, "deletedCount": 0 })).into_response();
+        return Json(json!({ "success": true, "count": 0 })).into_response();
+    }
+
+    // Cancel any active downloads/ingests for all requested IDs BEFORE reading DB state
+    for tid in &valid_ids {
+        state.ingest.cancel_download_if_active(tid).await;
     }
 
     let affected_playlists = state
@@ -341,7 +355,7 @@ pub async fn batch_delete_tracks_handler(
         .unwrap_or_default();
     let tracks_to_delete = state.db.get_tracks_batch(&valid_ids).unwrap_or_default();
     if tracks_to_delete.is_empty() {
-        return Json(json!({ "success": true, "deletedCount": 0 })).into_response();
+        return Json(json!({ "success": true, "count": 0 })).into_response();
     }
 
     let existing_track_ids: Vec<String> = tracks_to_delete.iter().map(|(id, _)| id.clone()).collect();
@@ -350,8 +364,7 @@ pub async fn batch_delete_tracks_handler(
         .list_segments_by_track_ids(&existing_track_ids)
         .unwrap_or_default();
 
-    for (tid, fp) in &tracks_to_delete {
-        state.ingest.cancel_download_if_active(tid).await;
+    for (_, fp) in &tracks_to_delete {
         if let Some(fp_str) = fp.as_deref() {
             crate::audio_analysis::cancel_waveform_for_file(fp_str);
         }
@@ -373,21 +386,26 @@ pub async fn batch_delete_tracks_handler(
     }
 
     if !segments_to_delete.is_empty() {
+        let items: Vec<Value> = segments_to_delete
+            .iter()
+            .map(|(sid, tid)| json!({ "segmentId": sid, "trackId": tid }))
+            .collect();
         let seg_ids: Vec<String> = segments_to_delete.into_iter().map(|(sid, _)| sid).collect();
         state
             .events
-            .emit("segments_deleted", json!({ "segmentIds": seg_ids }));
+            .emit("segments_deleted", json!({ "segmentIds": seg_ids, "items": items }));
     }
     state
         .events
         .emit("tracks_deleted", json!({ "trackIds": existing_track_ids }));
-    for pid in affected_playlists {
+    for pid in &affected_playlists {
         state
             .events
             .emit("playlist_items_changed", json!({ "playlistId": pid }));
     }
+    state.events.emit("playlist_items_changed", json!({}));
 
-    Json(json!({ "success": true, "deletedCount": deleted_count })).into_response()
+    Json(json!({ "success": true, "count": deleted_count })).into_response()
 }
 
 pub async fn get_track_segments_handler(
@@ -409,6 +427,10 @@ pub async fn get_track_segments_handler(
         )
             .into_response(),
     }
+}
+
+fn round2(val: f64) -> f64 {
+    (val * 100.0).round() / 100.0
 }
 
 pub async fn create_track_segment_handler(
@@ -436,27 +458,45 @@ pub async fn create_track_segment_handler(
             .into_response();
     };
 
-    let Some(start_time) = obj.get("start_time").and_then(|v| v.as_f64()) else {
+    let Some(name_val) = obj.get("name").filter(|v| !v.is_null()) else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Missing or invalid start_time / end_time" })),
+            Json(json!({ "error": "Missing segment fields" })),
         )
             .into_response();
     };
-    let Some(mut end_time) = obj.get("end_time").and_then(|v| v.as_f64()) else {
+    let Some(name_str) = name_val.as_str() else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Missing or invalid start_time / end_time" })),
+            Json(json!({ "error": "Segment name must be a string" })),
         )
             .into_response();
     };
-    if !start_time.is_finite() || !end_time.is_finite() {
+
+    let Some(raw_start) = obj.get("start_time").and_then(|v| v.as_f64()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Missing segment fields" })),
+        )
+            .into_response();
+    };
+    let Some(raw_end) = obj.get("end_time").and_then(|v| v.as_f64()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Missing segment fields" })),
+        )
+            .into_response();
+    };
+    if !raw_start.is_finite() || !raw_end.is_finite() {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": "Missing or invalid start_time / end_time" })),
         )
             .into_response();
     }
+
+    let start_time = round2(raw_start);
+    let mut end_time = round2(raw_end);
 
     let Ok(Some(track)) = state.db.get_track(&track_id) else {
         return (
@@ -498,76 +538,44 @@ pub async fn create_track_segment_handler(
             .into_response();
     }
 
-    let mut clean_name = "Slice".to_string();
-    if let Some(name_val) = obj.get("name") {
-        if !name_val.is_null() {
-            let Some(name_str) = name_val.as_str() else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Segment name must be a string" })),
-                )
-                    .into_response();
-            };
-            let s: String = sanitize_control_chars(name_str).chars().take(100).collect();
-            if !s.is_empty() {
-                clean_name = s;
-            }
-        }
+    let clean_name: String = sanitize_control_chars(name_str).chars().take(100).collect();
+    if clean_name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Tên đoạn không được để trống" })),
+        )
+            .into_response();
     }
 
-    let mut clean_color = "#3b82f6".to_string();
-    if let Some(color_val) = obj.get("color") {
-        if !color_val.is_null() {
-            let Some(color_str) = color_val.as_str() else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Invalid color format" })),
-                )
-                    .into_response();
-            };
-            if color_str.len() > 30 || !is_valid_hex_color(color_str) {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Invalid color format" })),
-                )
-                    .into_response();
-            }
-            clean_color = color_str.to_string();
-        }
-    }
+    let clean_color = obj
+        .get("color")
+        .and_then(|v| v.as_str())
+        .filter(|s| is_valid_hex_color(s))
+        .unwrap_or("#4385BE")
+        .to_string();
 
-    let mut clean_sort_order = 0i64;
-    if let Some(so_val) = obj.get("sort_order") {
-        if !so_val.is_null() {
-            let Some(so) = so_val.as_i64() else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Invalid sort_order" })),
-                )
-                    .into_response();
-            };
-            if !(0..=100_000).contains(&so) {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Invalid sort_order" })),
-                )
-                    .into_response();
-            }
-            clean_sort_order = so;
-        }
-    }
+    let clean_sort_order = obj
+        .get("sort_order")
+        .and_then(|v| v.as_i64())
+        .filter(|so| (0..=100_000).contains(so))
+        .unwrap_or(0);
 
     let seg_id = format!("seg_{}", &Uuid::new_v4().simple().to_string()[..12]);
     match state.db.create_segment(&NewSegment {
         id: seg_id,
-        track_id,
+        track_id: track_id.clone(),
         name: clean_name,
         start_time,
         end_time,
         color: Some(clean_color),
         sort_order: Some(clean_sort_order),
     }) {
-        Ok(seg) => (StatusCode::CREATED, Json(seg)).into_response(),
+        Ok(seg) => {
+            state
+                .events
+                .emit("track_updated", json!({ "trackId": track_id }));
+            (StatusCode::CREATED, Json(seg)).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": e })),
@@ -614,8 +622,15 @@ pub async fn update_segment_handler(
         )
             .into_response();
     };
+    if track.status != "ready" || !track.duration.is_finite() || track.duration <= 0.0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Bài hát chưa sẵn sàng để chỉnh sửa đoạn" })),
+        )
+            .into_response();
+    }
 
-    let new_start = if let Some(sv) = obj.get("start_time") {
+    let new_start = if let Some(sv) = obj.get("start_time").filter(|v| !v.is_null()) {
         let Some(s) = sv.as_f64() else {
             return (
                 StatusCode::BAD_REQUEST,
@@ -623,12 +638,12 @@ pub async fn update_segment_handler(
             )
                 .into_response();
         };
-        s
+        round2(s)
     } else {
         existing.start_time
     };
 
-    let mut new_end = if let Some(ev) = obj.get("end_time") {
+    let mut new_end = if let Some(ev) = obj.get("end_time").filter(|v| !v.is_null()) {
         let Some(e) = ev.as_f64() else {
             return (
                 StatusCode::BAD_REQUEST,
@@ -636,7 +651,7 @@ pub async fn update_segment_handler(
             )
                 .into_response();
         };
-        e
+        round2(e)
     } else {
         existing.end_time
     };
@@ -666,13 +681,7 @@ pub async fn update_segment_handler(
             .into_response();
     }
 
-    let mut updates = SegmentUpdates {
-        start_time: Some(new_start),
-        end_time: Some(new_end),
-        ..Default::default()
-    };
-
-    if let Some(name_val) = obj.get("name") {
+    let clean_name = if let Some(name_val) = obj.get("name").filter(|v| !v.is_null()) {
         let Some(name_str) = name_val.as_str() else {
             return (
                 StatusCode::BAD_REQUEST,
@@ -682,53 +691,46 @@ pub async fn update_segment_handler(
         };
         let clean: String = sanitize_control_chars(name_str).chars().take(100).collect();
         if clean.is_empty() {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Segment name cannot be empty" })),
-            )
-                .into_response();
+            existing.name.clone()
+        } else {
+            clean
         }
-        updates.name = Some(clean);
-    }
+    } else {
+        existing.name.clone()
+    };
 
-    if let Some(color_val) = obj.get("color") {
-        let Some(color_str) = color_val.as_str() else {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid color format" })),
-            )
-                .into_response();
-        };
-        if color_str.len() > 30 || !is_valid_hex_color(color_str) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid color format" })),
-            )
-                .into_response();
-        }
-        updates.color = Some(color_str.to_string());
-    }
+    let clean_color = obj
+        .get("color")
+        .and_then(|v| v.as_str())
+        .filter(|s| is_valid_hex_color(s))
+        .unwrap_or(&existing.color)
+        .to_string();
 
-    if let Some(so_val) = obj.get("sort_order") {
-        let Some(so) = so_val.as_i64() else {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid sort_order" })),
-            )
-                .into_response();
-        };
-        if !(0..=100_000).contains(&so) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Invalid sort_order" })),
-            )
-                .into_response();
-        }
-        updates.sort_order = Some(so);
-    }
+    let clean_sort_order = obj
+        .get("sort_order")
+        .and_then(|v| v.as_i64())
+        .filter(|so| (0..100_000).contains(so))
+        .unwrap_or(existing.sort_order);
+
+    let updates = SegmentUpdates {
+        name: Some(clean_name),
+        color: Some(clean_color),
+        start_time: Some(new_start),
+        end_time: Some(new_end),
+        sort_order: Some(clean_sort_order),
+    };
 
     match state.db.update_segment(&seg_id, &updates) {
-        Ok(Some(updated)) => Json(updated).into_response(),
+        Ok(Some(updated)) => {
+            state.events.emit(
+                "segment_updated",
+                json!({ "segmentId": seg_id, "trackId": existing.track_id }),
+            );
+            state
+                .events
+                .emit("track_updated", json!({ "trackId": existing.track_id }));
+            Json(updated).into_response()
+        }
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "Segment not found" })),
@@ -754,6 +756,14 @@ pub async fn delete_segment_handler(
             .into_response();
     };
 
+    let Ok(Some(existing)) = state.db.get_segment(&seg_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Segment not found" })),
+        )
+            .into_response();
+    };
+
     let affected_playlists = state
         .db
         .get_affected_playlist_ids_for_segments(std::slice::from_ref(&seg_id))
@@ -761,14 +771,19 @@ pub async fn delete_segment_handler(
 
     match state.db.delete_segment(&seg_id) {
         Ok(true) => {
+            state.events.emit(
+                "segment_deleted",
+                json!({ "segmentId": seg_id, "trackId": existing.track_id }),
+            );
             state
                 .events
-                .emit("segment_deleted", json!({ "segmentId": seg_id }));
-            for pid in affected_playlists {
+                .emit("track_updated", json!({ "trackId": existing.track_id }));
+            for pid in &affected_playlists {
                 state
                     .events
                     .emit("playlist_items_changed", json!({ "playlistId": pid }));
             }
+            state.events.emit("playlist_items_changed", json!({}));
             Json(json!({ "success": true })).into_response()
         }
         Ok(false) => (
@@ -823,6 +838,29 @@ pub async fn batch_delete_segments_handler(
         return Json(json!({ "success": true, "deletedCount": 0 })).into_response();
     }
 
+    let (affected_track_ids, segment_track_map) = state.db.with_conn(|conn| {
+        let mut track_ids = Vec::new();
+        let mut track_seen = std::collections::HashSet::new();
+        let mut map = serde_json::Map::new();
+        for chunk in valid_ids.chunks(500) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!("SELECT id, track_id FROM segments WHERE id IN ({placeholders})");
+            if let Ok(mut stmt) = conn.prepare(&sql)
+                && let Ok(rows) = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })
+            {
+                for row in rows.flatten() {
+                    if track_seen.insert(row.1.clone()) {
+                        track_ids.push(row.1.clone());
+                    }
+                    map.insert(row.0, Value::String(row.1));
+                }
+            }
+        }
+        (track_ids, map)
+    });
+
     let affected_playlists = state
         .db
         .get_affected_playlist_ids_for_segments(&valid_ids)
@@ -830,16 +868,26 @@ pub async fn batch_delete_segments_handler(
 
     match state.db.delete_segments_batch(&valid_ids) {
         Ok(deleted_count) => {
-            if deleted_count > 0 {
-                state
-                    .events
-                    .emit("segments_deleted", json!({ "segmentIds": valid_ids }));
-                for pid in affected_playlists {
+            state.events.emit(
+                "segments_deleted",
+                json!({
+                    "segmentIds": valid_ids,
+                    "segmentTrackMap": segment_track_map,
+                }),
+            );
+            if affected_track_ids.len() <= 10 {
+                for tid in affected_track_ids {
                     state
                         .events
-                        .emit("playlist_items_changed", json!({ "playlistId": pid }));
+                        .emit("track_updated", json!({ "trackId": tid }));
                 }
             }
+            for pid in &affected_playlists {
+                state
+                    .events
+                    .emit("playlist_items_changed", json!({ "playlistId": pid }));
+            }
+            state.events.emit("playlist_items_changed", json!({}));
             Json(json!({ "success": true, "deletedCount": deleted_count })).into_response()
         }
         Err(e) => (

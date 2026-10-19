@@ -10,7 +10,6 @@ use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use super::AppState;
 
@@ -62,6 +61,13 @@ fn replace_case_insensitive(haystack: &str, needle: &str, replacement: &str) -> 
     result
 }
 
+fn is_username_boundary(ch: char) -> bool {
+    ch == '/'
+        || ch == '\\'
+        || ch.is_whitespace()
+        || matches!(ch, '"' | '\'' | ':' | ';' | ',' | ')' | ']' | '}')
+}
+
 fn redact_unix_home(input: &str, prefix: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let mut idx = 0usize;
@@ -72,14 +78,19 @@ fn redact_unix_home(input: &str, prefix: &str) -> String {
         let rest = &input[after_prefix..];
         let mut user_len = 0usize;
         for ch in rest.chars() {
-            if ch == '/' || ch.is_whitespace() || ch == '"' || ch == '\'' {
+            if is_username_boundary(ch) {
                 break;
             }
             user_len += ch.len_utf8();
         }
-        if user_len > 0 && rest[user_len..].starts_with('/') {
-            result.push_str("[USER_HOME]/");
-            idx = after_prefix + user_len + 1;
+        if user_len > 0 {
+            if rest[user_len..].starts_with('/') {
+                result.push_str("[USER_HOME]/");
+                idx = after_prefix + user_len + 1;
+            } else {
+                result.push_str("[USER_HOME]");
+                idx = after_prefix + user_len;
+            }
         } else {
             result.push_str(prefix);
             idx = after_prefix;
@@ -105,14 +116,19 @@ fn redact_windows_home(input: &str) -> String {
             let rest = &input[after_prefix..];
             let mut user_len = 0usize;
             for ch in rest.chars() {
-                if ch == '\\' || ch.is_whitespace() || ch == '"' || ch == '\'' {
+                if is_username_boundary(ch) {
                     break;
                 }
                 user_len += ch.len_utf8();
             }
-            if user_len > 0 && rest[user_len..].starts_with('\\') {
-                result.push_str("[USER_HOME]\\");
-                i = after_prefix + user_len + 1;
+            if user_len > 0 {
+                if rest[user_len..].starts_with('\\') {
+                    result.push_str("[USER_HOME]\\");
+                    i = after_prefix + user_len + 1;
+                } else {
+                    result.push_str("[USER_HOME]");
+                    i = after_prefix + user_len;
+                }
                 continue;
             }
         }
@@ -123,12 +139,21 @@ fn redact_windows_home(input: &str) -> String {
     result
 }
 
+fn truncate_chars(s: String, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let head: String = s.chars().take(max_chars).collect();
+        format!("{head}... [truncated]")
+    } else {
+        s
+    }
+}
+
 fn sanitize_details(value: &Value, depth: usize) -> Value {
     if depth > 4 {
         return Value::String("[Truncated]".to_string());
     }
     match value {
-        Value::String(s) => Value::String(sanitize_internal_paths(s)),
+        Value::String(s) => Value::String(truncate_chars(sanitize_internal_paths(s), 5000)),
         Value::Array(arr) => Value::Array(
             arr.iter()
                 .take(20)
@@ -149,6 +174,7 @@ fn sanitize_details(value: &Value, depth: usize) -> Value {
 #[derive(Clone)]
 pub struct ServerLogger {
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
+    counter: Arc<std::sync::atomic::AtomicU64>,
     events: EventBus,
 }
 
@@ -162,6 +188,7 @@ impl ServerLogger {
     pub fn new(events: EventBus) -> Self {
         Self {
             logs: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_SERVER_LOGS))),
+            counter: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             events,
         }
     }
@@ -177,20 +204,22 @@ impl ServerLogger {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
+        let seq = self.counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let safe_message = truncate_chars(sanitize_internal_paths(message), 2000);
         let entry = LogEntry {
-            id: Uuid::new_v4().to_string(),
+            id: format!("srv_{now_ms}_{seq:08}"),
             timestamp: now_ms,
             level: level.to_string(),
             category: category.to_string(),
-            message: sanitize_internal_paths(message),
+            message: safe_message,
             details: details.as_ref().map(|d| sanitize_details(d, 0)),
         };
 
         {
             let mut guard = self.logs.lock().unwrap();
-            guard.push_front(entry.clone());
+            guard.push_back(entry.clone());
             while guard.len() > MAX_SERVER_LOGS {
-                guard.pop_back();
+                guard.pop_front();
             }
         }
 
@@ -202,7 +231,8 @@ impl ServerLogger {
     pub fn get_recent_logs(&self, limit: usize) -> Vec<LogEntry> {
         let safe_limit = limit.clamp(1, MAX_SERVER_LOGS);
         let guard = self.logs.lock().unwrap();
-        guard.iter().take(safe_limit).cloned().collect()
+        let skip = guard.len().saturating_sub(safe_limit);
+        guard.iter().skip(skip).cloned().collect()
     }
 
     pub fn clear_logs(&self) {
@@ -213,14 +243,28 @@ impl ServerLogger {
 
 #[derive(Deserialize)]
 pub struct LogsQuery {
-    pub limit: Option<usize>,
+    pub limit: Option<String>,
 }
 
 pub async fn get_logs_handler(
     State(state): State<AppState>,
     Query(query): Query<LogsQuery>,
 ) -> Response {
-    let limit = query.limit.unwrap_or(100);
+    let limit = match query.limit.as_deref() {
+        None | Some("") => 100,
+        Some(raw) => match raw.parse::<f64>() {
+            Ok(n) if n.is_finite() => {
+                if n <= 1.0 {
+                    1
+                } else if n >= MAX_SERVER_LOGS as f64 {
+                    MAX_SERVER_LOGS
+                } else {
+                    n as usize
+                }
+            }
+            _ => 100,
+        },
+    };
     Json(state.logger.get_recent_logs(limit)).into_response()
 }
 

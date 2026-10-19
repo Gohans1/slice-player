@@ -369,7 +369,8 @@ async fn a_delete_waits_for_a_local_reingest_so_it_cannot_resurrect_the_track() 
     lib.ingest.cancel_download_if_active(&id).await;
     assert!(!lib.ingest.is_ingesting_track(&id), "cancel returns only once the reingest settled");
     lib.db.delete_track(&id).unwrap();
-    let _ = reingest.await.unwrap();
+    let res = reingest.await.unwrap();
+    assert!(!res.success);
 
     assert!(lib.db.get_track(&id).unwrap().is_none());
 }

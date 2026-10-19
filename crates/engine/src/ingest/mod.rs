@@ -51,7 +51,9 @@ impl IngestResult {
 #[derive(Debug, Clone, Default)]
 struct Operations {
     total: usize,
-    by_track: HashMap<String, usize>,
+    next_id: u64,
+    active_cancels: HashMap<u64, CancelFlag>,
+    by_track: HashMap<String, Vec<(u64, CancelFlag)>>,
 }
 
 #[derive(Default)]
@@ -93,18 +95,21 @@ pub struct Ingest {
 /// Holds one ingest operation open; dropping it settles the operation
 pub struct OperationGuard {
     inner: Arc<Inner>,
+    op_id: u64,
     track_id: Option<String>,
+    pub(crate) cancel: CancelFlag,
 }
 
 impl Drop for OperationGuard {
     fn drop(&mut self) {
         self.inner.operations.send_modify(|ops| {
             ops.total = ops.total.saturating_sub(1);
+            ops.active_cancels.remove(&self.op_id);
             if let Some(id) = &self.track_id
-                && let Some(count) = ops.by_track.get_mut(id)
+                && let Some(list) = ops.by_track.get_mut(id)
             {
-                *count -= 1;
-                if *count == 0 {
+                list.retain(|(op_id, _)| *op_id != self.op_id);
+                if list.is_empty() {
                     ops.by_track.remove(id);
                 }
             }
@@ -168,14 +173,24 @@ impl Ingest {
     }
 
     pub fn begin_operation(&self, track_id: Option<&str>) -> Option<OperationGuard> {
+        let cancel = CancelFlag::new();
+        let mut op_id = 0u64;
         // Counted before the pause check, so a drain that pauses next always waits for this one
         self.inner.operations.send_modify(|ops| {
+            ops.next_id += 1;
+            op_id = ops.next_id;
             ops.total += 1;
+            ops.active_cancels.insert(op_id, cancel.clone());
             if let Some(id) = track_id {
-                *ops.by_track.entry(id.to_string()).or_default() += 1;
+                ops.by_track.entry(id.to_string()).or_default().push((op_id, cancel.clone()));
             }
         });
-        let guard = OperationGuard { inner: self.inner.clone(), track_id: track_id.map(str::to_string) };
+        let guard = OperationGuard {
+            inner: self.inner.clone(),
+            op_id,
+            track_id: track_id.map(str::to_string),
+            cancel,
+        };
         if self.is_paused() {
             return None;
         }
@@ -207,6 +222,9 @@ impl Ingest {
             let mut epoch = self.inner.abort_epoch.lock().unwrap();
             epoch.cancel();
             *epoch = CancelFlag::new();
+        }
+        for cancel in self.inner.operations.borrow().active_cancels.values() {
+            cancel.cancel();
         }
         // Killing a process is not completion: an ingest may still write after its next await
         let mut ops = self.inner.operations.subscribe();
@@ -251,6 +269,11 @@ impl Ingest {
             if let Some((id, cancel)) = &downloads.current
                 && id == track_id
             {
+                cancel.cancel();
+            }
+        }
+        if let Some(list) = self.inner.operations.borrow().by_track.get(track_id) {
+            for (_, cancel) in list {
                 cancel.cancel();
             }
         }

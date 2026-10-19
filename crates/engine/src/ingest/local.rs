@@ -2,7 +2,7 @@
 
 use super::video_extractor::extract_audio_from_video;
 use super::{clean_input, file_name, round2, Ingest, IngestResult, DURATION_EPSILON_SECONDS, INGEST_PAUSED_MESSAGE, MAX_DURATION_SECONDS};
-use crate::audio_analysis::{analyze_audio_file_with, WAVEFORM_POINTS};
+use crate::audio_analysis::{analyze_audio_file_with, CancelFlag, WAVEFORM_POINTS};
 use crate::audio_source::{dotted_extension, validate_safe_local_audio_path, SUPPORTED_AUDIO_EXTENSIONS};
 use crate::db::resolve_abs_path;
 use crate::metadata::{read_local_metadata, save_cover_art};
@@ -54,13 +54,14 @@ impl Ingest {
         }
 
         let track_id = local_track_id(&full_path);
-        let Some(_operation) = self.begin_operation(Some(&track_id)) else {
+        let Some(operation) = self.begin_operation(Some(&track_id)) else {
             return IngestResult::fail(INGEST_PAUSED_MESSAGE);
         };
+        let cancel = operation.cancel.clone();
 
         let mut newly_extracted: Option<PathBuf> = None;
         let result = self
-            .ingest_local_file_inner(&full_path, &ext, &track_id, preferred_title, &mut newly_extracted)
+            .ingest_local_file_inner(&full_path, &ext, &track_id, preferred_title, cancel, &mut newly_extracted)
             .await;
         match result {
             Ok(result) => result,
@@ -80,6 +81,7 @@ impl Ingest {
         ext: &str,
         track_id: &str,
         preferred_title: Option<&str>,
+        cancel: CancelFlag,
         newly_extracted: &mut Option<PathBuf>,
     ) -> Result<IngestResult, String> {
         let meta = read_local_metadata(full_path).await;
@@ -122,8 +124,10 @@ impl Ingest {
             .unwrap_or_default();
 
         // One decode for the waveform and Sound Check, stored together
-        let cancel = self.inner.abort_epoch.lock().unwrap().clone();
-        let analysis = analyze_audio_file_with(&audio_path, WAVEFORM_POINTS, cancel).await?;
+        let analysis = analyze_audio_file_with(&audio_path, WAVEFORM_POINTS, cancel.clone()).await?;
+        if cancel.is_cancelled() {
+            return Err("Audio analysis cancelled".to_string());
+        }
         let peaks_json = serde_json::to_string(&analysis.peaks).map_err(|e| e.to_string())?;
         let file_path = audio_path.to_string_lossy().to_string();
         let db = &self.inner.db;

@@ -49,6 +49,25 @@ impl AppState {
         let logger = ServerLogger::new(events.clone());
         let ingest = Ingest::new(db.clone(), events.clone(), logger.clone(), config.data_dir.clone());
         let loudness = LoudnessWorker::new(db.clone(), events.clone());
+        for event_name in ["track_created", "track_updated", "library_restored"] {
+            let worker = loudness.clone();
+            events.on(event_name, move |payload| {
+                if event_name == "track_updated"
+                    && matches!(
+                        payload.get("reason").and_then(|v| v.as_str()),
+                        Some("loudness" | "volume")
+                    )
+                {
+                    return;
+                }
+                let w = worker.clone();
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    handle.spawn(async move {
+                        w.measure_missing_loudness().await;
+                    });
+                }
+            });
+        }
         Self {
             config,
             db,

@@ -118,12 +118,10 @@ pub async fn analyze_audio_file(
     file_path: impl AsRef<Path>,
     target_points: usize,
 ) -> Result<AudioAnalysisResult, String> {
-    let cancel = CancelFlag::new();
-    let _job = register_job(file_path.as_ref(), &cancel);
-    analyze_audio_file_with(file_path, target_points, cancel).await
+    analyze_audio_file_with(file_path, target_points, CancelFlag::new()).await
 }
 
-/// Same as [`analyze_audio_file`], cancelled only through the caller's own flag
+/// Same as [`analyze_audio_file`], cancelled through the caller's flag or [`cancel_waveform_for_file`]
 pub async fn analyze_audio_file_with(
     file_path: impl AsRef<Path>,
     target_points: usize,
@@ -133,6 +131,7 @@ pub async fn analyze_audio_file_with(
     if !path.exists() {
         return Err(format!("Audio file not found: {}", path.display()));
     }
+    let _job = register_job(&path, &cancel);
     tokio::task::spawn_blocking(move || analyze_blocking(&path, target_points, &cancel))
         .await
         .map_err(|e| e.to_string())?

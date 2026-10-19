@@ -134,14 +134,17 @@ pub fn parse_host_header(raw_host: &str) -> (String, String) {
 
 pub fn is_allowed_host(raw_host: &str, server_port: u16, is_production: bool) -> bool {
     if raw_host.is_empty() {
-        return true;
+        return false;
     }
     let (host, port) = parse_host_header(raw_host);
     let valid_host = matches!(host.as_str(), "localhost" | "127.0.0.1" | "[::1]" | "::1");
     if !valid_host {
         return false;
     }
-    if port.is_empty() || port == server_port.to_string() {
+    if port == server_port.to_string() {
+        return true;
+    }
+    if port.is_empty() && (server_port == 80 || server_port == 443) {
         return true;
     }
     if !is_production && port == "5173" {
@@ -305,6 +308,19 @@ pub async fn security_middleware(
         return resp;
     }
 
+    // Gate all non-/api/library requests (including GET/HEAD) while library restore is in progress
+    if state.mutation_gate.is_restoring() && !pathname.starts_with("/api/library") {
+        let mut resp = (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": LIBRARY_RESTORING_MESSAGE })),
+        )
+            .into_response();
+        apply_cors_and_security_headers(resp.headers_mut(), &allowed_origin, port, is_prod);
+        resp.headers_mut()
+            .insert("Retry-After", HeaderValue::from_static("5"));
+        return resp;
+    }
+
     // Mutation gate check before running handler
     let mut _mutation_guard = None;
     if is_mutating_library_request(&method, &pathname) {
@@ -359,8 +375,9 @@ pub async fn security_middleware(
             .get("content-length")
             .and_then(|v| v.to_str().ok());
 
+        let is_optional_body = is_optional_body_route(&pathname);
         if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
-            if raw_len.is_none() && !is_optional_body_route(&pathname) {
+            if raw_len.is_none() && !is_optional_body {
                 let mut resp = (
                     StatusCode::LENGTH_REQUIRED,
                     Json(json!({ "error": "Length Required: Content-Length header is mandatory" })),
@@ -381,6 +398,18 @@ pub async fn security_middleware(
                 apply_cors_and_security_headers(resp.headers_mut(), &allowed_origin, port, is_prod);
                 return resp;
             };
+            if matches!(method, Method::POST | Method::PUT | Method::PATCH)
+                && len == 0
+                && !is_optional_body
+            {
+                let mut resp = (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Empty or invalid request body" })),
+                )
+                    .into_response();
+                apply_cors_and_security_headers(resp.headers_mut(), &allowed_origin, port, is_prod);
+                return resp;
+            }
             if len > max_limit {
                 let mut resp = (
                     StatusCode::PAYLOAD_TOO_LARGE,

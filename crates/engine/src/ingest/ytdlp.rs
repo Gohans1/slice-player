@@ -500,10 +500,7 @@ impl Ingest {
         let ingest = self.clone();
         tokio::spawn(async move {
             loop {
-                let next = ingest.inner.downloads.lock().unwrap().queue.front().cloned();
-                let Some((track_id, _)) = next else { break };
-                let Some(operation) = ingest.begin_operation(Some(&track_id)) else { break };
-                let Some((track_id, url)) = ingest.take_next_download() else { break };
+                let Some((track_id, url, operation)) = ingest.take_next_download() else { break };
                 let attempted = ingest.process_download(&track_id, &url).await;
                 ingest.inner.downloads.lock().unwrap().current = None;
                 drop(operation);
@@ -517,12 +514,14 @@ impl Ingest {
         });
     }
 
-    fn take_next_download(&self) -> Option<(String, String)> {
+    fn take_next_download(&self) -> Option<(String, String, super::OperationGuard)> {
         let mut downloads = self.inner.downloads.lock().unwrap();
-        let (track_id, url) = downloads.queue.pop_front()?;
+        let (track_id, url) = downloads.queue.front()?.clone();
+        let operation = self.begin_operation(Some(&track_id))?;
+        downloads.queue.pop_front();
         downloads.queued.remove(&track_id);
-        downloads.current = Some((track_id.clone(), CancelFlag::new()));
-        Some((track_id, url))
+        downloads.current = Some((track_id.clone(), operation.cancel.clone()));
+        Some((track_id, url, operation))
     }
 
     fn current_cancel(&self) -> CancelFlag {

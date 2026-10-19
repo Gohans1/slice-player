@@ -64,15 +64,6 @@ pub async fn start_server(mut config: EngineConfig) -> Result<RunningServer, Str
         .recover_incomplete_ingests(state.config.data_dir.join("cache").join("audio"), &state.events);
 
     let loudness = state.loudness.clone();
-    for event_name in ["track_created", "track_updated", "library_restored"] {
-        let worker = loudness.clone();
-        state.events.on(event_name, move |_| {
-            let w = worker.clone();
-            tokio::spawn(async move {
-                w.measure_missing_loudness().await;
-            });
-        });
-    }
     let loudness_task = tokio::spawn(async move {
         loudness.measure_missing_loudness().await;
     });

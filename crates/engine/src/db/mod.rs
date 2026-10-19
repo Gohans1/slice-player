@@ -23,7 +23,7 @@ pub const LIBRARY_DB_PATH: &str = "./data/music.db";
 #[derive(Clone)]
 pub struct Db {
     conn: Arc<Mutex<Option<Connection>>>,
-    db_path: PathBuf,
+    db_path: Arc<Mutex<PathBuf>>,
 }
 
 impl Db {
@@ -83,16 +83,19 @@ impl Db {
 
         Ok(Self {
             conn: Arc::new(Mutex::new(Some(conn))),
-            db_path: db_path.to_path_buf(),
+            db_path: Arc::new(Mutex::new(db_path.to_path_buf())),
         })
     }
 
-    pub fn db_path(&self) -> &Path {
-        &self.db_path
+    pub fn db_path(&self) -> PathBuf {
+        self.db_path
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn close(&self) {
-        let mut guard = self.conn.lock().unwrap();
+        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(conn) = guard.take() {
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
             let _ = conn.close();
@@ -100,11 +103,13 @@ impl Db {
     }
 
     pub fn reopen(&self, new_path: impl AsRef<Path>, is_test: bool) -> Result<(), String> {
+        let new_path = new_path.as_ref().to_path_buf();
         self.close();
-        let reopened = Self::open(new_path, is_test)?;
-        let mut guard = self.conn.lock().unwrap();
-        let mut new_guard = reopened.conn.lock().unwrap();
+        let reopened = Self::open(&new_path, is_test)?;
+        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut new_guard = reopened.conn.lock().unwrap_or_else(|e| e.into_inner());
         *guard = new_guard.take();
+        *self.db_path.lock().unwrap_or_else(|e| e.into_inner()) = new_path;
         Ok(())
     }
 
@@ -112,9 +117,12 @@ impl Db {
     where
         F: FnOnce(&mut Connection) -> R,
     {
-        let mut guard = self.conn.lock().unwrap();
-        let conn = guard.as_mut().expect("Database connection is closed");
-        f(conn)
+        let mut guard = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            drop(guard);
+            panic!("Database connection is closed");
+        }
+        f(guard.as_mut().unwrap())
     }
 
     pub fn user_version(&self) -> Result<i64, String> {

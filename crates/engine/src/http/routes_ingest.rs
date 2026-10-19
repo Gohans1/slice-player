@@ -56,7 +56,11 @@ pub async fn ingest_local_handler(State(state): State<AppState>, body: Bytes) ->
         _ => vec![],
     };
     let mut items: Vec<String> = Vec::new();
-    for item in raw.into_iter().filter(|p| !p.trim().is_empty()).map(clean_input_owned) {
+    for item in raw
+        .into_iter()
+        .map(clean_input_owned)
+        .filter(|p| !p.trim().is_empty())
+    {
         if !items.contains(&item) {
             items.push(item);
         }

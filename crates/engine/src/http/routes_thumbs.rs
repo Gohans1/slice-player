@@ -74,12 +74,14 @@ pub async fn thumb_handler(
     };
 
     let mut resp = Response::new(body);
+    let h = resp.headers_mut();
     if not_modified {
         *resp.status_mut() = StatusCode::NOT_MODIFIED;
+    } else {
+        h.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+        h.insert(header::CONTENT_LENGTH, HeaderValue::from(meta.len()));
     }
     let h = resp.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
-    h.insert(header::CONTENT_LENGTH, HeaderValue::from(meta.len()));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=86400"));
     if let Ok(v) = HeaderValue::from_str(&etag) {
         h.insert(header::ETAG, v);
