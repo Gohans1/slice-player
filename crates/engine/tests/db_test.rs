@@ -208,40 +208,143 @@ fn should_validate_volume_boundaries() {
     assert!(!validate_volume(f64::NEG_INFINITY));
 }
 
+// Schema of the last unversioned release (git 30acfe7^): tracks.volume defaulted to 0.8, no playlist tables,
+// no loudness columns, PRAGMA user_version = 0
+const PRE_VERSIONING_SCHEMA: &str = "
+    CREATE TABLE tracks (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL CHECK(source_type IN ('youtube', 'local')),
+      source_uri TEXT NOT NULL,
+      title TEXT NOT NULL,
+      artist TEXT DEFAULT '',
+      duration REAL NOT NULL,
+      thumbnail_url TEXT DEFAULT '',
+      file_path TEXT,
+      peaks_json TEXT,
+      status TEXT DEFAULT 'ready' CHECK(status IN ('queued', 'downloading', 'ready', 'error')),
+      error_message TEXT,
+      volume REAL NOT NULL DEFAULT 0.8 CHECK(volume >= 0 AND volume <= 1),
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE TABLE segments (
+      id TEXT PRIMARY KEY,
+      track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      start_time REAL NOT NULL,
+      end_time REAL NOT NULL,
+      color TEXT DEFAULT '#4385BE',
+      sort_order INTEGER DEFAULT 0,
+      created_at INTEGER DEFAULT (unixepoch()),
+      CONSTRAINT chk_time CHECK (end_time > start_time)
+    );
+    CREATE INDEX idx_segments_track ON segments(track_id);
+";
+
+fn table_columns(db: &Db, table: &str) -> Vec<String> {
+    db.with_conn(|conn| {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        stmt.query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .map(|c| c.unwrap())
+            .collect()
+    })
+}
+
+fn schema_object_names(db: &Db, kind: &str) -> Vec<String> {
+    db.with_conn(|conn| {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = ?1 AND name NOT LIKE 'sqlite_%' ORDER BY name")
+            .unwrap();
+        stmt.query_map([kind], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|c| c.unwrap())
+            .collect()
+    })
+}
+
 #[test]
-fn should_run_migrations_v1_through_v11_and_upgrade_legacy_volume_and_sqp_thumbs() {
+fn upgrades_the_last_unversioned_schema_to_v11_without_losing_rows() {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("legacy.db");
     {
-        let db = Db::open(&db_path, true).unwrap();
-        db.with_conn(|conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO tracks (id, source_type, source_uri, title, duration, volume, thumbnail_url)
-                 VALUES ('yt_dQw4w9WgXcQ', 'youtube', 'https://youtube.com', 'Legacy', 100, 0.8, 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?sqp=-oaymwEcCNACELwBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==')",
-                [],
-            )
-            .unwrap();
-            conn.execute(
-                "INSERT OR REPLACE INTO tracks (id, source_type, source_uri, title, duration, volume)
-                 VALUES ('custom-v1-track', 'youtube', 'https://youtube.com', 'Custom', 100, 0.9)",
-                [],
-            )
-            .unwrap();
-            conn.execute_batch("PRAGMA user_version = 0;").unwrap();
-        });
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(PRE_VERSIONING_SCHEMA).unwrap();
+        conn.execute_batch(
+            "INSERT INTO tracks (id, source_type, source_uri, title, duration, thumbnail_url, file_path, peaks_json, status)
+               VALUES ('yt_dQw4w9WgXcQ', 'youtube', 'https://youtube.com/watch?v=dQw4w9WgXcQ', 'Untouched volume', 212,
+                       'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg?sqp=-oaymwEcCNACELwBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==',
+                       '/old/home/data/cache/audio/yt_dQw4w9WgXcQ.opus', '[0.1,0.2]', 'ready');
+             INSERT INTO tracks (id, source_type, source_uri, title, duration, volume, status, error_message)
+               VALUES ('loc_custom', 'local', 'C:\\Music\\a.flac', 'Custom volume', 100, 0.9, 'error', 'boom');
+             INSERT INTO segments (id, track_id, name, start_time, end_time) VALUES ('seg_1', 'yt_dQw4w9WgXcQ', 'Hook', 10, 20);",
+        )
+        .unwrap();
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 0);
     }
 
     let db = Db::open(&db_path, true).unwrap();
-    let legacy = db.get_track("yt_dQw4w9WgXcQ").unwrap().unwrap();
-    assert_eq!(legacy.volume, 0.5);
-    assert_eq!(
-        legacy.thumbnail_url,
-        "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg"
-    );
 
-    let custom = db.get_track("custom-v1-track").unwrap().unwrap();
-    assert_eq!(custom.volume, 0.9);
     assert_eq!(db.user_version().unwrap(), 11);
+    let untouched = db.get_track("yt_dQw4w9WgXcQ").unwrap().unwrap();
+    assert_eq!(untouched.volume, 0.5, "v2 resets the old 0.8 default to 0.5");
+    assert_eq!(untouched.thumbnail_url, "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg");
+    assert_eq!(untouched.peaks_json.as_deref(), Some("[0.1,0.2]"));
+    assert_eq!(untouched.loudness, None);
+    assert_eq!(untouched.true_peak, None);
+    let custom = db.get_track("loc_custom").unwrap().unwrap();
+    assert_eq!(custom.volume, 0.9);
+    assert_eq!(custom.status, "error");
+    assert_eq!(custom.error_message.as_deref(), Some("boom"));
+    assert_eq!(db.list_segments_by_track("yt_dQw4w9WgXcQ").unwrap().len(), 1);
+
+    let track_cols = table_columns(&db, "tracks");
+    assert!(track_cols.iter().any(|c| c == "loudness") && track_cols.iter().any(|c| c == "true_peak"));
+    let playlist_cols = table_columns(&db, "playlists");
+    for col in ["is_custom_ordered", "cover_track_id", "is_mix", "parent_id"] {
+        assert!(playlist_cols.iter().any(|c| c == col), "playlists.{col} missing");
+    }
+    assert_eq!(
+        schema_object_names(&db, "table"),
+        ["playlist_items", "playlist_sources", "playlists", "plays", "segments", "tracks"]
+    );
+    assert_eq!(schema_object_names(&db, "index").len(), 15);
+
+    // The upgraded library is usable: a playlist referencing the legacy rows can be created
+    let pl = db.create_playlist("After upgrade", None, None).unwrap();
+    db.add_playlist_item(&pl.id, "yt_dQw4w9WgXcQ", Some("seg_1")).unwrap();
+
+    db.close();
+    let reopened = Db::open(&db_path, true).unwrap();
+    assert_eq!(reopened.user_version().unwrap(), 11);
+    assert_eq!(reopened.list_tracks().unwrap().len(), 2);
+    assert_eq!(reopened.get_track("loc_custom").unwrap().unwrap().volume, 0.9);
+    assert_eq!(reopened.get_playlist_items(&pl.id).unwrap().len(), 1);
+}
+
+#[test]
+fn adds_the_volume_column_to_the_original_schema_that_never_had_one() {
+    // Original release (git ba7e6e8) minus its long-dropped playlist tables: tracks had no volume column at all
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("original.db");
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(&PRE_VERSIONING_SCHEMA.replace(
+            "volume REAL NOT NULL DEFAULT 0.8 CHECK(volume >= 0 AND volume <= 1),",
+            "",
+        ))
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tracks (id, source_type, source_uri, title, duration) VALUES ('loc_old', 'local', '/a.mp3', 'Old', 60)",
+            [],
+        )
+        .unwrap();
+    }
+
+    let db = Db::open(&db_path, true).unwrap();
+
+    assert_eq!(db.user_version().unwrap(), 11);
+    assert_eq!(db.get_track("loc_old").unwrap().unwrap().volume, 0.5);
 }
 
 #[test]
