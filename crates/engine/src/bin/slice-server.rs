@@ -1,5 +1,20 @@
 #[tokio::main]
 async fn main() {
     let config = slice_engine::EngineConfig::default();
-    println!("Slice Server initialized on port {}", config.port);
+    if std::env::args().any(|arg| arg == "--reanalyze-waveforms") {
+        match slice_engine::reanalyze_library_waveforms(&config).await {
+            Ok(count) => {
+                println!("[Server] Reanalyzed waveforms for {count} tracks.");
+                return;
+            }
+            Err(err) => {
+                eprintln!("[Server] Waveform reanalysis failed: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
+    if let Err(err) = slice_engine::run_cli(config).await {
+        eprintln!("[Server] Fatal error: {err}");
+        std::process::exit(1);
+    }
 }

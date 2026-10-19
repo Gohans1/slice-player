@@ -144,14 +144,14 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ## Phase 4: Runtime Wiring, Optional Tauri v2 Wrapper, Full-Stack Verification & Legacy Cleanup
 
-- [ ] **Task 9b (`task-9b`): `slice-server` Runtime Wiring (`start_server`, Startup Sequence, Lifecycle & Graceful Shutdown)**
+- [x] **Task 9b (`task-9b`): `slice-server` Runtime Wiring (`start_server`, Startup Sequence, Lifecycle & Graceful Shutdown)**
   - **Description**: Port the `index.ts` boot sequence into `slice_engine::start_server(config)` and make `slice-server` call it (today the binary only prints a line and exits).
   - **Acceptance criteria**:
-    - [ ] Legacy boot order: exe-dir chdir → production single-instance check → `Db::open` (migrations + orphan sweep + path heal) → `recover_incomplete_ingests` → loudness worker (+ re-trigger on `track_created`/`track_updated`) → bind `127.0.0.1:<port>` → open app window in production.
-    - [ ] Production lifecycle uses `wait_for_shutdown(is_ingest_busy)`; SIGINT/SIGTERM/Ctrl-Break → graceful shutdown (stop accepting, abort ingest + analysis, `Db::close` WAL checkpoint, exit 0).
-    - [ ] `server_runtime_test.rs` boots `start_server` on an ephemeral port in a temp cwd: `/api/tracks` answers, `/ws` sends `connected`, pre-seeded `downloading` track becomes `error`.
+    - [x] Legacy boot order: exe-dir chdir → production single-instance check → `Db::open` (migrations + orphan sweep + path heal) → `recover_incomplete_ingests` → loudness worker (+ re-trigger on `track_created`/`track_updated`) → bind `127.0.0.1:<port>` → open app window in production.
+    - [x] Production lifecycle uses `wait_for_shutdown(is_ingest_busy)`; SIGINT/SIGTERM/Ctrl-Break → graceful shutdown (stop accepting, abort ingest + analysis, `Db::close` WAL checkpoint, exit 0).
+    - [x] `server_runtime_test.rs` boots `start_server` on an ephemeral port in a temp cwd: `/api/tracks` answers, `/ws` sends `connected`, pre-seeded `downloading` track becomes `error`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test server_runtime_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test server_runtime_test`
   - **Dependencies**: `task-3b`, `task-4`
   - **Files likely touched**: `crates/engine/src/lib.rs`, `crates/engine/src/server.rs`, `crates/engine/src/bin/slice-server.rs`, `crates/engine/tests/server_runtime_test.rs`
   - **Estimated scope**: `S`

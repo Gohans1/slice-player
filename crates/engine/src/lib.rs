@@ -8,7 +8,10 @@ pub mod http;
 pub mod ingest;
 pub mod metadata;
 pub mod models;
+pub mod server;
 pub mod thumbnails;
+
+pub use server::{reanalyze_library_waveforms, run_cli, start_server, RunningServer};
 
 use std::path::PathBuf;
 

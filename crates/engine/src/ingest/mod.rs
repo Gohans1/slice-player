@@ -8,7 +8,7 @@ pub mod upload;
 pub mod video_extractor;
 pub mod ytdlp;
 
-use crate::audio_analysis::{abort_waveform_processes, cancel_waveform_for_file, is_waveform_busy, CancelFlag};
+use crate::audio_analysis::{cancel_waveform_for_file, is_waveform_busy, CancelFlag};
 use crate::audio_source::SUPPORTED_AUDIO_EXTENSIONS;
 use crate::db::{purge_track_cache_files, Db};
 use crate::events::EventBus;
