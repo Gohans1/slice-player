@@ -4,27 +4,29 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ## Phase 1: Cargo Workspace, SQLite `./data/music.db` Parity & Core HTTP/CRUD Server
 
-- [x] **Task 1 (`task-1`): Initialize Cargo Workspace & `crates/engine` Skeleton**
+- [ ] **Task 1 (`task-1`): Initialize Cargo Workspace & `crates/engine` Skeleton**
   - **Description**: Create root `Cargo.toml` (`members = ["crates/engine"]`, `default-members = ["crates/engine"]`, `exclude = ["src-tauri"]`) and `crates/engine` (`slice-engine` lib + `slice-server` bin) with `EngineConfig` and `appWindow` single-instance/window-launcher/idle-shutdown helpers (`appWindow.test.ts` parity).
   - **Acceptance criteria**:
-    - [x] `crates/engine` compiles with zero warnings and exports `EngineConfig` + `appWindow` lifecycle helpers (`find_app_browser`, `is_server_running`, `open_app_window`, 180s startup watchdog, 60s WebSocket idle shutdown, and safe `<exe_dir>/dist` chdir check).
+    - [x] `crates/engine` compiles with zero warnings and exports `EngineConfig` + `appWindow` helpers (`find_app_browser`, `is_server_running`, `open_app_window`, safe `<exe_dir>/dist` chdir check).
+    - [ ] `WsLifecycleTracker::wait_for_shutdown(is_busy)`: 180s no-client startup watchdog + 60s idle shutdown after last disconnect (restart on reconnect, re-arm while ingest busy), proven with paused Tokio time in `app_window_test.rs`. *(Reopened after review: only the WS counter existed. Binary wiring → Task 9b.)*
     - [x] `.gitignore` excludes `/target`.
   - **Verification**:
-    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine`
+    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test app_window_test`
     - [x] Build succeeds: `PATH="$HOME/.cargo/bin:$PATH" cargo check -p slice-engine`
   - **Dependencies**: None
   - **Files likely touched**: `Cargo.toml`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/bin/slice-server.rs`, `.gitignore`
   - **Estimated scope**: `S`
 
-- [x] **Task 2 (`task-2`): Port SQLite `./data/music.db` Schema (`v1..v11`), Pragmas, Startup Cleanup & Recovery**
+- [ ] **Task 2 (`task-2`): Port SQLite `./data/music.db` Schema (`v1..v11`), Pragmas, Startup Cleanup & Recovery**
   - **Description**: Port SQLite initialization, WAL pragmas, migrations `v1..v11`, startup orphan cleanup (`heal_track_file_paths`, `.part`/`.ytdl`/audio/thumb sweep), and `recover_incomplete_ingests()` from `src/server/db.ts` and `src/server/ingest.ts`, plus tests from `db.test.ts` and `portablePaths.test.ts`.
   - **Acceptance criteria**:
     - [x] Refuses to open `./data/music.db` when `is_test == true` or `NODE_ENV == "test"`.
     - [x] Configures `busy_timeout = 5000`, `WAL`, `foreign_keys = ON`, `SQLITE_FCNTL_PERSIST_WAL = 0`, and `wal_checkpoint(TRUNCATE)` on close.
     - [x] Runs all 11 migrations (`PRAGMA user_version = 1..11`) idempotently, creating all 6 tables (`tracks`, `segments`, `playlists`, `playlist_items`, `playlist_sources`, `plays`) and 15 indexes.
     - [x] `recover_incomplete_ingests()` updates `status IN ('queued', 'downloading')` rows to `status = 'error'` with `"Tải bài hát bị gián đoạn do máy chủ khởi động lại. Vui lòng bấm Thử lại (Retry)."` (never deleting user rows) and purges partial files.
+    - [ ] Migration test upgrades a **real legacy `user_version = 0` schema** (tracks without `volume`/`loudness`/`true_peak`, no playlist tables) with representative rows, asserting new columns + defaults, preserved rows, `sqp=` rewrite, all tables/indexes at v11, and data intact after close + reopen. *(Reopened after review: old test rewound `user_version` on the latest schema.)*
   - **Verification**:
-    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test db_test`
+    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test db_test`
   - **Dependencies**: `task-1`
   - **Files likely touched**: `crates/engine/src/db/mod.rs`, `crates/engine/src/db/migrations.rs`, `crates/engine/src/db/maintenance.rs`, `crates/engine/src/models.rs`, `crates/engine/tests/db_test.rs`
   - **Estimated scope**: `M`
@@ -64,7 +66,8 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Description**: Replace `src/server/waveform.ts` and `src/server/loudness.ts` with a single-pass `O(1)` streaming decoder (`symphonia` + `symphonia-adapter-libopus` + `ebur128` + `ffmpeg` fallback) and background `measure_missing_loudness` worker. Port tests from `loudness.test.ts`.
   - **Acceptance criteria**:
     - [ ] Registers `symphonia_adapter_libopus::OpusDecoder` so `.opus`/`.webm` (`format 251`) and all standard formats decode in-process.
-    - [ ] Sets `Channel::DualMono` for 1-channel audio, converts linear true peak via `20.0 * max_linear.log10()`, returns `None` on non-finite silence, and computes `1,000` peaks (`[0.0, 1.0]`, 3 decimals, `1800s` cap) with `ffmpeg` CLI and `[0.1; 1000]` fallbacks.
+    - [ ] Mono measured like legacy `ffmpeg ebur128` (**no** `DualMono`), converts linear true peak via `20.0 * max_linear.log10()`, returns `None` on non-finite silence, and computes `1,000` peaks (`[0.0, 1.0]` absolute amplitude, 3 decimals, `1800s` cap) with `ffmpeg` CLI and `[0.1; 1000]` fallbacks.
+    - [ ] Parity fixture: native mono + stereo results match legacy `ffmpeg ... ebur128=peak=true` summary (`I` ±0.1 LU, `Peak` ±0.2 dB).
     - [ ] Background `measure_missing_loudness()` measures `status = 'ready' AND loudness IS NULL` newest first, announces `track_updated` (`reason: "loudness"`), and pauses cleanly via `pause_measuring_loudness()`.
   - **Verification**:
     - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test loudness_and_waveform_test`
@@ -139,39 +142,56 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ---
 
-## Phase 4: Optional Tauri v2 Wrapper, Full-Stack Verification & Legacy Cleanup
+## Phase 4: Runtime Wiring, Optional Tauri v2 Wrapper, Full-Stack Verification & Legacy Cleanup
+
+- [ ] **Task 9b (`task-9b`): `slice-server` Runtime Wiring (`start_server`, Startup Sequence, Lifecycle & Graceful Shutdown)**
+  - **Description**: Port the `index.ts` boot sequence into `slice_engine::start_server(config)` and make `slice-server` call it (today the binary only prints a line and exits).
+  - **Acceptance criteria**:
+    - [ ] Legacy boot order: exe-dir chdir → production single-instance check → `Db::open` (migrations + orphan sweep + path heal) → `recover_incomplete_ingests` → loudness worker (+ re-trigger on `track_created`/`track_updated`) → bind `127.0.0.1:<port>` → open app window in production.
+    - [ ] Production lifecycle uses `wait_for_shutdown(is_ingest_busy)`; SIGINT/SIGTERM/Ctrl-Break → graceful shutdown (stop accepting, abort ingest + analysis, `Db::close` WAL checkpoint, exit 0).
+    - [ ] `server_runtime_test.rs` boots `start_server` on an ephemeral port in a temp cwd: `/api/tracks` answers, `/ws` sends `connected`, pre-seeded `downloading` track becomes `error`.
+  - **Verification**:
+    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test server_runtime_test`
+  - **Dependencies**: `task-3b`, `task-4`
+  - **Files likely touched**: `crates/engine/src/lib.rs`, `crates/engine/src/server.rs`, `crates/engine/src/bin/slice-server.rs`, `crates/engine/tests/server_runtime_test.rs`
+  - **Estimated scope**: `S`
 
 - [ ] **Task 10 (`task-10`): Scaffold Optional `src-tauri` Desktop Wrapper & Update `src/launcher/refresh.ts`**
   - **Description**: Create `src-tauri` (kept in `exclude = ["src-tauri"]` in root `Cargo.toml` so headless hosts without `webkit2gtk-4.1` never fail workspace builds) and update `src/launcher/refresh.ts` to watch `crates/engine/src`, `Cargo.toml`, and `crates/engine/Cargo.toml` (excluding `crates/engine/tests`) and rebuild `slice-server` when Rust sources change.
   - **Acceptance criteria**:
     - [ ] `src-tauri/src/main.rs` boots `slice_engine` and points the Tauri window to `http://127.0.0.1:3000`.
     - [ ] `src/launcher/refresh.ts` watches `crates/engine/src`, `Cargo.toml`, and `crates/engine/Cargo.toml` (ignoring Rust test files), rebuilds `slice-server` when stale, and passes `bun test --isolate src/launcher`.
+    - [ ] *(Optional, only if Tauri ships)* Playback smoke test inside the real WebView per OS (Linux WebKitGTK depends on GStreamer codecs even over HTTP loopback).
   - **Verification**:
     - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/launcher`
-  - **Dependencies**: `task-9`
+  - **Dependencies**: `task-9`, `task-9b`
   - **Files likely touched**: `Cargo.toml`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs`, `src/launcher/refresh.ts`
   - **Estimated scope**: `S`
 
-- [ ] **Task 11 (`task-11`): Full-Stack Integration Verification & Live Browser Inspection (`agent-browser`)**
-  - **Description**: Add `security_and_concurrency_test.rs`, wire `package.json` and `start.bat` to build/run `slice-server`, and verify the live app in `agent-browser`.
+- [ ] **Task 11 (`task-11`): Full-Stack Integration Verification, Real-Backend E2E & Cutover Rehearsal**
+  - **Description**: Add `security_and_concurrency_test.rs`, a Playwright suite against the **real** `slice-server`, rehearse cutover on a copy of the real library, wire `package.json` / `start.bat` to `slice-server` while keeping `start:bun` for rollback, and verify the live app in `agent-browser`.
   - **Acceptance criteria**:
-    - [ ] All Rust integration tests, client unit tests (`bun test --isolate src/client src/launcher`), typechecks (`bun run typecheck`), lints (`bun run lint`), and Playwright E2E tests (`bun run test:e2e`) pass.
-    - [ ] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors, working `/ws`, tracks/segments/playlists/mix/sub-playlists, `206` audio streaming, and backup export.
+    - [ ] All Rust integration tests, client unit tests (`bun test --isolate src/client src/launcher`), typechecks (`bun run typecheck`), lints (`bun run lint`), and the existing mocked Playwright suite (`bun run test:e2e`) pass.
+    - [ ] `bun run test:e2e:rust` (`playwright.rust.config.ts`): `webServer` = `target/release/slice-server` in a fresh temp cwd (`dist` symlinked, throwaway `./data`), **no** API/WS mocks; covers `/ws` + live `track_updated`, local ingest → waveform → `206` stream, segment/playlist/mix/sub-playlist CRUD, and export → import round-trip.
+    - [ ] Live inspection in `agent-browser` against `slice-server` on `http://127.0.0.1:3000` confirms zero console/page/network errors.
+    - [ ] Cutover rehearsal on copies of `./data` (SQLite `.backup` snapshot, Bun stopped): API JSON diff Bun vs Rust (`/api/tracks`, `/api/segments`, `/api/playlists`, `/api/home`) + cache listing diff before/after Rust boot (orphan sweep). Any unexpected diff blocks cutover.
+    - [ ] Rollback ready: consistent snapshot of the real `./data` stored outside `./data` before the first Rust run; `start:bun` / `dev:bun` scripts kept; rollback steps written in the PR.
+    - [ ] *(Optional)* Baselines: analysis wall time + peak RSS (3-min and 30-min track, Bun+ffmpeg vs Rust) and `/api/tracks` latency while analyzing.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint`
+    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun test --isolate src/client src/launcher && bun run typecheck && bun run lint && bun run test:e2e && bun run test:e2e:rust`
   - **Dependencies**: `task-10`
-  - **Files likely touched**: `crates/engine/tests/security_and_concurrency_test.rs`, `package.json`, `start.bat`
+  - **Files likely touched**: `crates/engine/tests/security_and_concurrency_test.rs`, `playwright.rust.config.ts`, `e2e/rust-backend/*.spec.ts`, `package.json`, `start.bat`
   - **Estimated scope**: `M`
 
-- [ ] **Task 12 (`task-12`): Retire Legacy Bun Server Runtime Files (Retaining `src/server/types.ts`)**
-  - **Description**: Remove deprecated runtime `.ts` and `.test.ts` files in `src/server/` while **retaining `src/server/types.ts`**, and prune unused server-only npm packages (`music-metadata`, `tar-stream`, `@types/tar-stream`).
+- [ ] **Task 12 (`task-12`): Retire Legacy Bun Server Runtime Files (Retaining `src/server/types.ts`)** — ⚠️ one-way door, needs the dev's explicit go after running Rust on the real library
+  - **Description**: Remove deprecated runtime `.ts` and `.test.ts` files in `src/server/` while **retaining `src/server/types.ts`**, drop `start:bun` / `dev:bun`, and prune unused server-only npm packages (`music-metadata`, `tar-stream`, `@types/tar-stream`).
   - **Acceptance criteria**:
     - [ ] `src/server/types.ts` is preserved so `bun run typecheck`, `bun run lint`, `bun test --isolate`, and `bun run build` succeed with zero errors.
   - **Verification**:
     - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run build`
-  - **Dependencies**: `task-11`
+  - **Dependencies**: `task-11` + dev acceptance
   - **Files likely touched**: `package.json`, `src/server/` (retain `src/server/types.ts`)
   - **Estimated scope**: `S`
 
 - [ ] **Checkpoint 4**: Final Cutover, E2E & Live Browser (`agent-browser`) Verification
-  - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run test:e2e`
+  - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run test:e2e && bun run test:e2e:rust`
