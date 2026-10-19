@@ -1,4 +1,5 @@
 pub mod app_window;
+pub mod audio_analysis;
 pub mod db;
 pub mod events;
 pub mod http;

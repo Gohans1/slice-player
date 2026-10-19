@@ -62,15 +62,15 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
 
 ## Phase 2: Pure-Rust Single-Pass Audio Analyzer, Range Streaming & Thumbnails
 
-- [ ] **Task 4 (`task-4`): Single-Pass Streaming Audio Analyzer (`symphonia` + `libopus` + `ebur128`) & Loudness Worker**
+- [x] **Task 4 (`task-4`): Single-Pass Streaming Audio Analyzer (`symphonia` + `libopus` + `ebur128`) & Loudness Worker**
   - **Description**: Replace `src/server/waveform.ts` and `src/server/loudness.ts` with a single-pass `O(1)` streaming decoder (`symphonia` + `symphonia-adapter-libopus` + `ebur128` + `ffmpeg` fallback) and background `measure_missing_loudness` worker. Port tests from `loudness.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Registers `symphonia_adapter_libopus::OpusDecoder` so `.opus`/`.webm` (`format 251`) and all standard formats decode in-process.
-    - [ ] Mono measured like legacy `ffmpeg ebur128` (**no** `DualMono`), converts linear true peak via `20.0 * max_linear.log10()`, returns `None` on non-finite silence, and computes `1,000` peaks (`[0.0, 1.0]` absolute amplitude, 3 decimals, `1800s` cap) with `ffmpeg` CLI and `[0.1; 1000]` fallbacks.
-    - [ ] Parity fixture: native mono + stereo results match legacy `ffmpeg ... ebur128=peak=true` summary (`I` ±0.1 LU, `Peak` ±0.2 dB).
-    - [ ] Background `measure_missing_loudness()` measures `status = 'ready' AND loudness IS NULL` newest first, announces `track_updated` (`reason: "loudness"`), and pauses cleanly via `pause_measuring_loudness()`.
+    - [x] Registers `symphonia_adapter_libopus::OpusDecoder` so `.opus`/`.webm` (`format 251`) and all standard formats decode in-process.
+    - [x] Mono measured like legacy `ffmpeg ebur128` (**no** `DualMono`), converts linear true peak via `20.0 * max_linear.log10()`, returns `None` on non-finite silence, and computes `1,000` peaks (`[0.0, 1.0]` absolute amplitude, 3 decimals, `1800s` cap) with `ffmpeg` CLI and `[0.1; 1000]` fallbacks. *(ffmpeg fallback = ffmpeg decodes to a WAV pipe, same Rust meter/envelope. Waveform intentionally differs from legacy's ~100 Hz low-passed envelope; see plan Task 4 note.)*
+    - [x] Parity fixture: native mono + stereo results match legacy `ffmpeg ... ebur128=peak=true` summary (`I` ±0.1 LU, `Peak` ±0.2 dB).
+    - [x] Background `measure_missing_loudness()` measures `status = 'ready' AND loudness IS NULL` newest first, announces `track_updated` (`reason: "loudness"`), and pauses cleanly via `pause_measuring_loudness()`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test loudness_and_waveform_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test loudness_and_waveform_test`
   - **Dependencies**: `task-2`, `task-3a`
   - **Files likely touched**: `crates/engine/src/audio_analysis/mod.rs`, `crates/engine/src/audio_analysis/decoder.rs`, `crates/engine/src/audio_analysis/loudness_worker.rs`, `crates/engine/tests/loudness_and_waveform_test.rs`
   - **Estimated scope**: `M`
