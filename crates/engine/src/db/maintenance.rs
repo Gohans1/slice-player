@@ -97,43 +97,6 @@ pub fn purge_track_cache_files(audio_dir: &Path, track_id: &str) {
     }
 }
 
-pub fn sweep_thumbnail_variants(
-    sized_dir: &Path,
-    track_id: &str,
-    valid_track_ids: Option<&HashSet<String>>,
-) {
-    if !sized_dir.exists() {
-        return;
-    }
-    let prefix = format!("{track_id}-");
-    if let Ok(entries) = fs::read_dir(sized_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            if name.ends_with(".partial.jpg") {
-                let _ = fs::remove_file(&path);
-                continue;
-            }
-            if !track_id.is_empty() && name.starts_with(&prefix) {
-                let _ = fs::remove_file(&path);
-                continue;
-            }
-            if let Some(valid_ids) = valid_track_ids {
-                // Variant format: <track_id>-<width>-<version>.jpg
-                let parts: Vec<&str> = name.rsplitn(3, '-').collect();
-                if parts.len() == 3 {
-                    let tid = parts[2];
-                    if !valid_ids.contains(tid) {
-                        let _ = fs::remove_file(&path);
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn sweep_startup_orphan_cache(
     conn: &mut Connection,
     audio_cache_dir: &Path,
@@ -209,6 +172,10 @@ pub fn sweep_startup_orphan_cache(
                     let _ = fs::remove_file(&path);
                 }
             }
+        }
+        // Scaled copies of art that is now gone or changed go too (variants live beside thumbs/)
+        if let Some(cache_dir) = thumb_cache_dir.parent() {
+            crate::thumbnails::sweep_thumbnail_variants(thumb_cache_dir, &cache_dir.join("thumbs-sized"));
         }
     }
 }

@@ -86,18 +86,18 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/audio_source.rs`, `crates/engine/src/http/routes_stream.rs`, `crates/engine/src/http/mod.rs`, `crates/engine/tests/audio_source_and_stream_test.rs`
   - **Estimated scope**: `S`
 
-- [ ] **Task 6 (`task-6`): Audio Metadata/Cover Extraction (`lofty`) & Thumbnail Variants (`/api/thumbs/:id`)**
+- [x] **Task 6 (`task-6`): Audio Metadata/Cover Extraction (`lofty`) & Thumbnail Variants (`/api/thumbs/:id`)**
   - **Description**: Port `/api/thumbs/:id` (`src/server/thumbnails.ts`) and local metadata/cover-art extraction (`src/server/ingest.ts`). Port tests from `thumbnails.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Strips optional `.jpg`/`.png`/`.webp` extension from `/api/thumbs/:id`, scales down `?size=small|large` (`192px`/`640px`) via 2-slot FIFO semaphore + `.partial.jpg` atomic rename + `cover_art_version` check, and gracefully serves the original thumbnail if `?size` is missing/invalid or scaling fails.
-    - [ ] Extracts local track metadata + cover art (`<= 4 MiB`, JPEG/PNG/WebP magic bytes) and returns `/api/thumbs/${trackId}${ext}?v=${md5_8char}`.
+    - [x] Strips optional `.jpg`/`.png`/`.webp` extension from `/api/thumbs/:id`, scales down `?size=small|large` (`192px`/`640px`) via 2-slot FIFO semaphore + `.partial.jpg` atomic rename + `cover_art_version` check, and gracefully serves the original thumbnail if `?size` is missing/invalid or scaling fails.
+    - [x] Extracts local track metadata + cover art (`<= 4 MiB`, JPEG/PNG/WebP magic bytes) and returns `/api/thumbs/${trackId}${ext}?v=${md5_8char}`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test thumbnails_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test thumbnails_test`
   - **Dependencies**: `task-3a`
   - **Files likely touched**: `crates/engine/src/metadata.rs`, `crates/engine/src/thumbnails.rs`, `crates/engine/src/http/routes_thumbs.rs`, `crates/engine/tests/thumbnails_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Checkpoint 2**: Verify Phase 2 Audio Analysis, Range Streaming, Metadata & Thumbnail Parity
+- [x] **Checkpoint 2**: Verify Phase 2 Audio Analysis, Range Streaming, Metadata & Thumbnail Parity
   - **Verification**: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine`
 
 ---

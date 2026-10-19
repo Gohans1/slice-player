@@ -2,6 +2,7 @@ pub mod etag;
 pub mod routes_playlists;
 pub mod routes_plays;
 pub mod routes_stream;
+pub mod routes_thumbs;
 pub mod routes_tracks_segments;
 pub mod security;
 pub mod ws_and_logs;
@@ -224,6 +225,7 @@ pub fn build_router(state: AppState) -> Router {
             "/api/tracks/{id}/stream",
             get(routes_stream::stream_track_handler),
         )
+        .route("/api/thumbs/{file}", get(routes_thumbs::thumb_handler))
         .route(
             "/api/tracks/{id}/segments",
             get(routes_tracks_segments::get_track_segments_handler)

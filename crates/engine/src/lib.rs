@@ -4,7 +4,9 @@ pub mod audio_source;
 pub mod db;
 pub mod events;
 pub mod http;
+pub mod metadata;
 pub mod models;
+pub mod thumbnails;
 
 use std::path::PathBuf;
 

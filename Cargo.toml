@@ -8,3 +8,7 @@ exclude = ["src-tauri"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+
+# Decoders (symphonia, image, ebur128) are unusably slow unoptimized; our own crate stays fast to rebuild
+[profile.dev.package."*"]
+opt-level = 2

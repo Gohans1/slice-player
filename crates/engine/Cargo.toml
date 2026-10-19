@@ -25,7 +25,7 @@ thiserror = "2"
 symphonia = { version = "0.6", features = ["all-codecs", "all-formats", "opt-simd"] }
 symphonia-adapter-libopus = { version = "0.3", features = ["bundled"] }
 ebur128 = "0.1"
-lofty = "0.22"
+lofty = "0.25"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 tar = "0.4"
 flate2 = "1"

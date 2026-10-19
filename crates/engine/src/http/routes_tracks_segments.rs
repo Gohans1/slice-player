@@ -239,10 +239,9 @@ fn cleanup_deleted_track_files(state: &AppState, track_id: &str, file_path: Opti
     for ext in [".jpg", ".webp", ".png"] {
         let _ = fs::remove_file(thumbs_dir.join(format!("{track_id}{ext}")));
     }
-    crate::db::maintenance::sweep_thumbnail_variants(
-        &state.config.data_dir.join("cache/thumbs-sized"),
+    crate::thumbnails::remove_thumbnail_variants(
         track_id,
-        None,
+        &state.config.data_dir.join("cache/thumbs-sized"),
     );
 }
 
