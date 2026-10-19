@@ -16,15 +16,15 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `Cargo.toml`, `crates/engine/Cargo.toml`, `crates/engine/src/lib.rs`, `crates/engine/src/bin/slice-server.rs`, `.gitignore`
   - **Estimated scope**: `S`
 
-- [ ] **Task 2 (`task-2`): Port SQLite `./data/music.db` Schema (`v1..v11`), Pragmas, Startup Cleanup & Recovery**
+- [x] **Task 2 (`task-2`): Port SQLite `./data/music.db` Schema (`v1..v11`), Pragmas, Startup Cleanup & Recovery**
   - **Description**: Port SQLite initialization, WAL pragmas, migrations `v1..v11`, startup orphan cleanup (`heal_track_file_paths`, `.part`/`.ytdl`/audio/thumb sweep), and `recover_incomplete_ingests()` from `src/server/db.ts` and `src/server/ingest.ts`, plus tests from `db.test.ts` and `portablePaths.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Refuses to open `./data/music.db` when `is_test == true` or `NODE_ENV == "test"`.
-    - [ ] Configures `busy_timeout = 5000`, `WAL`, `foreign_keys = ON`, `SQLITE_FCNTL_PERSIST_WAL = 0`, and `wal_checkpoint(TRUNCATE)` on close.
-    - [ ] Runs all 11 migrations (`PRAGMA user_version = 1..11`) idempotently, creating all 6 tables (`tracks`, `segments`, `playlists`, `playlist_items`, `playlist_sources`, `plays`) and 15 indexes.
-    - [ ] `recover_incomplete_ingests()` updates `status IN ('queued', 'downloading')` rows to `status = 'error'` with `"Tải bài hát bị gián đoạn do máy chủ khởi động lại. Vui lòng bấm Thử lại (Retry)."` (never deleting user rows) and purges partial files.
+    - [x] Refuses to open `./data/music.db` when `is_test == true` or `NODE_ENV == "test"`.
+    - [x] Configures `busy_timeout = 5000`, `WAL`, `foreign_keys = ON`, `SQLITE_FCNTL_PERSIST_WAL = 0`, and `wal_checkpoint(TRUNCATE)` on close.
+    - [x] Runs all 11 migrations (`PRAGMA user_version = 1..11`) idempotently, creating all 6 tables (`tracks`, `segments`, `playlists`, `playlist_items`, `playlist_sources`, `plays`) and 15 indexes.
+    - [x] `recover_incomplete_ingests()` updates `status IN ('queued', 'downloading')` rows to `status = 'error'` with `"Tải bài hát bị gián đoạn do máy chủ khởi động lại. Vui lòng bấm Thử lại (Retry)."` (never deleting user rows) and purges partial files.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test db_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test db_test`
   - **Dependencies**: `task-1`
   - **Files likely touched**: `crates/engine/src/db/mod.rs`, `crates/engine/src/db/migrations.rs`, `crates/engine/src/db/maintenance.rs`, `crates/engine/src/models.rs`, `crates/engine/tests/db_test.rs`
   - **Estimated scope**: `M`
