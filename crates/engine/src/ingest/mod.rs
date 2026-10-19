@@ -4,6 +4,7 @@
 
 pub mod local;
 pub mod process;
+pub mod upload;
 pub mod video_extractor;
 pub mod ytdlp;
 

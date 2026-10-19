@@ -14,7 +14,7 @@ use crate::events::EventBus;
 use crate::ingest::Ingest;
 use crate::EngineConfig;
 use axum::body::{Body, Bytes};
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderValue, Request, StatusCode};
 use axum::middleware;
 use axum::response::{IntoResponse, Response};
@@ -212,6 +212,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/tracks/ingest-youtube", post(routes_ingest::ingest_youtube_handler))
         .route("/api/tracks/ingest-local", post(routes_ingest::ingest_local_handler))
         .route("/api/tracks/retry-all", post(routes_ingest::retry_all_handler))
+        .route(
+            "/api/tracks/upload",
+            // The security middleware already caps the request at 305 MiB by Content-Length
+            post(routes_ingest::upload_handler).layer(DefaultBodyLimit::max(security::MAX_UPLOAD_REQUEST_BYTES as usize)),
+        )
         .route("/api/tracks/{id}/retry", post(routes_ingest::retry_track_handler))
         .route(
             "/api/tracks/batch-delete",

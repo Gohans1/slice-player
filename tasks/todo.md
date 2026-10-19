@@ -116,12 +116,12 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/src/ingest/mod.rs`, `crates/engine/src/ingest/ytdlp.rs`, `crates/engine/src/ingest/local.rs`, `crates/engine/src/http/routes_ingest.rs`, `crates/engine/tests/ingest_test.rs`
   - **Estimated scope**: `M`
 
-- [ ] **Task 8 (`task-8`): Port Multipart Audio & `.mp4` Video Upload Pipeline (`POST /api/tracks/upload`)**
+- [x] **Task 8 (`task-8`): Port Multipart Audio & `.mp4` Video Upload Pipeline (`POST /api/tracks/upload`)**
   - **Description**: Port `POST /api/tracks/upload` (`ingestUploadedFile`) and `extractAudioFromVideo` (`src/server/audioExtractor.ts`). Port tests from `audioExtractor.test.ts`.
   - **Acceptance criteria**:
-    - [ ] Accepts `"files"` and `"file"` fields (1..=20 files, `300 MiB` per file, `305 MiB` body cap), hashes content (`loc_${md5_12char}`), extracts `.mp4` audio via `ffprobe` + `ffmpeg -vn -c:a copy` (30s) -> `-c:a aac -b:a 256k` (60s fallback), and returns `200 { success: true, tracks, message }`.
+    - [x] Accepts `"files"` and `"file"` fields (1..=20 files, `300 MiB` per file, `305 MiB` body cap), hashes content (`loc_${md5_12char}`), extracts `.mp4` audio via `ffprobe` + `ffmpeg -vn -c:a copy` (30s) -> `-c:a aac -b:a 256k` (60s fallback), and returns `200 { success: true, tracks, message }`.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test audio_extractor_test`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine --test audio_extractor_test`
   - **Dependencies**: `task-7`
   - **Files likely touched**: `crates/engine/src/ingest/upload.rs`, `crates/engine/src/ingest/video_extractor.rs`, `crates/engine/src/http/routes_ingest.rs`, `crates/engine/tests/audio_extractor_test.rs`
   - **Estimated scope**: `S`

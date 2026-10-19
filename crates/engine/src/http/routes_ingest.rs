@@ -171,3 +171,57 @@ pub async fn retry_track_handler(State(state): State<AppState>, Path(raw_id): Pa
     }
     result_response(res)
 }
+
+const MAX_UPLOAD_FILES: usize = 20;
+
+/// `POST /api/tracks/upload`: up to 20 files in `files` / `file` fields. Every file is spooled to
+/// disk first, so the count is known (and an oversized batch refused) before any is ingested.
+pub async fn upload_handler(State(state): State<AppState>, mut multipart: axum::extract::Multipart) -> Response {
+    let mut spooled: Vec<(String, Result<crate::ingest::upload::SpooledUpload, String>)> = Vec::new();
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(e) => return error(StatusCode::BAD_REQUEST, &format!("Invalid multipart body: {e}")),
+        };
+        if !matches!(field.name(), Some("files" | "file")) {
+            continue;
+        }
+        let Some(name) = field.file_name().map(str::to_string) else { continue };
+        let name = if name.trim().is_empty() { "audio.flac".to_string() } else { name };
+        if spooled.len() >= MAX_UPLOAD_FILES {
+            return error(StatusCode::BAD_REQUEST, "Chỉ được tải lên tối đa 20 file mỗi lần");
+        }
+        let result = state.ingest.spool_upload(&name, field, crate::ingest::upload::MAX_UPLOAD_BYTES).await;
+        spooled.push((name, result));
+    }
+    if spooled.is_empty() {
+        return error(StatusCode::BAD_REQUEST, "Không tìm thấy file tải lên");
+    }
+
+    let total = spooled.len();
+    let mut tracks = Vec::new();
+    let mut errors = Vec::new();
+    for (name, upload) in spooled {
+        let res = match upload {
+            Ok(upload) => state.ingest.ingest_spooled_upload(upload).await,
+            Err(message) => IngestResult::fail(message),
+        };
+        match (res.success, res.tracks) {
+            (true, Some(found)) => tracks.extend(found),
+            _ => errors.push(format!("{name}: {}", res.message.unwrap_or_else(|| "Lỗi nạp file".into()))),
+        }
+    }
+    if tracks.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "message": format!("Không thể nạp file: {}", errors.join("; ")) })),
+        )
+            .into_response();
+    }
+    let mut message = format!("Đã nạp thành công {}/{total} bài hát.", tracks.len());
+    if !errors.is_empty() {
+        message.push_str(&format!(" ({} bài lỗi)", errors.len()));
+    }
+    Json(json!({ "success": true, "tracks": tracks, "message": message })).into_response()
+}
