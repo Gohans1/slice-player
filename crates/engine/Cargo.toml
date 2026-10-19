@@ -1,0 +1,39 @@
+[package]
+name = "slice-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "slice_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slice-server"
+path = "src/bin/slice-server.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.34", features = ["bundled", "backup"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+symphonia = { version = "0.5", features = ["all-codecs", "all-formats", "opt-simd"] }
+symphonia-adapter-libopus = { version = "0.2", features = ["bundled"] }
+ebur128 = "0.1"
+lofty = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+tar = "0.4"
+flate2 = "1"
+sha2 = "0.10"
+md-5 = "0.10"
+tempfile = "3"
+futures-util = "0.3"
+bytes = "1"
+http-body-util = "0.1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
