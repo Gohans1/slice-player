@@ -31,11 +31,24 @@ pub fn is_safe_archive_filename(name: &str) -> bool {
         return false;
     }
     let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
-    let is_device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || (stem.len() == 4
-            && (stem.starts_with("COM") || stem.starts_with("LPT"))
-            && (b'1'..=b'9').contains(&stem.as_bytes()[3]));
+    let is_device = matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || (stem.len() == 4
+        && (stem.starts_with("COM") || stem.starts_with("LPT"))
+        && (b'1'..=b'9').contains(&stem.as_bytes()[3]));
     !is_device
+}
+
+/// Validates primary-key identifiers (`tracks.id`, `segments.id`, `playlists.id`, `playlist_items.id`)
+/// so untrusted imported databases cannot inject path traversal or shell/filesystem metacharacters.
+pub fn is_safe_entity_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && is_safe_archive_filename(id)
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 fn entry_limit(name: &str) -> u64 {

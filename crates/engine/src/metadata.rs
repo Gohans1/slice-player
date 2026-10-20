@@ -70,7 +70,7 @@ fn cover_art_extension(data: &[u8]) -> Option<&'static str> {
 /// Saves embedded art as `<thumbs_dir>/<track id><ext>` (replacing the track's art in any other
 /// format) and returns its cache-busting URL. Only JPEG/PNG/WebP between 4 bytes and 4 MiB.
 pub fn save_cover_art(track_id: &str, data: &[u8], thumbs_dir: &Path) -> Option<String> {
-    if !(4..=MAX_COVER_ART_BYTES).contains(&data.len()) {
+    if !crate::backup::is_safe_entity_id(track_id) || !(4..=MAX_COVER_ART_BYTES).contains(&data.len()) {
         return None;
     }
     let ext = cover_art_extension(data)?;

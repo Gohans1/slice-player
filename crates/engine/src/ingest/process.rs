@@ -87,19 +87,20 @@ pub async fn run_tool<S: AsRef<OsStr>>(
     let mut killer = TreeKiller(child.id());
     let mut stdout = child.stdout.take();
     let mut stderr = child.stderr.take();
+    const MAX_TOOL_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 
     let finished = async {
         let read_out = async {
             let mut buf = Vec::new();
             if let Some(out) = stdout.as_mut() {
-                let _ = out.read_to_end(&mut buf).await;
+                let _ = out.take(MAX_TOOL_OUTPUT_BYTES).read_to_end(&mut buf).await;
             }
             buf
         };
         let read_err = async {
             let mut buf = Vec::new();
             if let Some(err) = stderr.as_mut() {
-                let _ = err.read_to_end(&mut buf).await;
+                let _ = err.take(MAX_TOOL_OUTPUT_BYTES).read_to_end(&mut buf).await;
             }
             buf
         };

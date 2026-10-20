@@ -622,3 +622,100 @@ async fn restore_waits_for_active_ingest_and_admitted_mutations_before_replacing
     let body: Value = serde_json::from_slice(&import_resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(body, json!({ "success": true, "manifest": body["manifest"], "message": body["message"] }));
 }
+
+#[tokio::test]
+async fn rejects_backup_db_with_sqlite_trigger_or_unsafe_entity_ids() {
+    let sb = Sandbox::new();
+    let manifest_bytes = serde_json::to_vec(&json!({ "version": "1.0" })).unwrap();
+
+    // 1. Malicious AFTER UPDATE trigger attempting to restore a host file_path after validate_incoming_db
+    let trigger_db_path = sb.root.join("trigger.db");
+    {
+        let db = Db::open(&trigger_db_path, true).unwrap();
+        db.create_track(&NewTrack {
+            id: "yt_trigger".into(),
+            source_type: "local".into(),
+            source_uri: "/etc/passwd.mp3".into(),
+            title: "Trigger Bypass".into(),
+            artist: None,
+            duration: 60.0,
+            thumbnail_url: None,
+            file_path: Some("/etc/passwd.mp3".into()),
+            peaks_json: None,
+            status: Some("ready".into()),
+            error_message: None,
+            volume: None,
+            loudness: None,
+            true_peak: None,
+        })
+        .unwrap();
+        db.with_conn(|conn| {
+            conn.execute_batch(
+                "
+                CREATE TRIGGER bypass_path_strip AFTER UPDATE ON tracks
+                BEGIN
+                    UPDATE tracks
+                    SET file_path = '/etc/passwd.mp3',
+                        source_uri = '/etc/passwd.mp3'
+                    WHERE id = NEW.id;
+                END;
+                ",
+            )
+            .unwrap();
+        });
+        db.close();
+    }
+    let trigger_db_bytes = std::fs::read(&trigger_db_path).unwrap();
+    let trigger_archive = sb.root.join("trigger.slicebackup");
+    write_tar_gz(
+        &trigger_archive,
+        &[("manifest.json", &manifest_bytes), ("music.db", &trigger_db_bytes)],
+    );
+    let trigger_err = import_library_archive(&sb.state, &trigger_archive)
+        .await
+        .expect_err("must reject DB containing SQLite triggers");
+    assert!(
+        trigger_err.contains("trigger") || trigger_err.contains("không hợp lệ"),
+        "unexpected error: {trigger_err}"
+    );
+
+    // 2. Malicious tracks.id containing path traversal (`../../outside`)
+    let traversal_db_path = sb.root.join("traversal_id.db");
+    {
+        let db = Db::open(&traversal_db_path, true).unwrap();
+        db.create_track(&NewTrack {
+            id: "../../outside".into(),
+            source_type: "local".into(),
+            source_uri: "song.mp3".into(),
+            title: "Traversal ID".into(),
+            artist: None,
+            duration: 60.0,
+            thumbnail_url: None,
+            file_path: None,
+            peaks_json: None,
+            status: Some("ready".into()),
+            error_message: None,
+            volume: None,
+            loudness: None,
+            true_peak: None,
+        })
+        .unwrap();
+        db.close();
+    }
+    let traversal_db_bytes = std::fs::read(&traversal_db_path).unwrap();
+    let traversal_archive = sb.root.join("traversal_id.slicebackup");
+    write_tar_gz(
+        &traversal_archive,
+        &[
+            ("manifest.json", &manifest_bytes),
+            ("music.db", &traversal_db_bytes),
+        ],
+    );
+    let traversal_err = import_library_archive(&sb.state, &traversal_archive)
+        .await
+        .expect_err("must reject DB containing unsafe primary-key ID");
+    assert!(
+        traversal_err.contains("ID không an toàn") || traversal_err.contains("không hợp lệ"),
+        "unexpected error: {traversal_err}"
+    );
+}

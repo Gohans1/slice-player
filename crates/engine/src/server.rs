@@ -4,13 +4,12 @@
 
 use crate::app_window::{is_server_running, maybe_chdir_to_exe_dir, open_app_window, WsLifecycleTracker};
 use crate::audio_analysis::{abort_waveform_processes, analyze_audio_file, WAVEFORM_POINTS};
-use crate::db::{get_cross_platform_basename, resolve_abs_path, Db};
+use crate::db::{resolve_abs_path, Db};
 use crate::events::EventBus;
 use crate::http::{build_router, AppState};
 use crate::models::TrackUpdates;
 use crate::EngineConfig;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -183,16 +182,9 @@ pub async fn reanalyze_library_waveforms(config: &EngineConfig) -> Result<usize,
         let Some(raw_path) = track.file_path.as_deref() else {
             continue;
         };
-        let direct = resolve_abs_path(Path::new(raw_path));
-        let candidate = if direct.is_file() {
-            direct
-        } else {
-            let base = get_cross_platform_basename(raw_path);
-            audio_cache_dir.join(base)
-        };
-        if !candidate.is_file() {
+        let Ok(candidate) = crate::audio_source::resolve_audio_source(raw_path, &audio_cache_dir) else {
             continue;
-        }
+        };
         if let Ok(analysis) = analyze_audio_file(&candidate, WAVEFORM_POINTS).await
             && let Ok(peaks_json) = serde_json::to_string(&analysis.peaks)
         {

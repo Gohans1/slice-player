@@ -242,16 +242,18 @@ fn cleanup_deleted_track_files(state: &AppState, track_id: &str, file_path: Opti
             let _ = fs::remove_file(&abs_fp);
         }
     }
-    purge_track_cache_files(&audio_cache_dir, track_id);
+    if crate::backup::is_safe_entity_id(track_id) {
+        purge_track_cache_files(&audio_cache_dir, track_id);
 
-    let thumbs_dir = state.config.data_dir.join("cache/thumbs");
-    for ext in [".jpg", ".jpeg", ".webp", ".png"] {
-        let _ = fs::remove_file(thumbs_dir.join(format!("{track_id}{ext}")));
+        let thumbs_dir = state.config.data_dir.join("cache/thumbs");
+        for ext in [".jpg", ".jpeg", ".webp", ".png"] {
+            let _ = fs::remove_file(thumbs_dir.join(format!("{track_id}{ext}")));
+        }
+        crate::thumbnails::remove_thumbnail_variants(
+            track_id,
+            &state.config.data_dir.join("cache/thumbs-sized"),
+        );
     }
-    crate::thumbnails::remove_thumbnail_variants(
-        track_id,
-        &state.config.data_dir.join("cache/thumbs-sized"),
-    );
 }
 
 fn cleanup_deleted_tracks_files_batch(
@@ -268,17 +270,17 @@ fn cleanup_deleted_tracks_files_batch(
 
     for (tid, fp) in tracks_to_delete {
         let trimmed = tid.trim();
-        if !trimmed.is_empty() {
-            track_id_set.insert(trimmed.to_string());
-        }
         if let Some(fp_str) = fp.as_deref() {
             let abs_fp = resolve_abs_path(std::path::Path::new(fp_str));
             if abs_fp.starts_with(&audio_cache_dir) && abs_fp != audio_cache_dir {
                 let _ = fs::remove_file(&abs_fp);
             }
         }
-        for ext in [".jpg", ".jpeg", ".webp", ".png"] {
-            let _ = fs::remove_file(thumbs_dir.join(format!("{tid}{ext}")));
+        if crate::backup::is_safe_entity_id(trimmed) {
+            track_id_set.insert(trimmed.to_string());
+            for ext in [".jpg", ".jpeg", ".webp", ".png"] {
+                let _ = fs::remove_file(thumbs_dir.join(format!("{trimmed}{ext}")));
+            }
         }
     }
 

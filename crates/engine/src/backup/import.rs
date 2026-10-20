@@ -256,11 +256,23 @@ fn stage_archive(archive_path: &Path, paths: &BackupPaths, stager: &mut Stager) 
 /// entries so an imported DB can never reference or exfiltrate arbitrary host files.
 fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir: &Path) -> Result<(), String> {
     let mut conn = rusqlite::Connection::open(db_path).map_err(|e| format!("File cơ sở dữ liệu bị lỗi hỏng ({e})"))?;
+    conn.execute_batch("PRAGMA trusted_schema = OFF;")
+        .map_err(|e| format!("File cơ sở dữ liệu bị lỗi hỏng ({e})"))?;
     let check: String = conn
         .query_row("PRAGMA quick_check;", [], |r| r.get(0))
         .unwrap_or_else(|_| "failed".into());
     if check != "ok" {
         return Err(format!("File cơ sở dữ liệu bị lỗi hỏng (quick_check: {check})"));
+    }
+    let forbidden_objects: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type IN ('trigger', 'view') OR UPPER(COALESCE(sql, '')) LIKE '%VIRTUAL%'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if forbidden_objects > 0 {
+        return Err("File cơ sở dữ liệu không hợp lệ: chứa trigger, view hoặc virtual table không được phép.".into());
     }
     let tables: HashSet<String> = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='table'")
@@ -268,6 +280,20 @@ fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir
         .map_err(|e| e.to_string())?;
     if !tables.contains("tracks") || !tables.contains("segments") {
         return Err("File cơ sở dữ liệu không hợp lệ: thiếu cấu trúc bảng của Slice Player.".into());
+    }
+    for table in ["tracks", "segments", "playlists", "playlist_items"] {
+        if !tables.contains(table) {
+            continue;
+        }
+        let ids: Vec<String> = conn
+            .prepare(&format!("SELECT id FROM {table}"))
+            .and_then(|mut s| s.query_map([], |r| r.get(0))?.collect())
+            .map_err(|e| e.to_string())?;
+        if ids.iter().any(|id| !super::is_safe_entity_id(id)) {
+            return Err(format!(
+                "File cơ sở dữ liệu không hợp lệ: phát hiện ID không an toàn trong bảng {table}."
+            ));
+        }
     }
     let tracks: Vec<(String, String, String, Option<String>)> = conn
         .prepare("SELECT id, COALESCE(source_type, 'local'), COALESCE(source_uri, ''), file_path FROM tracks")

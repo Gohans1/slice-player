@@ -111,6 +111,10 @@ impl LoudnessWorker {
             if inner.unmeasurable.lock().unwrap().contains(&id) {
                 continue;
             }
+            if !crate::audio_source::is_supported_audio_file(std::path::Path::new(&file_path)) {
+                inner.unmeasurable.lock().unwrap().insert(id);
+                continue;
+            }
 
             let cancel = {
                 let mut current = inner.current.lock().unwrap();

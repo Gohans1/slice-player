@@ -52,6 +52,7 @@ impl Db {
         let mut conn = Connection::open(db_path).map_err(|e| e.to_string())?;
         conn.execute_batch(
             "
+            PRAGMA trusted_schema = OFF;
             PRAGMA busy_timeout = 5000;
             PRAGMA journal_mode = WAL;
             PRAGMA foreign_keys = ON;
