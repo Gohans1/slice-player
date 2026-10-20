@@ -3,7 +3,7 @@
 use super::ws_and_logs::sanitize_internal_paths;
 use super::AppState;
 use crate::backup::export::{export_library_archive, iso_now};
-use crate::backup::import::import_library_archive;
+use crate::backup::import::import_library_archive_with_guard;
 use crate::backup::LIBRARY_BUSY_MESSAGE;
 use axum::body::Body;
 use axum::extract::{FromRequest, Multipart, Request, State};
@@ -78,9 +78,12 @@ where
 }
 
 pub async fn import_handler(State(state): State<AppState>, req: Request) -> Response {
-    if state.mutation_gate.is_restoring() || state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
+    if state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
         return error(StatusCode::TOO_MANY_REQUESTS, LIBRARY_BUSY_MESSAGE);
     }
+    let Some(restoring_guard) = state.mutation_gate.try_begin_restore() else {
+        return error(StatusCode::TOO_MANY_REQUESTS, LIBRARY_BUSY_MESSAGE);
+    };
     let is_multipart = req
         .headers()
         .get(header::CONTENT_TYPE)
@@ -116,7 +119,7 @@ pub async fn import_handler(State(state): State<AppState>, req: Request) -> Resp
     if std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0) < 50 {
         return error(StatusCode::BAD_REQUEST, "File backup không hợp lệ hoặc bị rỗng");
     }
-    match import_library_archive(&state, &archive).await {
+    match import_library_archive_with_guard(&state, &archive, restoring_guard).await {
         Ok(result) => Json(result).into_response(),
         Err(message) => {
             let status = if message == LIBRARY_BUSY_MESSAGE {

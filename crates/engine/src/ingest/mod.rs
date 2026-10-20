@@ -334,6 +334,10 @@ impl Ingest {
         for (id, source_type, source_uri) in errored {
             match source_type.as_str() {
                 "youtube" => {
+                    if !ytdlp::is_valid_youtube_url(&source_uri) {
+                        self.mark_error(&id, "URL không hợp lệ. Chỉ chấp nhận link YouTube!");
+                        continue;
+                    }
                     self.trigger_download(&id, &source_uri, false);
                     requeued += 1;
                 }

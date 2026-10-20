@@ -26,8 +26,12 @@ const MIN_AUDIO_BYTES: u64 = 1024;
 /// A failed or cancelled download waits this long before the next one starts
 const BETWEEN_DOWNLOADS: Duration = Duration::from_secs(1);
 
-static YOUTUBE_URL: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^https?://(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)/.+").unwrap());
+pub static YOUTUBE_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^https?://(?:[a-zA-Z0-9_-]+\.)*(?:youtube\.com|youtu\.be)/\S+$").unwrap());
+
+pub fn is_valid_youtube_url(url: &str) -> bool {
+    !url.is_empty() && !url.chars().any(char::is_control) && YOUTUBE_URL.is_match(url)
+}
 static AUTH_ERROR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)sign in to confirm (?:you['’]re|you are) not a bot|sign in to view|login required|(?:cookie|cookies).*(?:expired|invalid|corrupt|failed|error)|(?:invalid|corrupt|failed|error|expired).*(?:cookie|cookies)|needs to be reloaded|403[:\s]+forbidden|401[:\s]+unauthorized|429[:\s]+too many requests|http error (?:403|401|429)|po[-_ ]?token|proof[-_ ]of[-_ ]origin").unwrap()
 });
@@ -278,7 +282,7 @@ impl Ingest {
         if !url.to_ascii_lowercase().starts_with("http://") && !url.to_ascii_lowercase().starts_with("https://") {
             url = format!("https://{url}");
         }
-        if !YOUTUBE_URL.is_match(&url) {
+        if !is_valid_youtube_url(&url) {
             self.log("warn", &format!("URL không hợp lệ: {raw_url}"), None);
             return IngestResult::fail(
                 "URL không hợp lệ. Chỉ chấp nhận link YouTube (youtube.com, m.youtube.com, music.youtube.com, hoặc youtu.be)!",
@@ -476,6 +480,10 @@ impl Ingest {
 
     pub(crate) fn trigger_download(&self, track_id: &str, url: &str, should_log: bool) {
         if self.inner.pause_depth.load(Ordering::SeqCst) > 0 {
+            return;
+        }
+        if !is_valid_youtube_url(url) {
+            self.mark_error(track_id, "URL không hợp lệ. Chỉ chấp nhận link YouTube!");
             return;
         }
         {

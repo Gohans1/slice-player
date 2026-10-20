@@ -317,6 +317,9 @@ fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir
                 }
             });
             let rewritten_uri = if source_type == "youtube" {
+                if !crate::ingest::ytdlp::is_valid_youtube_url(&source_uri) {
+                    return Err("File cơ sở dữ liệu không hợp lệ: phát hiện YouTube URL không an toàn.".into());
+                }
                 source_uri
             } else if let Some(ref fp) = rewritten_fp {
                 fp.clone()
@@ -345,6 +348,14 @@ pub async fn import_library_archive(state: &AppState, archive_path: &Path) -> Re
     let Some(restoring_guard) = state.mutation_gate.try_begin_restore() else {
         return Err(LIBRARY_BUSY_MESSAGE.into());
     };
+    import_library_archive_with_guard(state, archive_path, restoring_guard).await
+}
+
+pub async fn import_library_archive_with_guard(
+    state: &AppState,
+    archive_path: &Path,
+    restoring_guard: crate::http::security::RestoringGuard,
+) -> Result<ImportResult, String> {
     if state.exporting.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(LIBRARY_BUSY_MESSAGE.into());
     }
@@ -421,6 +432,7 @@ async fn restore(state: &AppState, archive_path: &Path, stager: &mut Stager, kee
     }
     let swapped = swap_in(stager).and_then(|()| {
         state.db.reopen(&paths.db_path, state.config.is_test)?;
+        let _ = state.db.recover_incomplete_ingests(&paths.audio_dir, &state.events);
         state.db.heal_track_file_paths(&paths.audio_dir).map(|_| ())
     });
     if let Err(restore_error) = swapped {

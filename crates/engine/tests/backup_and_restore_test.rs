@@ -718,4 +718,41 @@ async fn rejects_backup_db_with_sqlite_trigger_or_unsafe_entity_ids() {
         traversal_err.contains("ID không an toàn") || traversal_err.contains("không hợp lệ"),
         "unexpected error: {traversal_err}"
     );
+
+    // 3. Malicious source_type = 'youtube' with non-YouTube SSRF source_uri
+    let ssrf_db_path = sb.root.join("ssrf_youtube.db");
+    {
+        let db = Db::open(&ssrf_db_path, true).unwrap();
+        db.create_track(&NewTrack {
+            id: "yt_ssrf123".into(),
+            source_type: "youtube".into(),
+            source_uri: "https://evil.example/steal-cookies".into(),
+            title: "SSRF Track".into(),
+            artist: None,
+            duration: 60.0,
+            thumbnail_url: None,
+            file_path: None,
+            peaks_json: None,
+            status: Some("error".into()),
+            error_message: Some("network error".into()),
+            volume: None,
+            loudness: None,
+            true_peak: None,
+        })
+        .unwrap();
+        db.close();
+    }
+    let ssrf_db_bytes = std::fs::read(&ssrf_db_path).unwrap();
+    let ssrf_archive = sb.root.join("ssrf_youtube.slicebackup");
+    write_tar_gz(
+        &ssrf_archive,
+        &[("manifest.json", &manifest_bytes), ("music.db", &ssrf_db_bytes)],
+    );
+    let ssrf_err = import_library_archive(&sb.state, &ssrf_archive)
+        .await
+        .expect_err("must reject DB containing non-YouTube source_uri for youtube track");
+    assert!(
+        ssrf_err.contains("YouTube URL") || ssrf_err.contains("không hợp lệ"),
+        "unexpected error: {ssrf_err}"
+    );
 }
