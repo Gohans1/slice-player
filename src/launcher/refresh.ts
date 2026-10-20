@@ -13,7 +13,7 @@ const SHARED = ["package.json", "bun.lock", "tsconfig.json", "bunfig.toml"];
 // The client takes the server's types too
 const CLIENT = ["src", "index.html", "vite.config.ts", "components.json", ...SHARED];
 export const RUST_SERVER = ["crates/engine/src", "Cargo.toml", "Cargo.lock", "crates/engine/Cargo.toml"];
-const SERVER = [...RUST_SERVER, "src/server", ...SHARED];
+const SERVER = RUST_SERVER;
 const SERVER_BIN = join(
   root,
   process.platform === "win32" ? "target/release/slice-server.exe" : "target/release/slice-server",

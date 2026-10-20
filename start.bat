@@ -47,23 +47,15 @@ if errorlevel 1 (
     exit /b %ERRORLEVEL%
 )
 
-if not "%~1"=="--bun" (
-    echo [1/2] Dang kiem tra va build slice-server ^(Rust^)...
-    cargo build --release -p slice-engine --bin slice-server
-    if errorlevel 1 (
-        echo [ERROR] Build slice-server that bai voi ma loi %ERRORLEVEL%!
-        pause
-        exit /b %ERRORLEVEL%
-    )
+echo [1/2] Dang kiem tra va build slice-server ^(Rust^)...
+cargo build --release -p slice-engine --bin slice-server
+if errorlevel 1 (
+    echo [ERROR] Build slice-server that bai voi ma loi %ERRORLEVEL%!
+    pause
+    exit /b %ERRORLEVEL%
 )
 
 :skip_build
-
-if "%~1"=="--bun" (
-    echo [2/2] Dang khoi dong server Bun ^(rollback^) va mo giao dien...
-    start "SlicePlayerServer" /min bun run src/server/index.ts
-    goto done
-)
 
 if not exist "target\release\slice-server.exe" (
     echo [2/2] Dang build slice-server ^(Rust^)...

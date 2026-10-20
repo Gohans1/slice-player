@@ -189,12 +189,12 @@ Plan details: [plan.md](file:///home/gohans-linux/projects/slice-player/tasks/pl
   - **Files likely touched**: `crates/engine/tests/security_and_concurrency_test.rs`, `playwright.rust.config.ts`, `e2e/rust-backend/*.spec.ts`, `package.json`, `start.bat`
   - **Estimated scope**: `M`
 
-- [ ] **Task 12 (`task-12`): Retire Legacy Bun Server Runtime Files (Retaining `src/server/types.ts`)** — ⚠️ one-way door, needs the dev's explicit go after running Rust on the real library
+- [x] **Task 12 (`task-12`): Retire Legacy Bun Server Runtime Files (Retaining `src/server/types.ts`)** — ⚠️ one-way door, needs the dev's explicit go after running Rust on the real library
   - **Description**: Remove deprecated runtime `.ts` and `.test.ts` files in `src/server/` while **retaining `src/server/types.ts`**, drop `start:bun` / `dev:bun`, and prune unused server-only npm packages (`music-metadata`, `tar-stream`, `@types/tar-stream`).
   - **Acceptance criteria**:
-    - [ ] `src/server/types.ts` is preserved so `bun run typecheck`, `bun run lint`, `bun test --isolate`, and `bun run build` succeed with zero errors.
+    - [x] `src/server/types.ts` is preserved so `bun run typecheck`, `bun run lint`, `bun test --isolate`, and `bun run build` succeed with zero errors.
   - **Verification**:
-    - [ ] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run build`
+    - [x] Tests pass: `PATH="$HOME/.cargo/bin:$PATH" cargo test -p slice-engine && bun run typecheck && bun run lint && bun test --isolate && bun run build`
   - **Dependencies**: `task-11` + dev acceptance
   - **Files likely touched**: `package.json`, `src/server/` (retain `src/server/types.ts`)
   - **Estimated scope**: `S`
