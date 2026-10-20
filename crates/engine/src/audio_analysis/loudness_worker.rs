@@ -100,21 +100,17 @@ impl LoudnessWorker {
 
     async fn measure_pass(&self, unannounced: &mut usize, announced_at: &mut Instant) -> Result<(), String> {
         let inner = &self.inner;
-        loop {
+        if self.is_paused() {
+            return Ok(());
+        }
+        let candidates = inner.db.list_tracks_to_measure()?;
+        for (id, file_path) in candidates {
             if self.is_paused() {
                 return Ok(());
             }
-            let next = {
-                let skip = inner.unmeasurable.lock().unwrap();
-                inner
-                    .db
-                    .list_tracks_to_measure()?
-                    .into_iter()
-                    .find(|(id, _)| !skip.contains(id))
-            };
-            let Some((id, file_path)) = next else {
-                return Ok(());
-            };
+            if inner.unmeasurable.lock().unwrap().contains(&id) {
+                continue;
+            }
 
             let cancel = {
                 let mut current = inner.current.lock().unwrap();
@@ -147,6 +143,7 @@ impl LoudnessWorker {
                 *announced_at = Instant::now();
             }
         }
+        Ok(())
     }
 
     fn announce(&self) {

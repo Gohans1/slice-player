@@ -72,6 +72,17 @@ pub fn remove_thumbnail_variants(track_id: &str, variants_dir: &Path) {
     remove_variants_where(variants_dir, |v| v.is_some_and(|(id, _, _)| id == track_id));
 }
 
+/// Batch variant cleanup so deleting N tracks reads `variants_dir` once instead of N times
+pub fn remove_thumbnail_variants_batch(
+    track_ids: &std::collections::HashSet<String>,
+    variants_dir: &Path,
+) {
+    if track_ids.is_empty() {
+        return;
+    }
+    remove_variants_where(variants_dir, |v| v.is_some_and(|(id, _, _)| track_ids.contains(id)));
+}
+
 /// Startup: clears copies whose art is gone or changed (deleted track, re-import, restore), plus
 /// partial files and anything else that isn't a copy
 pub fn sweep_thumbnail_variants(thumbs_dir: &Path, variants_dir: &Path) {

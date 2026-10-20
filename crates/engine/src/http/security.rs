@@ -20,6 +20,26 @@ pub const MAX_BATCH_LIMIT: usize = 5000;
 pub const LIBRARY_RESTORING_MESSAGE: &str =
     "Thư viện đang được khôi phục, vui lòng đợi trong giây lát.";
 
+pub fn format_error(err: impl AsRef<str>, status: StatusCode, is_production: bool) -> String {
+    if status == StatusCode::INTERNAL_SERVER_ERROR && is_production {
+        return "Đã xảy ra lỗi máy chủ nội bộ.".to_string();
+    }
+    let sanitized = super::ws_and_logs::sanitize_internal_paths(err.as_ref());
+    if sanitized.is_empty() {
+        "Lỗi không xác định.".to_string()
+    } else {
+        sanitized
+    }
+}
+
+pub fn json_error(status: StatusCode, err: impl AsRef<str>, is_production: bool) -> Response {
+    (
+        status,
+        Json(json!({ "error": format_error(err, status, is_production) })),
+    )
+        .into_response()
+}
+
 #[derive(Clone)]
 pub struct LibraryMutationGate {
     paused: Arc<AtomicBool>,
@@ -225,7 +245,7 @@ pub fn apply_cors_and_security_headers(
         ""
     };
     let csp = format!(
-        "default-src 'self'; script-src 'self' blob:; worker-src blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' ws://127.0.0.1:{server_port} ws://localhost:{server_port} ws://[::1]:{server_port}{dev_ws}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        "default-src 'self'; script-src 'self' blob:; worker-src blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' ws://127.0.0.1:{server_port} ws://localhost:{server_port} ws://[::1]:{server_port} ws://127.0.0.1:*{dev_ws}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     );
 
     if let Ok(v) = HeaderValue::from_str(allowed_origin) {

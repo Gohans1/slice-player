@@ -26,9 +26,13 @@ pub struct ImportResult {
     pub message: String,
 }
 
-fn open_archive(path: &Path) -> Result<tar::Archive<flate2::read::GzDecoder<std::fs::File>>, String> {
+const MAX_DECOMPRESSED_STREAM_BYTES: u64 = MAX_TOTAL_EXTRACTED_BYTES + 64 * 1024 * 1024;
+
+fn open_archive(path: &Path) -> Result<tar::Archive<std::io::Take<flate2::read::GzDecoder<std::fs::File>>>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    Ok(tar::Archive::new(flate2::read::GzDecoder::new(file)))
+    Ok(tar::Archive::new(
+        flate2::read::GzDecoder::new(file).take(MAX_DECOMPRESSED_STREAM_BYTES),
+    ))
 }
 
 fn entry_size_limit(name: &str) -> Result<u64, String> {
@@ -64,9 +68,23 @@ fn entry_size_limit(name: &str) -> Result<u64, String> {
 fn list_entries(path: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut archive = open_archive(path)?;
     let mut listed = Vec::new();
+    let mut raw_entries: usize = 0;
     let mut total_size: u64 = 0;
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
+        raw_entries += 1;
+        if raw_entries > MAX_ARCHIVE_ENTRIES || listed.len() >= MAX_ARCHIVE_ENTRIES {
+            return Err(format!(
+                "File backup vượt quá giới hạn số lượng file cho phép ({raw_entries} > {MAX_ARCHIVE_ENTRIES}).",
+            ));
+        }
+        let size = entry.size();
+        if size > MAX_DB_FILE_BYTES {
+            return Err(format!(
+                "File cơ sở dữ liệu vượt quá giới hạn cho phép ({:.1}MB > 500MB).",
+                size as f64 / 1024.0 / 1024.0
+            ));
+        }
         let kind = entry.header().entry_type();
         if kind.is_dir() {
             continue;
@@ -74,15 +92,8 @@ fn list_entries(path: &Path) -> Result<Vec<(String, u64)>, String> {
         if !kind.is_file() {
             return Err("File không hợp lệ trong gói lưu trữ (symlink hoặc special file).".into());
         }
-        if listed.len() >= MAX_ARCHIVE_ENTRIES {
-            return Err(format!(
-                "File backup vượt quá giới hạn số lượng file cho phép ({} > {MAX_ARCHIVE_ENTRIES}).",
-                listed.len() + 1
-            ));
-        }
         let name = String::from_utf8(entry.path_bytes().into_owned()).map_err(|_| "tên file không phải UTF-8".to_string())?;
         let limit = entry_size_limit(&name)?;
-        let size = entry.size();
         if name == "music.db" && size > MAX_DB_FILE_BYTES {
             return Err(format!(
                 "File cơ sở dữ liệu vượt quá giới hạn cho phép ({:.1}MB > 500MB).",
@@ -178,16 +189,29 @@ impl Stager {
 /// Extracts every entry into staging, with per-file and total size limits
 fn stage_archive(archive_path: &Path, paths: &BackupPaths, stager: &mut Stager) -> Result<(Option<Value>, PathBuf), String> {
     let mut archive = open_archive(archive_path)?;
+    let mut raw_entries: usize = 0;
     let mut total: u64 = 0;
     let mut manifest = None;
     let mut db_incoming = None;
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
+        raw_entries += 1;
+        if raw_entries > MAX_ARCHIVE_ENTRIES {
+            return Err(format!(
+                "File backup vượt quá giới hạn số lượng file cho phép ({raw_entries} > {MAX_ARCHIVE_ENTRIES}).",
+            ));
+        }
+        let size = entry.size();
+        if size > MAX_DB_FILE_BYTES {
+            return Err(format!(
+                "File cơ sở dữ liệu vượt quá giới hạn cho phép ({:.1}MB > 500MB).",
+                size as f64 / 1024.0 / 1024.0
+            ));
+        }
         if !entry.header().entry_type().is_file() {
             continue;
         }
         let name = String::from_utf8_lossy(&entry.path_bytes()).to_string();
-        let size = entry.size();
         let (target, limit) = match name.as_str() {
             "manifest.json" => {
                 let mut text = String::new();
@@ -227,8 +251,9 @@ fn stage_archive(archive_path: &Path, paths: &BackupPaths, stager: &mut Stager) 
     Ok((manifest, db_incoming.ok_or("File backup không hợp lệ: thiếu file music.db cơ sở dữ liệu.")?))
 }
 
-/// The incoming database must be intact SQLite holding Slice Player's tables. Its tracks are
-/// pointed at the packaged audio (even if an old absolute path still exists on this machine).
+/// The incoming database must be intact SQLite holding Slice Player's tables. Every track's
+/// `file_path` (and non-YouTube `source_uri`) is restricted strictly to packaged `cache/audio/`
+/// entries so an imported DB can never reference or exfiltrate arbitrary host files.
 fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir: &Path) -> Result<(), String> {
     let mut conn = rusqlite::Connection::open(db_path).map_err(|e| format!("File cơ sở dữ liệu bị lỗi hỏng ({e})"))?;
     let check: String = conn
@@ -244,19 +269,44 @@ fn validate_incoming_db(db_path: &Path, audio_names: &HashSet<String>, audio_dir
     if !tables.contains("tracks") || !tables.contains("segments") {
         return Err("File cơ sở dữ liệu không hợp lệ: thiếu cấu trúc bảng của Slice Player.".into());
     }
-    let tracks: Vec<(String, String)> = conn
-        .prepare("SELECT id, file_path FROM tracks WHERE file_path IS NOT NULL")
-        .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+    let tracks: Vec<(String, String, String, Option<String>)> = conn
+        .prepare("SELECT id, COALESCE(source_type, 'local'), COALESCE(source_uri, ''), file_path FROM tracks")
+        .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect())
         .map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    for (id, file_path) in tracks {
-        let name = get_cross_platform_basename(&file_path);
-        if is_safe_archive_filename(&name) && audio_names.contains(&name) {
-            tx.execute(
-                "UPDATE tracks SET file_path = ?1 WHERE id = ?2",
-                [audio_dir.join(&name).to_string_lossy().to_string(), id],
-            )
+    {
+        let mut stmt = tx
+            .prepare("UPDATE tracks SET file_path = ?1, source_uri = ?2 WHERE id = ?3")
             .map_err(|e| e.to_string())?;
+        for (id, source_type, source_uri, file_path) in tracks {
+            let rewritten_fp: Option<String> = file_path.and_then(|fp| {
+                let name = get_cross_platform_basename(&fp);
+                if is_safe_archive_filename(&name)
+                    && SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(Path::new(&name)).as_str())
+                    && audio_names.contains(&name)
+                {
+                    Some(audio_dir.join(&name).to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            });
+            let rewritten_uri = if source_type == "youtube" {
+                source_uri
+            } else if let Some(ref fp) = rewritten_fp {
+                fp.clone()
+            } else {
+                let uri_name = get_cross_platform_basename(&source_uri);
+                if is_safe_archive_filename(&uri_name)
+                    && SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(Path::new(&uri_name)).as_str())
+                    && audio_names.contains(&uri_name)
+                {
+                    audio_dir.join(&uri_name).to_string_lossy().to_string()
+                } else {
+                    String::new()
+                }
+            };
+            stmt.execute(rusqlite::params![rewritten_fp, rewritten_uri, id])
+                .map_err(|e| e.to_string())?;
         }
     }
     tx.commit().map_err(|e| e.to_string())?;

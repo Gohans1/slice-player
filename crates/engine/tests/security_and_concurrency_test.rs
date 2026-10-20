@@ -1,18 +1,21 @@
 //! Cross-module security and database performance integration tests, porting
 //! `src/server/security.test.ts` and `src/server/performance.test.ts`.
 
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
 use bytes::Bytes;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use futures_util::StreamExt;
-use serde_json::json;
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
 use slice_engine::audio_source::validate_safe_local_audio_path;
-use slice_engine::backup::{export_library_archive, import_library_archive};
+use slice_engine::backup::{export_library_archive, import_library_archive, MAX_ARCHIVE_ENTRIES};
 use slice_engine::db::Db;
 use slice_engine::events::EventBus;
 use slice_engine::http::ws_and_logs::{sanitize_internal_paths, ServerLogger};
-use slice_engine::http::AppState;
+use slice_engine::http::{build_router, AppState};
 use slice_engine::models::{BatchPlaylistItemInput, NewSegment, NewTrack};
 use slice_engine::EngineConfig;
 use std::collections::BTreeSet;
@@ -20,6 +23,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use tempfile::TempDir;
+use tower::ServiceExt;
 
 struct Sandbox {
     _dir: TempDir,
@@ -145,13 +149,14 @@ async fn rejects_concurrent_export_attempts_with_a_busy_error() {
     drop(stream1);
 }
 
-#[test]
-fn sanitizes_internal_server_paths_and_masks_user_home_directories_in_logs() {
+#[tokio::test]
+async fn sanitizes_internal_server_paths_and_masks_user_home_directories_in_logs() {
     let cwd = std::env::current_dir().unwrap();
+    let cwd_str = cwd.to_string_lossy().to_string();
     let cwd_file = cwd.join("src/server/db.ts").to_string_lossy().to_string();
 
     let sanitized_cwd = sanitize_internal_paths(&format!("Database connection failed at {cwd_file}:42"));
-    assert!(!sanitized_cwd.contains(&cwd.to_string_lossy().to_string()));
+    assert!(!sanitized_cwd.contains(&cwd_str));
     assert!(sanitized_cwd.contains("[PROJECT_DIR]"));
 
     let sanitized_win = sanitize_internal_paths(r"Failed at C:\Users\SomeoneElse\private\token.txt");
@@ -170,10 +175,34 @@ fn sanitizes_internal_server_paths_and_masks_user_home_directories_in_logs() {
     );
     let logs = logger.get_recent_logs(10);
     assert_eq!(logs.len(), 1);
-    assert!(!logs[0].message.contains(&cwd.to_string_lossy().to_string()));
+    assert!(!logs[0].message.contains(&cwd_str));
     let details_str = serde_json::to_string(&logs[0].details).unwrap();
-    assert!(!details_str.contains(&cwd.to_string_lossy().to_string()));
+    assert!(!details_str.contains(&cwd_str));
     assert!(!details_str.contains("SomeoneElse"));
+
+    // Also verify HTTP route responses sanitize internal paths and never leak cwd
+    let sb = Sandbox::new();
+    let app = build_router(sb.state.clone());
+    let payload = serde_json::to_vec(&json!({ "path": "./nonexistent_probe_song.mp3" })).unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tracks/ingest-local")
+                .header("host", "127.0.0.1:3000")
+                .header("content-type", "application/json")
+                .header("content-length", payload.len().to_string())
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body_text = String::from_utf8(resp.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(
+        !body_text.contains(&cwd_str),
+        "HTTP error response leaked internal project directory: {body_text}"
+    );
 }
 
 #[tokio::test]
@@ -184,6 +213,71 @@ async fn enforces_decompression_validation_against_corrupted_or_fake_sqlite_arch
 
     let res = import_library_archive(&sb.state, &archive_path).await;
     assert!(res.is_err(), "fake sqlite db archive must be rejected");
+
+    // Archive with > MAX_ARCHIVE_ENTRIES directory headers must also be rejected before extraction
+    let dir_bomb_path = sb.root.join("dir_bomb.tar.gz");
+    {
+        let file = std::fs::File::create(&dir_bomb_path).unwrap();
+        let gz = GzEncoder::new(file, Compression::fast());
+        let mut builder = tar::Builder::new(gz);
+        for i in 0..=MAX_ARCHIVE_ENTRIES {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_size(0);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, format!("cache/audio/dir_{i}/"), &[][..])
+                .unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap();
+    }
+    let dir_bomb_err = import_library_archive(&sb.state, &dir_bomb_path)
+        .await
+        .expect_err("directory header bomb must be rejected");
+    assert!(
+        dir_bomb_err.contains("vượt quá giới hạn số lượng file"),
+        "unexpected error: {dir_bomb_err}"
+    );
+
+    // Imported music.db with unbundled host file_path / source_uri must have those paths stripped
+    let host_secret = sb.root.join("host_secret.mp3");
+    std::fs::write(&host_secret, b"TOP_SECRET_HOST_AUDIO_BYTES").unwrap();
+
+    let attacker_sb = Sandbox::new();
+    attacker_sb
+        .state
+        .db
+        .create_track(&NewTrack {
+            id: "exfil_attempt".into(),
+            source_type: "local".into(),
+            source_uri: host_secret.to_string_lossy().into_owned(),
+            title: "Exfil Attempt".into(),
+            duration: 10.0,
+            file_path: Some(host_secret.to_string_lossy().into_owned()),
+            status: Some("ready".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    attacker_sb.state.db.close();
+    let attacker_db_bytes = std::fs::read(&attacker_sb.state.config.db_path).unwrap();
+
+    // Package ONLY music.db (without cache/audio/host_secret.mp3)
+    let exfil_tar = sb.root.join("exfil.tar.gz");
+    write_tar_gz(&exfil_tar, &[("music.db", &attacker_db_bytes)]);
+
+    let import_res = import_library_archive(&sb.state, &exfil_tar).await.expect("import db");
+    assert!(import_res.success);
+
+    let imported_track = sb.state.db.get_track("exfil_attempt").unwrap().unwrap();
+    assert_eq!(
+        imported_track.file_path, None,
+        "unbundled host file_path must be stripped to None on import"
+    );
+    assert_eq!(
+        imported_track.source_uri, "",
+        "unbundled local source_uri must be stripped on import"
+    );
 }
 
 #[tokio::test]
@@ -266,12 +360,20 @@ fn batch_inserts_500_playlist_items_efficiently_without_individual_n_plus_1_look
     assert_eq!(pl_items.len(), 100);
 }
 
-#[test]
-fn batch_deletes_200_tracks_in_chunked_queries_efficiently() {
+#[tokio::test]
+async fn batch_deletes_200_tracks_in_chunked_queries_efficiently() {
     let sb = Sandbox::new();
+    let audio_dir = sb.state.config.data_dir.join("cache").join("audio");
+    let variants_dir = sb.state.config.data_dir.join("cache").join("thumbs-sized");
+    std::fs::create_dir_all(&variants_dir).unwrap();
+
     let mut track_ids = Vec::with_capacity(200);
     for i in 0..200 {
         let id = format!("trk_del_{i}");
+        let cached_audio = audio_dir.join(format!("{id}.opus"));
+        std::fs::write(&cached_audio, b"cached audio").unwrap();
+        let variant = variants_dir.join(format!("{id}-192-abcdef123456.jpg"));
+        std::fs::write(&variant, b"sized thumb").unwrap();
         sb.state
             .db
             .create_track(&NewTrack {
@@ -280,6 +382,7 @@ fn batch_deletes_200_tracks_in_chunked_queries_efficiently() {
                 source_uri: format!("file:///music/track_del_{i}.mp3"),
                 title: format!("Track Del {i}"),
                 duration: 120.0,
+                file_path: Some(cached_audio.to_string_lossy().into_owned()),
                 status: Some("ready".into()),
                 ..Default::default()
             })
@@ -287,20 +390,34 @@ fn batch_deletes_200_tracks_in_chunked_queries_efficiently() {
         track_ids.push(id);
     }
 
+    let app = build_router(sb.state.clone());
+    let payload = serde_json::to_vec(&json!({ "ids": track_ids })).unwrap();
     let start = Instant::now();
-    let deleted_count = sb
-        .state
-        .db
-        .delete_tracks_batch(&track_ids)
-        .expect("batch delete");
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tracks/batch-delete")
+                .header("host", "127.0.0.1:3000")
+                .header("content-type", "application/json")
+                .header("content-length", payload.len().to_string())
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let elapsed = start.elapsed();
 
-    assert_eq!(deleted_count, 200);
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["count"], 200);
     assert!(
         elapsed.as_millis() < 500,
-        "batch delete of 200 tracks took {}ms",
+        "HTTP batch delete of 200 tracks + cache files took {}ms",
         elapsed.as_millis()
     );
+    assert_eq!(std::fs::read_dir(&audio_dir).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(&variants_dir).unwrap().count(), 0);
 }
 
 #[test]

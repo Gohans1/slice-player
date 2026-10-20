@@ -116,14 +116,14 @@ fn get_mix_source_ids_in_conn(conn: &Connection, mix_id: &str) -> Result<Vec<Str
     Ok(out)
 }
 
-fn get_mix_items_in_conn(
+fn get_mix_items_for_sources_in_conn(
     conn: &Connection,
-    mix_id: &str,
+    source_ids: &[String],
 ) -> Result<Vec<PlaylistItemWithDetails>, String> {
     let mut seen = HashSet::new();
     let mut merged = Vec::new();
-    for source_id in get_mix_source_ids_in_conn(conn, mix_id)? {
-        for mut item in get_playlist_items_in_conn(conn, &source_id)? {
+    for source_id in source_ids {
+        for mut item in get_playlist_items_in_conn(conn, source_id)? {
             let key = format!(
                 "{}|{}",
                 item.track_id,
@@ -136,6 +136,14 @@ fn get_mix_items_in_conn(
         }
     }
     Ok(merged)
+}
+
+fn get_mix_items_in_conn(
+    conn: &Connection,
+    mix_id: &str,
+) -> Result<Vec<PlaylistItemWithDetails>, String> {
+    let source_ids = get_mix_source_ids_in_conn(conn, mix_id)?;
+    get_mix_items_for_sources_in_conn(conn, &source_ids)
 }
 
 fn validate_mix_sources_in_conn(
@@ -240,8 +248,8 @@ pub fn get_playlist_in_conn(conn: &Connection, id: &str) -> Result<Option<Playli
     };
 
     if is_mix != 0 {
-        let items = get_mix_items_in_conn(conn, &pl_id)?;
         let source_ids = get_mix_source_ids_in_conn(conn, &pl_id)?;
+        let items = get_mix_items_for_sources_in_conn(conn, &source_ids)?;
         return Ok(Some(Playlist {
             id: pl_id,
             name,
@@ -421,7 +429,8 @@ pub fn list_playlists_in_conn(conn: &Connection) -> Result<Vec<Playlist>, String
                 parent_id,
             });
         } else {
-            let items = get_mix_items_in_conn(conn, &id)?;
+            let source_ids = get_mix_source_ids_in_conn(conn, &id)?;
+            let items = get_mix_items_for_sources_in_conn(conn, &source_ids)?;
             let mut thumb_order = Vec::new();
             let mut thumb_map = HashMap::new();
             for it in &items {
@@ -433,7 +442,6 @@ pub fn list_playlists_in_conn(conn: &Connection) -> Result<Vec<Playlist>, String
             let resolved_cover = cover_track_id
                 .as_ref()
                 .and_then(|cid| thumb_map.get(cid).cloned());
-            let source_ids = get_mix_source_ids_in_conn(conn, &id)?;
             out.push(Playlist {
                 id,
                 name,
@@ -889,38 +897,48 @@ pub fn add_playlist_items_batch_in_conn(
         let mut parent_next_order = parent_max_order + 1;
         let mut parent_added = false;
 
-        for entry in items {
-            let clean_seg_id = entry
-                .segment_id
-                .as_deref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string());
-            if !track_map.contains_key(&entry.track_id) {
-                continue;
-            }
-            if let Some(ref sid) = clean_seg_id {
-                let Some(s) = seg_map.get(sid) else {
-                    continue;
-                };
-                if s.track_id != entry.track_id {
-                    continue;
-                }
-            }
-            let key = format!(
-                "{}::{}",
-                entry.track_id,
-                clean_seg_id.as_deref().unwrap_or("")
-            );
-            if parent_existing_set.insert(key) {
-                let p_item_id = format!("pli_{}", Uuid::new_v4());
-                let _ = tx.execute(
+        {
+            let mut parent_insert_stmt = tx
+                .prepare(
                     "INSERT INTO playlist_items (id, playlist_id, track_id, segment_id, sort_order, added_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())",
-                    params![p_item_id, pid, entry.track_id, clean_seg_id, parent_next_order],
+                )
+                .map_err(|e| e.to_string())?;
+            for entry in items {
+                let clean_seg_id = entry
+                    .segment_id
+                    .as_deref()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                if !track_map.contains_key(&entry.track_id) {
+                    continue;
+                }
+                if let Some(ref sid) = clean_seg_id {
+                    let Some(s) = seg_map.get(sid) else {
+                        continue;
+                    };
+                    if s.track_id != entry.track_id {
+                        continue;
+                    }
+                }
+                let key = format!(
+                    "{}::{}",
+                    entry.track_id,
+                    clean_seg_id.as_deref().unwrap_or("")
                 );
-                parent_next_order += 1;
-                parent_added = true;
+                if parent_existing_set.insert(key) {
+                    let p_item_id = format!("pli_{}", Uuid::new_v4());
+                    let _ = parent_insert_stmt.execute(params![
+                        p_item_id,
+                        pid,
+                        entry.track_id,
+                        clean_seg_id,
+                        parent_next_order
+                    ]);
+                    parent_next_order += 1;
+                    parent_added = true;
+                }
             }
         }
         if parent_added {
@@ -953,68 +971,74 @@ pub fn add_playlist_items_batch_in_conn(
     };
 
     let mut results = Vec::new();
-    for entry in items {
-        let clean_seg_id = entry
-            .segment_id
-            .as_deref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-        let Some(trk) = track_map.get(&entry.track_id).cloned() else {
-            continue;
-        };
-        let mut seg = None;
-        if let Some(ref sid) = clean_seg_id {
-            let Some(s) = seg_map.get(sid).cloned() else {
-                continue;
-            };
-            if s.track_id != entry.track_id {
-                continue;
-            }
-            seg = Some(s);
-        }
-
-        let key = format!(
-            "{}::{}",
-            entry.track_id,
-            clean_seg_id.as_deref().unwrap_or("")
-        );
-        if let Some(existing) = existing_map.get(&key).cloned() {
-            results.push(PlaylistItemWithDetails {
-                id: existing.id,
-                playlist_id: existing.playlist_id,
-                track_id: existing.track_id,
-                segment_id: existing.segment_id,
-                sort_order: existing.sort_order,
-                added_at: existing.added_at,
-                track: trk,
-                segment: seg,
-            });
-            continue;
-        }
-
-        let id = format!("pli_{}", Uuid::new_v4());
-        let item = tx
-            .query_row(
+    {
+        let mut insert_stmt = tx
+            .prepare(
                 "INSERT INTO playlist_items (id, playlist_id, track_id, segment_id, sort_order, added_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())
                  RETURNING *;",
-                params![id, playlist_id, entry.track_id, clean_seg_id, next_order],
-                row_to_playlist_item,
             )
             .map_err(|e| e.to_string())?;
-        next_order += 1;
-        existing_map.insert(key, item.clone());
-        results.push(PlaylistItemWithDetails {
-            id: item.id,
-            playlist_id: item.playlist_id,
-            track_id: item.track_id,
-            segment_id: item.segment_id,
-            sort_order: item.sort_order,
-            added_at: item.added_at,
-            track: trk,
-            segment: seg,
-        });
+        for entry in items {
+            let clean_seg_id = entry
+                .segment_id
+                .as_deref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            let Some(trk) = track_map.get(&entry.track_id).cloned() else {
+                continue;
+            };
+            let mut seg = None;
+            if let Some(ref sid) = clean_seg_id {
+                let Some(s) = seg_map.get(sid).cloned() else {
+                    continue;
+                };
+                if s.track_id != entry.track_id {
+                    continue;
+                }
+                seg = Some(s);
+            }
+
+            let key = format!(
+                "{}::{}",
+                entry.track_id,
+                clean_seg_id.as_deref().unwrap_or("")
+            );
+            if let Some(existing) = existing_map.get(&key).cloned() {
+                results.push(PlaylistItemWithDetails {
+                    id: existing.id,
+                    playlist_id: existing.playlist_id,
+                    track_id: existing.track_id,
+                    segment_id: existing.segment_id,
+                    sort_order: existing.sort_order,
+                    added_at: existing.added_at,
+                    track: trk,
+                    segment: seg,
+                });
+                continue;
+            }
+
+            let id = format!("pli_{}", Uuid::new_v4());
+            let item = insert_stmt
+                .query_row(
+                    params![id, playlist_id, entry.track_id, clean_seg_id, next_order],
+                    row_to_playlist_item,
+                )
+                .map_err(|e| e.to_string())?;
+            next_order += 1;
+            existing_map.insert(key, item.clone());
+            results.push(PlaylistItemWithDetails {
+                id: item.id,
+                playlist_id: item.playlist_id,
+                track_id: item.track_id,
+                segment_id: item.segment_id,
+                sort_order: item.sort_order,
+                added_at: item.added_at,
+                track: trk,
+                segment: seg,
+            });
+        }
     }
 
     tx.execute(
@@ -1117,18 +1141,22 @@ pub fn remove_playlist_items_batch_in_conn(
     let child_ids = get_child_playlist_ids_in_conn(&tx, playlist_id)?;
     if !child_ids.is_empty() && !items_to_remove.is_empty() {
         let mut cascaded_any = false;
-        for (track_id, segment_id) in &items_to_remove {
-            let res = tx
-                .execute(
+        {
+            let mut cascade_stmt = tx
+                .prepare(
                     "DELETE FROM playlist_items
                      WHERE playlist_id IN (SELECT id FROM playlists WHERE parent_id = ?1)
                        AND track_id = ?2
                        AND segment_id IS ?3",
-                    params![playlist_id, track_id, segment_id],
                 )
                 .map_err(|e| e.to_string())?;
-            if res > 0 {
-                cascaded_any = true;
+            for (track_id, segment_id) in &items_to_remove {
+                let res = cascade_stmt
+                    .execute(params![playlist_id, track_id, segment_id])
+                    .map_err(|e| e.to_string())?;
+                if res > 0 {
+                    cascaded_any = true;
+                }
             }
         }
         if cascaded_any {
@@ -1200,15 +1228,17 @@ pub fn reorder_playlist_items_in_conn(
         return Ok(false);
     }
 
-    for (idx, item_id) in item_ids.iter().enumerate() {
-        let changes = tx
-            .execute(
-                "UPDATE playlist_items SET sort_order = ?1 WHERE id = ?2 AND playlist_id = ?3",
-                params![idx as i64, item_id, playlist_id],
-            )
+    {
+        let mut reorder_stmt = tx
+            .prepare("UPDATE playlist_items SET sort_order = ?1 WHERE id = ?2 AND playlist_id = ?3")
             .map_err(|e| e.to_string())?;
-        if changes == 0 {
-            return Ok(false);
+        for (idx, item_id) in item_ids.iter().enumerate() {
+            let changes = reorder_stmt
+                .execute(params![idx as i64, item_id, playlist_id])
+                .map_err(|e| e.to_string())?;
+            if changes == 0 {
+                return Ok(false);
+            }
         }
     }
 

@@ -179,7 +179,7 @@ async fn fallback_handler(State(state): State<AppState>, req: Request<Body>) -> 
 
     if is_inside
         && candidate.is_file()
-        && let Ok(bytes) = std::fs::read(&candidate)
+        && let Ok(bytes) = tokio::fs::read(&candidate).await
     {
         let ext = candidate
             .extension()
@@ -215,7 +215,7 @@ async fn fallback_handler(State(state): State<AppState>, req: Request<Body>) -> 
     let fallback_index = dist_dir.join("index.html");
     if is_nav
         && fallback_index.is_file()
-        && let Ok(bytes) = std::fs::read(&fallback_index)
+        && let Ok(bytes) = tokio::fs::read(&fallback_index).await
     {
         let mut resp = (StatusCode::OK, bytes).into_response();
         resp.headers_mut().insert(

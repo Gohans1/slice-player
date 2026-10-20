@@ -38,8 +38,11 @@ pub async fn extract_audio_from_video(input: &Path, output: &Path) -> Result<(),
 }
 
 pub async fn extract_audio_from_video_with(input: &Path, output: &Path, cancels: &[&CancelFlag]) -> Result<(), String> {
-    if !input.exists() {
-        return Err(format!("File không tồn tại: {}", input.display()));
+    if !crate::audio_source::is_regular_non_symlink_file(input) {
+        return Err(crate::http::ws_and_logs::sanitize_internal_paths(&format!(
+            "File không tồn tại: {}",
+            input.display()
+        )));
     }
     if !has_audio_stream_with(input, cancels).await {
         return Err("File MP4 không chứa luồng âm thanh nào.".into());
@@ -70,7 +73,7 @@ pub async fn extract_audio_from_video_with(input: &Path, output: &Path, cancels:
         Ok(out) if out.success() && is_non_empty_file(output) => Ok(()),
         Ok(out) => {
             let _ = std::fs::remove_file(output);
-            let err = out.stderr.trim();
+            let err = crate::http::ws_and_logs::sanitize_internal_paths(out.stderr.trim());
             Err(if err.is_empty() {
                 "Không thể trích xuất âm thanh từ file MP4.".into()
             } else {
@@ -79,7 +82,8 @@ pub async fn extract_audio_from_video_with(input: &Path, output: &Path, cancels:
         }
         Err(e) => {
             let _ = std::fs::remove_file(output);
-            Err(format!("Lỗi trích xuất audio: {e}"))
+            let safe_err = crate::http::ws_and_logs::sanitize_internal_paths(&e.to_string());
+            Err(format!("Lỗi trích xuất audio: {safe_err}"))
         }
     }
 }

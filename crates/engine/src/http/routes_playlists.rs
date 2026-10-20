@@ -1,5 +1,7 @@
 use crate::http::routes_tracks_segments::sanitize_control_chars;
-use crate::http::security::{MAX_BATCH_LIMIT, MAX_BATCH_PAYLOAD_BYTES, MAX_JSON_PAYLOAD_BYTES};
+use crate::http::security::{
+    json_error, MAX_BATCH_LIMIT, MAX_BATCH_PAYLOAD_BYTES, MAX_JSON_PAYLOAD_BYTES,
+};
 use crate::http::{decode_uri_param, parse_json_bytes, AppState};
 use crate::models::BatchPlaylistItemInput;
 use axum::body::Bytes;
@@ -42,22 +44,22 @@ pub async fn get_playlist_memberships_handler(
         .get_playlist_memberships(track_id, query.segment_id.as_deref(), include_all)
     {
         Ok(memberships) => Json(memberships).into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
 pub async fn list_playlists_handler(State(state): State<AppState>) -> Response {
     match state.db.list_playlists() {
         Ok(playlists) => Json(playlists).into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -128,7 +130,7 @@ pub async fn create_playlist_handler(State(state): State<AppState>, body: Bytes)
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
-            (status, Json(json!({ "error": e }))).into_response()
+            json_error(status, e, state.config.is_production)
         }
     }
 }
@@ -194,7 +196,7 @@ pub async fn create_mix_playlist_handler(State(state): State<AppState>, body: By
             } else {
                 StatusCode::BAD_REQUEST
             };
-            (status, Json(json!({ "error": e }))).into_response()
+            json_error(status, e, state.config.is_production)
         }
     }
 }
@@ -252,7 +254,7 @@ pub async fn update_mix_sources_handler(
             } else {
                 StatusCode::BAD_REQUEST
             };
-            (status, Json(json!({ "error": e }))).into_response()
+            json_error(status, e, state.config.is_production)
         }
     }
 }
@@ -327,11 +329,11 @@ pub async fn reorder_playlist_handler(
             Json(json!({ "error": "Không thể cập nhật thứ tự mục hoặc danh sách ID không hợp lệ" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -366,11 +368,11 @@ pub async fn delete_playlist_item_handler(
             Json(json!({ "error": "Mục không tồn tại trong playlist" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -463,7 +465,7 @@ pub async fn batch_add_playlist_items_handler(
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
-            (status, Json(json!({ "error": e }))).into_response()
+            json_error(status, e, state.config.is_production)
         }
     }
 }
@@ -531,11 +533,11 @@ pub async fn batch_delete_playlist_items_handler(
             }
             Json(json!({ "success": true, "deletedCount": deleted_count })).into_response()
         }
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -639,7 +641,7 @@ pub async fn add_playlist_item_handler(
             } else {
                 StatusCode::BAD_REQUEST
             };
-            (status, Json(json!({ "error": e }))).into_response()
+            json_error(status, e, state.config.is_production)
         }
     }
 }
@@ -665,11 +667,11 @@ pub async fn get_playlist_detail_handler(
     let items = match state.db.get_playlist_items(&pl_id) {
         Ok(i) => i,
         Err(e) => {
-            return (
+            return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": e })),
+                e,
+                state.config.is_production,
             )
-                .into_response()
         }
     };
     let mut val = serde_json::to_value(&pl).unwrap_or_else(|_| json!({}));
@@ -740,7 +742,7 @@ pub async fn patch_playlist_handler(
                 Json(json!({ "error": "Playlist không tồn tại" })),
             )
                 .into_response(),
-            Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+            Err(e) => json_error(StatusCode::BAD_REQUEST, e, state.config.is_production),
         };
     }
 
@@ -773,7 +775,7 @@ pub async fn patch_playlist_handler(
             Json(json!({ "error": "Playlist không tồn tại" })),
         )
             .into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, e, state.config.is_production),
     }
 }
 
@@ -833,10 +835,10 @@ pub async fn delete_playlist_handler(
             Json(json!({ "error": "Playlist không tồn tại" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }

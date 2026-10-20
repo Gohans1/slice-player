@@ -5,7 +5,8 @@ pub mod plays;
 pub mod tracks_segments;
 
 pub use maintenance::{
-    get_cross_platform_basename, purge_track_cache_files, resolve_abs_path,
+    get_cross_platform_basename, purge_track_cache_files, purge_track_cache_files_with_entries,
+    purge_tracks_cache_files_batch, read_audio_dir_file_names, resolve_abs_path,
     INTERRUPTED_INGEST_ERROR_MESSAGE,
 };
 pub use plays::parse_play_record;

@@ -1,5 +1,5 @@
 use crate::db::parse_play_record;
-use crate::http::security::MAX_JSON_PAYLOAD_BYTES;
+use crate::http::security::{json_error, MAX_JSON_PAYLOAD_BYTES};
 use crate::http::{parse_json_bytes, AppState};
 use axum::body::Bytes;
 use axum::extract::State;
@@ -27,21 +27,21 @@ pub async fn record_play_handler(State(state): State<AppState>, body: Bytes) -> 
             Json(json!({ "error": "Track not found" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
 pub async fn get_home_handler(State(state): State<AppState>) -> Response {
     match state.db.get_home_summary(None) {
         Ok(summary) => Json(summary).into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }

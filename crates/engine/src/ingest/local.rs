@@ -30,7 +30,9 @@ pub fn local_track_id(full_path: &Path) -> String {
 }
 
 fn is_non_empty_file(path: &Path) -> bool {
-    std::fs::metadata(path).map(|m| m.is_file() && m.len() > 0).unwrap_or(false)
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_file() && m.len() > 0)
+        .unwrap_or(false)
 }
 
 impl Ingest {
@@ -46,11 +48,11 @@ impl Ingest {
             return IngestResult::fail(unsupported_extension_message(&ext));
         }
         let full_path = resolve_abs_path(Path::new(cleaned));
-        if !full_path.is_file() {
-            return IngestResult::fail(format!(
+        if !crate::audio_source::is_regular_non_symlink_file(&full_path) {
+            return IngestResult::fail(crate::http::ws_and_logs::sanitize_internal_paths(&format!(
                 "File không tồn tại hoặc không phải là file hợp lệ: {}",
                 full_path.display()
-            ));
+            )));
         }
 
         let track_id = local_track_id(&full_path);
@@ -69,8 +71,9 @@ impl Ingest {
                 if let Some(path) = newly_extracted {
                     let _ = std::fs::remove_file(path);
                 }
-                self.log("error", &format!("Lỗi nạp file local: {message}"), None);
-                IngestResult::fail(format!("Lỗi đọc file local: {message}"))
+                let safe_message = crate::http::ws_and_logs::sanitize_internal_paths(&message);
+                self.log("error", &format!("Lỗi nạp file local: {safe_message}"), None);
+                IngestResult::fail(format!("Lỗi đọc file local: {safe_message}"))
             }
         }
     }
@@ -106,7 +109,7 @@ impl Ingest {
             let extracted = audio_dir.join(format!("{track_id}.m4a"));
             if !is_non_empty_file(&extracted) {
                 if let Err(message) = extract_audio_from_video_with(full_path, &extracted, &[&cancel]).await {
-                    return Ok(IngestResult::fail(message));
+                    return Ok(IngestResult::fail(crate::http::ws_and_logs::sanitize_internal_paths(&message)));
                 }
                 *newly_extracted = Some(extracted.clone());
             }
@@ -197,17 +200,27 @@ impl Ingest {
         };
         let full_dir = resolve_abs_path(Path::new(cleaned));
         if !full_dir.is_dir() {
-            return IngestResult::fail(format!("Thư mục không tồn tại: {}", full_dir.display()));
+            return IngestResult::fail(crate::http::ws_and_logs::sanitize_internal_paths(&format!(
+                "Thư mục không tồn tại: {}",
+                full_dir.display()
+            )));
         }
         let entries = match std::fs::read_dir(&full_dir) {
             Ok(entries) => entries,
-            Err(e) => return IngestResult::fail(format!("Lỗi đọc thư mục: {e}")),
+            Err(e) => {
+                return IngestResult::fail(crate::http::ws_and_logs::sanitize_internal_paths(&format!(
+                    "Lỗi đọc thư mục: {e}"
+                )))
+            }
         };
         // Sorted so the same 100 files are taken every time
         let mut audio_files: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(p).as_str()))
+            .filter(|p| {
+                SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(p).as_str())
+                    && crate::audio_source::is_regular_non_symlink_file(p)
+            })
             .collect();
         audio_files.sort();
         if audio_files.is_empty() {

@@ -10,7 +10,7 @@ pub mod ytdlp;
 
 use crate::audio_analysis::{cancel_waveform_for_file, is_waveform_busy, CancelFlag};
 use crate::audio_source::SUPPORTED_AUDIO_EXTENSIONS;
-use crate::db::{purge_track_cache_files, Db};
+use crate::db::{purge_track_cache_files_with_entries, Db};
 use crate::events::EventBus;
 use crate::http::ws_and_logs::ServerLogger;
 use crate::models::Track;
@@ -267,6 +267,14 @@ impl Ingest {
     /// Stops a track's download or ingest and waits for it to settle, so a delete can't be undone
     /// by an ingest still running (`cancelDownloadIfActive`)
     pub async fn cancel_download_if_active(&self, track_id: &str) {
+        self.cancel_download_if_active_with_entries(track_id, None).await;
+    }
+
+    pub async fn cancel_download_if_active_with_entries(
+        &self,
+        track_id: &str,
+        pre_read_audio_files: Option<&[String]>,
+    ) {
         {
             let mut downloads = self.inner.downloads.lock().unwrap();
             downloads.queue.retain(|(id, _)| id != track_id);
@@ -295,7 +303,7 @@ impl Ingest {
             let mut ops = self.inner.operations.subscribe();
             let _ = ops.wait_for(|o| !o.by_track.contains_key(track_id)).await;
         }
-        purge_track_cache_files(&audio_dir, track_id);
+        purge_track_cache_files_with_entries(&audio_dir, track_id, pre_read_audio_files);
     }
 
     /// Queues the errored tracks again (all of them, or only `track_ids`); returns how many

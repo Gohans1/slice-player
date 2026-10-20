@@ -1,6 +1,11 @@
-use crate::db::{purge_track_cache_files, resolve_abs_path};
+use crate::db::{
+    purge_track_cache_files, purge_tracks_cache_files_batch, read_audio_dir_file_names,
+    resolve_abs_path,
+};
 use crate::http::etag::{if_none_match_matches, weak_etag};
-use crate::http::security::{MAX_BATCH_LIMIT, MAX_BATCH_PAYLOAD_BYTES, MAX_JSON_PAYLOAD_BYTES};
+use crate::http::security::{
+    json_error, MAX_BATCH_LIMIT, MAX_BATCH_PAYLOAD_BYTES, MAX_JSON_PAYLOAD_BYTES,
+};
 use crate::http::{decode_uri_param, parse_json_bytes, AppState};
 use crate::models::{NewSegment, SegmentUpdates, TrackUpdates};
 use axum::body::Bytes;
@@ -71,11 +76,11 @@ pub async fn get_tracks_handler(State(state): State<AppState>, headers: HeaderMa
                 .insert("Cache-Control", HeaderValue::from_static("no-cache"));
             resp
         }
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -97,11 +102,11 @@ pub async fn get_track_by_id_handler(
             Json(json!({ "error": "Track not found" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -192,11 +197,11 @@ pub async fn update_track_handler(
                 Json(json!({ "error": "Track not found" })),
             )
                 .into_response(),
-            Err(e) => (
+            Err(e) => json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": e })),
-            )
-                .into_response(),
+                e,
+                state.config.is_production,
+            ),
         };
     }
 
@@ -221,11 +226,11 @@ pub async fn update_track_handler(
             Json(json!({ "error": "Track not found" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -245,6 +250,41 @@ fn cleanup_deleted_track_files(state: &AppState, track_id: &str, file_path: Opti
     }
     crate::thumbnails::remove_thumbnail_variants(
         track_id,
+        &state.config.data_dir.join("cache/thumbs-sized"),
+    );
+}
+
+fn cleanup_deleted_tracks_files_batch(
+    state: &AppState,
+    tracks_to_delete: &[(String, Option<String>)],
+    pre_read_audio_files: Option<&[String]>,
+) {
+    if tracks_to_delete.is_empty() {
+        return;
+    }
+    let audio_cache_dir = resolve_abs_path(&state.config.data_dir.join("cache/audio"));
+    let thumbs_dir = state.config.data_dir.join("cache/thumbs");
+    let mut track_id_set = std::collections::HashSet::with_capacity(tracks_to_delete.len());
+
+    for (tid, fp) in tracks_to_delete {
+        let trimmed = tid.trim();
+        if !trimmed.is_empty() {
+            track_id_set.insert(trimmed.to_string());
+        }
+        if let Some(fp_str) = fp.as_deref() {
+            let abs_fp = resolve_abs_path(std::path::Path::new(fp_str));
+            if abs_fp.starts_with(&audio_cache_dir) && abs_fp != audio_cache_dir {
+                let _ = fs::remove_file(&abs_fp);
+            }
+        }
+        for ext in [".jpg", ".jpeg", ".webp", ".png"] {
+            let _ = fs::remove_file(thumbs_dir.join(format!("{tid}{ext}")));
+        }
+    }
+
+    purge_tracks_cache_files_batch(&audio_cache_dir, &track_id_set, pre_read_audio_files);
+    crate::thumbnails::remove_thumbnail_variants_batch(
+        &track_id_set,
         &state.config.data_dir.join("cache/thumbs-sized"),
     );
 }
@@ -285,11 +325,11 @@ pub async fn delete_track_handler(
     }
 
     if let Err(e) = state.db.delete_track(&track_id) {
-        return (
+        return json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response();
+            e,
+            state.config.is_production,
+        );
     }
     cleanup_deleted_track_files(&state, &track_id, track.file_path.as_deref());
 
@@ -350,9 +390,16 @@ pub async fn batch_delete_tracks_handler(
         return Json(json!({ "success": true, "count": 0 })).into_response();
     }
 
+    // Read audio cache directory once before batch cancel + cleanup
+    let audio_cache_dir = resolve_abs_path(&state.config.data_dir.join("cache/audio"));
+    let pre_read_audio_files = read_audio_dir_file_names(&audio_cache_dir);
+
     // Cancel any active downloads/ingests for all requested IDs BEFORE reading DB state
     for tid in &valid_ids {
-        state.ingest.cancel_download_if_active(tid).await;
+        state
+            .ingest
+            .cancel_download_if_active_with_entries(tid, Some(&pre_read_audio_files))
+            .await;
     }
 
     let affected_playlists = state
@@ -379,17 +426,15 @@ pub async fn batch_delete_tracks_handler(
     let deleted_count = match state.db.delete_tracks_batch(&existing_track_ids) {
         Ok(c) => c,
         Err(e) => {
-            return (
+            return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": e })),
+                e,
+                state.config.is_production,
             )
-                .into_response()
         }
     };
 
-    for (tid, fp) in &tracks_to_delete {
-        cleanup_deleted_track_files(&state, tid, fp.as_deref());
-    }
+    cleanup_deleted_tracks_files_batch(&state, &tracks_to_delete, Some(&pre_read_audio_files));
 
     if !segments_to_delete.is_empty() {
         let items: Vec<Value> = segments_to_delete
@@ -427,11 +472,11 @@ pub async fn get_track_segments_handler(
     };
     match state.db.list_segments_by_track(&track_id) {
         Ok(segs) => Json(segs).into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -582,11 +627,7 @@ pub async fn create_track_segment_handler(
                 .emit("track_updated", json!({ "trackId": track_id }));
             (StatusCode::CREATED, Json(seg)).into_response()
         }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, e, state.config.is_production),
     }
 }
 
@@ -742,11 +783,7 @@ pub async fn update_segment_handler(
             Json(json!({ "error": "Segment not found" })),
         )
             .into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, e, state.config.is_production),
     }
 }
 
@@ -797,11 +834,11 @@ pub async fn delete_segment_handler(
             Json(json!({ "error": "Segment not found" })),
         )
             .into_response(),
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -896,11 +933,11 @@ pub async fn batch_delete_segments_handler(
             state.events.emit("playlist_items_changed", json!({}));
             Json(json!({ "success": true, "deletedCount": deleted_count })).into_response()
         }
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }
 
@@ -934,10 +971,10 @@ pub async fn get_all_segments_handler(
                 .insert("Cache-Control", HeaderValue::from_static("no-cache"));
             resp
         }
-        Err(e) => (
+        Err(e) => json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
-        )
-            .into_response(),
+            e,
+            state.config.is_production,
+        ),
     }
 }

@@ -80,7 +80,9 @@ pub fn heal_track_file_paths_in_conn(
             if !Path::new(&file_path).exists() {
                 let file_base = get_cross_platform_basename(&file_path);
                 let candidate = abs_cache_dir.join(&file_base);
-                if candidate.exists() {
+                if crate::audio_source::is_supported_audio_file(&candidate)
+                    && crate::audio_source::is_regular_non_symlink_file(&candidate)
+                {
                     let resolved = resolve_abs_path(&candidate);
                     update_stmt
                         .execute(params![resolved.to_string_lossy().to_string(), id])
@@ -94,16 +96,81 @@ pub fn heal_track_file_paths_in_conn(
     Ok(healed_count)
 }
 
-pub fn purge_track_cache_files(audio_dir: &Path, track_id: &str) {
+pub fn read_audio_dir_file_names(audio_dir: &Path) -> Vec<String> {
+    fs::read_dir(audio_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn purge_track_cache_files_with_entries(
+    audio_dir: &Path,
+    track_id: &str,
+    entries: Option<&[String]>,
+) {
     let trimmed = track_id.trim();
     if trimmed.is_empty() || !audio_dir.exists() {
         return;
     }
     let prefix = format!("{trimmed}.");
+    if let Some(names) = entries {
+        for name in names {
+            if name == trimmed || name.starts_with(&prefix) {
+                let _ = fs::remove_file(audio_dir.join(name));
+            }
+        }
+        return;
+    }
     if let Ok(entries) = fs::read_dir(audio_dir) {
         for entry in entries.flatten() {
             if let Some(name) = entry.file_name().to_str()
                 && (name == trimmed || name.starts_with(&prefix))
+            {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+pub fn purge_track_cache_files(audio_dir: &Path, track_id: &str) {
+    purge_track_cache_files_with_entries(audio_dir, track_id, None);
+}
+
+pub fn purge_tracks_cache_files_batch(
+    audio_dir: &Path,
+    track_ids: &HashSet<String>,
+    entries: Option<&[String]>,
+) {
+    if track_ids.is_empty() || !audio_dir.exists() {
+        return;
+    }
+    let matches_track = |name: &str| -> bool {
+        if track_ids.contains(name) {
+            return true;
+        }
+        if let Some((stem, _)) = name.split_once('.') {
+            track_ids.contains(stem)
+        } else {
+            false
+        }
+    };
+    if let Some(names) = entries {
+        for name in names {
+            if matches_track(name) {
+                let _ = fs::remove_file(audio_dir.join(name));
+            }
+        }
+        return;
+    }
+    if let Ok(dir_entries) = fs::read_dir(audio_dir) {
+        for entry in dir_entries.flatten() {
+            if let Some(name) = entry.file_name().to_str()
+                && matches_track(name)
             {
                 let _ = fs::remove_file(entry.path());
             }

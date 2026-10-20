@@ -278,7 +278,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> Result<Response, StatusCode> {
-    Ok(ws.on_upgrade(move |socket| handle_ws_socket(socket, state)))
+    Ok(ws
+        .max_message_size(64 * 1024)
+        .max_frame_size(64 * 1024)
+        .on_upgrade(move |socket| handle_ws_socket(socket, state)))
 }
 
 async fn handle_ws_socket(mut socket: WebSocket, state: AppState) {
@@ -289,10 +292,10 @@ async fn handle_ws_socket(mut socket: WebSocket, state: AppState) {
         .send(Message::Text(r#"{"type":"connected"}"#.into()))
         .await;
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(256);
     let unsub = crate::events::forward_server_events_on(&state.events, move |msg| {
         if let Ok(s) = serde_json::to_string(&msg) {
-            let _ = tx.send(s);
+            let _ = tx.try_send(s);
         }
     });
 

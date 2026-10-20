@@ -16,10 +16,17 @@ const MAX_LOCAL_PATHS: usize = 50;
 const MAX_BATCH_TRACKS: usize = 50;
 
 fn error(status: StatusCode, message: &str) -> Response {
-    (status, Json(json!({ "error": message }))).into_response()
+    (
+        status,
+        Json(json!({ "error": super::ws_and_logs::sanitize_internal_paths(message) })),
+    )
+        .into_response()
 }
 
-fn result_response(result: IngestResult) -> Response {
+fn result_response(mut result: IngestResult) -> Response {
+    if let Some(ref msg) = result.message {
+        result.message = Some(super::ws_and_logs::sanitize_internal_paths(msg));
+    }
     let status = if result.success { StatusCode::OK } else { StatusCode::BAD_REQUEST };
     (status, Json(result)).into_response()
 }
@@ -117,9 +124,10 @@ pub async fn ingest_local_handler(State(state): State<AppState>, body: Bytes) ->
     }
 
     if tracks.is_empty() {
+        let joined = super::ws_and_logs::sanitize_internal_paths(&errors.join("; "));
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "message": format!("Không thể nạp bài hát nào: {}", errors.join("; ")) })),
+            Json(json!({ "success": false, "message": format!("Không thể nạp bài hát nào: {joined}") })),
         )
             .into_response();
     }
@@ -217,9 +225,10 @@ pub async fn upload_handler(State(state): State<AppState>, mut multipart: axum::
         }
     }
     if tracks.is_empty() {
+        let joined = super::ws_and_logs::sanitize_internal_paths(&errors.join("; "));
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "message": format!("Không thể nạp file: {}", errors.join("; ")) })),
+            Json(json!({ "success": false, "message": format!("Không thể nạp file: {joined}") })),
         )
             .into_response();
     }

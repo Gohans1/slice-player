@@ -58,6 +58,16 @@ fn is_dos_device_name(segment: &str) -> bool {
     }
 }
 
+pub fn is_supported_audio_file(path: &Path) -> bool {
+    SUPPORTED_AUDIO_EXTENSIONS.contains(&dotted_extension(path).as_str())
+}
+
+pub fn is_regular_non_symlink_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_file())
+        .unwrap_or(false)
+}
+
 /// The file to serve for a track: its recorded path, or the file of the same name in the audio cache
 /// when the library came from another machine. Never writes the fallback back to SQLite, so a slow
 /// read can't overwrite a concurrent delete or restore. Errs with (HTTP status, message).
@@ -66,11 +76,17 @@ pub fn resolve_audio_source(file_path: &str, cache_dir: &Path) -> Result<PathBuf
         return Err((403, "Invalid or forbidden audio file path"));
     }
     let path = PathBuf::from(file_path);
-    if path.is_file() {
+    if !is_supported_audio_file(&path) {
+        return Err((403, "Invalid or forbidden audio file path"));
+    }
+    if is_regular_non_symlink_file(&path) {
         return Ok(path);
     }
     let candidate = resolve_abs_path(&cache_dir.join(get_cross_platform_basename(file_path)));
-    if validate_safe_local_audio_path(&candidate.to_string_lossy()).is_err() || !candidate.is_file() {
+    if validate_safe_local_audio_path(&candidate.to_string_lossy()).is_err()
+        || !is_supported_audio_file(&candidate)
+        || !is_regular_non_symlink_file(&candidate)
+    {
         return Err((404, "Audio file missing on disk"));
     }
     Ok(candidate)

@@ -49,7 +49,7 @@ struct Snapshot {
 }
 
 fn is_file(path: &Path) -> bool {
-    path.is_file()
+    crate::audio_source::is_regular_non_symlink_file(path)
 }
 
 /// A self-contained copy of the database whose tracks point at `cache/audio/<name>` inside the
@@ -214,7 +214,7 @@ pub async fn export_library_archive(state: &AppState, include_cookies: bool) -> 
         ("music.db".into(), Source::Data(snapshot.db_bytes)),
     ];
     // Session cookies never leave the machine unless asked for
-    if include_cookies && paths.cookie_path.is_file() {
+    if include_cookies && is_file(&paths.cookie_path) {
         entries.push(("cookies.txt".into(), Source::File(paths.cookie_path.clone())));
     }
     for (name, path) in snapshot.audio_files {
@@ -225,7 +225,7 @@ pub async fn export_library_archive(state: &AppState, include_cookies: bool) -> 
         thumbs.sort();
         for path in thumbs {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            if is_safe_archive_filename(&name) && ALLOWED_THUMB_EXTENSIONS.contains(&dotted_extension(&path).as_str()) && path.is_file() {
+            if is_safe_archive_filename(&name) && ALLOWED_THUMB_EXTENSIONS.contains(&dotted_extension(&path).as_str()) && is_file(&path) {
                 entries.push((format!("cache/thumbs/{name}"), Source::File(path)));
             }
         }
