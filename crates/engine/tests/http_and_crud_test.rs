@@ -432,3 +432,47 @@ async fn test_tracks_and_segments_crud_and_etags() {
     assert_eq!(status, 200);
     assert!(state.db.get_track("t1").unwrap().is_none());
 }
+
+fn local_track(id: &str, file_path: &std::path::Path) -> NewTrack {
+    NewTrack {
+        id: id.into(),
+        source_type: "local".into(),
+        source_uri: file_path.to_string_lossy().to_string(),
+        title: id.into(),
+        duration: 10.0,
+        file_path: Some(file_path.to_string_lossy().to_string()),
+        status: Some("ready".into()),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn deleting_a_track_keeps_a_cached_file_another_track_still_plays() {
+    let (port, state, _dir) = spawn_test_server().await;
+    let audio_dir = state.config.data_dir.join("cache/audio");
+    let shared = audio_dir.join("loc_aaaaaaaaaaaa.flac");
+    let batch_shared = audio_dir.join("loc_bbbbbbbbbbbb.flac");
+    std::fs::write(&shared, b"audio").unwrap();
+    std::fs::write(&batch_shared, b"audio").unwrap();
+    for (id, file) in [("loc_one", &shared), ("loc_two", &shared), ("loc_three", &batch_shared), ("loc_four", &batch_shared)] {
+        state.db.create_track(&local_track(id, file)).unwrap();
+    }
+
+    let delete = |id: &str| format!("DELETE /api/tracks/{id} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let batch_delete = |body: &str| {
+        format!(
+            "POST /api/tracks/batch-delete HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+    };
+
+    assert_eq!(send_raw_http(port, &delete("loc_one")).await.0, 200);
+    assert!(shared.exists(), "loc_two still plays it");
+    assert_eq!(send_raw_http(port, &delete("loc_two")).await.0, 200);
+    assert!(!shared.exists(), "the last track using it is gone");
+
+    assert_eq!(send_raw_http(port, &batch_delete(r#"{"ids":["loc_three"]}"#)).await.0, 200);
+    assert!(batch_shared.exists(), "loc_four still plays it");
+    assert_eq!(send_raw_http(port, &batch_delete(r#"{"ids":["loc_four"]}"#)).await.0, 200);
+    assert!(!batch_shared.exists());
+}

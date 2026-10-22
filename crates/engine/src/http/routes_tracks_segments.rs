@@ -234,10 +234,19 @@ pub async fn update_track_handler(
     }
 }
 
+/// The deleted tracks' cached files no remaining track plays. Keeps them all if that can't be read.
+fn unused_cached_files(state: &AppState, mut file_paths: Vec<String>) -> Vec<String> {
+    let Ok(in_use) = state.db.file_paths_in_use(&file_paths) else {
+        return Vec::new();
+    };
+    file_paths.retain(|fp| !in_use.contains(fp));
+    file_paths
+}
+
 fn cleanup_deleted_track_files(state: &AppState, track_id: &str, file_path: Option<&str>) {
     let audio_cache_dir = resolve_abs_path(&state.config.data_dir.join("cache/audio"));
-    if let Some(fp) = file_path {
-        let abs_fp = resolve_abs_path(std::path::Path::new(fp));
+    for fp in unused_cached_files(state, file_path.map(str::to_string).into_iter().collect()) {
+        let abs_fp = resolve_abs_path(std::path::Path::new(&fp));
         if abs_fp.starts_with(&audio_cache_dir) && abs_fp != audio_cache_dir {
             let _ = fs::remove_file(&abs_fp);
         }
@@ -268,14 +277,14 @@ fn cleanup_deleted_tracks_files_batch(
     let thumbs_dir = state.config.data_dir.join("cache/thumbs");
     let mut track_id_set = std::collections::HashSet::with_capacity(tracks_to_delete.len());
 
-    for (tid, fp) in tracks_to_delete {
-        let trimmed = tid.trim();
-        if let Some(fp_str) = fp.as_deref() {
-            let abs_fp = resolve_abs_path(std::path::Path::new(fp_str));
-            if abs_fp.starts_with(&audio_cache_dir) && abs_fp != audio_cache_dir {
-                let _ = fs::remove_file(&abs_fp);
-            }
+    for fp in unused_cached_files(state, tracks_to_delete.iter().filter_map(|(_, fp)| fp.clone()).collect()) {
+        let abs_fp = resolve_abs_path(std::path::Path::new(&fp));
+        if abs_fp.starts_with(&audio_cache_dir) && abs_fp != audio_cache_dir {
+            let _ = fs::remove_file(&abs_fp);
         }
+    }
+    for (tid, _) in tracks_to_delete {
+        let trimmed = tid.trim();
         if crate::backup::is_safe_entity_id(trimmed) {
             track_id_set.insert(trimmed.to_string());
             for ext in [".jpg", ".jpeg", ".webp", ".png"] {

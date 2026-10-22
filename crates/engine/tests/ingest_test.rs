@@ -376,6 +376,31 @@ async fn a_delete_waits_for_a_local_reingest_so_it_cannot_resurrect_the_track() 
 }
 
 #[tokio::test]
+async fn ingesting_a_file_a_track_already_plays_updates_that_track() {
+    let lib = library();
+    let song = tone(&lib.dir.path().join("song.wav"), 2);
+    // A track whose id came from another path to the same file (the library was moved, e.g. from Windows)
+    lib.db
+        .create_track(&NewTrack {
+            id: "loc_000000000000".into(),
+            source_type: "local".into(),
+            source_uri: r"C:\data\cache\audio\song.wav".into(),
+            title: "song".into(),
+            duration: 2.0,
+            file_path: Some(song.to_string_lossy().to_string()),
+            status: Some("ready".into()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let res = lib.ingest.ingest_local_file(song.to_str().unwrap(), None).await;
+
+    assert!(res.success, "{res:?}");
+    assert_eq!(res.tracks.unwrap()[0].id, "loc_000000000000");
+    assert_eq!(lib.db.list_tracks().unwrap().len(), 1, "no second track for the same file");
+}
+
+#[tokio::test]
 async fn new_ingests_are_refused_while_paused() {
     let lib = library();
     let song = tone(&lib.dir.path().join("song.wav"), 1);

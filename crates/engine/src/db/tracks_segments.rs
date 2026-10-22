@@ -1,5 +1,6 @@
 use crate::models::{NewSegment, NewTrack, Segment, SegmentUpdates, Track, TrackUpdates};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
+use std::collections::HashSet;
 
 pub fn validate_volume(vol: f64) -> bool {
     vol.is_finite() && (0.0..=1.0).contains(&vol)
@@ -309,6 +310,34 @@ pub fn get_tracks_batch_in_conn(
             .map_err(|e| e.to_string())?;
         for r in rows {
             out.push(r.map_err(|e| e.to_string())?);
+        }
+    }
+    Ok(out)
+}
+
+/// The local track that plays `file_path`, whatever path its id was derived from
+pub fn find_local_track_id_by_file_path_in_conn(conn: &Connection, file_path: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT id FROM tracks WHERE source_type = 'local' AND file_path = ?1 ORDER BY created_at LIMIT 1",
+        params![file_path],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// The ones of `file_paths` some track still plays (one cached file can back several tracks)
+pub fn file_paths_in_use_in_conn(conn: &Connection, file_paths: &[String]) -> Result<HashSet<String>, String> {
+    let mut out = HashSet::new();
+    for chunk in file_paths.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT DISTINCT file_path FROM tracks WHERE file_path IN ({placeholders})");
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            out.insert(r.map_err(|e| e.to_string())?);
         }
     }
     Ok(out)

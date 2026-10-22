@@ -15,6 +15,7 @@ pub use tracks_segments::{clamp_volume, validate_volume};
 use crate::events::EventBus;
 use crate::models::*;
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -174,6 +175,14 @@ impl Db {
 
     pub fn get_tracks_batch(&self, ids: &[String]) -> Result<Vec<(String, Option<String>)>, String> {
         self.with_conn(|conn| tracks_segments::get_tracks_batch_in_conn(conn, ids))
+    }
+
+    pub fn find_local_track_id_by_file_path(&self, file_path: &str) -> Result<Option<String>, String> {
+        self.with_conn(|conn| tracks_segments::find_local_track_id_by_file_path_in_conn(conn, file_path))
+    }
+
+    pub fn file_paths_in_use(&self, file_paths: &[String]) -> Result<HashSet<String>, String> {
+        self.with_conn(|conn| tracks_segments::file_paths_in_use_in_conn(conn, file_paths))
     }
 
     pub fn delete_track(&self, id: &str) -> Result<bool, String> {

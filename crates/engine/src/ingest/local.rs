@@ -55,7 +55,15 @@ impl Ingest {
             )));
         }
 
-        let track_id = local_track_id(&full_path);
+        // A file a track already plays stays that track, even when its id came from another path to
+        // it (a library moved from another machine), so a second import can't add a track sharing it
+        let track_id = self
+            .inner
+            .db
+            .find_local_track_id_by_file_path(&full_path.to_string_lossy())
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| local_track_id(&full_path));
         let Some(operation) = self.begin_operation(Some(&track_id)) else {
             return IngestResult::fail(INGEST_PAUSED_MESSAGE);
         };
