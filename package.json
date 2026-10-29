@@ -9,9 +9,9 @@
     "build": "vite build",
     "build:server": "cargo build --release -p slice-engine --bin slice-server",
     "build:exe": "vite build && cargo build --release -p slice-engine --bin slice-server",
-    "lint": "oxlint --type-aware --format=agent",
-    "lint:fix": "oxlint --type-aware --fix",
-    "typecheck": "tsc --noEmit",
+    "lint": "bun lint --type-aware --format=agent",
+    "lint:fix": "bun lint --type-aware --fix",
+    "typecheck": "bun check",
     "test": "bun test --isolate",
     "test:e2e": "bun --bun playwright test",
     "test:e2e:rust": "bun --bun playwright test -c playwright.rust.config.ts"
@@ -41,11 +41,9 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "happy-dom": "^20.14.5",
-    "oxlint": "^1.83.0",
-    "oxlint-tsgolint": "^7.0.2001",
     "shadcn": "^4.21.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.8.2",
+    "typescript": "^7.0.2",
     "vite": "^8.3.0"
   }
 }
