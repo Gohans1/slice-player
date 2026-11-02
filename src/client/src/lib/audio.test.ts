@@ -17,6 +17,9 @@ class TestAudio extends EventTarget {
   removeAttribute(name: string) { if (name === "src") this.src = ""; }
 }
 const contexts: TestContext[] = [];
+interface GainEvent { value: number; time: number }
+// Per gain node, in the order the deck creates them: its fade, then its volume
+const gainEvents: GainEvent[][] = [];
 let releaseContext: () => void;
 let contextReady: Promise<void>;
 class TestContext {
@@ -27,7 +30,17 @@ class TestContext {
   resume() { return contextReady.then(() => { this.state = "running"; }); }
   createMediaElementSource() { return { connect() {} }; }
   createGain() {
-    return { connect() {}, gain: { value: 1, cancelScheduledValues() {}, setValueAtTime() {}, linearRampToValueAtTime() {} } };
+    const events: GainEvent[] = [];
+    gainEvents.push(events);
+    return {
+      connect() {},
+      gain: {
+        value: 1,
+        cancelScheduledValues() {},
+        setValueAtTime(value: number, time: number) { events.push({ value, time }); },
+        linearRampToValueAtTime(value: number, time: number) { events.push({ value, time }); },
+      },
+    };
   }
 }
 const originalWorker = globalThis.Worker;
@@ -36,8 +49,10 @@ const originalAudio = globalThis.Audio;
 const originalContext = window.AudioContext;
 Object.assign(globalThis, { Audio: TestAudio });
 Object.assign(window, { AudioContext: TestContext });
-const { audioEngine } = await import("./audio");
+const { audioEngine, outputGain } = await import("./audio");
 const { usePlayerStore } = await import("../store/usePlayerStore");
+type Track = import("../store/usePlayerStore").Track;
+type Segment = import("../store/usePlayerStore").Segment;
 audioEngine.init();
 
 beforeEach(() => {
@@ -81,6 +96,27 @@ it("keeps reporting where playback is while the window is hidden, as the music p
   });
 
   expect(reportedWhileHidden.includes(5)).toBe(true);
+});
+
+it("keeps the next song's level off the old song until the old song has faded out", async () => {
+  contexts[0].state = "running";
+  const [fadeEvents, volumeEvents] = gainEvents;
+  const song = (id: string, loudness: number, true_peak: number) => ({
+    track: { id, title: id, duration: 60, volume: 0.5, loudness, true_peak } as Track,
+    segment: { id: `fallback_${id}`, track_id: id, name: "", start_time: 0, end_time: 60 } as Segment,
+  });
+  const loud = song("loud", -4, 4);
+  const quiet = song("quiet", -24, -12);
+  await usePlayerStore.getState().playSegment(loud.segment, loud.track);
+  fadeEvents.length = 0;
+  volumeEvents.length = 0;
+
+  await usePlayerStore.getState().playSegment(quiet.segment, quiet.track);
+
+  const quietLevel = outputGain(0.5, usePlayerStore.getState().masterVolume) * 10 ** ((-14 + 24) / 20);
+  const levelChange = volumeEvents.find((event) => event.value === quietLevel)!;
+  const faded = fadeEvents.find((event) => event.value === 0.0001)!;
+  expect(levelChange.time).toBeGreaterThanOrEqual(faded.time);
 });
 
 it("does not start a segment after pause cancels its pending AudioContext resume", async () => {

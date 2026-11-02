@@ -3,29 +3,31 @@ import { GlobalWindow } from "happy-dom";
 
 // Capture the <audio> element the engine creates so we can read the gain it actually outputs.
 // Without an AudioContext (headless), the engine writes the final gain to audioEl.volume.
-class FakeAudio {
+class FakeAudio extends EventTarget {
   static last: FakeAudio | null = null;
   crossOrigin = "";
   preload = "";
   currentTime = 0;
+  paused = true;
   src = "";
   volume = 1;
   constructor() {
+    super();
     FakeAudio.last = this;
   }
-  addEventListener() {}
-  removeEventListener() {}
   pause() {}
   play() {
     return Promise.resolve();
   }
-  load() {}
+  load() {
+    this.dispatchEvent(new Event("canplay"));
+  }
   removeAttribute(attr: string) {
     if (attr === "src") this.src = "";
   }
 }
 // A previous session left the master volume at 60%.
-const happyWindow = new GlobalWindow();
+const happyWindow = new GlobalWindow({ url: "http://localhost/" });
 happyWindow.localStorage.setItem("slice_player_master_volume", "0.6");
 Object.assign(globalThis, { Audio: FakeAudio, window: happyWindow });
 
@@ -63,7 +65,6 @@ describe("Global master volume", () => {
   const segB: Segment = { id: "seg_master_b", track_id: trackB.id, name: "B", start_time: 0, end_time: 60 };
 
   beforeEach(() => {
-    spyOn(audioEngine, "playSegment").mockResolvedValue();
     spyOn(globalThis, "fetch").mockResolvedValue(new Response()); // only res.ok is read (volume PATCH)
 
     usePlayerStore.setState({

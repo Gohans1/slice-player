@@ -96,7 +96,7 @@ describe("crossfade between songs", () => {
     audioEngine.setMasterVolume(1);
     audioEngine.setVolume(0.5);
     audioEngine.setOnCrossfade(() => {
-      audioEngine.setVolume(0.9);
+      audioEngine.setSongLevel(0.9, 1);
       void audioEngine.playSegment(NEXT, 0, 60, () => {});
     });
     await audioEngine.playSegment(FIRST, 0, 10, () => {});

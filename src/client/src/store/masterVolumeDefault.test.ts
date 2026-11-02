@@ -1,33 +1,35 @@
-import { describe, it, expect, spyOn, afterEach, mock } from "bun:test";
+import { describe, it, expect, afterEach, mock } from "bun:test";
 import { GlobalWindow } from "happy-dom";
 
-class FakeAudio {
+class FakeAudio extends EventTarget {
   static last: FakeAudio | null = null;
   crossOrigin = "";
   preload = "";
   currentTime = 0;
+  paused = true;
   src = "";
   volume = 1;
   constructor() {
+    super();
     FakeAudio.last = this;
   }
-  addEventListener() {}
-  removeEventListener() {}
   pause() {}
   play() {
     return Promise.resolve();
   }
-  load() {}
+  load() {
+    this.dispatchEvent(new Event("canplay"));
+  }
   removeAttribute(attr: string) {
     if (attr === "src") this.src = "";
   }
 }
 
 // First run: nothing saved yet.
-Object.assign(globalThis, { Audio: FakeAudio, window: new GlobalWindow() });
+Object.assign(globalThis, { Audio: FakeAudio, window: new GlobalWindow({ url: "http://localhost/" }) });
 
 const { usePlayerStore } = await import("./usePlayerStore");
-const { audioEngine, volumeToGain } = await import("../lib/audio");
+const { volumeToGain } = await import("../lib/audio");
 import type { Track, Segment } from "@/server/types";
 
 describe("Global master volume on first run", () => {
@@ -36,7 +38,6 @@ describe("Global master volume on first run", () => {
   });
 
   it("starts in the middle (50%) so it can go either way", async () => {
-    spyOn(audioEngine, "playSegment").mockResolvedValue();
     const track: Track = {
       id: "trk_default",
       source_type: "local",

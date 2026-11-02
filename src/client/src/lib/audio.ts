@@ -346,6 +346,9 @@ class AudioEngine {
       const now = this.audioCtx.currentTime;
       this.cancelFadeGain(now);
       this.fadeGainNode.gain.linearRampToValueAtTime(0.0001, now + 0.015);
+      this.applyGain(now + 0.015);
+    } else {
+      this.applyGain();
     }
 
     // Await micro-fade completion if playing before changing source or seeking
@@ -574,21 +577,19 @@ class AudioEngine {
     this.applyGain();
   }
 
-  // The playing song's Sound Check gain, which can raise a quiet song past unity
-  public setSoundCheckGain(gain: number) {
-    this.soundCheckGain = Number.isFinite(gain) && gain > 0 ? gain : 1;
-    this.applyGain();
+  // The level of the song about to start, Sound Check included, which can raise a quiet song past unity. playSegment applies
+  // it: on the song still playing it can be many times too loud, for as long as React takes to render the song change
+  public setSongLevel(volume: number, soundCheckGain: number) {
+    this.currentVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.5;
+    this.soundCheckGain = Number.isFinite(soundCheckGain) && soundCheckGain > 0 ? soundCheckGain : 1;
   }
 
-  private applyGain() {
-    // The next song's volume, set before it crosses in, is for its deck: the song fading out keeps its own
-    if (this.isHandingOver) return;
+  private applyGain(time = this.audioCtx?.currentTime ?? 0) {
     const gainVal = outputGain(this.currentVolume, this.masterVolume) * this.soundCheckGain;
     if (this.volumeGainNode && this.audioCtx) {
       this.audioEl.volume = 1.0;
-      const now = this.audioCtx.currentTime;
-      this.volumeGainNode.gain.cancelScheduledValues?.(now);
-      this.volumeGainNode.gain.setValueAtTime?.(gainVal, now);
+      this.volumeGainNode.gain.cancelScheduledValues?.(time);
+      this.volumeGainNode.gain.setValueAtTime?.(gainVal, time);
     } else {
       this.audioEl.volume = Math.min(1, gainVal);
     }

@@ -1491,8 +1491,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     const trackGain = normalizeTrackVolume(track.volume, 0.5);
-    audioEngine.setVolume(trackGain);
-    audioEngine.setSoundCheckGain(soundCheckGain(track));
+    audioEngine.setSongLevel(trackGain, soundCheckGain(track));
 
     const { playbackMode, queuesByMode, initializedModes } = get();
     const isPlayingPlaylist = Boolean(activePlaylistPlayingId);

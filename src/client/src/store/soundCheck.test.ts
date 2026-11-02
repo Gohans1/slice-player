@@ -2,29 +2,31 @@ import { describe, it, expect, afterEach, spyOn, mock } from "bun:test";
 import type { Segment, Track } from "@/server/types";
 
 // Without an AudioContext (headless), the engine writes the gain it outputs to the <audio> element's volume
-class FakeAudio {
+class FakeAudio extends EventTarget {
   static last: FakeAudio | null = null;
   crossOrigin = "";
   preload = "";
   currentTime = 0;
+  paused = true;
   src = "";
   volume = 1;
   constructor() {
+    super();
     FakeAudio.last = this;
   }
-  addEventListener() {}
-  removeEventListener() {}
   pause() {}
   play() {
     return Promise.resolve();
   }
-  load() {}
+  load() {
+    this.dispatchEvent(new Event("canplay"));
+  }
   removeAttribute() {}
 }
 Object.assign(globalThis, { Audio: FakeAudio });
 
 const { usePlayerStore } = await import("./usePlayerStore");
-const { audioEngine, outputGain } = await import("../lib/audio");
+const { outputGain } = await import("../lib/audio");
 
 const outputVolume = () => FakeAudio.last!.volume;
 
@@ -39,7 +41,6 @@ afterEach(() => {
 
 describe("Sound Check in playback", () => {
   it("plays a loud song turned down to the loudness every song plays at", async () => {
-    spyOn(audioEngine, "playSegment").mockResolvedValue();
     const loud = song("trk_loud", { loudness: -8, true_peak: 0.5 });
 
     await usePlayerStore.getState().playSegment(fullSong(loud), loud);
@@ -49,7 +50,6 @@ describe("Sound Check in playback", () => {
   });
 
   it("plays the next song at its own level, and a song not measured yet as it is", async () => {
-    spyOn(audioEngine, "playSegment").mockResolvedValue();
     const loud = song("trk_loud", { loudness: -8, true_peak: 0.5 });
     const unmeasured = song("trk_unmeasured", { loudness: null, true_peak: null });
 
